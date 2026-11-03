@@ -1,0 +1,749 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija Supervisor Namespace i VKS klastera.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, kvote, VM klase, politike resursa, Supervisor Namespace, VKS klaster, kontrola kapaciteta, Kubernetes, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija klastera">
+
+  <meta property="og:description"
+        content="Devetnaesta lekcija VMware &amp; Tanzu tutorijala – kvote, VM klase, politike resursa i standardizacija VKS klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija klastera">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.png"
+           alt="Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija klastera">
+
+    </a>
+
+    <div class="page-subtitle">
+  V. Namespace, identitet, politike i multi-tenancy
+</div>
+
+<div class="page-subtitle">
+  19. Kvote, VM klase i politike resursa – kontrola kapaciteta i standardizacija klastera
+</div>
+
+<p>
+  U prethodnim lekcijama Supervisor Namespace je postavljen kao granica odgovornosti, a identitet i RBAC kao odgovor na pitanje ko sme da radi sa platformom. Ova lekcija uvodi treći stub multi-tenancy modela: <strong>koliko resursa tim sme da potroši i koje infrastrukturne profile sme da izabere</strong>. Bez tog sloja pristup je formalno kontrolisan, ali kapacitet nije. Jedan pogrešno dimenzionisan VKS klaster, nekontrolisano umnožavanje virtuelnih mašina ili rast persistent volumena može ugroziti druge timove, produžiti vreme oporavka i prikriti stvarnu potrebu za proširenjem platforme.
+</p>
+
+<p>
+  U aktuelnoj Broadcom terminologiji proizvod se, zavisno od generacije dokumentacije i izdanja, pojavljuje kao <em>vSphere with Tanzu</em>, <em>vSphere Supervisor</em> ili deo <em>VMware Cloud Foundation Automation</em>, dok se servis za Kubernetes klastere u starijim izdanjima naziva <em>TKG Service</em>, a u novijim <em>vSphere Kubernetes Service (VKS)</em>. Operativni princip ostaje isti: vSphere administrator namespace-u dodeljuje ograničenja, storage politike, VM klase i druge mogućnosti; platforma zatim kroz admission i kontrolere dozvoljava samo zahteve koji se uklapaju u taj odobreni skup. Nazivi ekrana, ugrađenih klasa, API grupa i pojedinih polja moraju se proveriti za konkretnu vCenter/Supervisor verziju.
+</p>
+
+<h3>Ciljevi lekcije</h3>
+
+<ul>
+  <li>razlikovati infrastrukturne limite vSphere Namespace-a od Kubernetes <code>ResourceQuota</code> i <code>LimitRange</code> objekata;</li>
+  <li>objasniti kako VM klase standardizuju CPU, memoriju, rezervacije i dozvoljene mogućnosti virtuelnih mašina;</li>
+  <li>povezati VM klase i storage politike sa VKS control plane i worker čvorovima, VM Service workload-ima, dostupnošću i troškom;</li>
+  <li>projektovati kapacitet sa rezervom za kvar, održavanje, rast i infrastrukturne servise, umesto prostog sabiranja deklarisanih kvota;</li>
+  <li>konfigurisati i validirati namespace politike kroz vSphere Client i Kubernetes API, uz jasno razlikovanje read-only i state-changing postupaka;</li>
+  <li>dijagnostikovati odbijene zahteve, <code>Pending</code> workload-e, neuspešno kreiranje VKS klastera i storage incidente na osnovu događaja i statusa;</li>
+  <li>bezbedno menjati limite i klase, dokazati oporavak i dokumentovati odluku i rollback.</li>
+</ul>
+
+<h3>1. Model kontrole resursa: četiri povezana, ali različita sloja</h3>
+
+<p>
+  Najčešća projektantska greška je da se svi mehanizmi nazovu „kvotom”. U praksi postoje najmanje četiri kontrole. Svaka odgovara na drugo pitanje i nijedna sama ne obezbeđuje potpunu izolaciju.
+</p>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Objekat ili mehanizam</th>
+      <th>Šta kontroliše</th>
+      <th>Šta ne garantuje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Fizička infrastruktura</td>
+      <td>ESXi hostovi, vSphere klaster, HA/DRS, datastore, mreža</td>
+      <td>Stvarno raspoložive CPU, RAM, storage i mrežne resurse, placement i ponašanje pri kvaru</td>
+      <td>Pravednu raspodelu među tenantima bez dodatnih politika</td>
+    </tr>
+    <tr>
+      <td>Supervisor Namespace</td>
+      <td>namespace resource limits, storage-policy limits, dodeljene VM klase i sadržaj</td>
+      <td>Budžet i katalog infrastrukture koji namespace sme da koristi</td>
+      <td>Da je taj kapacitet fizički rezervisan ili trenutno slobodan</td>
+    </tr>
+    <tr>
+      <td>VM profil</td>
+      <td><code>VirtualMachineClass</code> i politika klase</td>
+      <td>Standardni hardverski oblik VM-a: CPU, memoriju, rezervacije i posebne mogućnosti</td>
+      <td>Ukupan broj VM-ova ili zbirnu potrošnju namespace-a</td>
+    </tr>
+    <tr>
+      <td>Workload Kubernetes klaster</td>
+      <td><code>ResourceQuota</code>, <code>LimitRange</code>, requests/limits</td>
+      <td>Zbirnu potrošnju i granice pojedinačnih Pod/PVC/API objekata u workload namespace-u</td>
+      <td>Kapacitet vSphere klastera niti veličinu VKS node VM-ova</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Kontrole se zato posmatraju kao lanac. VKS klaster može imati dovoljno Kubernetes kvote za nove Pod-ove, a da nema slobodnog prostora na worker čvorovima. Namespace može imati neiskorišćen storage limit, a da odgovarajući datastore ili politika nema fizički kapacitet. VM klasa može biti dozvoljena, ali novi čvor ne može da se postavi zbog HA admission control-a, maintenance operacije, nedovoljne memorije ili placement ograničenja. Poruka „quota available” nije dokaz da je workload moguće pokrenuti.
+</p>
+
+<div class="alert alert-warning" role="alert">
+  <strong>Važno:</strong> kvota je gornja granica, ne rezervacija. Zbir limita svih namespace-a može biti veći od fizičkog kapaciteta. Takav overcommit može biti svestan poslovni model, ali mora imati merenje, pragove, vlasnika rizika i rezervu za najteži podržani kvar.
+</div>
+
+<h3>2. vSphere Namespace limiti i računovodstvo potrošnje</h3>
+
+<p>
+  vSphere administrator u vSphere Client-u bira Supervisor Namespace i u delu <strong>Configure</strong> podešava raspoložive resurse. Tačan skup polja zavisi od Supervisor i vCenter verzije, mrežnog steka i aktiviranih servisa, ali tipično obuhvata CPU, memoriju, storage i ograničenja broja objekata. Za storage se mogu postaviti zasebni limiti po storage politici. Time se sprečava da namespace potroši ceo zajednički datastore ili da skupi storage sloj koristi bez kontrole.
+</p>
+
+<p>
+  Limit mora biti izveden iz planiranog broja VKS control plane i worker VM-ova, njihovih VM klasa, volumena, rezervi za rolling upgrade i očekivanog rasta. Račun mora uključiti i privremeno dupliranje čvorova tokom zamene ili nadogradnje. Ako je budžet dovoljan samo za stabilno stanje, upgrade može stati upravo kada je platformi najpotrebniji bezbedan višak kapaciteta.
+</p>
+
+<pre><code class="language-none">planirani namespace budžet = stabilno stanje
+                           + privremeni kapacitet za lifecycle operacije
+                           + rezerva za kvar i održavanje
+                           + kontrolisana rezerva za rast</code></pre>
+
+<p>
+  Za memoriju je posebno važno razlikovati deklarisanu veličinu VM-a, rezervaciju i realnu fizičku potrošnju. Guaranteed VM klase sa punom rezervacijom daju predvidljivije performanse i placement, ali direktno smanjuju mogućnost overcommit-a. Best-effort klase povećavaju gustinu, ali pod pritiskom mogu trpeti contention, a namespace limit može biti dostignut iako fizički klaster drugačije prikazuje trenutnu potrošnju. Administrator zato koreliše namespace prikaz sa vSphere Capacity/Performance podacima, DRS preporukama, HA rezervom i datastore kapacitetom.
+</p>
+
+<h4>Određivanje početnog budžeta</h4>
+
+<ol>
+  <li>Popišite minimalni i ciljni broj control plane i worker čvorova po VKS klasteru.</li>
+  <li>Za svaku dozvoljenu VM klasu zabeležite vCPU, memoriju, tip rezervacije i posebne uređaje.</li>
+  <li>Izračunajte stabilno stanje i najveći privremeni broj VM-ova tokom rolling upgrade-a ili scale-out-a.</li>
+  <li>Dodajte storage za OS diskove, persistent volume zahteve, snapshot/backup operacije i očekivani rast; proverite šta konkretna zaštitna platforma čuva i gde.</li>
+  <li>Oduzmite HA/failure-domain rezervu od fizičkog kapaciteta pre raspodele tenantima.</li>
+  <li>Definišite upozorenja, na primer na 70%, 85% i 95%, ali pragove prilagodite brzini nabavke kapaciteta i volatilnosti workload-a.</li>
+  <li>Zabeležite vlasnika kvote, datum revizije, opravdanje i proceduru za privremeno povećanje.</li>
+</ol>
+
+<h3>3. VM klase kao ugovor između infrastrukture i korisnika</h3>
+
+<p>
+  VM klasa je imenovani infrastrukturni profil koji VM Service i VKS koriste kada kreiraju virtuelnu mašinu. Umesto da svaki tim proizvoljno bira vCPU i RAM, administrator objavljuje mali, podržan katalog. VKS specifikacija zatim referencira naziv klase za control plane ili worker pool; VM Service <code>VirtualMachine</code> objekat radi isto za samostalni VM workload. Klasa je zato i tehnički šablon i upravljački ugovor.
+</p>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Tip odluke</th>
+      <th>Dobit</th>
+      <th>Rizik pogrešnog izbora</th>
+      <th>Dokaz za validaciju</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Broj vCPU</td>
+      <td>Standardizovan compute profil</td>
+      <td>Prevelik VM pogoršava placement i CPU ready; premali stvara throttling i scale churn</td>
+      <td>vCPU konfiguracija VM-a, CPU usage/ready i aplikativni SLO</td>
+    </tr>
+    <tr>
+      <td>Memorija</td>
+      <td>Predvidljiv node kapacitet</td>
+      <td>Premalo izaziva memory pressure i eviction; previše rasipa HA kapacitet</td>
+      <td>VM memorija, guest/node allocatable, balloon/swap i eviction događaji</td>
+    </tr>
+    <tr>
+      <td>Guaranteed ili best effort</td>
+      <td>Izbor između predvidljivosti i gustine</td>
+      <td>Neusklađenost sa kritičnošću i realnim fizičkim kapacitetom</td>
+      <td>Rezervacije u vSphere-u, contention metriке i test pod opterećenjem</td>
+    </tr>
+    <tr>
+      <td>Posebni uređaji/mogućnosti</td>
+      <td>GPU, passthrough ili druga namenska funkcija gde je podržana</td>
+      <td>Smanjena mobilnost, placement ograničenja i veća cena</td>
+      <td>Kompatibilnost hosta, device assignment i podržan lifecycle put</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Ugrađene klase i njihovi nazivi razlikuju se između izdanja. Ne pretpostavljajte da naziv poput <code>best-effort-medium</code> ili <code>guaranteed-medium</code> ima isti profil u svakoj platformi niti da je svaka klasa automatski dostupna svakom namespace-u. Autoritativan dokaz je <code>VirtualMachineClass</code> objekat na konkretnom Supervisor-u i lista klasa povezanih sa konkretnim namespace-om.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: izvršava platform operator sa odgovarajućim Supervisor kontekstom.
+kubectl get virtualmachineclass
+kubectl get virtualmachineclass -o wide
+kubectl describe virtualmachineclass &lt;ime-klase&gt;</code></pre>
+
+<p>
+  API group može evoluirati; pre automatizacije proverite resurs koji server zaista objavljuje. Sledeće komande ne menjaju stanje i korisne su za verzijsku proveru:
+</p>
+
+<pre><code class="language-bash">kubectl api-resources | grep -i virtualmachineclass
+kubectl api-versions | grep -E 'vmoperator|vmware'
+kubectl explain virtualmachineclass --recursive</code></pre>
+
+<h4>Politika kataloga VM klasa</h4>
+
+<p>
+  Produkcioni katalog treba da bude mali i nameran. Na primer, klase <code>dev-small</code>, <code>prod-general</code> i <code>prod-memory</code> lakše se upravljaju od deset gotovo identičnih profila. Naziv treba da izrazi namenu, a CMDB ili interna dokumentacija precizne resurse, rezervacije, cenu, dozvoljene workload-e, vlasnika i lifecycle status. Klasa se prvo uvodi u laboratoriju, zatim pilot namespace, pa tek onda u širi katalog.
+</p>
+
+<div class="alert alert-danger" role="alert">
+  <strong>Produkcioni rizik:</strong> izmena definicije klase koju već koriste VM-ovi ili klasteri nije isto što i bezbedno resize-ovanje svih postojećih instanci. Efekat zavisi od verzije VM Operator-a, vrste workload-a i lifecycle kontrolera. Preferirajte novu verzionisanu klasu, kontrolisanu migraciju i dokazani rollback; ne menjajte zajedničku klasu bez impact analize.
+</div>
+
+<h3>4. Storage politike: dozvola, kvalitet usluge i odvojena kvota</h3>
+
+<p>
+  vSphere Storage Policy-Based Management politika dodeljena namespace-u pojavljuje se Kubernetes korisniku kao odgovarajući <code>StorageClass</code>. Dodela ne znači samo „vidljivost”: ona povezuje zahtev sa datastore-ovima i pravilima kompatibilnosti, zaštite, performansi ili dostupnosti koje politika opisuje. VKS klaster može koristiti različite klase za control plane/worker diskove i workload volumene, u skladu sa mogućnostima konkretne verzije i klaster specifikacije.
+</p>
+
+<p>
+  Ukupan storage limit namespace-a određuje zajednički plafon, dok limit po storage politici sprečava da jedna klasa potroši ceo budžet. Ovo je naročito važno kada isti namespace vidi skupu i brzu politiku za kritične baze i ekonomičniju politiku za opšte workload-e. Storage kvota se planira prema zahtevanom, a ne samo trenutno upotrebljenom prostoru; thin provisioning ne ukida obavezu praćenja fizičke iskorišćenosti datastore-a.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: prikaz StorageClass objekata i podrazumevane klase u aktivnom kontekstu.
+kubectl get storageclass
+kubectl get storageclass -o custom-columns=NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\.kubernetes\.io/is-default-class,PROVISIONER:.provisioner
+
+# READ-ONLY: PVC zahtevi, vezivanje i izabrana klasa u namespace-u.
+kubectl get pvc -n &lt;namespace&gt; -o wide
+kubectl describe pvc &lt;pvc-ime&gt; -n &lt;namespace&gt;</code></pre>
+
+<p>
+  Pri incidentu proverite redom: da li je politika dodeljena namespace-u; da li je njen <code>StorageClass</code> vidljiv; da li PVC navodi tačno ime; da li je kvota iscrpljena; da li politika ima kompatibilan i dostupan datastore; zatim događaje CSI provisioner-a i vCenter zadatke. Brisanje PVC-a kao prva reakcija može uništiti podatke i nije troubleshooting postupak.
+</p>
+
+<h3>5. Kubernetes ResourceQuota i LimitRange u VKS workload klasteru</h3>
+
+<p>
+  Kada je VKS klaster formiran, njegovi interni namespace-i imaju sopstveni Kubernetes sloj kontrole. <code>ResourceQuota</code> ograničava zbir zahteva ili broj objekata u jednom namespace-u. <code>LimitRange</code> postavlja podrazumevane, minimalne i maksimalne vrednosti za pojedinačni Container, Pod ili PVC. Prvi odgovara na pitanje „koliko tim ukupno”, drugi „koliko jedan zahtev”. Oni ne zamenjuju Supervisor Namespace limit, jer se izvršavaju u drugom API serveru i na drugoj granici odgovornosti.
+</p>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: team-a-budget
+  namespace: team-a
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    requests.storage: 500Gi
+    persistentvolumeclaims: "20"
+    pods: "100"
+    services.loadbalancers: "5"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: team-a-defaults
+  namespace: team-a
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 250m
+        memory: 256Mi
+      default:
+        cpu: "1"
+        memory: 1Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+      max:
+        cpu: "4"
+        memory: 8Gi
+    - type: PersistentVolumeClaim
+      min:
+        storage: 1Gi
+      max:
+        storage: 200Gi</code></pre>
+
+<p>
+  Primena manifesta menja stanje i zahteva pravo kreiranja ovih objekata u ciljnom workload klasteru. Pre primene obavezno proverite kontekst i server-side validaciju. <code>--dry-run=server</code> šalje zahtev admission lancu, ali ne čuva objekat; ipak može aktivirati admission webhook pozive, pa se smatra neinvazivnom validacijom, ne potpuno lokalnom proverom.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: dokaz identiteta ciljnog klastera i dozvola.
+kubectl config current-context
+kubectl cluster-info
+kubectl auth can-i create resourcequotas -n team-a
+kubectl auth can-i create limitranges -n team-a
+
+# VALIDACIJA BEZ ČUVANJA OBJEKATA.
+kubectl apply --dry-run=server -f team-a-policy.yaml
+
+# STATE-CHANGING: primeniti tek nakon review-a i odobrenja.
+kubectl apply -f team-a-policy.yaml</code></pre>
+
+<p>
+  Kada CPU ili memory kvota zahteva praćenje requests/limits, Pod bez potrebnih vrednosti može biti odbijen. Dobro projektovan <code>LimitRange</code> obezbeđuje razumna podrazumevanja, ali ne sme prikriti loše dimenzionisanje. Više <code>LimitRange</code> objekata sa različitim default vrednostima je loša praksa: izbor podrazumevane vrednosti nije determinističan. Promena kvote ili limita ne menja već kreirane Pod-ove retroaktivno; nova pravila se proveravaju pri narednom create/update admission-u.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: hard, used i događaji.
+kubectl get resourcequota -n team-a
+kubectl describe resourcequota team-a-budget -n team-a
+kubectl get limitrange -n team-a
+kubectl describe limitrange team-a-defaults -n team-a
+kubectl get events -n team-a --sort-by=.metadata.creationTimestamp
+
+# READ-ONLY: sačekati da quota controller osveži računovodstvo.
+kubectl get resourcequota team-a-budget -n team-a -w</code></pre>
+
+<p>
+  Kreiranje Deployment-a može uspeti, a njegovi Pod-ovi ipak biti odbijeni zbog kvote. Zato se ne zaustavljajte na poruci <code>deployment.apps created</code>: proverite desired/available replicas, ReplicaSet događaje i konkretan admission razlog. Tipičan odgovor za prekoračenje je <code>403 Forbidden</code> sa nazivom kvote i poređenjem <code>requested</code>, <code>used</code> i <code>limited</code> vrednosti.
+</p>
+
+<h3>6. Projektovanje politika za VKS klastere</h3>
+
+<p>
+  VKS klaster je skup VM-ova, a ne apstraktna jedinica kapaciteta. Control plane profil bira se prema podržanoj topologiji i zahtevu za dostupnost; worker profil prema workload requests, sistemskom overhead-u, daemonset-ovima, očekivanom bin-packing-u i failure-domain strategiji. Kubernetes prikazuje <code>capacity</code> i manji <code>allocatable</code>; aplikacije se planiraju prema allocatable vrednosti, ne prema zbiru RAM-a iz VM klasa.
+</p>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Okruženje</th>
+      <th>Preporučeni pristup</th>
+      <th>Neprihvatljiva prečica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Laboratorija</td>
+      <td>Male klase, ograničena kvota, jasna pravila brisanja i simulirani incidenti</td>
+      <td>Prenos laboratorijskih best-effort profila u produkciju bez testiranja</td>
+    </tr>
+    <tr>
+      <td>Razvoj/test</td>
+      <td>Kontrolisan overcommit, automatski defaults, limit broja klastera/VM/PVC objekata i redovan cleanup</td>
+      <td>Neograničen broj malih objekata koji iscrpljuju API, IP ili storage metadata kapacitet</td>
+    </tr>
+    <tr>
+      <td>Produkcija</td>
+      <td>Klase usklađene sa SLO-om, HA rezerva, upgrade headroom, storage razdvajanje i alerting</td>
+      <td>Dimenzionisanje samo prema prosečnoj potrošnji ili nominalnom zbiru hostova</td>
+    </tr>
+    <tr>
+      <td>Poseban hardver</td>
+      <td>Namenska klasa, placement provera, ograničen pristup i dokumentovan lifecycle</td>
+      <td>Opšta dostupnost skupe ili slabo mobilne klase svim tenantima</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Primer kapacitetske odluke</h4>
+
+<p>
+  Tim traži tri worker čvora klase 4 vCPU/16 GiB i mogućnost privremenog scale-out-a na pet čvorova. Stabilna worker memorija je 48 GiB, ali namespace budžet ne sme biti samo 48 GiB: dodaju se control plane VM-ovi, OS diskovi, upgrade zamena, infrastrukturni VM Service workload-i i rezerva. Ako HA politika zahteva preživljavanje kvara hosta, fizički feasibility se proverava posle uklanjanja najvećeg failure domain-a. Tek tada kvota postaje odbranjiva odluka, a ne proizvoljan broj.
+</p>
+
+<h3>7. Promene, monitoring i governance</h3>
+
+<p>
+  Povećanje kvote je state-changing infrastrukturna promena. Pre nje treba dokazati da je problem zaista kvota, a ne pogrešan manifest, curenje resursa, nekompatibilna storage politika ili nedostatak fizičkog kapaciteta. Privremeno povećanje dobija rok isteka i vlasnika. Smanjenje je još osetljivije: već postojeći objekti obično neće nestati, ali novi scale-out, restart, upgrade ili PVC proširenje može biti odbijeno. Zbog toga se smanjenje prvo simulira poređenjem nove granice sa <code>used</code> i planiranim lifecycle maksimumom.
+</p>
+
+<ul>
+  <li>Merite namespace used/hard odnos, ali i fizički CPU contention, active memory, datastore free space i latency.</li>
+  <li>Alarm mora imati vlasnika, prag, vremenski prozor i runbook; samo crveni grafikon nije kontrola.</li>
+  <li>Periodično uklanjajte napuštene VKS klastere, VM-ove, PVC-ove, snapshot-e i zastarele klase kroz odobren lifecycle postupak.</li>
+  <li>Ograničite RBAC pravo menjanja ili brisanja <code>ResourceQuota</code> i <code>LimitRange</code>; politika koju tenant može sam da ukloni nije pouzdana granica.</li>
+  <li>Čuvajte audit trag: ko je promenio limit, kada, zašto, iz kog change zahteva i sa kojim validacionim dokazom.</li>
+  <li>Reviziju kvota povežite sa capacity forecast-om i vremenom potrebnim za nabavku ili proširenje infrastrukture.</li>
+</ul>
+
+<h3>8. Troubleshooting matrica</h3>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Dokazi najmanje invazivnim redom</th>
+      <th>Verovatan uzrok</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>VM ili VKS čvor nije kreiran</td>
+      <td>Status CR-a, Kubernetes događaji, namespace used/limit, dozvoljene klase, vCenter Recent Tasks/Events</td>
+      <td>Nedozvoljena klasa, iscrpljena kvota, admission odbijanje ili placement problem</td>
+      <td>Ispraviti referencu ili osloboditi odobren kapacitet; povećati limit samo uz feasibility proveru</td>
+    </tr>
+    <tr>
+      <td>Pod ostaje <code>Pending</code></td>
+      <td><code>kubectl describe pod</code>, node allocatable, requests, taints/affinity, namespace quota</td>
+      <td>Nema odgovarajućeg node kapaciteta; kvota možda uopšte nije neposredni uzrok</td>
+      <td>Pravilno dimenzionisati requests, skalirati odgovarajući worker pool ili otkloniti placement ograničenje</td>
+    </tr>
+    <tr>
+      <td>ReplicaSet ne kreira Pod</td>
+      <td>Deployment i ReplicaSet status, događaji, <code>ResourceQuota</code> hard/used</td>
+      <td>Admission je odbio Pod zbog kvote ili <code>LimitRange</code></td>
+      <td>Ispraviti resources deklaraciju, osloboditi resurse ili odobreno promeniti politiku</td>
+    </tr>
+    <tr>
+      <td>PVC je <code>Pending</code></td>
+      <td>PVC događaji, StorageClass, kvota, storage-policy kompatibilnost i CSI događaji</td>
+      <td>Pogrešna/nedodeljena politika, iscrpljena kvota ili nema kompatibilnog datastore-a</td>
+      <td>Vratiti dodelu politike, ispraviti klasu ili obezbediti kapacitet; ne brisati podatke naslepo</td>
+    </tr>
+    <tr>
+      <td>Promenjena kvota „ne deluje” na postojeći Pod</td>
+      <td>Vreme kreiranja objekta, generacija politike, admission događaji pri novom testu</td>
+      <td>Politike nisu retroaktivne</td>
+      <td>Planirati kontrolisano ponovno kreiranje samo ako je poslovno i operativno opravdano</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Dokazni tok incidenta</h4>
+
+<ol>
+  <li><strong>Simptom i obim:</strong> zabeležite tačan objekat, namespace, klaster, početak incidenta i pogođene servise.</li>
+  <li><strong>Poslednja promena:</strong> proverite novu klasu, kvotu, storage politiku, upgrade, scale ili RBAC promenu.</li>
+  <li><strong>Status i događaji:</strong> prikupite CR status, <code>kubectl describe</code>, sortirane događaje i vCenter Tasks/Events u istom vremenskom prozoru.</li>
+  <li><strong>Hipoteza:</strong> razdvojite admission odbijanje od scheduler/placement i fizičkog capacity problema.</li>
+  <li><strong>Korekcija:</strong> prvo uklonite pogrešan zahtev ili napušten resurs; kvotu povećajte tek kada je to potvrđen i odobren lek.</li>
+  <li><strong>Validacija:</strong> potvrdite uspešno kreiranje, stabilan status, dostupnost aplikacije i zdrave infrastrukturne metrike.</li>
+  <li><strong>Trajna mera:</strong> ispravite katalog, alert, runbook, forecast ili proces odobravanja koji je dozvolio osnovni uzrok.</li>
+</ol>
+
+<h3>9. Praktikum – projektovanje, primena i incident sa kvotom</h3>
+
+<h4>Topologija i preduslovi</h4>
+
+<p>
+  Laboratorija koristi jedan omogućen Supervisor, namespace <code>lab-team-a</code>, najmanje jednu dodeljenu storage politiku i VM Service/VKS mogućnosti koje podržava konkretno izdanje. Za workload deo potreban je VKS klaster i namespace <code>quota-lab</code>. Platform administrator mora imati pravo čitanja i promene namespace konfiguracije; workload operator pravo kreiranja <code>ResourceQuota</code>, <code>LimitRange</code>, Deployment i PVC objekata. Potrebni su vSphere Client, <code>kubectl</code> i verzijski odgovarajući Kubernetes CLI dodatak kada ga platforma zahteva.
+</p>
+
+<div class="alert alert-warning" role="alert">
+  <strong>Procena rizika:</strong> vežbu izvoditi samo u laboratoriji. Namerno iscrpljivanje kvote može sprečiti scale-out i restart workload-a. Ne smanjujte produkcionu kvotu ispod tekuće potrošnje i ne testirajte incident u namespace-u koji deli poslovne servise.
+</div>
+
+<h4>Vežba 1 – inventar i baseline bez promene stanja</h4>
+
+<ol>
+  <li>U vSphere Client-u otvorite <strong>Workload Management/Supervisors</strong> i zatim <code>lab-team-a</code>. Zabeležite CPU, memory, storage i object limite, used vrednosti, dodeljene storage politike i VM klase.</li>
+  <li>Potvrdite da je Supervisor zdrav i da nema aktivnog incidenta ili maintenance operacije.</li>
+  <li>U odobrenom Supervisor CLI kontekstu popišite dostupne klase i storage klase. Ne oslanjajte se na nazive iz ovog tutorijala.</li>
+  <li>U workload kontekstu snimite postojeće kvote, limite, node kapacitet i događaje.</li>
+</ol>
+
+<pre><code class="language-bash"># Sve komande u ovoj vežbi su READ-ONLY.
+kubectl config current-context
+kubectl get virtualmachineclass -o wide
+kubectl get storageclass
+
+# Nakon bezbednog prelaska na VKS workload kontekst:
+kubectl get nodes -o wide
+kubectl describe nodes | grep -A 8 -E '^Capacity:|^Allocatable:'
+kubectl get resourcequota,limitrange -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> postoji potpuna početna evidencija sa vremenom prikupljanja i nazivom konteksta. <strong>Kriterijum završetka:</strong> administrator može da poveže svaku dozvoljenu VM/storage klasu sa konkretnim namespace-om i razlikuje nominalni node capacity od allocatable kapaciteta.
+</p>
+
+<h4>Vežba 2 – standardizacija namespace kataloga u vSphere Client-u</h4>
+
+<ol>
+  <li>Na osnovu baseline-a izaberite samo jednu malu laboratorijsku i jednu srednju klasu koje stvarni Supervisor objavljuje.</li>
+  <li>U konfiguraciji namespace-a proverite/izmenite listu povezanih VM klasa tako da tim vidi samo odobren katalog. Ovo je state-changing korak.</li>
+  <li>Dodelite laboratorijsku storage politiku i postavite ograničen storage-policy budget. Ne birajte produkcionu politiku sa stvarnim podacima.</li>
+  <li>Postavite CPU/memory limit koji dopušta planirano stanje i jedan kontrolisani privremeni čvor, ali ne može potrošiti ostatak laboratorijskog klastera.</li>
+  <li>Sačuvajte promenu i ponovite read-only inventar. Zabeležite vCenter Task/Event i identitet izvršioca.</li>
+</ol>
+
+<p>
+  <strong>Validacija:</strong> dozvoljene klase i storage politika vidljive su kroz odgovarajući Kubernetes API; nedodeljena klasa nije ponuđena namespace korisniku; used vrednosti nisu neočekivano promenjene samom dodelom. <strong>Rollback:</strong> vratite prethodno dokumentovanu listu klasa i limite kroz isti vSphere Client ekran. Ne brišite namespace.
+</p>
+
+<h4>Vežba 3 – ResourceQuota i LimitRange u VKS klasteru</h4>
+
+<p>
+  Napravite fajl <code>quota-lab-policy.yaml</code> prema sledećem manifestu. Prvo proverite kontekst i server-side dry-run, zatim ga primenite. Kreiranje namespace-a i politika menja stanje.
+</p>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: quota-lab
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota-lab-budget
+  namespace: quota-lab
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 2Gi
+    pods: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: quota-lab-defaults
+  namespace: quota-lab
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      max:
+        cpu: "1"
+        memory: 1Gi</code></pre>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl apply --dry-run=server -f quota-lab-policy.yaml
+kubectl apply -f quota-lab-policy.yaml
+kubectl describe resourcequota quota-lab-budget -n quota-lab
+kubectl describe limitrange quota-lab-defaults -n quota-lab</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> oba objekta postoje, hard vrednosti su tačne, a used se ažurira nakon kreiranja workload-a. <strong>Kontrola:</strong> sačuvajte izlaz <code>kubectl get resourcequota quota-lab-budget -n quota-lab -o yaml</code> kao dokaz primenjene specifikacije i statusa.
+</p>
+
+<h4>Vežba 4 – kontrolisani quota incident</h4>
+
+<p>
+  Kreirajte Deployment sa pet replika. Svaki Pod će posle primene <code>LimitRange</code> dobiti podrazumevane resurse, ali kvota dozvoljava najviše četiri Pod-a i ukupni compute limit dodatno ograničava rezultat.
+</p>
+
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quota-pressure
+  namespace: quota-lab
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: quota-pressure
+  template:
+    metadata:
+      labels:
+        app: quota-pressure
+    spec:
+      containers:
+        - name: web
+          image: nginx:stable
+          ports:
+            - containerPort: 80</code></pre>
+
+<pre><code class="language-bash"># STATE-CHANGING: laboratorijska simulacija.
+kubectl apply -f quota-pressure.yaml
+
+# READ-ONLY: ne zaključivati samo iz statusa Deployment-a.
+kubectl get deployment,replicaset,pod -n quota-lab
+kubectl describe deployment quota-pressure -n quota-lab
+kubectl get events -n quota-lab --sort-by=.metadata.creationTimestamp
+kubectl describe resourcequota quota-lab-budget -n quota-lab</code></pre>
+
+<p>
+  <strong>Očekivani simptom:</strong> Deployment objekat postoji, ali ne dostiže pet dostupnih replika; ReplicaSet događaj objašnjava da je kreiranje dodatnog Pod-a odbijeno zbog kvote. <strong>Neposredni uzrok:</strong> admission zahtev bi prešao hard granicu. <strong>Osnovni uzrok u vežbi:</strong> namerno neslaganje željenog broja replika i budžeta. <strong>Privremeni lek:</strong> smanjiti replike. <strong>Trajna mera:</strong> uskladiti aplikativni capacity plan i odobrenu kvotu, umesto automatskog povećanja limita.
+</p>
+
+<pre><code class="language-bash"># STATE-CHANGING, bezbedna korekcija u laboratoriji.
+kubectl scale deployment quota-pressure -n quota-lab --replicas=2
+
+# VALIDACIJA OPORAVKA.
+kubectl rollout status deployment/quota-pressure -n quota-lab --timeout=120s
+kubectl get pod -n quota-lab
+kubectl describe resourcequota quota-lab-budget -n quota-lab</code></pre>
+
+<h4>Vežba 5 – rollback i povratak laboratorije</h4>
+
+<p>
+  Najbezbedniji cleanup je brisanje izolovanog laboratorijskog namespace-a nakon što se potvrdi da u njemu nema podataka koje treba sačuvati. Brisanje namespace-a je destruktivno i uklanja namespaced objekte; komandu ne izvršavati u produkciji niti sa neproverenim kontekstom.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY provera cilja pre destruktivne akcije.
+kubectl config current-context
+kubectl get all,pvc,resourcequota,limitrange -n quota-lab
+
+# DESTRUKTIVNO, SAMO LABORATORIJA.
+kubectl delete namespace quota-lab
+
+# VALIDACIJA.
+kubectl get namespace quota-lab</code></pre>
+
+<p>
+  Očekivani završni izlaz je <code>NotFound</code>. U vSphere Client-u vratite samo one namespace limite, VM klase i storage politike koje ste promenili u Vežbi 2, koristeći snimljeni baseline. Potvrdite da nema zaostalih VM-ova, PVC/PV objekata, vCenter zadataka u grešci niti alarma. Kriterijum završetka je povratak na dokumentovano početno stanje, a ne samo uspeh komande za brisanje.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Počnite od failure-domain i lifecycle maksimuma, pa tek zatim dodeljujte tenant kvote.</li>
+  <li>Držite mali, dokumentovan i verzionisan katalog VM klasa; posebne profile dodeljujte samo namespace-ima koji ih opravdano koriste.</li>
+  <li>Odvojite skupe i kritične storage politike zasebnim limitima po politici.</li>
+  <li>Ne izjednačavajte kvotu sa rezervacijom i ne koristite zbir hard limita kao dokaz fizičke raspoloživosti.</li>
+  <li>U VKS namespace-ima uparite <code>ResourceQuota</code> sa jednim doslednim <code>LimitRange</code>, ali zahtevajte eksplicitne resources vrednosti za kritične aplikacije.</li>
+  <li>Pre promene prikupite baseline, događaje, metrike i poslednje promene; posle nje validirajte i Kubernetes i vSphere sloj.</li>
+  <li>Za svako privremeno povećanje zabeležite rok povratka i proverite da kasnije smanjenje neće blokirati restart ili upgrade.</li>
+  <li>Automatizaciju gradite tek nakon <code>kubectl explain</code>/API discovery provere na ciljnoj verziji; ne hardkodujte istorijsku API grupu.</li>
+  <li>Capacity alarm povežite sa konkretnim runbook-om, change procesom i vremenom nabavke kapaciteta.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Nakon ove lekcije administrator mora moći da dokaže sledeće sposobnosti:</p>
+
+<ul>
+  <li>tačno razlikuje fizički kapacitet, Supervisor Namespace limit, VM klasu i workload Kubernetes kvotu;</li>
+  <li>izračunava budžet koji uključuje stabilno stanje, rolling operacije, kvar, održavanje i rast;</li>
+  <li>popisuje klase i storage politike koje konkretan server objavljuje, bez oslanjanja na pretpostavljene nazive;</li>
+  <li>objašnjava posledice guaranteed i best-effort profila po placement, performanse i HA rezervu;</li>
+  <li>primenjuje i proverava <code>ResourceQuota</code> i <code>LimitRange</code> uz server-side dry-run i RBAC proveru;</li>
+  <li>iz <code>hard</code>/<code>used</code> podataka i događaja dokazuje zašto je zahtev odbijen;</li>
+  <li>razlikuje admission/quota incident od scheduler, storage-policy i fizičkog capacity problema;</li>
+  <li>sprovodi bezbednu korekciju, rollback i završnu validaciju bez gubitka podataka;</li>
+  <li>dokumentuje vlasnika, razlog, rok i dokaze za svaku promenu kvote ili kataloga klasa.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Kvote, VM klase i politike resursa pretvaraju Supervisor Namespace iz logičke granice u upravljivu uslugu. Dobra politika ne svodi se na ograničavanje korisnika: ona daje predvidljiv katalog, štiti zajedničku infrastrukturu, omogućava pouzdan lifecycle i čini potrebu za novim kapacitetom merljivom. Administrator mora istovremeno razumeti Kubernetes admission računovodstvo i vSphere placement, HA, storage i performance realnost. Tek kada su deklarisani budžet, stvarna potrošnja, fizička rezerva i poslovni SLO povezani dokazima, multi-tenancy je bezbedan i održiv.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware Cloud Foundation i vSphere Supervisor administrativna dokumentacija za namespace resurse, VM Service, VM klase, VKS/TKG Service i storage politike; Kubernetes konceptualna, administrativna, API i kubectl dokumentacija za ResourceQuota, LimitRange, requests/limits, storage kvote, događaje i troubleshooting
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-18-identitet-rbac-i-pristup-platformi.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
+

@@ -1,0 +1,820 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-34-autentikacija-identiteti.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Autentikacija i identiteti – korisnici, sertifikati i OIDC | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Napredni vodič kroz Kubernetes autentikaciju: ljudski i workload identiteti, X.509 sertifikati, kubeconfig, OIDC, ServiceAccount tokeni, validacija i dijagnostika pristupa API-ju.">
+
+  <meta name="keywords"
+        content="Kubernetes autentikacija, Kubernetes identiteti, X.509 sertifikati, OIDC, OpenID Connect, kubeconfig, CertificateSigningRequest, ServiceAccount, TokenRequest, kubectl auth whoami, API server, vanilla Kubernetes, k8s bezbednost, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-34-autentikacija-identiteti.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Autentikacija i identiteti – korisnici, sertifikati, OIDC i granice Kubernetes API-ja">
+
+  <meta property="og:description"
+        content="Kako Kubernetes API utvrđuje identitet ljudi i workload-a, kako se koriste X.509 i OIDC i gde prestaje autentikacija, a počinju autorizacija i admission kontrola.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-34-autentikacija-identiteti.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-34-autentikacija-identiteti.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Autentikacija i identiteti u Vanilla Kubernetes klasteru">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-34-autentikacija-identiteti.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-34-autentikacija-identiteti.png"
+           alt="Autentikacija i identiteti – korisnici, sertifikati, OIDC i granice Kubernetes API-ja">
+
+    </a>
+
+    <div class="page-subtitle">
+      VIII. Identitet, autorizacija i zaštita workload-a
+    </div>
+    <div class="page-subtitle">
+      34. Autentikacija i identiteti – korisnici, sertifikati, OIDC i granice Kubernetes API-ja
+    </div>
+
+    <p>
+      Posle mreže, skladišta i oporavka podataka, sledeće administratorsko pitanje glasi: <em>ko</em> sme da pošalje zahtev Kubernetes API-ju i kako klaster utvrđuje identitet pošiljaoca? Svaki poziv koji šalju <code>kubectl</code>, kontroler, kubelet, operator ili aplikacija prolazi kroz TLS vezu i lanac obrade u API serveru. Autentikacija pokušava da zahtev poveže sa korisničkim imenom, UID-om, grupama i dodatnim atributima. Tek zatim autorizacija odlučuje da li taj identitet sme da izvrši traženu radnju, a admission kontrola proverava ili menja objekat pre čuvanja.
+    </p>
+    <p>
+      Najvažnija granica ove lekcije jeste da <strong>autentikovan ne znači ovlašćen</strong>. Važeći sertifikat ili OIDC token dokazuje identitet prema pravilima API servera, ali sam po sebi ne daje pravo na čitanje Secret objekata, kreiranje podova ili administraciju klastera. Ta prava obrađuje naredna lekcija o RBAC-u. Ovde gradimo pouzdanu osnovu: razlikujemo ljudske i workload identitete, biramo odgovarajući autentikacioni mehanizam, proveravamo šta server zaista vidi i dijagnostikujemo neuspeh bez izlaganja poverljivih podataka.
+    </p>
+
+    <h3>Putanja API zahteva: TLS, autentikacija, autorizacija i admission</h3>
+    <p>
+      Klijent najpre proverava serving sertifikat API servera pomoću CA podatka iz kubeconfig-a. Ako TLS identitet servera nije pouzdan, zahtev se ne šalje bezbedno i autentikacija korisnika još nije ni počela. Opcija <code>--insecure-skip-tls-verify</code> uklanja ovu proveru i zato nije rešenje za produkciju: omogućava presretanje veze i krađu tokena ili podataka. Ispravka je pouzdan CA lanac i serving sertifikat čiji SAN obuhvata DNS ime ili IP adresu endpoint-a.
+    </p>
+    <p>
+      Posle uspostavljanja TLS veze, jedan ili više konfigurisanih autentikatora obrađuju kredencijal. Uspešan rezultat sadrži najmanje korisničko ime, a može sadržati UID, grupe i <code>extra</code> atribute. API server uspešno autentikovane identitete dodaje u grupu <code>system:authenticated</code>. Ako nijedan mehanizam ne prihvati zahtev, rezultat zavisi od toga da li je omogućen anonimni pristup: zahtev može dobiti identitet <code>system:anonymous</code> u grupi <code>system:unauthenticated</code> ili biti odbijen.
+    </p>
+    <ol>
+      <li><strong>TLS autentikacija servera:</strong> klijent potvrđuje da razgovara sa očekivanim API serverom.</li>
+      <li><strong>Autentikacija klijenta:</strong> sertifikat, bearer token, OIDC JWT, webhook ili autentikacioni proxy mapira zahtev na identitet.</li>
+      <li><strong>Autorizacija:</strong> RBAC, Node ili drugi authorizer donosi odluku dozvoli ili zabrani.</li>
+      <li><strong>Admission:</strong> mutating i validating kontroleri primenjuju politike na zahtev koji je prošao autorizaciju.</li>
+      <li><strong>Izvršenje i audit:</strong> zahtev se izvršava, a audit politika može zabeležiti identitet, glumljeni identitet, objekat i ishod.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr>
+          <th>Simptom</th>
+          <th>Najverovatniji sloj</th>
+          <th>Administratorsko tumačenje</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>x509: certificate signed by unknown authority</code></td>
+          <td>TLS poverenje prema serveru</td>
+          <td>Klijent ne veruje CA lancu API endpoint-a; RBAC još nije relevantan.</td>
+        </tr>
+        <tr>
+          <td><code>401 Unauthorized</code></td>
+          <td>Autentikacija</td>
+          <td>Kredencijal nedostaje, istekao je, ima pogrešan issuer/audience ili nije prihvaćen.</td>
+        </tr>
+        <tr>
+          <td><code>403 Forbidden</code></td>
+          <td>Autorizacija</td>
+          <td>Identitet je uglavnom prepoznat, ali nema traženo pravo ili pokušava nedozvoljenu impersonaciju.</td>
+        </tr>
+        <tr>
+          <td>Admission webhook odbija objekat</td>
+          <td>Admission</td>
+          <td>Identitet je prošao ranije faze, ali zahtev krši politiku ili webhook nije dostupan.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Korisnici u Kubernetes-u i granice API-ja</h3>
+    <p>
+      Kubernetes razlikuje <strong>normalne korisnike</strong>, koje održava spoljašnji sistem, i <strong>ServiceAccount</strong> identitete, kojima upravlja Kubernetes API. Ne postoji ugrađeni API objekat <code>User</code> za zaposlenog, niti komanda kojom se u vanilla Kubernetes-u kreira lokalni ljudski nalog. Ime poput <code>natasa@example.com</code> nastaje tek kada autentikator prihvati sertifikat ili token i iz njega izvede atribute identiteta.
+    </p>
+    <p>
+      Zato brisanje RoleBinding-a nije isto što i gašenje korisničkog naloga, a brisanje nepostojećeg User objekta ne može opozvati sertifikat. Životni ciklus zaposlenih, MFA, reset lozinke, zaključavanje naloga, članstvo u organizacionim grupama i dokaz identiteta pripadaju identity provider-u, korporativnom PKI-ju ili drugom spoljašnjem sistemu. Kubernetes troši rezultat tog sistema i primenjuje svoja pravila autorizacije.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Identitet</th>
+          <th>Izvor i tipičan oblik</th>
+          <th>Životni ciklus</th>
+          <th>Najvažniji rizik</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Ljudski korisnik</td>
+          <td>OIDC provider ili X.509 klijentski sertifikat</td>
+          <td>Van klastera; prava se povezuju unutar klastera</td>
+          <td>Deljeni kubeconfig, dugačak vek kredencijala, slabo ukidanje pristupa</td>
+        </tr>
+        <tr>
+          <td>ServiceAccount</td>
+          <td><code>system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code></td>
+          <td>Kubernetes API objekat u namespace-u</td>
+          <td>Preširoka prava ili nepotrebno automatsko montiranje tokena</td>
+        </tr>
+        <tr>
+          <td>Node/kubelet</td>
+          <td><code>system:node:&lt;node-name&gt;</code>, grupa <code>system:nodes</code></td>
+          <td>Bootstrap i rotacija klijentskog sertifikata</td>
+          <td>Pogrešno odobren CSR može dati identitet drugog noda</td>
+        </tr>
+        <tr>
+          <td>Kontrolna komponenta</td>
+          <td>Komponentni kubeconfig ili ServiceAccount</td>
+          <td>Instalacioni alat/distribucija</td>
+          <td>Krađa privilegovanog kubeconfig-a ili privatnog ključa</td>
+        </tr>
+        <tr>
+          <td>Anonimni zahtev</td>
+          <td><code>system:anonymous</code>, <code>system:unauthenticated</code></td>
+          <td>Konfiguracija API servera</td>
+          <td>Nenamerno javno pravo kroz pogrešan binding</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Korisnička imena i grupe su za autentikacioni sloj neprozirni stringovi, ali prefiks <code>system:</code> rezervisan je za Kubernetes sistemske identitete. Organizacione identitete ne treba imenovati tim prefiksom. Posebno je rizična grupa <code>system:masters</code>: u tipičnoj konfiguraciji zaobilazi uobičajenu RBAC politiku preko privilegovanog authorizer puta i ne treba je koristiti kao svakodnevnu administratorsku grupu. Redovni pristup se vezuje za eksplicitne, revizibilne organizacione grupe.
+    </p>
+
+    <h3>Kubeconfig: endpoint, poverenje, identitet i kontekst</h3>
+    <p>
+      Kubeconfig nije korisnički nalog, već konfiguracioni dokument koji povezuje <code>clusters</code>, <code>users</code> i <code>contexts</code>. Stavka klastera određuje API endpoint i CA poverenje; stavka korisnika sadrži ili pribavlja kredencijal; context bira njihov par i podrazumevani namespace. Imena ovih stavki su lokalne oznake. Naziv <code>natasa</code> u kubeconfig-u ne garantuje da API server vidi isto korisničko ime.
+    </p>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Config
+clusters:
+- name: lab-cluster
+  cluster:
+    server: https://api.lab.example:6443
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+users:
+- name: lab-reader
+  user:
+    client-certificate: /secure/kube/lab-reader.crt
+    client-key: /secure/kube/lab-reader.key
+contexts:
+- name: lab-reader@lab-cluster
+  context:
+    cluster: lab-cluster
+    user: lab-reader
+    namespace: identity-lab
+current-context: lab-reader@lab-cluster</code></pre>
+    <p>
+      Polja sa sufiksom <code>-data</code> sadrže base64-kodirane bajtove, ne šifrovane tajne. Fajl sa ugrađenim <code>client-key-data</code> ili bearer tokenom mora imati ograničene dozvole, ne sme se slati e-poštom, stavljati u Git niti uključivati u nezaštićeni support bundle. Spajanje više fajlova preko promenljive <code>KUBECONFIG</code> takođe nosi rizik: kubeconfig može sadržati <code>exec</code> plugin koji pokreće lokalni program. Nepouzdan kubeconfig tretira se kao izvršni sadržaj.
+    </p>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl config get-contexts
+kubectl config view --minify --raw
+kubectl auth whoami
+kubectl auth can-i get pods --namespace identity-lab</code></pre>
+    <p>
+      Prve dve komande su read-only i bezbedne. <code>kubectl config view --raw</code> može prikazati privatne ključeve ili tokene i zato se njegov izlaz ne kopira u ticket; za rutinsku proveru izostavlja se <code>--raw</code>. Komanda <code>kubectl auth whoami</code> koristi SelfSubjectReview API i prikazuje identitet koji je server zaista izveo. Ako server ili prava ne omogućavaju tu proveru, audit zapis ili kontrolisani SelfSubjectReview zahtev služi kao alternativa. <code>kubectl auth can-i</code> proverava autorizaciju, ne validnost identiteta uopšte.
+    </p>
+
+    <h3>X.509 klijentski sertifikati</h3>
+    <p>
+      Kada API server veruje CA autoritetu navedenom kroz <code>--client-ca-file</code>, validan X.509 klijentski sertifikat potpisan tim CA-om može postati Kubernetes identitet. U uobičajenom mapiranju Common Name (<code>CN</code>) postaje korisničko ime, a Organization (<code>O</code>) postaje grupa. Sertifikat mora imati namenu <code>client auth</code>; serving sertifikat nije automatski klijentski kredencijal.
+    </p>
+    <pre><code class="language-none">Subject: CN=lab-reader, O=platform-readers
+Kubernetes username: lab-reader
+Kubernetes groups:   platform-readers, system:authenticated</code></pre>
+    <p>
+      Privatni ključ nikada se ne šalje API serveru niti ugrađuje u CSR. Vlasnik ga generiše i štiti lokalno, a CSR sadrži javni ključ i traženi subject. Kubernetes <code>CertificateSigningRequest</code> API razdvaja podnošenje, odobravanje i potpisivanje. Ugrađeni signer <code>kubernetes.io/kube-apiserver-client</code> namenjen je API klijentskim sertifikatima i kube-controller-manager ga nikada ne odobrava automatski. Administrator koji odobrava zahtev mora izvan samog CSR-a potvrditi identitet podnosioca, subject, grupe, signer, usages i traženi rok.
+    </p>
+    <p>
+      Polje <code>spec.expirationSeconds</code> postoji od Kubernetes 1.22. Ugrađeni signer izdaje sertifikat sa kraćim od traženog roka i svog maksimalnog <code>--cluster-signing-duration</code>. To nije garancija da će svaki spoljašnji signer poštovati isto pravilo. Kratkotrajni sertifikati smanjuju prozor zloupotrebe, ali zahtevaju pouzdanu obnovu. Kubernetes nema opšti, automatski CRL/OCSP mehanizam za trenutno opozivanje proizvoljnog klijentskog sertifikata; kod kompromitacije se odmah uklanjaju autorizaciona povezivanja, rotira kredencijal, a po potrebi menja ili sužava CA poverenje prema incident proceduri.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Provera pre odobravanja CSR-a</th>
+          <th>Zašto je obavezna</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>spec.username</code> i <code>spec.groups</code> podnosioca</td>
+          <td>Pokazuju ko je kreirao CSR, ali ne dokazuju da sme da traži navedeni subject.</td>
+        </tr>
+        <tr>
+          <td>Dekodirani PKCS#10 subject i javni ključ</td>
+          <td>Otkriva traženi CN, O, SAN i algoritam, umesto oslanjanja na ime objekta.</td>
+        </tr>
+        <tr>
+          <td><code>signerName</code> i <code>usages</code></td>
+          <td>Sprečava izdavanje sertifikata za pogrešnu trust domenu ili svrhu.</td>
+        </tr>
+        <tr>
+          <td><code>expirationSeconds</code></td>
+          <td>Ograničava vek kredencijala u skladu sa politikom.</td>
+        </tr>
+        <tr>
+          <td>Odobrenje naspram izdavanja</td>
+          <td>Approved CSR može ostati bez sertifikata ako signer nije funkcionalan; proverava se <code>status.certificate</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>OIDC za ljudske identitete</h3>
+    <p>
+      OpenID Connect omogućava da korporativni identity provider autentikuje čoveka, primeni MFA i izda potpisani ID token, dok API server proverava potpis, issuer, audience, vreme važenja i claim pravila. API server nije OIDC web aplikacija za interaktivno prijavljivanje: on ne prikazuje login stranicu, ne čuva korisničke lozinke i uglavnom ne osvežava token. <code>kubectl</code> zato koristi credential ili <code>exec</code> plugin koji obavlja authorization-code/device tok prema provider-u i API-ju prosleđuje važeći token.
+    </p>
+    <p>
+      Za produkciju je OIDC obično pogodniji od ručnog deljenja dugotrajnih klijentskih sertifikata: centralizuje gašenje naloga, MFA i grupno članstvo. Ipak, gašenje sesije kod provider-a ne mora trenutno poništiti već izdat JWT; prozor zavisi od veka tokena i pravila validacije. Kratak vek, bezbedan refresh tok i razumno keširanje predstavljaju deo dizajna.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>OIDC element</th>
+          <th>Administratorska odluka</th>
+          <th>Tipična greška</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Issuer</td>
+          <td>Mora se tačno poklapati sa <code>iss</code> claim-om i koristiti pouzdani HTTPS endpoint.</td>
+          <td>Razlika u putanji ili završnoj kosi crti daje 401.</td>
+        </tr>
+        <tr>
+          <td>Audience</td>
+          <td>Poseban client ID/audience za Kubernetes API.</td>
+          <td>Prihvatanje tokena izdatog drugoj aplikaciji.</td>
+        </tr>
+        <tr>
+          <td>Username claim</td>
+          <td>Stabilan, jedinstven claim; često email ili kombinacija issuer+subject.</td>
+          <td>Promenljiv ili ponovo upotrebljen identifikator prekida ili preusmerava RBAC veze.</td>
+        </tr>
+        <tr>
+          <td>Groups claim</td>
+          <td>Kontrolisana lista organizacionih grupa i bezbedan prefiks.</td>
+          <td>Kolizija sa lokalnim ili <code>system:</code> grupama.</td>
+        </tr>
+        <tr>
+          <td>Signing keys/JWKS</td>
+          <td>API server mora dohvatiti i osvežavati pouzdane javne ključeve.</td>
+          <td>Rotacija ključa, DNS, proxy ili CA problem prekida nove prijave.</td>
+        </tr>
+        <tr>
+          <td>Vreme</td>
+          <td>NTP sinhronizacija na klijentima, provider-u i control-plane nodovima.</td>
+          <td><code>exp</code>/<code>nbf</code> odbijanje usled clock skew-a.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Savremeni API server podržava strukturisanu <code>AuthenticationConfiguration</code> datoteku sa više JWT autentikatora i CEL pravilima za validaciju i mapiranje claim-ova. Konfiguracija se učitava opcijom <code>--authentication-config</code>; ne kombinuje se za isti JWT/OIDC slučaj sa odgovarajućim <code>--oidc-*</code> zastavicama. Pre primene proverava se dokumentacija tačne verzije klastera i podrška distribucije. Primer je obrazac za pregled, a ne univerzalna copy-paste konfiguracija:
+    </p>
+    <pre><code class="language-yaml">apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+jwt:
+- issuer:
+    url: https://id.example.com
+    audiences:
+    - kubernetes-prod
+    audienceMatchPolicy: MatchAny
+  claimValidationRules:
+  - claim: hd
+    requiredValue: example.com
+  claimMappings:
+    username:
+      expression: "claims.email"
+    groups:
+      expression: "claims.groups"
+    uid:
+      expression: "claims.sub"
+  userValidationRules:
+  - expression: "!user.username.startsWith('system:')"
+    message: "username ne sme koristiti rezervisani prefiks system:"</code></pre>
+    <p>
+      U Kubernetes 1.34 konfiguracija anonimnog autentikatora kroz isti API stabilna je i može ograničiti anoniman pristup na tačno definisane endpoint-e, na primer health provere. Ako se polje <code>anonymous</code> postavi u konfiguracionoj datoteci, ne koristi se istovremeno zastavica <code>--anonymous-auth</code>. Promena autentikacije API servera ima veliki blast radius: na HA control plane-u uvodi se postepeno, uz rezervni administratorski pristup, validaciju svakog endpoint-a i unapred pripremljen rollback statičkog Pod manifesta ili upravljane konfiguracije.
+    </p>
+
+    <h3>ServiceAccount i workload identitet</h3>
+    <p>
+      ServiceAccount je namespaced Kubernetes objekat namenjen procesima, a ne zamena za ljudski nalog. Njegovo kanonsko korisničko ime je <code>system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code>, uz grupe <code>system:serviceaccounts</code> i <code>system:serviceaccounts:&lt;namespace&gt;</code>. Podrazumevani <code>default</code> ServiceAccount postoji u svakom namespace-u, ali aplikacije sa različitim potrebama treba da koriste zasebne, namenski imenovane naloge.
+    </p>
+    <p>
+      Bound ServiceAccount token volume stabilan je od Kubernetes 1.22. Kubelet preko TokenRequest API-ja dobija kratkotrajni, audience-bound token, montira ga kao projected volume i osvežava pre isteka. Ovaj mehanizam zamenjuje automatski generisane, dugotrajne Secret tokene iz starijih verzija. Ručno pravljenje ServiceAccount token Secret-a i dalje je moguće za retke legacy integracije, ali stvara kredencijal bez automatskog kratkog roka i nije preporučeni obrazac.
+    </p>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inventory-reader
+  namespace: identity-lab
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-client
+  namespace: identity-lab
+spec:
+  serviceAccountName: inventory-reader
+  automountServiceAccountToken: false
+  containers:
+  - name: client
+    image: registry.k8s.io/e2e-test-images/agnhost:2.53
+    args: ["pause"]</code></pre>
+    <p>
+      Vrednost <code>automountServiceAccountToken: false</code> smanjuje izloženost kada workload ne poziva API. Ako mu je potreban token za drugi servis, projected volume treba da koristi posebnu <code>audience</code> vrednost i kratak rok; servis primalac token proverava preko TokenReview API-ja ili odgovarajuće JWT validacije. Token namenjen Kubernetes API-ju ne koristi se kao generički identitet za svaku internu aplikaciju.
+    </p>
+    <pre><code class="language-yaml">volumes:
+- name: workload-identity
+  projected:
+    sources:
+    - serviceAccountToken:
+        path: token
+        audience: https://vault.example.com
+        expirationSeconds: 3600</code></pre>
+    <p>
+      Komanda <code>kubectl create token inventory-reader -n identity-lab --duration=10m</code> poziva TokenRequest i pogodna je za kratku, kontrolisanu proveru. Token se ne ispisuje u zajednički terminal log niti smešta u shell history. Brisanje ServiceAccount-a nije univerzalna trenutna revokacija svih mogućih tokena, dok se token vezan za konkretan Pod poništava brisanjem tog Pod-a; incident procedura mora znati koji tip tokena je izdat.
+    </p>
+
+    <h3>Ostali autentikacioni mehanizmi i izbor rešenja</h3>
+    <p>
+      API server može koristiti autentikacioni webhook, authenticating proxy i client-go <code>exec</code> credential plugin. Webhook prosleđuje bearer token spoljašnjem servisu kroz TokenReview zahtev i uvodi mrežnu zavisnost, keširanje odluka, TLS poverenje i zahtev za visokom dostupnošću. Authenticating proxy sme postavljati korisničke headere samo ako API server pouzdano autentikuje proxy klijentskim sertifikatom i uklanja mogućnost da neposredni klijent falsifikuje te headere.
+    </p>
+    <p>
+      Statička datoteka tokena zahteva restart API servera za promenu, tokeni nemaju ugrađen rok i teško se opozivaju; bootstrap tokeni su namenjeni kontrolisanom pridruživanju nodova, ne svakodnevnom ljudskom pristupu. Statička basic-auth datoteka više nije podržani savremeni mehanizam. Za nove implementacije prednost imaju centralni OIDC za ljude, kratkotrajni TokenRequest tokeni za workload-e i automatizovani, strogo provereni sertifikati za komponente kojima su potrebni.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Mehanizam</th>
+          <th>Pogodna namena</th>
+          <th>Produkcioni uslov</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>OIDC</td>
+          <td>Ljudski pristup i organizacione grupe</td>
+          <td>MFA, kratki tokeni, stabilni claim-ovi, HA provider i testirana rotacija ključeva</td>
+        </tr>
+        <tr>
+          <td>X.509 client cert</td>
+          <td>Komponente, bootstrap i ograničeni administratorski slučajevi</td>
+          <td>PKI zaštita ključa, kratak rok, kontrolisan CSR approval i plan opoziva</td>
+        </tr>
+        <tr>
+          <td>ServiceAccount TokenRequest</td>
+          <td>Podovi i automatizacija</td>
+          <td>Namenski nalog, audience binding, minimalna prava i bez logovanja tokena</td>
+        </tr>
+        <tr>
+          <td>Webhook</td>
+          <td>Integracija sa nestandardnim token sistemom</td>
+          <td>HA, TLS, timeout, keš politika, monitoring i fail-safe odluka</td>
+        </tr>
+        <tr>
+          <td>Authenticating proxy</td>
+          <td>Kontrolisana enterprise pristupna kapija</td>
+          <td>Ekskluzivno poverenje u proxy sertifikat i zaštita request header-a</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Projektovanje identiteta za produkciju</h3>
+    <p>
+      Dobar dizajn počinje inventarom aktera i trust domena, a ne izborom zastavice API servera. Za svaki identitet beleže se vlasnik, izvor istine, način izdavanja, rok, audience, grupe, klasteri kojima pristupa, način opoziva i audit korelacija. Ljudski nalog se ne deli sa CI sistemom; workload ne koristi lični kubeconfig; break-glass identitet ne koristi se za redovan rad.
+    </p>
+    <ul>
+      <li><strong>Jedinstvenost:</strong> username i UID claim moraju ostati stabilni i ne smeju se ponovo dodeljivati drugoj osobi.</li>
+      <li><strong>Prefiksi:</strong> spoljašnje grupe dobijaju kontrolisan prefiks kako ne bi kolidirale sa sistemskim i lokalnim RBAC grupama.</li>
+      <li><strong>Odvajanje okruženja:</strong> produkcioni audience, client ID i administrativni konteksti odvojeni su od laboratorijskih.</li>
+      <li><strong>Kratak vek:</strong> tokeni i sertifikati traju samo koliko je operativno potrebno; obnova je automatizovana i nadzirana.</li>
+      <li><strong>Break-glass:</strong> rezervni pristup je van redovnog IdP kvara, strogo zaštićen, testiran i auditovan.</li>
+      <li><strong>Audit:</strong> log beleži stvarni identitet, grupe i eventualnu impersonaciju bez beleženja samog bearer tokena.</li>
+      <li><strong>HA:</strong> promena autentikacije na više API servera planira kompatibilan prelaz bez perioda različitih pravila.</li>
+    </ul>
+    <p>
+      Performanse autentikacije posebno zavise od udaljenog webhook-a i dostupnosti OIDC metapodataka/JWKS-a. Lokalna JWT provera je obično jeftina, ali rotacija ključeva i nedostupan issuer mogu pogoditi nove zahteve. Monitoring obuhvata apiserver request metrike po kodu odgovora, latenciju autentikacionog webhook-a, greške učitavanja konfiguracije, vreme važenja sertifikata i korelaciju sa promenama IdP-a, DNS-a, proxy-ja i NTP-a.
+    </p>
+
+    <h3>Dijagnostika autentikacije i bezbedan incident response</h3>
+    <p>
+      Dijagnostika se vodi od najmanje invazivne provere ka promeni control plane-a. Najpre se beleže vreme, pogođeni korisnici, klaster, endpoint, context i tačna greška bez kredencijala. Zatim se odvaja TLS problem od 401, 403 i admission problema. Tek kada je hipoteza potvrđena menja se konfiguracija.
+    </p>
+    <ol>
+      <li><strong>Obim:</strong> da li je pogođen jedan korisnik, jedna grupa, svi OIDC korisnici, ServiceAccount ili svi klijenti jednog API endpoint-a?</li>
+      <li><strong>Klijentska činjenica:</strong> proveriti <code>current-context</code>, endpoint, CA referencu, lokalno vreme i rok sertifikata/tokena.</li>
+      <li><strong>Serverov pogled:</strong> ako autentikacija radi, izvršiti <code>kubectl auth whoami</code>; zatim odvojeno proveriti <code>can-i</code>.</li>
+      <li><strong>Control-plane dokaz:</strong> pregledati kube-apiserver logove i audit događaje u relevantnom vremenskom prozoru na svim HA instancama.</li>
+      <li><strong>Spoljne zavisnosti:</strong> proveriti issuer discovery, JWKS, DNS, CA, proxy, NTP ili webhook latenciju bez kopiranja tokena.</li>
+      <li><strong>Korekcija:</strong> obnoviti kredencijal, ispraviti claim mapping ili vratiti poslednju dobru konfiguraciju; ne gasiti TLS proveru.</li>
+      <li><strong>Oporavak:</strong> potvrditi identitet, dozvoljenu i zabranjenu radnju, sve API endpoint-e i audit trag.</li>
+    </ol>
+    <pre><code class="language-bash"># Read-only lokalne provere
+kubectl config current-context
+kubectl cluster-info
+kubectl auth whoami -o yaml
+
+# Pregled roka klijentskog sertifikata; ne ispisuje privatni ključ
+openssl x509 -in /secure/kube/lab-reader.crt -noout \
+  -subject -issuer -dates -ext extendedKeyUsage
+
+# Control-plane host; zahtevaju odobren sudo pristup
+sudo crictl ps --name kube-apiserver
+sudo crictl logs --since 15m APISERVER_CONTAINER_ID</code></pre>
+    <p>
+      U systemd ili upravljanim distribucijama putanja do loga zavisi od implementacije; može se koristiti <code>journalctl</code>, platformni log servis ili cloud control-plane zapis. Traže se vreme zahteva, HTTP status, autentikator, issuer/audience ili x509 greška, korisničko ime i audit ID. Token, refresh token, privatni ključ i cela Authorization vrednost moraju biti redigovani.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Simptom</th>
+          <th>Neposredni uzrok</th>
+          <th>Bezbedna korekcija</th>
+          <th>Trajna mera</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Samo jedan x509 korisnik dobija 401</td>
+          <td>Istekao sertifikat, pogrešan key pair ili clientAuth usage</td>
+          <td>Izdati novi kratkotrajni sertifikat posle provere identiteta</td>
+          <td>Monitoring isteka i automatizovana obnova</td>
+        </tr>
+        <tr>
+          <td>Svi OIDC korisnici povremeno dobijaju 401</td>
+          <td>JWKS/issuer dostupnost, rotacija ključa ili razlika među API serverima</td>
+          <td>Vratiti konzistentnu poslednju dobru konfiguraciju i proveriti sve endpoint-e</td>
+          <td>Staged rollout, HA issuer, monitoring i game-day rotacije</td>
+        </tr>
+        <tr>
+          <td>Whoami pokazuje neočekivano ime ili grupe</td>
+          <td>Pogrešan claim mapping/prefix</td>
+          <td>Zaustaviti dodelu novih prava i ispraviti mapiranje</td>
+          <td>Test korisnici, negativni testovi i change kontrola claim ugovora</td>
+        </tr>
+        <tr>
+          <td>Autentikacija radi, radnja vraća 403</td>
+          <td>Nedostaje autorizacija</td>
+          <td>Ne menjati autentikator; analizirati RBAC u narednoj lekciji</td>
+          <td>Najmanje privilegije i periodični access review</td>
+        </tr>
+        <tr>
+          <td>Token je otkriven u logu</td>
+          <td>Nezaštićen debug ili CI izlaz</td>
+          <td>Prekinuti izlaganje, ukloniti log pristup i opozvati/sačekati istek prema tipu tokena</td>
+          <td>Redakcija, secret scanning i zabrana verbose HTTP logovanja</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Integrisani praktikum: dokaz identiteta, kratkotrajni sertifikat i granice pristupa</h3>
+    <p><strong>Poslovni i tehnički kontekst.</strong></p>
+    <p>
+      Platform tim uvodi novog read-only laboratorijskog korisnika. Cilj nije dodela širokih prava, već dokaz celog lanca: generisanje privatnog ključa, kontrola CSR-a, kratkotrajno izdavanje sertifikata, izolovan kubeconfig, potvrda identiteta i razlikovanje 401 od 403. Minimalni Role/RoleBinding koristi se samo kao test fixture; detaljno projektovanje RBAC-a sledi u lekciji 35.
+    </p>
+    <p><strong>Topologija i preduslovi.</strong></p>
+    <ul>
+      <li>Kubeadm ili drugi laboratorijski klaster čiji <code>kubernetes.io/kube-apiserver-client</code> signer funkcioniše.</li>
+      <li>Administratorski context za kreiranje namespace-a, CSR-a i ograničenog RBAC test fixture-a.</li>
+      <li>Odvojeni operator koji je ovlašćen da proveri i odobri CSR; u maloj laboratoriji ista osoba može glumiti obe uloge, ali se odstupanje beleži.</li>
+      <li><code>kubectl</code>, <code>openssl</code>, <code>base64</code>, zaštićen radni direktorijum i sinhronizovano vreme.</li>
+      <li>Nijedan korak ne zahteva kopiranje cluster CA privatnog ključa niti korišćenje <code>system:masters</code> grupe.</li>
+    </ul>
+    <p>
+      Rizik je srednji: odobren CSR izdaje stvarni kredencijal koji API server prihvata. Vežba se izvodi samo u laboratoriji, sa rokom od jednog sata i bez privilegovanih grupa. Pre početka potvrditi context; kod produkcionog sistema proces mora imati ticket, razdvojene dužnosti i identitetsku proveru van klastera.
+    </p>
+    <ol>
+      <li>
+        <strong>Pripremite izolovan prostor i početno stanje.</strong>
+        <pre><code class="language-bash">umask 077
+mkdir -p identity-lab
+cd identity-lab
+kubectl config current-context
+kubectl auth whoami
+kubectl auth can-i create certificatesigningrequests.certificates.k8s.io
+kubectl auth can-i update certificatesigningrequests.certificates.k8s.io/approval
+kubectl auth can-i create rolebindings.rbac.authorization.k8s.io \
+  --namespace identity-lab</code></pre>
+        <p><strong>Očekivani rezultat i validacija:</strong> context mora biti laboratorijski; <code>whoami</code> prikazuje odobrenog administratora, a potrebne <code>can-i</code> provere vraćaju <code>yes</code>. Ako odobravanje nije dozvoljeno, ne proširivati sebi prava: eskalirati ovlašćenom approver-u.</p>
+      </li>
+      <li>
+        <strong>Kreirajte namespace i minimalni autorizacioni test fixture.</strong>
+        <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: identity-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: identity-lab
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lab-reader-pods
+  namespace: identity-lab
+subjects:
+- kind: User
+  name: lab-reader
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io</code></pre>
+        <pre><code class="language-bash">kubectl apply -f access-fixture.yaml
+kubectl get role,rolebinding -n identity-lab</code></pre>
+        <p><strong>Napomena:</strong> <code>kind: User</code> u RoleBinding subject-u nije kreiranje User objekta; to je string koji se poredi sa autentikovanim korisničkim imenom. Komanda <code>apply</code> menja stanje. Rollback ovog koraka je <code>kubectl delete -f access-fixture.yaml</code>.</p>
+      </li>
+      <li>
+        <strong>Generišite privatni ključ i CSR lokalno.</strong>
+        <pre><code class="language-bash">openssl genpkey -algorithm RSA \
+  -pkeyopt rsa_keygen_bits:3072 \
+  -out lab-reader.key
+
+openssl req -new \
+  -key lab-reader.key \
+  -out lab-reader.csr \
+  -subj "/CN=lab-reader/O=platform-readers"
+
+chmod 600 lab-reader.key
+openssl req -in lab-reader.csr -noout -subject -text</code></pre>
+        <p><strong>Validacija:</strong> subject mora biti tačno <code>CN=lab-reader, O=platform-readers</code>, ključ mora biti čitljiv samo vlasniku, a CSR ne sme sadržati privatni ključ. Grupa ovde namerno nema binding i kasnije služi za negativni test.</p>
+      </li>
+      <li>
+        <strong>Kreirajte Kubernetes CSR sa rokom od jednog sata.</strong>
+        <pre><code class="language-bash">CSR_REQUEST=$(base64 -w 0 lab-reader.csr)
+sed "s|CSR_REQUEST_BASE64|${CSR_REQUEST}|" \
+  lab-reader-csr.template.yaml &gt; lab-reader-csr.yaml
+unset CSR_REQUEST
+kubectl apply -f lab-reader-csr.yaml</code></pre>
+        <pre><code class="language-yaml">apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: lab-reader-2026-07
+spec:
+  request: CSR_REQUEST_BASE64
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 3600
+  usages:
+  - client auth</code></pre>
+        <p><strong>Očekivani rezultat:</strong> CSR postoji u stanju Pending. GNU <code>base64</code> koristi <code>-w 0</code>; na sistemima bez te opcije koristi se ekvivalent koji ne umeće nove redove. Generisani YAML sadrži javni CSR, ali se ipak čuva kao radni artefakt.</p>
+      </li>
+      <li>
+        <strong>Odvojeno pregledajte i odobrite zahtev.</strong>
+        <pre><code class="language-bash">kubectl get csr lab-reader-2026-07 -o yaml
+kubectl get csr lab-reader-2026-07 \
+  -o jsonpath='{.spec.request}' | base64 -d | \
+  openssl req -noout -subject -text
+
+# State-changing: izvršava samo ovlašćeni approver posle provere
+kubectl certificate approve lab-reader-2026-07
+kubectl get csr lab-reader-2026-07</code></pre>
+        <p><strong>Kontrolna tačka:</strong> proveriti requestor, signer, usages, expiration i dekodirani subject. Ime CSR objekta nije dokaz sadržaja. Ako bilo koji atribut odstupa, koristi se <code>kubectl certificate deny lab-reader-2026-07</code>, beleži razlog i pravi novi zahtev; denied CSR se ne „popravlja” naknadnim odobravanjem.</p>
+      </li>
+      <li>
+        <strong>Preuzmite izdat sertifikat i proverite ga.</strong>
+        <pre><code class="language-bash">kubectl get csr lab-reader-2026-07 \
+  -o jsonpath='{.status.certificate}' | base64 -d \
+  &gt; lab-reader.crt
+
+test -s lab-reader.crt
+openssl x509 -in lab-reader.crt -noout \
+  -subject -issuer -serial -dates -ext extendedKeyUsage
+
+openssl x509 -in lab-reader.crt -pubkey -noout | sha256sum
+openssl pkey -in lab-reader.key -pubout | sha256sum</code></pre>
+        <p><strong>Očekivani rezultat:</strong> CSR ima uslov Approved i popunjen <code>status.certificate</code>; subject i clientAuth namena su ispravni, rok nije duži od politike, a hash vrednosti javnih ključeva se poklapaju. Approved bez sertifikata upućuje na signer/kube-controller-manager problem, pa se pregledaju njegovi logovi; ne odobrava se nasumično novi zahtev.</p>
+      </li>
+      <li>
+        <strong>Napravite zaseban kubeconfig bez menjanja administratorskog.</strong>
+        <pre><code class="language-bash">APISERVER=$(kubectl config view --minify \
+  -o jsonpath='{.clusters[0].cluster.server}')
+kubectl config view --raw --minify \
+  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+  | base64 -d &gt; cluster-ca.crt
+
+kubectl --kubeconfig=lab-reader.kubeconfig config set-cluster lab-cluster \
+  --server="${APISERVER}" \
+  --certificate-authority=cluster-ca.crt \
+  --embed-certs=true
+kubectl --kubeconfig=lab-reader.kubeconfig config set-credentials lab-reader \
+  --client-certificate=lab-reader.crt \
+  --client-key=lab-reader.key \
+  --embed-certs=true
+kubectl --kubeconfig=lab-reader.kubeconfig config set-context lab-reader@lab-cluster \
+  --cluster=lab-cluster --user=lab-reader --namespace=identity-lab
+kubectl --kubeconfig=lab-reader.kubeconfig config use-context \
+  lab-reader@lab-cluster
+chmod 600 lab-reader.kubeconfig</code></pre>
+        <p><strong>Rizik:</strong> <code>--embed-certs=true</code> čini fajl prenosivim, ali u njega ugrađuje privatni ključ. Ne prikazivati ga sa <code>--raw</code>, ne kopirati ga u Git i ne spajati sa svakodnevnim kubeconfig-om tokom testa.</p>
+      </li>
+      <li>
+        <strong>Dokažite autentikaciju i granicu autorizacije.</strong>
+        <pre><code class="language-bash">kubectl --kubeconfig=lab-reader.kubeconfig auth whoami -o yaml
+kubectl --kubeconfig=lab-reader.kubeconfig auth can-i list pods \
+  --namespace identity-lab
+kubectl --kubeconfig=lab-reader.kubeconfig get pods \
+  --namespace identity-lab
+
+# Negativni testovi: očekuje se no/Forbidden
+kubectl --kubeconfig=lab-reader.kubeconfig auth can-i create pods \
+  --namespace identity-lab
+kubectl --kubeconfig=lab-reader.kubeconfig get secrets \
+  --namespace identity-lab
+kubectl --kubeconfig=lab-reader.kubeconfig get pods \
+  --namespace kube-system</code></pre>
+        <p><strong>Merljivi rezultat:</strong> server prikazuje username <code>lab-reader</code>, grupu <code>platform-readers</code> i <code>system:authenticated</code>. Listanje podova u <code>identity-lab</code> uspeva, dok kreiranje podova, čitanje Secret-a i listanje podova u <code>kube-system</code> ne uspevaju. Time je dokazano da sertifikat autentikuje identitet, a RoleBinding daje samo eksplicitno pravo.</p>
+      </li>
+      <li>
+        <strong>Simulirajte bezbedan kvar bez oštećenja control plane-a.</strong>
+        <pre><code class="language-bash">cp lab-reader.kubeconfig expired-test.kubeconfig
+kubectl --kubeconfig=expired-test.kubeconfig \
+  config set-cluster lab-cluster \
+  --server=https://127.0.0.1:1
+kubectl --kubeconfig=expired-test.kubeconfig get pods \
+  --request-timeout=5s</code></pre>
+        <p><strong>Tumačenje:</strong> ovaj test proizvodi problem konekcije, ne 401. Vratite originalni endpoint ili obrišite test fajl. Za realan test isteka koristi se poseban sertifikat minimalnog roka koji signer dozvoljava i čeka se njegov istek; ne menja se vreme noda niti API servera. Pogrešan endpoint, TLS greška, 401 i 403 moraju ostati odvojene dijagnostičke grane.</p>
+      </li>
+      <li>
+        <strong>Pregledajte trag i uklonite laboratoriju.</strong>
+        <pre><code class="language-bash">kubectl get csr lab-reader-2026-07 -o yaml
+kubectl delete namespace identity-lab
+kubectl delete csr lab-reader-2026-07
+
+# Lokalno uklanjanje poverljivih laboratorijskih fajlova
+shred -u lab-reader.key lab-reader.kubeconfig 2&gt;/dev/null || \
+  rm -f lab-reader.key lab-reader.kubeconfig
+rm -f lab-reader.csr lab-reader.crt cluster-ca.crt \
+  expired-test.kubeconfig lab-reader-csr.yaml</code></pre>
+        <p><strong>Rollback i završetak:</strong> brisanje CSR objekta ne opoziva već preuzet sertifikat, zato se prvo uklanja njegov RBAC binding brisanjem namespace-a i zatim lokalni ključ/kubeconfig. <code>shred</code> ne garantuje fizičko brisanje na SSD-u, copy-on-write ili snapshot fajl sistemu; ključ je od početka kratkotrajan i čuva se u namenskom bezbednom prostoru. Završetak je potvrđen kada namespace i CSR više ne postoje, laboratorijski kubeconfig ne radi, a administratorski context nije menjan.</p>
+      </li>
+    </ol>
+
+    <h3>Proširena vežba: validacija OIDC dizajna bez izlaganja tokena</h3>
+    <p>
+      Ova vežba je read-only pregled postojećeg, odobrenog OIDC okruženja. Ne zahteva generičko instaliranje identity provider-a niti menjanje API servera. Cilj je dokazati ugovor između provider-a i Kubernetes-a pre produkcione promene.
+    </p>
+    <ol>
+      <li>Dokumentovati tačan issuer URL, Kubernetes audience/client ID, username, UID i groups claim, prefikse i maksimalni vek tokena.</li>
+      <li>Sa control-plane mrežne putanje proveriti HTTPS i discovery/JWKS dostupnost bez čuvanja tokena u komandnoj liniji ili ticket-u.</li>
+      <li>Test korisnikom izvršiti <code>kubectl auth whoami -o yaml</code> i uporediti rezultat sa odobrenim claim mapping-om.</li>
+      <li>Potvrditi jedan dozvoljen i najmanje dva zabranjena zahteva; 403 je očekivan dokaz najmanjih privilegija, ne kvar prijave.</li>
+      <li>Proveriti audit zapis po vremenu i audit ID-u, kao i ponašanje posle uklanjanja korisnika iz test grupe i isteka postojećeg tokena.</li>
+      <li>Pre rollout-a definisati rollback, rezervni pristup, vlasnika IdP-a i kriterijum prekida: rast 401 odgovora, greška učitavanja konfiguracije ili različit identitet na HA endpoint-ima.</li>
+    </ol>
+    <p>
+      Kriterijum završetka je matrica koja povezuje izvorni claim sa serverovim username/UID/groups atributima, RBAC subjektom, pozitivnim i negativnim testom i audit dokazom. Ako UID nije dostupan u starijem načinu OIDC konfiguracije ili konkretnom klijentu, ograničenje se dokumentuje i ne nadoknađuje nestabilnim claim-om.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+    <ul>
+      <li><strong>Inventar autentikatora i trust anchor-a.</strong> Posle svake promene i najmanje kvartalno evidentirati API server autentikacione opcije, CA lance, issuer-e, audience vrednosti, webhook endpoint-e i vlasnike. Odstupanje između HA instanci tretira se kao incident jer isti kredencijal može davati različit rezultat.</li>
+      <li><strong>Praćenje isteka.</strong> Sertifikate i signing CA-jeve pratiti dovoljno rano da obnova i rollback stanu u preostali period. Alarm nije samo datum: proveravaju se automatizacija obnove, distribucija novog lanca i stvarno ponovno učitavanje komponenti.</li>
+      <li><strong>Kontrola CSR approval-a.</strong> Nikada automatski ne odobravati proizvoljne client CSR-ove. Politika proverava requestor, subject, signer, usages, rok i spoljašnji dokaz identiteta; odobrenje i izdavanje ostavljaju audit trag.</li>
+      <li><strong>OIDC change management.</strong> Promena issuer-a, client ID-a, claim mapping-a ili grupnog prefiksa jeste migracija identiteta i RBAC subjekata. Testira se na canary API endpoint-u ili nižem okruženju, uz stare i nove identitete, negativne testove i rezervni pristup.</li>
+      <li><strong>ServiceAccount higijena.</strong> Svaki workload dobija namenski nalog; automount se isključuje kada API pristup nije potreban. Tokeni su kratkotrajni, vezani za audience i nikada se ne čuvaju u image-u, ConfigMap-u ili CI logu.</li>
+      <li><strong>Audit i privatnost.</strong> Audit politika beleži dovoljno za atribuciju i incident response, ali se bearer tokeni, privatni ključevi i osetljivi sadržaji rediguju. Pristup audit zapisima ograničen je jer oni sami mogu sadržati poverljive podatke.</li>
+      <li><strong>Break-glass test.</strong> Rezervni pristup proverava se periodično kontrolisanom vežbom, čuva van redovnog IdP failure domena i aktivira samo uz odobrenje. Svaka upotreba pokreće pregled i rotaciju kredencijala.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Umemo da objasnimo razliku i redosled TLS provere, autentikacije, autorizacije i admission kontrole.</li>
+      <li>Znamo da Kubernetes nema API objekat za normalnog korisnika i da RoleBinding subject ne kreira nalog.</li>
+      <li>Možemo da utvrdimo serverov stvarni username, UID i grupe bez oslanjanja na lokalno ime kubeconfig stavke.</li>
+      <li>Razlikujemo 401, 403, TLS i admission grešku i prikupljamo odgovarajuće dokaze.</li>
+      <li>Možemo bezbedno da pregledamo CSR, potvrdimo signer, usages, subject i rok pre odobravanja.</li>
+      <li>Znamo ograničenje opoziva X.509 sertifikata i zašto kratak rok ne zamenjuje incident proceduru.</li>
+      <li>Možemo da projektujemo OIDC issuer, audience, claim mapping, grupne prefikse, MFA i rollback za HA API servere.</li>
+      <li>Razlikujemo ID, access i refresh token i ne pretpostavljamo da API server obavlja interaktivni login.</li>
+      <li>Koristimo bound ServiceAccount TokenRequest tok umesto dugotrajnih Secret tokena gde god je moguće.</li>
+      <li>Isključujemo automatsko montiranje ServiceAccount tokena workload-u koji ne poziva API.</li>
+      <li>Ne koristimo <code>--insecure-skip-tls-verify</code>, statičke tokene ili <code>system:masters</code> kao prečicu za redovan rad.</li>
+      <li>Promenu autentikacije validiramo pozitivnim i negativnim testovima, audit tragom i proverom svakog HA endpoint-a.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      Kubernetes autentikacija nije baza korisničkih naloga, već granica poverenja na kojoj API server prihvata dokaz i pretvara ga u atribute identiteta. Ljudski životni ciklus najčešće ostaje u OIDC provider-u ili PKI-ju, dok Kubernetes izvorno upravlja ServiceAccount identitetima. X.509, OIDC, TokenRequest, webhook i proxy nisu međusobno zamenljive prečice: svaki ima drugačiji model izdavanja, roka, opoziva, dostupnosti i auditovanja.
+    </p>
+    <p>
+      Administrator mora umeti da dokaže šta server vidi, da zaštiti kubeconfig i privatni ključ, da ne odobri CSR samo na osnovu njegovog imena i da OIDC claim ugovor tretira kao produkcioni API između identitetskog sistema i klastera. Jednako je važno prepoznati granicu: uspešna autentikacija ne daje pravo na radnju. Ta odluka pripada autorizaciji i biće sistematično obrađena kroz RBAC u narednoj lekciji.
+    </p>
+    <p>
+      Najveći rizici nastaju kada se kredencijali dele, traju predugo, koriste izvan svoje audience vrednosti, završavaju u logovima ili kada se promena autentikatora istovremeno primeni na sve API servere bez rezervnog pristupa. Odgovoran administrator svaku promenu povezuje sa monitoringom, auditom, rollback-om i jasnim vlasništvom nad spoljašnjim zavisnostima. Cilj nije samo da se korisnik prijavi, već da identitet bude jedinstven, proverljiv, vremenski ograničen i dovoljno pouzdan da naredni autorizacioni sloj može doneti ispravnu odluku.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za autentikaciju API zahteva, X.509 i OIDC/JWT autentikatore; reference za AuthenticationConfiguration, SelfSubjectReview, TokenReview, kubeconfig i client-go credential plugin; API i administrativni vodiči za CertificateSigningRequest, ugrađene signere, kubeadm PKI i rotaciju sertifikata; bezbednosna dokumentacija za ServiceAccount, TokenRequest, bound tokene, audit, anonimni pristup i dijagnostiku API servera; relevantni primarni OIDC, JWT i X.509 standardi
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-33-snapshot-backup-restore.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-35-rbac.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+</body>
+
+</html>

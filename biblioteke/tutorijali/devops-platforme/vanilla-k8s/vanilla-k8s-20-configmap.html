@@ -1,0 +1,653 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-20-configmap.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>ConfigMap – odvajanje konfiguracije od kontejnerske slike | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="ConfigMap omogućava odvajanje konfiguracionih podataka od kontejnerske slike i njihovo jednostavno upravljanje unutar Kubernetes klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes ConfigMap, ConfigMap, konfiguracija, environment variables, config files, Kubernetes konfiguracija, YAML, Pod konfiguracija, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-20-configmap.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="ConfigMap – odvajanje konfiguracije od kontejnerske slike">
+
+  <meta property="og:description"
+        content="Naučite kako Kubernetes ConfigMap omogućava izdvajanje konfiguracije iz kontejnerskih slika i fleksibilno upravljanje parametrima aplikacija.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-20-configmap.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-26-configmap.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="ConfigMap – odvajanje konfiguracije od kontejnerske slike">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-26-configmap.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-26-configmap.png"
+           alt="ConfigMap – odvajanje konfiguracije od kontejnerske slike">
+
+    </a>
+   
+   <div class="page-subtitle">
+  V. Konfiguracija, zdravlje, resursi i raspoređivanje
+</div>
+   <div class="page-subtitle">
+  20. ConfigMap – konfiguracija izvan slike, načini projekcije i kontrolisana promena
+</div>
+<p>
+  Kontejnerska slika treba da sadrži aplikaciju, njene izvršne biblioteke i stabilne podrazumevane vrednosti, ali ne i konfiguraciju koja se razlikuje između razvojnog, testnog i produkcionog okruženja. Kada se adresa zavisnog servisa, nivo logovanja, naziv okruženja ili sadržaj aplikacionog konfiguracionog fajla ugradi direktno u sliku, svaka promena zahteva novu izgradnju, testiranje i distribuciju slike. Takav postupak usporava isporuku, povećava broj gotovo identičnih slika i otežava dokazivanje koja je konfiguracija zaista korišćena u određenom trenutku.
+</p>
+<p>
+  Kubernetes objekat <strong>ConfigMap</strong> rešava ovaj problem tako što čuva nepoverljive konfiguracione podatke odvojeno od kontejnerske slike i omogućava Podovima da ih koriste kao promenljive okruženja, argumente komandne linije ili fajlove montirane kroz volumen. ConfigMap nije mehanizam za čuvanje lozinki, tokena, privatnih ključeva i sertifikata. Takvi podaci pripadaju objektima tipa Secret ili spoljašnjem sistemu za upravljanje tajnama, uz odgovarajuću enkripciju, kontrolu pristupa i audit.
+</p>
+<p>
+  Administratorski posao zato nije samo da napravi ConfigMap. Administrator mora da odredi šta zaista pripada konfiguraciji, kako će aplikacija učitati podatke, da li podržava ponovno učitavanje bez restarta, kako će se promena verzionisati, ko sme da je izvrši, kako će se validirati i kako će se sistem vratiti na prethodno stanje ako nova vrednost izazove incident.
+</p>
+
+<h3>Uloga ConfigMap objekta u Kubernetes arhitekturi</h3>
+<p>
+  ConfigMap je namespaced Kubernetes API objekat iz osnovne grupe <code>v1</code>. Njegov sadržaj se čuva u stanju klastera i dostupan je komponentama koje imaju odgovarajuća prava pristupa. Pod ne „kontaktira” ConfigMap kao mrežni servis. Umesto toga, PodSpec sadrži referencu na ConfigMap, a Kubernetes tokom formiranja izvršnog okruženja prosleđuje izabrane vrednosti kontejneru.
+</p>
+<p>
+  ConfigMap najčešće sadrži jednostavne parove ključ–vrednost ili kompletne tekstualne konfiguracione fajlove. Polje <code>data</code> čuva UTF-8 tekstualne vrednosti, dok je <code>binaryData</code> namenjen binarnim podacima kodiranim u base64 obliku u YAML/JSON API reprezentaciji. Ključevi u <code>data</code> i <code>binaryData</code> ne smeju se preklapati; svaki ključ sme sadržati alfanumeričke znakove, crticu, donju crtu ili tačku. ConfigMap ne sme biti veći od 1 MiB. Veći sadržaj treba smestiti u kontejnersku sliku, trajni volumen, objektno skladište, repozitorijum artefakata ili specijalizovani konfiguracioni servis.
+</p>
+
+<p>
+  Pod i referencirani ConfigMap moraju biti u istom namespace-u. Static Pod manifest ne može da referencira ConfigMap niti druge Kubernetes API objekte, jer kubelet takav Pod pokreće neposredno iz lokalnog manifesta, bez uobičajenog razrešavanja namespaced zavisnosti kroz PodSpec. Četvrti, ređi obrazac jeste da aplikacija pomoću Kubernetes API-ja sama čita ili prati ConfigMap. Tada njen ServiceAccount zaista mora imati precizno ograničena RBAC prava <code>get</code>, a po potrebi <code>list</code> i <code>watch</code>; time aplikacija preuzima i odgovornost za keširanje, ponovne pokušaje i bezbedno ponovno učitavanje.
+</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-web-config
+  namespace: inventory-prod
+data:
+  APP_ENV: production
+  LOG_LEVEL: info
+  application.properties: |
+    server.port=8080
+    inventory.api.base-url=http://inventory-api:8080
+    inventory.cache.ttl-seconds=300</code></pre>
+<p>
+  U ovom primeru ista ConfigMap sadrži pojedinačne vrednosti i jedan višelinijski fajl. To je tehnički dozvoljeno, ali administrator treba da grupiše samo podatke koji imaju isti životni ciklus, istog vlasnika i isti način odobravanja. Konfiguracija aplikacije i konfiguracija nezavisnog pomoćnog agenta često ne treba da budu u istom objektu, jer promena jedne komponente tada nepotrebno utiče na drugu.
+</p>
+
+<h3>Šta treba, a šta ne treba čuvati u ConfigMap objektu</h3>
+<p>
+  U ConfigMap obično pripadaju nazivi okruženja, nivoi logovanja, adrese internih servisa, vremenski intervali, pragovi, feature flag vrednosti koje nisu bezbednosno osetljive, format izlaza, tekstualni šabloni i konfiguracioni fajlovi aplikacije. Vrednost treba da bude promenljiva između okruženja, ali ne sme biti tajna.
+</p>
+<p>
+  ConfigMap nije zamena za bazu podataka, distribuirani keš, skladište velikih artefakata niti sistem za upravljanje tajnama. U njemu ne treba držati korisničke podatke, poslovne transakcije, pristupne lozinke, API tokene, privatne ključeve, konfiguracije koje sadrže ugrađene kredencijale ili podatke koji se menjaju velikom učestalošću. Svaka izmena je operacija nad Kubernetes API objektom i deo je kontrolnog stanja klastera; ConfigMap zato nije projektovan kao visokofrekventno key-value skladište.
+</p>
+<p>
+  Poseban rizik predstavlja pogrešna pretpostavka da je podatak bezbedan samo zato što se nalazi unutar klastera. Korisnik ili ServiceAccount sa pravom <code>get</code>, <code>list</code> ili <code>watch</code> nad ConfigMap objektima može pročitati njihov sadržaj. Pored toga, vrednosti mogu postati vidljive u manifestima, Git repozitorijumima, CI/CD logovima, izlazu komande <code>kubectl describe</code> ili dijagnostičkim paketima. Klasifikacija podatka mora prethoditi izboru Kubernetes objekta.
+</p>
+
+<h3>Načini prosleđivanja konfiguracije aplikaciji</h3>
+<p>
+  Kubernetes podržava nekoliko načina korišćenja ConfigMap podataka. Izbor mora pratiti ponašanje aplikacije, a ne administratorsku pogodnost. Aplikacija koja očekuje promenljivu okruženja ne treba bez opravdanja da se menja kako bi čitala fajl, ali administrator mora razumeti da se vrednost promenljive okruženja ne menja u već pokrenutom procesu.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Način korišćenja</th>
+      <th>Ponašanje promene</th>
+      <th>Tipična primena</th>
+      <th>Važno ograničenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>env</code></td>
+      <td>Vrednost se učitava pri kreiranju kontejnera</td>
+      <td>Pojedinačna promenljiva</td>
+      <td>Potreban je novi Pod da bi proces dobio novu vrednost</td>
+    </tr>
+    <tr>
+      <td><code>envFrom</code></td>
+      <td>Svi odgovarajući ključevi postaju promenljive okruženja</td>
+      <td>Skup jednostavnih parametara</td>
+      <td>Nevažeći nazivi promenljivih mogu biti preskočeni i prijavljeni događajem</td>
+    </tr>
+    <tr>
+      <td>ConfigMap volumen</td>
+      <td>Kubelet periodično projektuje nov sadržaj</td>
+      <td>Konfiguracioni fajlovi</td>
+      <td>Aplikacija mora ponovo pročitati fajl; ažuriranje nije trenutno</td>
+    </tr>
+    <tr>
+      <td><code>subPath</code> montiranje</td>
+      <td>Fajl se montira na određenu putanju</td>
+      <td>Jedan fajl u postojećem direktorijumu</td>
+      <td>Automatsko osvežavanje ConfigMap sadržaja ne funkcioniše</td>
+    </tr>
+    <tr>
+      <td>Argument komande</td>
+      <td>Vrednost se proširuje pri pokretanju kontejnera</td>
+      <td>Parametar aplikacionog procesa</td>
+      <td>Potreban je novi Pod za promenu</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Za pojedinačnu promenljivu koristi se <code>configMapKeyRef</code>. Prednost je eksplicitnost: iz manifesta se jasno vidi koji ključ aplikacija koristi. Kada se koristi <code>envFrom</code>, svi ključevi ConfigMap objekta pokušavaju da postanu promenljive okruženja. To je praktično za veći broj jednostavnih vrednosti, ali povećava vezu između sadržaja ConfigMap objekta i procesa u kontejneru.
+</p>
+<pre><code class="language-yaml">env:
+  - name: APP_ENV
+    valueFrom:
+      configMapKeyRef:
+        name: inventory-web-config
+        key: APP_ENV
+  - name: LOG_LEVEL
+    valueFrom:
+      configMapKeyRef:
+        name: inventory-web-config
+        key: LOG_LEVEL</code></pre>
+<p>
+  ConfigMap volumen prikazuje svaki izabrani ključ kao fajl. Naziv ključa postaje naziv fajla, osim ako je drugačije mapiran preko <code>items</code>. Aplikacija zatim čita sadržaj sa definisane putanje. Montirana putanja treba da bude samo za čitanje, osim ako aplikacija iz opravdanog razloga kopira konfiguraciju u drugi, upisivi volumen.
+</p>
+<pre><code class="language-yaml">volumes:
+  - name: application-config
+    configMap:
+      name: inventory-web-config
+      items:
+        - key: application.properties
+          path: application.properties
+containers:
+  - name: inventory-web
+    volumeMounts:
+      - name: application-config
+        mountPath: /etc/inventory
+        readOnly: true</code></pre>
+<p>
+  Montiranje volumena preko celog postojećeg direktorijuma prikriva fajlove koji su se na toj putanji nalazili u kontejnerskoj slici. Ako slika već sadrži druge potrebne fajlove u <code>/etc/inventory</code>, oni neće biti vidljivi nakon montiranja. Administrator zato mora pregledati strukturu slike ili koristiti posebnu praznu putanju. <code>subPath</code> može montirati samo jedan fajl bez prikrivanja direktorijuma, ali tada se gubi automatsko osvežavanje sadržaja i promena zahteva ponovno kreiranje Poda.
+</p>
+<p>
+  Preko polja <code>items</code> mogu se izabrati samo potrebni ključevi, promeniti njihova relativna imena i odrediti režim dozvola preko <code>defaultMode</code> ili pojedinačnog <code>mode</code>. Vrednosti režima u YAML-u mogu se pisati oktalno, na primer <code>0440</code>; u JSON-u se navode decimalno. Dozvole nisu zamena za pravilno podešen <code>securityContext</code>, vlasništvo i najmanji potreban pristup procesu. Ako u <code>items</code> nedostaje neopcioni ključ, volumen se ne kreira i Pod neće normalno startovati.
+</p>
+<p>
+  Referenca može biti označena sa <code>optional: true</code>. Tada odsutan ConfigMap ili ključ ne blokira Pod: promenljiva ili fajl neće biti prisutni, a mount putanja volumena ipak može postojati. Ova mogućnost je bezbedna samo ako aplikacija ima dokumentovanu i proverenu podrazumevanu konfiguraciju. Za obavezne produkcione parametre opcionalnost često prikriva grešku i odlaže incident do trenutka kada aplikacija počne pogrešno da se ponaša.
+</p>
+
+<h3>Ažuriranje ConfigMap sadržaja i životni ciklus Podova</h3>
+<p>
+  Najvažnija operativna razlika postoji između konfiguracije prosleđene kao promenljiva okruženja i konfiguracije montirane kao volumen. Promenljive okruženja postaju deo okruženja procesa kada se kontejner pokrene. Izmena ConfigMap objekta ne menja okruženje već pokrenutog procesa. Deployment zato mora da kreira nove Podove, na primer komandom <code>kubectl rollout restart</code> ili promenom Pod template-a kroz deklarativni deployment proces.
+</p>
+<p>
+  Kod ConfigMap volumena kubelet eventualno osvežava projektovane fajlove. Promena nije sinhrona ni trenutna, jer zavisi od periodičnog kubelet sync ciklusa i podešene strategije detekcije promene (<code>Watch</code>, TTL keš ili direktno čitanje). Zvanični primer za TTL pristup navodi da kašnjenje može dostići zbir kubelet sync perioda i TTL-a keša; podrazumevane vrednosti u tom primeru su po jedan minut. Promena anotacije Poda može pokrenuti raniju proveru, ali to nije zamena za projektovan rollout proces. Čak i kada se fajl promeni, aplikacija mora da podržava ponovno čitanje konfiguracije, signal za reload ili sopstveni file watcher. Bez toga proces nastavlja da koristi vrednosti koje je učitao pri pokretanju.
+</p>
+<p>
+  Zbog ove razlike status „ConfigMap je ažuriran” ne dokazuje da aplikacija koristi novu vrednost. Potrebne su najmanje tri odvojene provere: sadržaj API objekta, sadržaj unutar Poda i efektivno ponašanje aplikacije. Ako se konfiguracija koristi kao promenljiva okruženja, provera u starom Podu će namerno pokazati staru vrednost sve dok Pod ne bude zamenjen.
+</p>
+<p>
+  U produkciji se često koristi verzionisani naziv, na primer <code>inventory-web-config-v2026-07-01</code>, ili generator koji u ime dodaje hash sadržaja. Promena reference u Pod template-u tada automatski pokreće Deployment rollout, a prethodna ConfigMap ostaje dostupna za rollback. Ovaj pristup daje bolju sledljivost od menjanja jednog objekta „u mestu”, ali zahteva kontrolisano uklanjanje starih verzija.
+</p>
+
+<h3>Immutable ConfigMap objekti</h3>
+<p>
+  ConfigMap može imati polje <code>immutable: true</code>. Nakon toga nije moguće menjati sadržaj polja <code>data</code> i <code>binaryData</code>, niti vratiti objekat u promenljivo stanje. Za novu konfiguraciju mora se napraviti novi ConfigMap i ažurirati referenca u workload objektu. Brisanje immutable ConfigMap objekta je moguće, ali je rizično ako ga aktivni ili budući Podovi i dalje referenciraju.
+</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-web-config-v1
+  namespace: inventory-prod
+immutable: true
+data:
+  APP_ENV: production
+  LOG_LEVEL: info</code></pre>
+<p>
+  Immutable objekti smanjuju rizik od nenamerne izmene aktivne konfiguracije i mogu smanjiti opterećenje API servera i kubelet komponenti u klasterima sa veoma velikim brojem montiranih ConfigMap objekata. Pogodni su za kontrolisane GitOps i CI/CD tokove u kojima svaka promena dobija novu verziju. Nisu pogodni kada je očekivano često ručno menjanje istog objekta ili kada aplikacija zavisi od dinamičkog osvežavanja montiranog fajla.
+</p>
+
+<h3>Deklarativno upravljanje, verzionisanje i kontrola promene</h3>
+<p>
+  Ručno izvršavanje komande <code>kubectl create configmap --from-literal</code> korisno je za laboratoriju i brzu dijagnostiku, ali produkciona konfiguracija treba da ima kontrolisani izvor istine. Manifesti ili ulazni konfiguracioni fajlovi čuvaju se u odobrenom repozitorijumu, prolaze pregled promene i primenjuju se automatizovanim procesom. Pre primene administrator treba da koristi <code>kubectl diff</code>, validaciju šeme, aplikacione provere sintakse i, kada je dostupno, serverski dry-run.
+</p>
+<pre><code class="language-bash">kubectl diff -f inventory-web-config.yaml
+kubectl apply --dry-run=server -f inventory-web-config.yaml
+kubectl apply -f inventory-web-config.yaml</code></pre>
+<p>
+  Kustomize <code>configMapGenerator</code> može generisati ConfigMap iz fajlova ili literal vrednosti i po podrazumevanom ponašanju dodati hash sadržaja u naziv. Kada Deployment referencira generisani objekat, promena sadržaja proizvodi novo ime i novu verziju Pod template-a. To je koristan obrazac za pouzdan rollout, ali tim mora razumeti kako alat menja reference i kako se uklanjaju zastareli objekti.
+</p>
+<p>
+  ConfigMap ne treba ručno menjati direktno u produkciji pomoću interaktivnog editora, osim u odobrenoj hitnoj proceduri. Takva izmena stvara odstupanje između klastera i repozitorijuma, može biti prepisana sledećom automatizacijom i otežava audit. Ako je hitna promena neophodna, treba je odmah zabeležiti, potvrditi efektivno stanje i preneti istu izmenu u izvor istine.
+</p>
+
+<h3>Prava pristupa i bezbednosna odgovornost</h3>
+<p>
+  ConfigMap je namespaced resurs, pa RBAC prava treba ograničiti na konkretan namespace i potreban skup glagola. Aplikaciji koja samo dobija ConfigMap kroz PodSpec najčešće nije potrebno da njen ServiceAccount direktno čita ConfigMap preko Kubernetes API-ja. Kubelet i kontrolne komponente obavljaju projektovanje vrednosti. Dodeljivanje aplikaciji prava <code>list</code> ili <code>watch</code> nad svim ConfigMap objektima bez poslovnog razloga nepotrebno širi posledice kompromitovanja Poda.
+</p>
+<p>
+  Administrator koji priprema promenu obično zahteva <code>get</code>, <code>create</code>, <code>patch</code> i <code>update</code> nad ConfigMap objektima, kao i <code>get</code> nad Deployment i Pod objektima radi validacije. Pravo <code>delete</code> treba dodeliti samo kada je potrebno za upravljanje životnim ciklusom. Prava za restart ili izmenu Deployment objekta moraju biti posebno odobrena, jer promena ConfigMap objekta i pokretanje novog rollout-a predstavljaju dve različite operacije.
+</p>
+<pre><code class="language-bash">kubectl auth can-i get configmaps -n inventory-prod
+kubectl auth can-i update configmaps -n inventory-prod
+kubectl auth can-i patch deployments.apps -n inventory-prod
+kubectl auth can-i delete configmaps -n inventory-prod</code></pre>
+<p>
+  Rezultat <code>yes</code> potvrđuje autorizaciju trenutnog identiteta, ali ne potvrđuje da je promena poslovno odobrena. Tehnička mogućnost nije isto što i ovlašćenje prema proceduri promene. Administrator mora proveriti tiket, vlasnika aplikacije, period održavanja, plan rollback-a i očekivani uticaj pre izmene produkcionog sistema.
+</p>
+
+<h3>Najčešće greške i način dijagnostike</h3>
+<ul>
+  <li><strong>Pogrešan namespace.</strong> Pod može da referencira samo ConfigMap iz istog namespace-a. Provera se radi komandama <code>kubectl get pod,configmap -n inventory-prod</code> i pregledom Pod događaja. Poruke poput <code>configmap not found</code> ukazuju na pogrešno ime, namespace ili redosled primene.</li>
+  <li><strong>Pogrešan ključ.</strong> ConfigMap postoji, ali traženi ključ ne postoji. Ako referenca nije označena kao opciona, kreiranje kontejnera može biti blokirano. Upoređuju se PodSpec i izlaz <code>kubectl get configmap ... -o yaml</code>.</li>
+  <li><strong>Očekivanje automatske promene promenljive okruženja.</strong> API objekat sadrži novu vrednost, ali stari Pod i dalje ima staru. To je normalno ponašanje, a ne kvar kubelet komponente. Rešenje je kontrolisani rollout.</li>
+  <li><strong>Upotreba <code>subPath</code> uz očekivanje dinamičkog osvežavanja.</strong> Fajl se neće ažurirati u aktivnom Podu. Potreban je restart Poda ili drugačiji način montiranja.</li>
+  <li><strong>Montiranje preko postojećeg direktorijuma.</strong> Aplikacioni fajlovi iz slike postaju prikriveni, pa aplikacija prijavljuje da nedostaju iako postoje u sloju slike.</li>
+  <li><strong>Neispravna sintaksa aplikacionog fajla.</strong> Kubernetes uspešno montira sadržaj, ali aplikacija odbija konfiguraciju. Dijagnostika se radi aplikacionim logovima i ugrađenim validatorom konfiguracije, a ne samo proverom statusa ConfigMap objekta.</li>
+  <li><strong>Skladištenje tajni u ConfigMap objektu.</strong> Problem se rešava uklanjanjem osetljive vrednosti, rotacijom kompromitovanog kredencijala, premeštanjem u odgovarajući sistem za tajne i pregledom audit tragova.</li>
+  <li><strong>Promena bez pokretanja rollout-a.</strong> Deployment ostaje stabilan, ali aplikacija koristi staru konfiguraciju. Upoređuju se vreme izmene ConfigMap objekta, starost Podova i efektivna vrednost unutar procesa.</li>
+</ul>
+
+<hr>
+
+<h3>Integrisani praktikum: kontrolisana promena konfiguracije produkcione web aplikacije</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Tim održava internu aplikaciju <code>inventory-web</code> u namespace-u <code>inventory-prod</code>. Aplikacija je raspoređena kao Deployment sa dve replike i dostupna je preko Service objekta <code>inventory-web</code>. Konfiguracioni fajl <code>application.properties</code> montira se iz ConfigMap objekta <code>inventory-web-config-v1</code>. Potrebno je promeniti nivo logovanja sa <code>info</code> na <code>debug</code> radi vremenski ograničene dijagnostike i smanjiti cache TTL sa 300 na 60 sekundi. Promena mora proizvesti kontrolisani rolling update, bez prekida dostupnosti, uz mogućnost brzog vraćanja na prethodnu verziju.
+</p>
+<p>
+  <strong>Cilj.</strong> Napraviti novu immutable ConfigMap verziju, validirati sadržaj, povezati je sa Deployment objektom, proveriti rollout i ponašanje aplikacije, izvršiti negativni test i pripremiti rollback. Stari ConfigMap se ne menja niti briše tokom praktične promene.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Kubernetes klaster podržane verzije, radna stanica sa odgovarajućom verzijom alata <code>kubectl</code>, aktivan kubeconfig kontekst, namespace <code>inventory-prod</code>, postojeći Deployment i Service <code>inventory-web</code>. Kontejner sluša na portu 8080 i izlaže HTTP endpoint <code>/healthz</code>. Slika aplikacije čita fajl <code>/etc/inventory/application.properties</code> pri pokretanju.
+</p>
+<p>
+  <strong>Potrebna prava.</strong> Čitanje ConfigMap, Deployment, ReplicaSet, Pod, Service i Event objekata; kreiranje ConfigMap objekta; izmena Deployment objekta; čitanje Pod logova; izvršavanje komande u Podu radi validacije. Brisanje ConfigMap objekata nije potrebno za implementaciju.
+</p>
+<p>
+  <strong>Preduslovi.</strong> Promena je odobrena, vlasnik aplikacije je potvrdio dozvoljene vrednosti, postoji period pojačanog nadzora, readiness proba je funkcionalna, a prethodni manifest Deployment objekta dostupan je u repozitorijumu. Direktorijum <code>inventory-config-change</code> biće napravljen na administratorskoj radnoj stanici.
+</p>
+
+<ol>
+  <li>
+    <strong>Proveriti aktivni kontekst, identitet i autorizaciju.</strong>
+    Pogrešan kubeconfig kontekst može primeniti ispravnu konfiguraciju na pogrešan klaster. Prvo se prikazuje trenutni kontekst, zatim dostupnost namespace-a i potrebna prava.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl get namespace inventory-prod
+kubectl auth can-i get configmaps -n inventory-prod
+kubectl auth can-i create configmaps -n inventory-prod
+kubectl auth can-i patch deployments.apps -n inventory-prod
+kubectl auth can-i get pods/log -n inventory-prod
+kubectl auth can-i create pods/exec -n inventory-prod</code></pre>
+    <strong>Validacija:</strong> kontekst mora odgovarati planiranom produkcionom klasteru, namespace mora biti u stanju <code>Active</code>, a svaka neophodna autorizaciona provera mora vratiti <code>yes</code>. Rezultat <code>no</code> nije razlog za traženje širih administratorskih prava bez procedure, već za eskalaciju vlasniku RBAC politike.
+  </li>
+  <li>
+    <strong>Snimiti početno stanje i proveriti zdravlje aplikacije.</strong>
+    Pre promene se dokumentuju Deployment, Podovi, postojeća ConfigMap referenca i događaji. Time se razlikuju prethodno postojeći problemi od posledica nove konfiguracije.
+    <pre><code class="language-bash">mkdir -p inventory-config-change
+kubectl get deployment inventory-web -n inventory-prod -o yaml \
+  &gt; inventory-config-change/deployment-before.yaml
+kubectl get configmap inventory-web-config-v1 -n inventory-prod -o yaml \
+  &gt; inventory-config-change/configmap-v1-before.yaml
+kubectl get deployment inventory-web -n inventory-prod
+kubectl get pods -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web -o wide
+kubectl get events -n inventory-prod \
+  --sort-by=.metadata.creationTimestamp | tail -n 20
+kubectl rollout status deployment/inventory-web -n inventory-prod \
+  --timeout=120s</code></pre>
+    <strong>Validacija:</strong> Deployment treba da ima <code>2/2</code> dostupne replike, Podovi treba da budu <code>Running</code> i <code>Ready</code>, bez ponavljanih upozorenja kao što su <code>FailedMount</code>, <code>BackOff</code> ili <code>Unhealthy</code>. Ako početno stanje nije zdravo, promena se zaustavlja dok se ne proceni postojeći incident.
+  </li>
+  <li>
+    <strong>Potvrditi način na koji Deployment koristi ConfigMap.</strong>
+    Ne treba pretpostaviti da je konfiguracija montirana kao volumen samo na osnovu naziva objekta. Pregleda se Pod template i tačna referenca.
+    <pre><code class="language-bash">kubectl get deployment inventory-web -n inventory-prod \
+  -o jsonpath='{.spec.template.spec.volumes[*].configMap.name}{"\n"}'
+kubectl get deployment inventory-web -n inventory-prod \
+  -o jsonpath='{range .spec.template.spec.containers[*].volumeMounts[*]}{.name}{" => "}{.mountPath}{" subPath="}{.subPath}{"\n"}{end}'</code></pre>
+    <strong>Validacija:</strong> prvi izlaz mora sadržati <code>inventory-web-config-v1</code>, a volumen mora biti montiran na <code>/etc/inventory</code> bez <code>subPath</code> vrednosti. Iako bi volumen mogao dinamički da se osvežava, u ovom scenariju koristi se verzionisani immutable objekat i kontrolisani rollout.
+  </li>
+  <li>
+    <strong>Proveriti trenutno efektivnu konfiguraciju u oba Poda.</strong>
+    API objekat i PodSpec nisu dovoljan dokaz. Potrebno je pročitati montirani fajl unutar svakog aktivnog Poda.
+    <pre><code class="language-bash">for pod in $(kubectl get pods -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web \
+  -o jsonpath='{.items[*].metadata.name}'); do
+  echo "=== ${pod} ==="
+  kubectl exec -n inventory-prod "${pod}" -- \
+    cat /etc/inventory/application.properties
+done</code></pre>
+    <strong>Validacija:</strong> oba Poda treba da prikažu <code>logging.level.root=info</code> i <code>inventory.cache.ttl-seconds=300</code>. Različit sadržaj između replika predstavlja konfiguraciono odstupanje koje mora biti istraženo pre nastavka.
+  </li>
+  <li>
+    <strong>Napraviti deklarativni manifest nove ConfigMap verzije.</strong>
+    Nova verzija dobija naziv <code>inventory-web-config-v2</code>, oznake za vlasništvo i anotaciju sa razlogom promene. Objekat je immutable kako bi odobreni sadržaj ostao nepromenljiv.
+    <pre><code class="language-bash">cat &gt; inventory-config-change/inventory-web-config-v2.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-web-config-v2
+  namespace: inventory-prod
+  labels:
+    app.kubernetes.io/name: inventory-web
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    change.tashizza.example/reference: "CHG-2026-0728"
+    change.tashizza.example/purpose: "Temporary diagnostic logging and cache TTL reduction"
+immutable: true
+data:
+  application.properties: |
+    server.port=8080
+    inventory.api.base-url=http://inventory-api:8080
+    inventory.cache.ttl-seconds=60
+    logging.level.root=debug
+EOF</code></pre>
+    <strong>Validacija:</strong> lokalni fajl treba pregledati pre slanja API serveru. Posebno se proveravaju namespace, naziv, YAML uvlačenje, dozvoljene aplikacione vrednosti i odsustvo tajni.
+    <pre><code class="language-bash">cat inventory-config-change/inventory-web-config-v2.yaml
+grep -nE 'password|token|secret|private.key' \
+  inventory-config-change/inventory-web-config-v2.yaml || true</code></pre>
+    Odsustvo izlaza druge komande ne predstavlja potpunu bezbednosnu analizu, ali pomaže u otkrivanju očigledno pogrešno unetih osetljivih polja.
+  </li>
+  <li>
+    <strong>Izvršiti serversku validaciju i pregled razlike.</strong>
+    Serverski dry-run koristi validaciju API servera bez trajnog kreiranja objekta. Pošto objekat još ne postoji, <code>kubectl diff</code> treba da prikaže dodavanje nove ConfigMap.
+    <pre><code class="language-bash">kubectl apply --dry-run=server \
+  -f inventory-config-change/inventory-web-config-v2.yaml
+kubectl diff \
+  -f inventory-config-change/inventory-web-config-v2.yaml</code></pre>
+    <strong>Validacija:</strong> dry-run mora vratiti potvrdu bez greške, a diff sme da sadrži samo planiranu novu ConfigMap. Greške u YAML-u, nedozvoljena polja ili admission politici moraju se ispraviti u izvornom manifestu, ne zaobići opcijom koja isključuje validaciju.
+  </li>
+  <li>
+    <strong>Kreirati novu ConfigMap i proveriti sadržaj iz API-ja.</strong>
+    Primena nove verzije ne menja aktivne Podove jer Deployment još uvek referencira <code>v1</code>.
+    <pre><code class="language-bash">kubectl apply \
+  -f inventory-config-change/inventory-web-config-v2.yaml
+kubectl get configmap inventory-web-config-v2 -n inventory-prod
+kubectl get configmap inventory-web-config-v2 -n inventory-prod \
+  -o jsonpath='{.immutable}{"\n"}{.data.application\.properties}{"\n"}'</code></pre>
+    <strong>Validacija:</strong> objekat mora postojati, polje immutable mora biti <code>true</code>, a sadržaj mora imati TTL 60 i nivo logovanja debug. Deployment i postojeći Podovi u ovom trenutku treba i dalje da koriste verziju <code>v1</code>.
+  </li>
+  <li>
+    <strong>Izvršiti negativni test nepromenljivosti.</strong>
+    Test potvrđuje da API server odbija pokušaj izmene sadržaja immutable ConfigMap objekta. Koristi se serverski dry-run kako se ne bi izvršila stvarna promena.
+    <pre><code class="language-bash">kubectl patch configmap inventory-web-config-v2 \
+  -n inventory-prod \
+  --type=merge \
+  --patch '{"data":{"application.properties":"invalid=true"}}' \
+  --dry-run=server</code></pre>
+    <strong>Očekivani rezultat:</strong> API server treba da odbije zahtev zato što je polje sa podacima immutable. Ako komanda neočekivano uspe, treba proveriti da li je objekat zaista kreiran sa <code>immutable: true</code> i da li se koristi očekivani klaster.
+  </li>
+  <li>
+    <strong>Pregledati planiranu izmenu Deployment objekta.</strong>
+    Referenca se prvo menja na lokalnoj kopiji manifesta kako bi diff prikazao tačan efekat. Ne treba menjati naziv ConfigMap objekta pomoću nekontrolisane tekstualne zamene ako se isti tekst pojavljuje na više mesta.
+    <pre><code class="language-bash">cp inventory-config-change/deployment-before.yaml \
+  inventory-config-change/deployment-v2.yaml
+python3 - &lt;&lt;'PY'
+from pathlib import Path
+
+path = Path("inventory-config-change/deployment-v2.yaml")
+text = path.read_text()
+old = "name: inventory-web-config-v1"
+new = "name: inventory-web-config-v2"
+
+if text.count(old) != 1:
+    raise SystemExit(
+        f"Expected exactly one ConfigMap reference, found {text.count(old)}"
+    )
+
+path.write_text(text.replace(old, new))
+PY
+kubectl diff -f inventory-config-change/deployment-v2.yaml</code></pre> <strong>Validacija:</strong> diff treba da prikaže samo očekivanu promenu reference sa <code>inventory-web-config-v1</code> na <code>inventory-web-config-v2</code>. Serverski generisana polja iz sačuvanog YAML-a mogu stvarati šum, pa je u produkcionom repozitorijumu bolji čist deklarativni manifest bez statusa i runtime metapodataka.
+
+  </li>
+  <li>
+    <strong>Promeniti samo ConfigMap referencu u aktivnom Deployment objektu.</strong>
+    Za praktični scenario koristi se JSON patch sa preciznom putanjom. Pre izvršavanja mora biti potvrđeno da je ConfigMap volumen prvi element niza volumena. U standardizovanom produkcionom procesu prednost ima promena deklarativnog manifesta u repozitorijumu.
+    <pre><code class="language-bash">kubectl get deployment inventory-web -n inventory-prod \
+  -o jsonpath='{.spec.template.spec.volumes[0].name}{" => "}{.spec.template.spec.volumes[0].configMap.name}{"\n"}'
+
+kubectl patch deployment inventory-web -n inventory-prod \
+  --type=json \
+  -p='[
+  {
+    "op": "test",
+    "path": "/spec/template/spec/volumes/0/configMap/name",
+    "value": "inventory-web-config-v1"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/0/configMap/name",
+    "value": "inventory-web-config-v2"
+  }
+]'</code></pre> <strong>Validacija:</strong> operacija <code>test</code> sprečava promenu ako aktivno stanje nije ono koje administrator očekuje. Uspešna promena menja Pod template i pokreće novi Deployment rollout.
+
+  </li>
+  <li>
+    <strong>Pratiti rolling update i događaje.</strong>
+    Tokom rollout-a proveravaju se dostupnost, novi ReplicaSet, status novih Podova i događaji. Ne treba odmah brisati stari ReplicaSet niti ConfigMap v1.
+    <pre><code class="language-bash">kubectl rollout status deployment/inventory-web \
+  -n inventory-prod --timeout=180s
+kubectl get deployment,replicaset,pods -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web -o wide
+kubectl get events -n inventory-prod \
+  --sort-by=.metadata.creationTimestamp | tail -n 30</code></pre>
+    <strong>Validacija:</strong> rollout mora biti uspešno završen, Deployment mora ponovo imati <code>2/2</code> dostupne replike, a novi Podovi ne smeju imati <code>FailedMount</code>, <code>CrashLoopBackOff</code> ili neuspešne readiness probe događaje. Ako rollout ne napreduje, ne nastavlja se sa dodatnim izmenama dok se ne pregledaju opis i logovi problematičnog Poda.
+  </li>
+  <li>
+    <strong>Potvrditi novu konfiguraciju u svakom novom Podu.</strong>
+    Provera se izvodi nad svim replikama, jer uspešan status Deployment objekta ne dokazuje da svaka instanca koristi očekivani fajl.
+    <pre><code class="language-bash">for pod in $(kubectl get pods -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web \
+  -o jsonpath='{.items[*].metadata.name}'); do
+  echo "=== ${pod} ==="
+  kubectl exec -n inventory-prod "${pod}" -- \
+    cat /etc/inventory/application.properties
+done</code></pre>
+    <strong>Validacija:</strong> svaki Pod mora prikazati <code>inventory.cache.ttl-seconds=60</code> i <code>logging.level.root=debug</code>. Ako jedan Pod prikazuje staru konfiguraciju, proveravaju se njegov owner ReplicaSet, starost i referenca volumena u efektivnom PodSpec-u.
+  </li>
+  <li>
+    <strong>Izvršiti funkcionalnu proveru preko Service objekta.</strong>
+    Privremeni Pod koristi se kao interni klijent. Opcija <code>--rm</code> uklanja ga po završetku, pa je pogodna za kontrolisanu proveru bez trajnog dijagnostičkog resursa.
+    <pre><code class="language-bash">kubectl run inventory-config-test \
+  -n inventory-prod \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never \
+  --rm -i \
+  --command -- \
+  curl --fail --silent --show-error \
+  http://inventory-web:8080/healthz</code></pre>
+    <strong>Validacija:</strong> komanda mora završiti izlaznim kodom 0 i vratiti očekivani odgovor health endpoint-a. Ako DNS ime ne može da se razreši, problem nije nužno u ConfigMap objektu; proveravaju se Service, Endpoints odnosno EndpointSlice objekti i DNS. Ako veza postoji, ali je odgovor HTTP 5xx, pregledaju se aplikacioni logovi.
+  </li>
+  <li>
+    <strong>Pregledati aplikacione logove i potvrditi očekivani efekat.</strong>
+    Logovi kontejnera dostupni su preko kubelet i container runtime infrastrukture, a administrator im pristupa komandom <code>kubectl logs</code>. U centralizovanom sistemu logovanja treba koristiti isti vremenski opseg i identifikatore novih Podova.
+    <pre><code class="language-bash">kubectl logs deployment/inventory-web -n inventory-prod \
+  --all-pods=true --since=10m --prefix=true | tail -n 200</code></pre>
+    <strong>Validacija:</strong> ne sme biti grešaka parsiranja konfiguracije, poruka o nedostupnom <code>inventory-api</code> servisu niti kontinuiranog restartovanja. Treba potvrditi pojavu očekivanih debug poruka bez nekontrolisanog rasta volumena logova. Ako debug nivo izlaže osetljive poslovne podatke, promenu treba odmah vratiti i prijaviti bezbednosnom vlasniku.
+  </li>
+  <li>
+    <strong>Pripremiti i po potrebi izvršiti rollback.</strong>
+    Najbezbedniji povratak u ovom scenariju jeste vraćanje reference na poznatu immutable verziju <code>v1</code>. Deployment istorija takođe može vratiti prethodni Pod template, ali eksplicitna referenca olakšava razumevanje ciljnog stanja.
+    <p><strong>Upozorenje:</strong> rollback ponovo menja Pod template i pokreće zamenu Podova. Ne izvršava se istovremeno sa drugim rollout-om niti bez procene dostupnosti.</p>
+    <pre><code class="language-bash">kubectl patch deployment inventory-web -n inventory-prod \
+  --type=json \
+  -p='[
+    {
+      "op": "test",
+      "path": "/spec/template/spec/volumes/0/configMap/name",
+      "value": "inventory-web-config-v2"
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/volumes/0/configMap/name",
+      "value": "inventory-web-config-v1"
+    }
+  ]'
+
+kubectl rollout status deployment/inventory-web \
+  -n inventory-prod --timeout=180s</code></pre> <strong>Validacija:</strong> nakon rollback-a oba nova Poda moraju biti Ready, montirani fajl mora ponovo sadržati TTL 300 i nivo logovanja info, a health endpoint mora vratiti uspešan odgovor. Ako promena ostaje aktivna, rollback komande se čuvaju u zapisu promene, ali se ne izvršavaju.
+
+  </li>
+  <li>
+    <strong>Završiti promenu i planirati cleanup.</strong>
+    ConfigMap v1 se ne briše odmah nakon uspešnog rollout-a. Zadržava se najmanje tokom definisanog perioda rollback-a i dok se ne potvrdi da ga nijedan aktivni workload ne referencira.
+    <pre><code class="language-bash">kubectl get deployment inventory-web -n inventory-prod \
+  -o jsonpath='{.spec.template.spec.volumes[*].configMap.name}{"\n"}'
+kubectl get pods -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" => "}{.spec.volumes[*].configMap.name}{"\n"}{end}'
+kubectl get configmaps -n inventory-prod \
+  -l app.kubernetes.io/name=inventory-web</code></pre>
+    <strong>Validacija:</strong> aktivni Deployment i svi njegovi Podovi moraju referencirati istu odobrenu verziju. Stari objekat može se ukloniti tek kroz zasebnu odobrenu cleanup promenu, nakon isteka perioda povratka i provere svih referenci.
+  </li>
+</ol>
+
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> Nova ConfigMap postoji kao immutable objekat; Deployment referencira odobrenu verziju; rollout se završava u roku od 180 sekundi; dostupne su 2 od 2 replike; svi Podovi imaju isti sadržaj konfiguracionog fajla; health endpoint vraća uspešan HTTP odgovor; nema događaja <code>FailedMount</code>, <code>BackOff</code> ili <code>Unhealthy</code>; logovi ne sadrže greške parsiranja konfiguracije; rollback postupak je dokumentovan i proveren na nivou komande, reference i očekivanog rezultata.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola odstupanja od izvora istine.</strong> Nakon svake promene i najmanje jednom u definisanom ciklusu kontrole upoređuje se aktivni objekat sa deklarativnim manifestom pomoću GitOps alata ili komande <code>kubectl diff -f</code>. Neočekivana razlika zahteva proveru audit događaja i obustavljanje automatizovanog prepisivanja dok se ne utvrdi vlasnik promene. Dokumentuju se uzrok, vreme, identitet i korektivna mera u sistemu za upravljanje promenama. Uspeh se meri odsustvom nedokumentovanog drift-a.</li>
+  <li><strong>Praćenje neuspešnih montiranja.</strong> Posle svakog rollout-a i kroz centralni event monitoring prate se događaji <code>FailedMount</code>, <code>Failed</code> i <code>BackOff</code>. Prva reakcija je provera imena ConfigMap objekta, namespace-a, ključeva i PodSpec reference. Incident se dokumentuje uz ime Poda, node, ReplicaSet i tačnu poruku događaja. Uspešnost se meri vremenom od detekcije do identifikovanja pogrešne reference.</li>
+  <li><strong>Validacija aplikacione sintakse pre rollout-a.</strong> Svaki konfiguracioni fajl treba proveriti parserom, linterom ili aplikacionom komandom za validaciju pre primene. Greška sintakse, nepoznato polje ili vrednost van dozvoljenog opsega blokira promenu. Rezultati validacije čuvaju se uz CI/CD izvršenje ili tiket. Uspeh se meri brojem konfiguracionih grešaka otkrivenih pre produkcije i odsustvom restart petlji izazvanih neispravnim fajlom.</li>
+  <li><strong>Kontrola veličine i sadržaja.</strong> Pre većih izmena proverava se serijalizovana veličina objekta i da li ConfigMap sadrži velike ili binarne artefakte koji pripadaju drugom skladištu. Približavanje ograničenju od 1 MiB zahteva redizajn, a ne deljenje sadržaja na proizvoljne ključeve bez analize. Odluka se dokumentuje u arhitektonskoj evidenciji.</li>
+  <li><strong>Pregled RBAC prava.</strong> Kvartalno i nakon promene odgovornosti proverava se ko može da čita, menja i briše ConfigMap objekte. Koriste se <code>kubectl auth can-i</code>, pregled Role i RoleBinding objekata i, gde postoji, centralni IAM izveštaj. Neočekivano pravo <code>update</code>, <code>patch</code> ili <code>delete</code> zahteva uklanjanje ili obrazloženo odobrenje. Uspeh se meri brojem uklonjenih suvišnih privilegija i potpunom vezom između prava i poslovne uloge.</li>
+  <li><strong>Nadzor obima logova posle promene nivoa logovanja.</strong> Nakon prelaska na debug nivo prati se stopa logova, zauzeće lokalnog prostora i opterećenje centralnog sistema za prikupljanje. Prag reakcije određuje platforma, ali svako višestruko povećanje u odnosu na baznu vrednost zahteva procenu. Prva reakcija je vremensko ograničavanje debug režima ili rollback. Dokumentuju se period, razlog i rezultat dijagnostike.</li>
+  <li><strong>Oporavak konfiguracije.</strong> Izvorni manifesti i istorija promena čuvaju se u verzionisanom repozitorijumu, dok klasterski backup mora obuhvatiti Kubernetes API objekte prema politici platforme. Integritet se proverava commit potpisima, kontrolama repozitorijuma i rezultatima backup posla. Probni restore u izolovanom namespace-u treba periodično da potvrdi da se ConfigMap može vratiti i povezati sa testnim workload-om. Backup je upotrebljiv tek kada obnovljeni Pod uspešno pročita očekivani sadržaj i prođe funkcionalnu proveru.</li>
+  <li><strong>Upravljanje starim verzijama.</strong> Najmanje nakon svakog uspešnog izdanja pregledaju se ConfigMap objekti označeni za istu aplikaciju. Objekat se ne briše dok postoji aktivna Pod, Deployment, StatefulSet, Job ili CronJob referenca i dok nije istekao period rollback-a. Cleanup se dokumentuje kao zasebna promena. Uspeh se meri odsustvom zastarelih objekata bez narušavanja mogućnosti oporavka.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Aktivni kubeconfig kontekst i namespace potvrđeni su komandama <code>kubectl config current-context</code> i <code>kubectl get namespace</code>.</li>
+  <li>Komande <code>kubectl auth can-i</code> potvrđuju samo prava potrebna za čitanje, kreiranje ConfigMap objekta, promenu Deployment-a i validaciju.</li>
+  <li>Početni Deployment ima očekivan broj dostupnih replika, a Pod događaji ne pokazuju postojeće greške.</li>
+  <li>Sadržaj ConfigMap objekta ne sadrži lozinke, tokene, privatne ključeve ili druge tajne.</li>
+  <li>Manifest prolazi serverski dry-run, a <code>kubectl diff</code> prikazuje samo odobrene promene.</li>
+  <li>Način korišćenja ConfigMap objekta je potvrđen kao <code>env</code>, <code>envFrom</code>, volumen ili argument komande.</li>
+  <li>Za promenljive okruženja planirano je kreiranje novih Podova; za volumen je potvrđeno da li aplikacija podržava reload.</li>
+  <li>Ako se koristi <code>subPath</code>, dokumentovano je da automatsko osvežavanje sadržaja nije dostupno.</li>
+  <li>Nova verzija ConfigMap objekta postoji, ima očekivane ključeve i, kada je planirano, <code>immutable: true</code>.</li>
+  <li>Deployment rollout završen je bez <code>FailedMount</code>, <code>CrashLoopBackOff</code> i neuspešnih readiness proba.</li>
+  <li>Sadržaj konfiguracije proverен je unutar svake aktivne replike, a ne samo u Kubernetes API objektu.</li>
+  <li>Funkcionalni test preko Service objekta vraća očekivani uspešan odgovor.</li>
+  <li>Aplikacioni logovi potvrđuju uspešno učitavanje konfiguracije bez izlaganja osetljivih podataka.</li>
+  <li>Rollback vraća referencu na poznatu prethodnu ConfigMap verziju i uključuje ponovnu proveru rollout-a.</li>
+  <li>Manifest, diff, rezultati validacije, vreme promene i identitet izvršioca evidentirani su u repozitorijumu i sistemu za upravljanje promenama.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  ConfigMap omogućava da jedna proverena kontejnerska slika radi u različitim okruženjima bez ugrađivanja promenljivih operativnih vrednosti u samu sliku. Njegova vrednost nije samo u čuvanju parova ključ–vrednost, već u jasnom razdvajanju odgovornosti: razvojni tim definiše kako aplikacija prima i validira konfiguraciju, platforma obezbeđuje pouzdano projektovanje podataka, a administrator kontroliše verziju, prava pristupa, rollout, validaciju i povratak na prethodno stanje.
+</p>
+<p>
+  Nakon ove lekcije administrator treba da razume razliku između konfiguracije učitane kao promenljiva okruženja i konfiguracije montirane kao fajl, uključujući posledice za ponovno učitavanje i restart Podova. Treba da ume da napravi deklarativan i po potrebi immutable ConfigMap, poveže ga sa workload objektom, proveri sadržaj u API-ju i unutar kontejnera, prati rolling update, tumači događaje i logove i potvrdi funkcionalni rezultat kroz aplikacioni endpoint.
+</p>
+<p>
+  Posebna odgovornost odnosi se na produkcione rizike. Pogrešan ključ može sprečiti pokretanje kontejnera, neispravan konfiguracioni fajl može izazvati restart petlju, promena nivoa logovanja može preopteretiti sistem za logove, a tajna greškom sačuvana u ConfigMap objektu može postati dostupna širokom krugu identiteta i alata. Uspešan API zahtev zato nije dovoljan kriterijum uspeha. Promena je završena tek kada su nove replike dostupne, efektivna konfiguracija potvrđena, aplikaciono ponašanje provereno i rollback ostao izvodljiv.
+</p>
+<p>
+  Granice tehnologije moraju ostati jasne. ConfigMap nije skladište tajni, baza podataka, repozitorijum velikih fajlova niti sistem za visokofrekventnu dinamičku konfiguraciju. Zahtevi za enkripcijom i rotacijom tajni, složenim validacionim šemama, distribucijom velikih artefakata ili trenutnim globalnim osvežavanjem mogu zahtevati Secret objekte, spoljašnji secrets manager, operator, CustomResourceDefinition ili namenski konfiguracioni servis.
+</p>
+<p>
+  Administrator sme da izvrši samo promene za koje ima i tehničko pravo i proceduralno odobrenje. Nejasno vlasništvo konfiguracije, sumnja da sadržaj uključuje tajne, neusaglašena očekivanja o reload ponašanju, neuspešna readiness proba, nedostupan rollback ili neočekivan uticaj na više aplikacija predstavljaju razlog za zaustavljanje promene i eskalaciju vlasniku aplikacije, platformskom arhitekti ili bezbednosnom timu. Profesionalno upravljanje ConfigMap objektima podrazumeva da svaka vrednost ima vlasnika, razlog, istoriju, validaciju i bezbedan put povratka.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za ConfigMap i Secret objekte, Kubernetes Core API referenca, kubectl CLI referenca, vodiči za deklarativno upravljanje i Kustomize generatore, dokumentacija za volumene i projektovane volumene, RBAC i ServiceAccount vodiči, Deployment rollout dokumentacija, smernice za probes, događaje, logove, bezbednosni kontekst, troubleshooting i oporavak Kubernetes API objekata
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-19-service-discovery.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-21-secret.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

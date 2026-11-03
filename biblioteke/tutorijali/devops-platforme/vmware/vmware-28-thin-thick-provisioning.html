@@ -1,0 +1,2614 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-28-thin-thick-provisioning.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Thin i Thick Provisioning – načini dodele prostora na disku | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte razliku između Thin i Thick Provisioning načina dodele prostora za VMware virtuelne diskove i naučite kada je najbolje koristiti svaki pristup.">
+
+  <meta name="keywords"
+        content="Thin Provisioning, Thick Provisioning, VMware storage, VMware provisioning, VMDK, datastore, virtuelni disk, VMware disk, VMFS, Lazy Zeroed Thick, Eager Zeroed Thick, ESXi storage, vSphere storage, VMware administracija, ESXi, vCenter, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-28-thin-thick-provisioning.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Thin i Thick Provisioning – načini dodele prostora na disku">
+
+  <meta property="og:description"
+        content="Saznajte kako funkcionišu Thin i Thick Provisioning i koje su njihove prednosti, ograničenja i tipične primene u VMware okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-28-thin-thick-provisioning.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-28-thin-thick-provisioning.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Thin i Thick Provisioning – načini dodele prostora na disku">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-28-thin-thick-provisioning.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-28-thin-thick-provisioning.png"
+           alt="Thin i Thick Provisioning – načini dodele prostora na disku">
+
+    </a>
+
+    <div class="page-subtitle">
+  VI. Skladištenje, politike i integritet podataka
+</div>
+
+<div class="page-subtitle">
+ 28. Thin i Thick Provisioning – alokacija prostora, rizici i praćenje potrošnje
+</div>
+
+<p>
+Provisioning virtuelnog diska određuje kako i kada VMware rezerviše fizički prostor na datastore-u za VMDK. Virtuelnoj mašini može biti prikazan disk kapaciteta 500 GB, ali način na koji se tih 500 GB odražava na stvarno zauzeće datastore-a zavisi od izabranog provisioning formata.
+</p>
+
+<p>
+Kod thin provisioned diska prostor se alocira postepeno, kako operativni sistem gosta upisuje nove blokove. Kod thick provisioned diska puni deklarisani kapacitet rezerviše se odmah. Thick disk zatim može biti lazy zeroed ili eager zeroed, u zavisnosti od toga kada se rezervisani blokovi prvi put nuliraju.
+</p>
+
+<p>
+Izbor provisioning formata utiče na:
+</p>
+
+<ul>
+  <li>trenutno zauzeće datastore-a;</li>
+  <li>brzinu kreiranja virtuelnog diska;</li>
+  <li>mogućnost storage overcommit-a;</li>
+  <li>operativni rizik od popunjavanja datastore-a;</li>
+  <li>ponašanje pri prvom upisu u prethodno neiskorišćen blok;</li>
+  <li>zahteve pojedinih aplikacija i VMware funkcionalnosti;</li>
+  <li>trajanje migracije, kloniranja i konverzije;</li>
+  <li>kapacitivno planiranje i monitoring;</li>
+  <li>backup, snapshot i recovery procedure.</li>
+</ul>
+
+<p>
+Provisioning format sam po sebi ne određuje kvalitet storage sistema. Thin disk na brzom i pravilno nadgledanom storage-u može pružiti odlične performanse, dok thick disk na preopterećenom storage sistemu može biti spor. Provisioning zato treba posmatrati zajedno sa latencijom, IOPS vrednostima, throughput-om, snapshot politikom, storage array mogućnostima i rastom poslovnih podataka.
+</p>
+
+<h3>Verzijski, platformski i terminološki okvir</h3>
+
+<p>
+Ova lekcija koristi klasične VMDK provisioning formate kako ih administratori vide u vSphere Client-u, ESXi alatima i aktuelnom VCF PowerCLI-ju. Na VMFS datastore-u izbor se tipično prikazuje kao <strong>Thin Provision</strong>, <strong>Thick Provision Lazy Zeroed</strong> i <strong>Thick Provision Eager Zeroed</strong>. Na NFS-u, vSAN-u i vVol datastore-ovima ista oznaka ne dokazuje isti fizički raspored blokova: stvarna rezervacija, efikasnost i reclamation zavise od protokola, storage politike i implementacije storage sistema.</p>
+
+<p>
+Primeri su usmereni na savremena vSphere 8.x/9.x i VCF PowerCLI okruženja, ali se raspoložive opcije moraju potvrditi prema verziji ESXi/vCenter sistema, tipu datastore-a, storage policy-ju, licenci i podršci konkretnog array-a. Posebno, zahtev za eager-zeroed thick ne treba nasleđivati iz stare procedure bez ponovne provere: neke clustering funkcije i dalje ga mogu zahtevati, dok se kod policy-driven storage-a isti cilj ostvaruje drugačijim mehanizmom rezervacije.</p>
+
+<h3>Logički kapacitet i fizički zauzet prostor</h3>
+
+<p>
+Kod virtuelnih diskova moraju se razlikovati najmanje tri vrednosti:
+</p>
+
+<ul>
+  <li><strong>konfigurisani kapacitet</strong> – veličina diska koju vidi virtuelna mašina;</li>
+  <li><strong>provisioned space</strong> – ukupan potencijalni prostor koji je konfiguracija VM-a obećala;</li>
+  <li><strong>used space</strong> – prostor koji je trenutno fizički zauzet na datastore-u.</li>
+</ul>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Virtuelna mašina:       DB-SRV01
+Kapacitet VMDK-a:       500 GB
+Provisioning format:    Thin
+Podaci upisani u gostu: 120 GB
+VMDK zauzeće:           približno 120 GB plus metadata
+Maksimalni mogući rast: do 500 GB</code></pre>
+
+<p>
+Gostujući operativni sistem vidi disk od 500 GB. Međutim, datastore trenutno ne mora da bude opterećen celim tim kapacitetom. Kako gost upisuje nove blokove, VMDK raste.
+</p>
+
+<p>
+Kod thick diska istog kapaciteta:
+</p>
+
+<pre><code class="language-none">Virtuelna mašina:       DB-SRV01
+Kapacitet VMDK-a:       500 GB
+Provisioning format:    Thick
+Podaci upisani u gostu: 120 GB
+Prostor rezervisan:     približno 500 GB</code></pre>
+
+<p>
+Na taj način je kapacitet za osnovni disk rezervisan, ali to ne znači da su dodatni zahtevi za prostor eliminisani. Snapshot delta datoteke, swap, suspend, logovi, backup operacije i konsolidacija i dalje mogu zahtevati slobodan prostor izvan osnovnog thick diska.
+</p>
+
+<h3>Thin Provision</h3>
+
+<p>
+Thin provisioned VMDK počinje kao mali objekat koji sadrži neophodne metapodatke. Fizički blokovi na datastore-u alociraju se kada operativni sistem gosta prvi put upiše podatke u odgovarajuće logičke blokove.
+</p>
+
+<p>
+Ako gost pročita blok koji nikada nije bio alociran, vraćaju se nule bez potrebe da je taj blok prethodno zauzimao fizički prostor.
+</p>
+
+<p>
+Primer životnog ciklusa thin diska:
+</p>
+
+<pre><code class="language-none">Konfigurisani kapacitet: 500 GB
+
+Nakon kreiranja VM-a:
+stvarno zauzeće ≈ nekoliko MB metapodataka
+
+Posle instalacije sistema:
+stvarno zauzeće ≈ 25 GB
+
+Posle instalacije aplikacije:
+stvarno zauzeće ≈ 60 GB
+
+Posle šest meseci rada:
+stvarno zauzeće ≈ 220 GB
+
+Maksimalni rast:
+do 500 GB</code></pre>
+
+<h4>Prednosti thin provisioninga</h4>
+
+<ul>
+  <li>Efikasnije korišćenje fizičkog storage kapaciteta.</li>
+  <li>Brže kreiranje velikih virtuelnih diskova.</li>
+  <li>Mogućnost da se VM-u dodeli kapacitet za očekivani rast bez trenutne pune fizičke potrošnje.</li>
+  <li>Jednostavnije laboratorijsko i razvojno okruženje.</li>
+  <li>Manja početna potrošnja prostora kod template-a i klonova.</li>
+  <li>Mogućnost storage overcommit-a uz odgovarajući monitoring i kontrolu.</li>
+</ul>
+
+<h4>Rizici thin provisioninga</h4>
+
+<ul>
+  <li>Ukupan deklarisani kapacitet diskova može premašiti stvarni kapacitet datastore-a.</li>
+  <li>Više VM-ova može istovremeno početi brzo da raste.</li>
+  <li>Datastore može ostati bez prostora iako je prilikom kreiranja VM-ova delovao dovoljno velik.</li>
+  <li>Brisanje datoteka u gostu ne mora automatski smanjiti fizičko zauzeće VMDK-a.</li>
+  <li>Administrator može pogrešno tumačiti provisioned space kao trenutno zauzeće.</li>
+  <li>Snapshot-i i backup poslovi mogu dodatno ubrzati potrošnju prostora.</li>
+</ul>
+
+<h3>Storage overcommit</h3>
+
+<p>
+Storage overcommit nastaje kada zbir maksimalnih kapaciteta thin diskova premašuje fizički slobodan prostor datastore-a.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Datastore kapacitet:              4 TB
+Rezerva za postojeće podatke:     1 TB
+Trenutno slobodno:                3 TB
+
+10 thin diskova × 500 GB:         5 TB provisioned
+Trenutno fizički zauzeto:         1,4 TB
+Potencijalni dodatni rast:        3,6 TB
+Stvarno slobodno na datastore-u:  3 TB</code></pre>
+
+<p>
+Okruženje trenutno radi, ali ako svi diskovi narastu do maksimalnog kapaciteta, nedostajaće najmanje 600 GB, bez uračunatih snapshot-a, swap datoteka i operativne rezerve.
+</p>
+
+<p>
+Overcommit nije automatski greška. On može biti planski način efikasnijeg korišćenja storage-a, ali samo ako postoje:
+</p>
+
+<ul>
+  <li>precizan inventar provisioned i used kapaciteta;</li>
+  <li>alarmski pragovi;</li>
+  <li>praćenje brzine rasta;</li>
+  <li>dovoljna operativna rezerva;</li>
+  <li>jasna procedura proširenja storage-a;</li>
+  <li>odgovornost za reagovanje na upozorenja;</li>
+  <li>kontrola snapshot i backup procesa;</li>
+  <li>realna procena maksimalnog istovremenog rasta.</li>
+</ul>
+
+<h3>Thick Provision Lazy Zeroed</h3>
+
+<p>
+Kod Thick Provision Lazy Zeroed diska puni deklarisani kapacitet rezerviše se na datastore-u u trenutku kreiranja. Međutim, rezervisani blokovi ne nuliraju se unapred. Blok se nulira neposredno pre prvog upisa u njega.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Kapacitet diska:       500 GB
+Rezervisano odmah:     500 GB
+Unapred nulirano:      ne
+Nuliranje bloka:       pri prvom upisu
+Brzina kreiranja:      uglavnom brža od eager zeroed thick</code></pre>
+
+<h4>Prednosti lazy-zeroed thick diska</h4>
+
+<ul>
+  <li>Puni osnovni kapacitet rezerviše se odmah.</li>
+  <li>Ne postoji rizik da osnovni VMDK ne može da naraste do deklarisane veličine zbog drugih VMDK diskova.</li>
+  <li>Kreiranje je brže nego kod eager-zeroed thick diska, posebno za velike diskove.</li>
+  <li>Jednostavnije kapacitivno planiranje u okruženjima bez thin overcommit-a.</li>
+</ul>
+
+<h4>Ograničenja lazy-zeroed thick diska</h4>
+
+<ul>
+  <li>Ceo deklarisani prostor zauzet je sa stanovišta datastore kapaciteta, čak i ako gost koristi mali deo.</li>
+  <li>Prvi upis u prethodno nekorišćen blok uključuje operaciju nuliranja.</li>
+  <li>Kreiranje velikog broja thick diskova može brzo rezervisati datastore.</li>
+  <li>Thick disk ne rešava rizik rasta snapshot-a.</li>
+  <li>Thick rezervacija na VMware sloju ne garantuje da underlying storage array nije dodatno thin provisioned.</li>
+</ul>
+
+<h3>Thick Provision Eager Zeroed</h3>
+
+<p>
+Kod Thick Provision Eager Zeroed diska puni deklarisani kapacitet rezerviše se odmah, a svi blokovi se nuliraju tokom kreiranja ili konverzije diska.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Kapacitet diska:       500 GB
+Rezervisano odmah:     500 GB
+Unapred nulirano:      da
+Trajanje kreiranja:    duže
+Prvi upis:             bez lazy-zeroing koraka</code></pre>
+
+<h4>Prednosti eager-zeroed thick diska</h4>
+
+<ul>
+  <li>Svi blokovi su alocirani i nulirani pre korišćenja.</li>
+  <li>Nema dodatnog nuliranja bloka pri prvom upisu.</li>
+  <li>Pogodan je kada konkretna aplikacija ili podržana VMware funkcionalnost zahteva ovaj format.</li>
+  <li>Kapacitet osnovnog VMDK-a rezervisan je unapred.</li>
+  <li>Predvidljiviji je u specifičnim, intenzivnim I/O scenarijima prvog upisa.</li>
+</ul>
+
+<h4>Ograničenja eager-zeroed thick diska</h4>
+
+<ul>
+  <li>Kreiranje i konverzija mogu dugo trajati.</li>
+  <li>Operacija može proizvesti značajno storage opterećenje.</li>
+  <li>Ceo kapacitet datastore-a zauzima se bez obzira na stvarnu količinu podataka u gostu.</li>
+  <li>Nije automatski najbolji izbor za svaku bazu podataka ili svaki produkcioni VM.</li>
+  <li>Snapshot-i i dalje mogu potrošiti dodatni slobodan prostor.</li>
+  <li>Proširivanje velikog eager-zeroed thick diska može prouzrokovati duži VM stun dok se novi prostor nulira.</li>
+</ul>
+
+<h3>Poređenje provisioning formata</h3>
+
+<pre><code class="language-none">Karakteristika              Thin       Lazy Zeroed Thick   Eager Zeroed Thick
+--------------------------  ---------  ------------------  -------------------
+Puni prostor rezervisan     Ne         Da                  Da
+Blokovi unapred nulirani    Ne         Ne                  Da
+Brzina kreiranja            Najbrža    Brza                Najsporija
+Moguć storage overcommit    Da         Ne na VMFS sloju    Ne na VMFS sloju
+Rast fizičkog zauzeća       Postepen   Rezervisano odmah   Rezervisano odmah
+Prvi upis u novi blok       Alokacija  Nuliranje           Direktan upis
+Efikasnost kapaciteta       Najveća    Niža                Niža
+Potreban monitoring rasta   Kritičan   Potreban            Potreban
+Snapshot dodatni prostor    Da         Da                  Da</code></pre>
+
+<h3>Provisioning na VMware i storage array sloju</h3>
+
+<p>
+Provisioning može postojati na više slojeva. VMware thick disk ne mora značiti da je fizički storage prostor zaista rezervisan na nivou storage sistema.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">VMware VMDK:        Thick 500 GB
+VMFS datastore:     vidi rezervisanih 500 GB
+SAN LUN:            10 TB
+Storage pool:       array thin provisioning
+Fizički diskovi:    prostor se alocira po upisu</code></pre>
+
+<p>
+U ovom slučaju VMware ne može da overcommit-uje konkretni VMDK unutar datastore-a, ali storage array može imati sopstveni overcommit. Ako se prati samo vCenter, a ne i array kapacitet, fizički storage pool može ostati bez prostora iako VMware datastore deluje pravilno.
+</p>
+
+<p>
+Administratori zato moraju razmenjivati informacije između:
+</p>
+
+<ul>
+  <li>VMware tima;</li>
+  <li>storage tima;</li>
+  <li>backup tima;</li>
+  <li>aplikacionog tima;</li>
+  <li>capacity management procesa.</li>
+</ul>
+
+<h3>Thin provisioning na različitim datastore tipovima</h3>
+
+<h4>VMFS</h4>
+
+<p>
+Na VMFS datastore-u administrator direktno bira thin, lazy-zeroed thick ili eager-zeroed thick format za standardni VMDK. Format se vidi kroz vSphere Client, PowerCLI i karakteristike VMDK-a.
+</p>
+
+<h4>NFS</h4>
+
+<p>
+Na NFS datastore-u ponašanje fizičke alokacije zavisi i od NFS servera. VMware može prikazivati virtual disk format, ali stvarno zauzeće i space reclamation zavise od podrške storage sistema, protokola i njegovog internog načina alokacije.
+</p>
+
+<h4>vSAN</h4>
+
+<p>
+Kod vSAN-a kapacitet i rezervacija prostora primarno se kontrolišu kroz storage politike. Object Space Reservation određuje procenat logičkog kapaciteta objekta koji treba unapred rezervisati. Zato klasična VMFS terminologija thin i thick nije dovoljna za razumevanje stvarne vSAN potrošnje.
+</p>
+
+<h4>vVol</h4>
+
+<p>
+Kod vVol storage-a provisioning ponašanje zavisi od mogućnosti storage array-a i politike dodeljene virtuelnoj mašini ili disku. Array može implementirati thin provisioning na nivou pojedinačnih storage objekata.
+</p>
+
+<h3>Kako gost upisuje podatke u thin disk</h3>
+
+<p>
+Kada aplikacija upiše podatak u prethodno neiskorišćen logički blok, tok izgleda ovako:
+</p>
+
+<pre><code class="language-none">Aplikacija
+    │
+    ▼
+Filesystem gosta
+    │
+    ▼
+Virtuelni storage kontroler
+    │
+    ▼
+ESXi proverava VMDK mapu blokova
+    │
+    ▼
+Blok još nije fizički alociran
+    │
+    ▼
+ESXi alocira datastore blok
+    │
+    ▼
+Podatak se upisuje
+    │
+    ▼
+Fizičko zauzeće VMDK-a raste</code></pre>
+
+<p>
+Kod sledećeg upisa u već alocirani blok nije potrebna nova alokacija tog bloka. Zato thin provisioning overhead nije jednostavna stalna kazna na svakoj I/O operaciji, već je posebno povezan sa prvim upisom u nove blokove i ponašanjem underlying storage-a.
+</p>
+
+<h3>Brisanje podataka u gostu i fizičko zauzeće</h3>
+
+<p>
+Kada korisnik obriše datoteku u operativnom sistemu gosta, filesystem obično samo označi blokove kao slobodne za ponovno korišćenje. VMDK i datastore ne moraju automatski znati da se ti fizički blokovi mogu osloboditi.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Thin VMDK kapacitet:       500 GB
+Najveće prethodno zauzeće: 300 GB
+Gost obrisao podatke:      200 GB
+Gost trenutno koristi:     100 GB
+VMDK na datastore-u:       može i dalje zauzimati približno 300 GB</code></pre>
+
+<p>
+Ovo nije nužno greška. Gost je oslobodio prostor za sopstvenu ponovnu upotrebu, ali storage sloj još nije reclaim-ovao blokove.
+</p>
+
+<p>
+Za automatsko ili ručno oslobađanje neiskorišćenih blokova potrebni su:
+</p>
+
+<ul>
+  <li>podržan gostujući operativni sistem;</li>
+  <li>podržan filesystem;</li>
+  <li>virtuelni kontroler koji prosleđuje UNMAP ili TRIM informacije;</li>
+  <li>podržan datastore i storage sistem;</li>
+  <li>pravilna konfiguracija svih slojeva.</li>
+</ul>
+
+<p>
+Pre pokretanja ručnih reclaim procedura treba proveriti aktuelnu Broadcom dokumentaciju, mogućnosti storage array-a i uticaj operacije na performanse.
+</p>
+
+<h3>Thin provisioning i snapshot-i</h3>
+
+<p>
+Kada se kreira snapshot, novi upisi preusmeravaju se u snapshot delta disk. Delta disk je prostor-efikasan i raste kako se menjaju blokovi.
+</p>
+
+<p>
+Kod thin baznog diska rast datastore zauzeća može dolaziti iz dva pravca:
+</p>
+
+<ul>
+  <li>bazni disk je već zauzeo prostor za ranije upisane blokove;</li>
+  <li>delta disk raste zbog novih promena posle snapshot-a.</li>
+</ul>
+
+<p>
+Kod thick baznog diska osnovni kapacitet jeste rezervisan, ali snapshot delta datoteka zahteva dodatni slobodan prostor izvan te rezervacije.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Datastore kapacitet:             2 TB
+Thick VMDK:                      1,5 TB
+Ostale VM datoteke:              200 GB
+Slobodan prostor:                300 GB
+
+Kreiran snapshot
+Promene tokom nekoliko dana:     350 GB
+
+Rezultat:
+delta disk pokušava da premaši raspoloživih 300 GB
+datastore ostaje bez prostora</code></pre>
+
+<p>
+Thick disk zato ne garantuje da VM ne može zaustaviti rad zbog nedostatka prostora dok koristi snapshot.
+</p>
+
+<h3>Thin provisioning i swap datoteke</h3>
+
+<p>
+Kada se VM uključi, ESXi obično kreira <code>.vswp</code> datoteku čija veličina zavisi od konfigurisane memorije i memory reservation vrednosti.
+</p>
+
+<p>
+Pojednostavljeno:
+</p>
+
+<pre><code class="language-none">VM memorija:          32 GB
+Memory reservation:    8 GB
+Potencijalni .vswp:   približno 24 GB</code></pre>
+
+<p>
+Ako datastore nema dovoljno prostora za potrebnu swap datoteku, VM možda neće moći da se pokrene. Provisioning diskova zato nije jedini kapacitivni zahtev VM-a.
+</p>
+
+<h3>Thin provisioning i template-i</h3>
+
+<p>
+Thin diskovi su pogodni za template-e i laboratorijske klonove jer veliki broj VM-ova može početi sa relativno malom fizičkom potrošnjom.
+</p>
+
+<p>
+Međutim, posle masovnog deployment-a može doći do istovremenog rasta zbog:
+</p>
+
+<ul>
+  <li>instalacije ažuriranja;</li>
+  <li>generisanja logova;</li>
+  <li>preuzimanja aplikacionih paketa;</li>
+  <li>antivirusnih baza;</li>
+  <li>pagefile ili swap aktivnosti;</li>
+  <li>inicijalnog punjenja baza podataka;</li>
+  <li>kreiranja snapshot-a pre konfiguracionih promena.</li>
+</ul>
+
+<p>
+Kapacitet se zato planira prema očekivanom postdeployment rastu, a ne samo prema početnoj veličini klona.
+</p>
+
+<h3>Provisioning i performanse</h3>
+
+<p>
+Provisioning format može uticati na pojedine I/O operacije, ali nije jedini niti uvek glavni faktor performansi. Potrebno je razlikovati:
+</p>
+
+<ul>
+  <li>trošak alokacije novog bloka kod thin diska;</li>
+  <li>trošak nuliranja pri prvom upisu kod lazy-zeroed thick diska;</li>
+  <li>duže početno kreiranje eager-zeroed thick diska;</li>
+  <li>latenciju fizičkog storage-a;</li>
+  <li>cache ponašanje;</li>
+  <li>queue depth;</li>
+  <li>multipathing;</li>
+  <li>snapshot lanac;</li>
+  <li>istovremeno opterećenje drugih VM-ova.</li>
+</ul>
+
+<p>
+Na modernom storage sistemu razlika između provisioning formata može biti manja od razlike koju izazivaju preopterećen datastore, pogrešna multipathing politika ili veliki broj dugotrajnih snapshot-a.
+</p>
+
+<p>
+Izbor eager-zeroed thick diska treba da bude zasnovan na stvarnom zahtevu, testovima i podržanoj arhitekturi, a ne na pretpostavci da je svaki thick disk automatski brži.
+</p>
+
+<h3>Kada koristiti Thin Provision</h3>
+
+<p>
+Thin provisioning je često prikladan za:
+</p>
+
+<ul>
+  <li>razvojna i testna okruženja;</li>
+  <li>virtuelne desktop sisteme;</li>
+  <li>template-e i veliki broj sličnih VM-ova;</li>
+  <li>servere čiji je početni kapacitet mali, a rast postepen;</li>
+  <li>okruženja sa kvalitetnim monitoringom i capacity procesom;</li>
+  <li>storage sisteme koji dobro podržavaju thin provisioning i reclamation;</li>
+  <li>situacije u kojima je efikasnost kapaciteta važnija od pune unapred rezervisane veličine.</li>
+</ul>
+
+<h3>Kada koristiti Lazy-Zeroed Thick</h3>
+
+<p>
+Lazy-zeroed thick može biti prikladan kada:
+</p>
+
+<ul>
+  <li>osnovni kapacitet mora biti rezervisan;</li>
+  <li>nije potreban eager-zeroing;</li>
+  <li>veliki disk treba relativno brzo kreirati;</li>
+  <li>organizacija ne dozvoljava VMware storage overcommit;</li>
+  <li>potrebna je jednostavnija predvidljivost kapaciteta.</li>
+</ul>
+
+<h3>Kada koristiti Eager-Zeroed Thick</h3>
+
+<p>
+Eager-zeroed thick koristi se kada:
+</p>
+
+<ul>
+  <li>konkretna podržana funkcionalnost zahteva ovaj format;</li>
+  <li>aplikaciona ili infrastrukturna dokumentacija izričito nalaže unapred nulirane blokove;</li>
+  <li>izmereno opterećenje opravdava takav izbor;</li>
+  <li>postoji dovoljno vremena i kapaciteta za kreiranje ili konverziju;</li>
+  <li>administrator razume uticaj na storage tokom eager-zeroing operacije.</li>
+</ul>
+
+<p>
+Sam izraz „produkcioni server” nije dovoljan razlog za eager-zeroed thick. Izbor treba dokumentovati i povezati sa tehničkim zahtevom.
+</p>
+
+<h3>Pregled provisioning formata u vSphere Client-u</h3>
+
+<p>
+Za pojedinačni VM:
+</p>
+
+<pre><code class="language-none">Virtual Machine → Actions → Edit Settings</code></pre>
+
+<p>
+Za svaki disk mogu se proveriti:
+</p>
+
+<ul>
+  <li>kapacitet;</li>
+  <li>disk provisioning;</li>
+  <li>datastore;</li>
+  <li>storage policy;</li>
+  <li>device node;</li>
+  <li>disk mode;</li>
+  <li>IOPS limit, ako postoji.</li>
+</ul>
+
+<p>
+U prikazu VM storage podataka treba razlikovati:
+</p>
+
+<ul>
+  <li><strong>Provisioned Space</strong> – potencijalno obećani kapacitet;</li>
+  <li><strong>Used Space</strong> – stvarno trenutno zauzeće;</li>
+  <li><strong>Unshared Space</strong> – prostor koji nije deljen sa drugim objektima, u zavisnosti od tipa objekta i storage-a.</li>
+</ul>
+
+<h3>Pregled formata kroz ESXi Shell</h3>
+
+<p>
+Lista VM-ova:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>
+Prelazak u folder VM-a:
+</p>
+
+<pre><code class="language-bash">cd /vmfs/volumes/PROD-VMFS01/APP-SRV01</code></pre>
+
+<p>
+Pregled diskova:
+</p>
+
+<pre><code class="language-bash">ls -lah *.vmdk</code></pre>
+
+<p>
+Detalji VMDK-a:
+</p>
+
+<pre><code class="language-bash">vmkfstools -P APP-SRV01.vmdk</code></pre>
+
+<p>
+Pregled descriptor-a:
+</p>
+
+<pre><code class="language-bash">cat APP-SRV01.vmdk</code></pre>
+
+<p>
+Kod baznog VMFS diska vrednost <code>createType</code> može pomoći u identifikaciji strukture diska, ali administrator ne treba da menja descriptor radi konverzije. Za konverziju se koriste podržane VMware operacije.
+</p>
+
+<h3>Provera logičke i stvarne veličine</h3>
+
+<p>
+Komanda:
+</p>
+
+<pre><code class="language-bash">ls -lh APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+može prikazati logičku veličinu datoteke, dok:
+</p>
+
+<pre><code class="language-bash">du -h APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+prikazuje fizički zauzet prostor na filesystem-u.
+</p>
+
+<p>
+Primer thin diska:
+</p>
+
+<pre><code class="language-bash">ls -lh APP-SRV01-flat.vmdk
+-rw------- 1 root root 500G APP-SRV01-flat.vmdk
+
+du -h APP-SRV01-flat.vmdk
+126G APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+Logički kapacitet je 500 GB, ali trenutno fizičko zauzeće iznosi približno 126 GB.
+</p>
+
+<p>
+Kod thick diska obe vrednosti će biti približno jednake deklarisanom kapacitetu, uz razlike povezane sa načinom prikaza i metapodacima.
+</p>
+
+<h3>Pregled provisioning formata kroz VCF PowerCLI</h3>
+
+<p>
+Povezivanje sa vCenter Serverom:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local</code></pre>
+
+<p>
+Pregled diskova jednog VM-a:
+</p>
+
+<pre><code class="language-powershell">Get-VM -Name "APP-SRV01" |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename</code></pre>
+
+<p>
+Pregled svih diskova:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename |
+Sort-Object Parent, Name</code></pre>
+
+<p>
+Samo thin diskovi:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.StorageFormat -eq "Thin"
+} |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              Filename</code></pre>
+
+<p>
+Samo thick diskovi:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.StorageFormat -ne "Thin"
+} |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Filename</code></pre>
+
+<h3>Izveštaj o provisioned i used prostoru VM-ova</h3>
+
+<pre><code class="language-powershell">Get-VM |
+Select-Object Name,
+              PowerState,
+              @{Name="ProvisionedGB";Expression={
+                  [math]::Round($_.ProvisionedSpaceGB, 2)
+              }},
+              @{Name="UsedGB";Expression={
+                  [math]::Round($_.UsedSpaceGB, 2)
+              }},
+              @{Name="UnusedProvisionedGB";Expression={
+                  [math]::Round(
+                      $_.ProvisionedSpaceGB - $_.UsedSpaceGB,
+                      2
+                  )
+              }} |
+Sort-Object ProvisionedGB -Descending</code></pre>
+
+<p>
+Ovaj izveštaj ne predstavlja savršenu meru reclaimable prostora. Snapshot-i, shared objekti, swap, suspend datoteke i način na koji storage prijavljuje kapacitet mogu uticati na vrednosti. Izveštaj služi za početnu analizu, a ne kao automatsko odobrenje za brisanje ili smanjivanje kapaciteta.
+</p>
+
+<h3>Izveštaj o datastore overcommit-u</h3>
+
+<p>
+Sledeći primer zbirno upoređuje provisioned i used prostor VM-ova povezanih sa datastore-om:
+</p>
+
+<pre><code class="language-powershell">$report = foreach ($datastore in Get-Datastore) {
+
+    $vms = Get-VM -Datastore $datastore -ErrorAction SilentlyContinue
+
+    $provisioned = ($vms |
+        Measure-Object -Property ProvisionedSpaceGB -Sum).Sum
+
+    $used = ($vms |
+        Measure-Object -Property UsedSpaceGB -Sum).Sum
+
+    [PSCustomObject]@{
+        Datastore       = $datastore.Name
+        Type            = $datastore.Type
+        CapacityGB      = [math]::Round($datastore.CapacityGB, 2)
+        FreeSpaceGB     = [math]::Round($datastore.FreeSpaceGB, 2)
+        FreePercent     = if ($datastore.CapacityGB -gt 0) {
+            [math]::Round(
+                ($datastore.FreeSpaceGB /
+                 $datastore.CapacityGB) * 100,
+                2
+            )
+        } else {
+            0
+        }
+        VMProvisionedGB = [math]::Round($provisioned, 2)
+        VMUsedGB        = [math]::Round($used, 2)
+        ProvisionRatio  = if ($datastore.CapacityGB -gt 0) {
+            [math]::Round(
+                $provisioned / $datastore.CapacityGB,
+                2
+            )
+        } else {
+            0
+        }
+    }
+}
+
+$report |
+Sort-Object FreePercent |
+Format-Table -AutoSize</code></pre>
+
+<p>
+ProvisionRatio veći od 1 ukazuje da je zbir provisioned prostora VM-ova veći od fizičkog kapaciteta datastore-a. Međutim, precizna procena mora uključiti i ostale objekte i ponašanje storage-a.
+</p>
+
+<h3>Kreiranje thin diska kroz PowerCLI</h3>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "APP-SRV01"
+$datastore = Get-Datastore -Name "PROD-VMFS01"
+
+New-HardDisk -VM $vm `
+             -CapacityGB 100 `
+             -Datastore $datastore `
+             -StorageFormat Thin</code></pre>
+
+<h3>Kreiranje thick diska kroz PowerCLI</h3>
+
+<p>
+Lazy-zeroed thick:
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "APP-SRV01"
+$datastore = Get-Datastore -Name "PROD-VMFS01"
+
+New-HardDisk -VM $vm `
+             -CapacityGB 100 `
+             -Datastore $datastore `
+             -StorageFormat Thick</code></pre>
+
+<p>
+Eager-zeroed thick:
+</p>
+
+<pre><code class="language-powershell">New-HardDisk -VM $vm `
+             -CapacityGB 100 `
+             -Datastore $datastore `
+             -StorageFormat EagerZeroedThick</code></pre>
+
+<p>
+Pre kreiranja velikog eager-zeroed thick diska treba proveriti:
+</p>
+
+<ul>
+  <li>slobodan prostor;</li>
+  <li>trenutnu storage latenciju;</li>
+  <li>period niskog opterećenja;</li>
+  <li>trajanje operacije;</li>
+  <li>uticaj na druge VM-ove;</li>
+  <li>da li je format zaista potreban.</li>
+</ul>
+
+<h3>Kreiranje diskova pomoću vmkfstools</h3>
+
+<p>
+Thin disk od 20 GB:
+</p>
+
+<pre><code class="language-bash">vmkfstools -c 20G -d thin LAB-THIN01.vmdk</code></pre>
+
+<p>
+Lazy-zeroed thick disk:
+</p>
+
+<pre><code class="language-bash">vmkfstools -c 20G -d zeroedthick LAB-LZT01.vmdk</code></pre>
+
+<p>
+Eager-zeroed thick disk:
+</p>
+
+<pre><code class="language-bash">vmkfstools -c 20G -d eagerzeroedthick LAB-EZT01.vmdk</code></pre>
+
+<p>
+Ove komande kreiraju VMDK na trenutnoj lokaciji. Pre izvršavanja obavezno treba potvrditi:
+</p>
+
+<pre><code class="language-bash">pwd
+df -h
+vdf -h</code></pre>
+
+<p>
+U produkcionom okruženju standardno je bezbednije kreirati disk kroz vCenter Server ili PowerCLI, kako bi se automatski održavale inventory i konfiguracione veze.
+</p>
+
+<h3>Konverzija provisioning formata</h3>
+
+<p>
+Provisioning format ne treba menjati ručnim editovanjem descriptor-a. Podržani pristupi uključuju:
+</p>
+
+<ul>
+  <li>Storage vMotion uz izbor novog formata;</li>
+  <li>kloniranje VMDK-a komandom <code>vmkfstools -i</code>;</li>
+  <li>inflating thin diska u eager-zeroed thick format;</li>
+  <li>cold migration ili clone operaciju;</li>
+  <li>storage-array specifične procedure kada su zvanično podržane.</li>
+</ul>
+
+<h3>Konverzija kroz Storage vMotion</h3>
+
+<p>
+U vSphere Client-u:
+</p>
+
+<ol>
+  <li>Desni klik na virtuelnu mašinu.</li>
+  <li>Izabrati <strong>Migrate</strong>.</li>
+  <li>Izabrati <strong>Change storage only</strong>.</li>
+  <li>Izabrati odredišni datastore.</li>
+  <li>Izabrati <strong>Configure per disk</strong> ako različiti diskovi zahtevaju različit format.</li>
+  <li>Za ciljni disk izabrati Thin, Thick ili Eager Zeroed Thick, prema dostupnim opcijama.</li>
+  <li>Proveriti kompatibilnost.</li>
+  <li>Pokrenuti migraciju i pratiti zadatak.</li>
+</ol>
+
+<p>
+Ako se VM migrira nazad na isti datastore radi promene formata, dostupnost opcije zavisi od konkretnog okruženja i podržanog migracionog puta. Često se koristi privremeni drugi datastore.
+</p>
+
+<h3>Konverzija kroz PowerCLI migraciju</h3>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "LAB-APP01"
+$target = Get-Datastore -Name "LAB-VMFS02"
+
+Move-VM -VM $vm `
+        -Datastore $target `
+        -DiskStorageFormat Thin</code></pre>
+
+<p>
+Primer za eager-zeroed thick:
+</p>
+
+<pre><code class="language-powershell">Move-VM -VM $vm `
+        -Datastore $target `
+        -DiskStorageFormat EagerZeroedThick</code></pre>
+
+<p>
+Pre korišćenja treba proveriti parametre aktuelne VCF PowerCLI verzije i kompatibilnost odredišnog datastore-a.
+</p>
+
+<h3>Konverzija kloniranjem pomoću vmkfstools</h3>
+
+<p>
+Thin u lazy-zeroed thick:
+</p>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/LAB-VMFS01/LAB-VM/LAB-DATA.vmdk \
+/vmfs/volumes/LAB-VMFS02/CONVERTED/LAB-DATA-LZT.vmdk \
+-d zeroedthick</code></pre>
+
+<p>
+Thin u eager-zeroed thick:
+</p>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/LAB-VMFS01/LAB-VM/LAB-DATA.vmdk \
+/vmfs/volumes/LAB-VMFS02/CONVERTED/LAB-DATA-EZT.vmdk \
+-d eagerzeroedthick</code></pre>
+
+<p>
+Thick u thin:
+</p>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/LAB-VMFS01/LAB-VM/LAB-DATA.vmdk \
+/vmfs/volumes/LAB-VMFS02/CONVERTED/LAB-DATA-THIN.vmdk \
+-d thin</code></pre>
+
+<p>
+Kod ove procedure novi VMDK se kreira kao poseban disk. Posle provere klona može se povezati sa recovery ili test VM-om. Originalni disk se ne briše dok se ne potvrde integritet, podaci i odobrenje za uklanjanje.
+</p>
+
+<h3>Inflate thin diska</h3>
+
+<p>
+Komanda:
+</p>
+
+<pre><code class="language-bash">vmkfstools -j LAB-DATA.vmdk</code></pre>
+
+<p>
+alocira i nulira prethodno nealocirane blokove thin diska, pretvarajući ga u eager-zeroed thick format uz očuvanje postojećih podataka.
+</p>
+
+<p>
+Pre inflate operacije potrebno je:
+</p>
+
+<ul>
+  <li>isključiti VM ili ukloniti disk iz aktivne upotrebe prema zvaničnoj proceduri;</li>
+  <li>proveriti da nema snapshot-a;</li>
+  <li>obezbediti dovoljno slobodnog prostora za pun kapacitet;</li>
+  <li>proceniti trajanje i storage opterećenje;</li>
+  <li>imati proverenu rezervnu kopiju;</li>
+  <li>proveriti da je izabrana descriptor, a ne podatkovna datoteka.</li>
+</ul>
+
+<h3>Praćenje datastore kapaciteta</h3>
+
+<p>
+ESXi prikaz:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+vdf -h</code></pre>
+
+<p>
+PowerCLI izveštaj:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="UsedGB";Expression={
+                  [math]::Round(
+                      $_.CapacityGB - $_.FreeSpaceGB,
+                      2
+                  )
+              }},
+              @{Name="FreePercent";Expression={
+                  if ($_.CapacityGB -gt 0) {
+                      [math]::Round(
+                          ($_.FreeSpaceGB /
+                           $_.CapacityGB) * 100,
+                          2
+                      )
+                  } else {
+                      0
+                  }
+              }} |
+Sort-Object FreePercent</code></pre>
+
+<h3>Alarmi za thin provisioning</h3>
+
+<p>
+Alarm ne treba da se zasniva samo na jednom procentualnom pragu. Veliki datastore može imati 10% slobodnog prostora koji predstavlja više stotina gigabajta, dok mali datastore sa 20% može imati premalo prostora za jednu konsolidaciju.
+</p>
+
+<p>
+Dobar model koristi:
+</p>
+
+<ul>
+  <li>procenat slobodnog prostora;</li>
+  <li>apsolutni broj slobodnih gigabajta;</li>
+  <li>brzinu rasta;</li>
+  <li>broj i veličinu aktivnih snapshot-a;</li>
+  <li>storage overcommit odnos;</li>
+  <li>planirane deployment i backup poslove;</li>
+  <li>vreme potrebno za proširenje storage-a.</li>
+</ul>
+
+<p>
+Primer organizacionih pragova:
+</p>
+
+<pre><code class="language-none">Informativno: slobodno manje od 25%
+Upozorenje:   slobodno manje od 20%
+Kritično:     slobodno manje od 10%
+Hitno:        manje od najvećeg očekivanog snapshot/restore zahteva</code></pre>
+
+<p>
+Ovi pragovi su samo primer. Produkcioni pragovi određuju se prema veličini, stopi rasta, SLA zahtevima i storage procedurama.
+</p>
+
+<h3>Kapacitivna prognoza</h3>
+
+<p>
+Sama trenutna vrednost ne pokazuje kada će datastore postati kritičan.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Slobodno danas:              900 GB
+Prosečan dnevni rast:         30 GB
+Operativna rezerva:          300 GB
+Raspoloživo za normalan rast: 600 GB
+
+Procena:
+600 GB / 30 GB dnevno = približno 20 dana</code></pre>
+
+<p>
+Ako nabavka ili proširenje storage-a traje šest nedelja, incident je već u nastajanju iako je datastore trenutno 30% slobodan.
+</p>
+
+<h3>PowerCLI primer prognoze na osnovu dva merenja</h3>
+
+<pre><code class="language-powershell"># Prvo merenje sačuvati u CSV:
+Get-Datastore |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="MeasuredAt";Expression={
+                  Get-Date
+              }} |
+Export-Csv "./datastore-baseline.csv" -NoTypeInformation
+
+# Posle odgovarajućeg perioda učitati staro i novo stanje:
+$old = Import-Csv "./datastore-baseline.csv"
+
+$new = Get-Datastore |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB
+
+$forecast = foreach ($current in $new) {
+
+    $previous = $old |
+        Where-Object {
+            $_.Name -eq $current.Name
+        } |
+        Select-Object -First 1
+
+    if ($previous) {
+        $oldFree = [double]$previous.FreeSpaceGB
+        $growth = $oldFree - $current.FreeSpaceGB
+
+        [PSCustomObject]@{
+            Datastore     = $current.Name
+            OldFreeGB     = [math]::Round($oldFree, 2)
+            NewFreeGB     = [math]::Round(
+                                $current.FreeSpaceGB,
+                                2
+                            )
+            ConsumedGB    = [math]::Round($growth, 2)
+            MeasurementAt = Get-Date
+        }
+    }
+}
+
+$forecast | Format-Table -AutoSize</code></pre>
+
+<p>
+Za ozbiljnu prognozu potrebna su višestruka merenja, istorijske metrike i izdvajanje jednokratnih događaja, kao što su migracije ili veliki restore poslovi.
+</p>
+
+<h3>Praktikum 1 – Poređenje thin i thick diskova na VMFS datastore-u</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Kreirati tri jednaka laboratorijska diska i uporediti logički kapacitet, fizičko zauzeće i vreme kreiranja.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>laboratorijski VMFS datastore;</li>
+  <li>najmanje 7 GB slobodnog prostora;</li>
+  <li>SSH pristup ESXi hostu;</li>
+  <li>diskovi se ne priključuju produkcionom VM-u.</li>
+</ul>
+
+<h4>Korak 1 – Priprema direktorijuma</h4>
+
+<pre><code class="language-bash">cd /vmfs/volumes/LAB-VMFS01
+mkdir provisioning-lab
+cd provisioning-lab
+pwd</code></pre>
+
+<h4>Korak 2 – Kreiranje thin diska</h4>
+
+<pre><code class="language-bash">time vmkfstools -c 2G -d thin LAB-THIN.vmdk</code></pre>
+
+<h4>Korak 3 – Kreiranje lazy-zeroed thick diska</h4>
+
+<pre><code class="language-bash">time vmkfstools -c 2G -d zeroedthick LAB-LZT.vmdk</code></pre>
+
+<h4>Korak 4 – Kreiranje eager-zeroed thick diska</h4>
+
+<pre><code class="language-bash">time vmkfstools -c 2G -d eagerzeroedthick LAB-EZT.vmdk</code></pre>
+
+<h4>Korak 5 – Poređenje logičke veličine</h4>
+
+<pre><code class="language-bash">ls -lh</code></pre>
+
+<h4>Korak 6 – Poređenje fizičkog zauzeća</h4>
+
+<pre><code class="language-bash">du -h *-flat.vmdk
+du -sh .</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<ul>
+  <li>Sva tri diska imaju isti logički kapacitet.</li>
+  <li>Thin disk početno zauzima veoma malo prostora.</li>
+  <li>Oba thick diska rezervišu približno puni kapacitet.</li>
+  <li>Eager-zeroed thick disk obično se kreira duže jer se blokovi nuliraju.</li>
+</ul>
+
+<h4>Čišćenje laboratorije</h4>
+
+<p>
+Nakon potvrde da diskovi nisu povezani ni sa jednim VM-om:
+</p>
+
+<pre><code class="language-bash">vmkfstools -U LAB-THIN.vmdk
+vmkfstools -U LAB-LZT.vmdk
+vmkfstools -U LAB-EZT.vmdk
+
+cd ..
+rmdir provisioning-lab</code></pre>
+
+<p>
+Za brisanje VMDK-a treba koristiti descriptor putanju i odgovarajuću VMware komandu, a ne ručno odvojeno brisati <code>-flat.vmdk</code>.
+</p>
+
+<h3>Praktikum 2 – Inventar provisioning formata i overcommit analiza</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Napraviti pregled svih diskova i proceniti kapacitivni rizik datastore-a.
+</p>
+
+<h4>Korak 1 – Inventar diskova</h4>
+
+<pre><code class="language-powershell">$disks = Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename
+
+$disks |
+Sort-Object Parent, Name |
+Format-Table -AutoSize</code></pre>
+
+<h4>Korak 2 – Grupisanje po formatu</h4>
+
+<pre><code class="language-powershell">$disks |
+Group-Object StorageFormat |
+Select-Object Name,
+              Count,
+              @{Name="TotalCapacityGB";Expression={
+                  [math]::Round(
+                      ($_.Group |
+                       Measure-Object CapacityGB -Sum).Sum,
+                      2
+                  )
+              }} |
+Format-Table -AutoSize</code></pre>
+
+<h4>Korak 3 – VM provisioned i used pregled</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Select-Object Name,
+              @{Name="ProvisionedGB";Expression={
+                  [math]::Round(
+                      $_.ProvisionedSpaceGB,
+                      2
+                  )
+              }},
+              @{Name="UsedGB";Expression={
+                  [math]::Round(
+                      $_.UsedSpaceGB,
+                      2
+                  )
+              }},
+              @{Name="UsedPercent";Expression={
+                  if ($_.ProvisionedSpaceGB -gt 0) {
+                      [math]::Round(
+                          ($_.UsedSpaceGB /
+                           $_.ProvisionedSpaceGB) * 100,
+                          2
+                      )
+                  } else {
+                      0
+                  }
+              }} |
+Sort-Object UsedPercent -Descending</code></pre>
+
+<h4>Korak 4 – Datastore kapacitet</h4>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(
+                      ($_.FreeSpaceGB /
+                       $_.CapacityGB) * 100,
+                      2
+                  )
+              }} |
+Sort-Object FreePercent</code></pre>
+
+<h4>Korak 5 – Izvoz</h4>
+
+<pre><code class="language-powershell">$disks |
+Export-Csv "./disk-provisioning-inventory.csv" `
+           -NoTypeInformation</code></pre>
+
+<h4>Administratorska analiza</h4>
+
+<p>
+Identifikovati:
+</p>
+
+<ul>
+  <li>datastore-e sa niskim slobodnim prostorom;</li>
+  <li>veliki broj thin diskova na istom datastore-u;</li>
+  <li>VM-ove sa velikom razlikom između provisioned i used prostora;</li>
+  <li>thick diskove koji su možda nepotrebno rezervisali kapacitet;</li>
+  <li>eager-zeroed thick diskove bez dokumentovanog razloga.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Dobijen je inventar koji omogućava plansku, ali ne automatsku odluku o konverziji ili proširenju storage-a.
+</p>
+
+<h3>Praktikum 3 – Rast thin VMDK-a tokom upisa podataka</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Pratiti fizički rast thin diska dok Linux gost upisuje nove podatke.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>laboratorijski Linux VM;</li>
+  <li>novi thin disk od 10 GB;</li>
+  <li>filesystem montiran na <code>/data</code>;</li>
+  <li>dovoljno prostora na datastore-u.</li>
+</ul>
+
+<h4>Korak 1 – Početna provera u gostu</h4>
+
+<pre><code class="language-bash">df -h /data
+lsblk</code></pre>
+
+<h4>Korak 2 – Početna provera na ESXi hostu</h4>
+
+<pre><code class="language-bash">cd /vmfs/volumes/LAB-VMFS01/LAB-LINUX01
+ls -lh LAB-LINUX01-DATA01-flat.vmdk
+du -h LAB-LINUX01-DATA01-flat.vmdk</code></pre>
+
+<h4>Korak 3 – Upis 2 GB podataka u gostu</h4>
+
+<pre><code class="language-bash">sudo dd if=/dev/zero \
+        of=/data/testfile.bin \
+        bs=1M \
+        count=2048 \
+        status=progress
+
+sync</code></pre>
+
+<h4>Korak 4 – Ponovna provera na ESXi hostu</h4>
+
+<pre><code class="language-bash">du -h LAB-LINUX01-DATA01-flat.vmdk
+vdf -h</code></pre>
+
+<h4>Korak 5 – Brisanje datoteke u gostu</h4>
+
+<pre><code class="language-bash">sudo rm -f /data/testfile.bin
+sync
+df -h /data</code></pre>
+
+<h4>Korak 6 – Ponovna provera VMDK-a</h4>
+
+<pre><code class="language-bash">du -h LAB-LINUX01-DATA01-flat.vmdk</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+VMDK raste tokom prvog upisa novih blokova. Posle brisanja datoteke gost prikazuje slobodan prostor, ali fizičko zauzeće VMDK-a ne mora odmah da se smanji.
+</p>
+
+<h4>Pouka</h4>
+
+<p>
+Slobodan prostor unutar gosta i slobodan prostor datastore-a nisu ista vrednost.
+</p>
+
+<h3>Praktikum 4 – Konverzija thin diska u thick format</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Klonirati ugašeni laboratorijski VMDK iz thin u eager-zeroed thick format i proveriti rezultat.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>izvorni test VM je ugašen;</li>
+  <li>nema snapshot-a;</li>
+  <li>odredišni datastore ima dovoljno prostora za pun disk;</li>
+  <li>postoji backup laboratorijskih podataka;</li>
+  <li>radi se nad podatkovnim, a ne produkcionim diskom.</li>
+</ul>
+
+<h4>Korak 1 – Provera izvornog diska</h4>
+
+<pre><code class="language-bash">vmkfstools -q \
+/vmfs/volumes/LAB-VMFS01/LAB-APP01/LAB-DATA.vmdk
+
+du -h \
+/vmfs/volumes/LAB-VMFS01/LAB-APP01/LAB-DATA-flat.vmdk</code></pre>
+
+<h4>Korak 2 – Kreiranje odredišnog direktorijuma</h4>
+
+<pre><code class="language-bash">mkdir -p \
+/vmfs/volumes/LAB-VMFS02/CONVERTED-DISKS</code></pre>
+
+<h4>Korak 3 – Konverzija</h4>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/LAB-VMFS01/LAB-APP01/LAB-DATA.vmdk \
+/vmfs/volumes/LAB-VMFS02/CONVERTED-DISKS/LAB-DATA-EZT.vmdk \
+-d eagerzeroedthick</code></pre>
+
+<h4>Korak 4 – Provera integriteta</h4>
+
+<pre><code class="language-bash">vmkfstools -q \
+/vmfs/volumes/LAB-VMFS02/CONVERTED-DISKS/LAB-DATA-EZT.vmdk
+
+vmkfstools -x check \
+/vmfs/volumes/LAB-VMFS02/CONVERTED-DISKS/LAB-DATA-EZT.vmdk</code></pre>
+
+<h4>Korak 5 – Poređenje zauzeća</h4>
+
+<pre><code class="language-bash">du -h \
+/vmfs/volumes/LAB-VMFS01/LAB-APP01/LAB-DATA-flat.vmdk
+
+du -h \
+/vmfs/volumes/LAB-VMFS02/CONVERTED-DISKS/LAB-DATA-EZT-flat.vmdk</code></pre>
+
+<h4>Korak 6 – Test povezivanje</h4>
+
+<p>
+Klonirani disk povezati sa izolovanim recovery VM-om kao postojeći hard disk. Pre mountovanja proveriti identitet filesystem-a i izbeći istovremeni zapis na original i klon u istoj mrežnoj ili aplikacionoj ulozi.
+</p>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Novi disk ima isti logički sadržaj, ali zauzima puni kapacitet i koristi eager-zeroed thick format.
+</p>
+
+<h3>Praktikum 5 – Storage vMotion i promena formata</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Promeniti provisioning format test virtuelne mašine migracijom na drugi datastore.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>dva datastore-a;</li>
+  <li>odgovarajuće licence i privilegije;</li>
+  <li>dovoljno prostora na odredištu;</li>
+  <li>nema aktivnog konfliktnog zadatka;</li>
+  <li>VM je laboratorijski.</li>
+</ul>
+
+<h4>Korak 1 – Početni pregled</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-APP01" |
+Get-HardDisk |
+Select-Object Name,
+              CapacityGB,
+              StorageFormat,
+              Filename</code></pre>
+
+<h4>Korak 2 – Provera odredišta</h4>
+
+<pre><code class="language-powershell">Get-Datastore -Name "LAB-VMFS02" |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB</code></pre>
+
+<h4>Korak 3 – Migracija kroz vSphere Client</h4>
+
+<ol>
+  <li>Izabrati VM.</li>
+  <li>Pokrenuti <strong>Migrate</strong>.</li>
+  <li>Izabrati <strong>Change storage only</strong>.</li>
+  <li>Izabrati odredišni datastore.</li>
+  <li>Izabrati željeni format.</li>
+  <li>Pregledati compatibility rezultate.</li>
+  <li>Pokrenuti zadatak.</li>
+  <li>Pratiti datastore latenciju i napredak.</li>
+</ol>
+
+<h4>Korak 4 – PowerCLI alternativa</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "LAB-APP01"
+$target = Get-Datastore -Name "LAB-VMFS02"
+
+Move-VM -VM $vm `
+        -Datastore $target `
+        -DiskStorageFormat Thin</code></pre>
+
+<h4>Korak 5 – Završna provera</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-APP01" |
+Get-HardDisk |
+Select-Object Name,
+              CapacityGB,
+              StorageFormat,
+              Filename</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Diskovi su premešteni na odredišni datastore i prikazuju novi provisioning format. VM ostaje funkcionalan ako je migracija podržana i uspešno završena.
+</p>
+
+<h3>Praktikum 6 – Alarm, izveštaj i simulacija kapacitivnog incidenta</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Uvežbati rano otkrivanje rizika bez stvarnog popunjavanja datastore-a do kritičnog nivoa.
+</p>
+
+<h4>Bezbednosno pravilo</h4>
+
+<p>
+Ne popunjavati laboratorijski datastore do 100%. Simulacija se zasniva na izveštaju, privremeno smanjenom alarmnom pragu ili malom kontrolisanom upisu.
+</p>
+
+<h4>Korak 1 – Početno stanje</h4>
+
+<pre><code class="language-powershell">Get-Datastore -Name "LAB-VMFS01" |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(
+                      ($_.FreeSpaceGB /
+                       $_.CapacityGB) * 100,
+                      2
+                  )
+              }}</code></pre>
+
+<h4>Korak 2 – Kreiranje privremenog laboratorijskog alarma</h4>
+
+<p>
+U vCenter Serveru napraviti alarm sa pragom koji će se lako aktivirati, na primer upozorenje kada zauzeće pređe trenutno stanje za mali procenat. Alarm jasno označiti kao laboratorijski i ukloniti nakon vežbe.
+</p>
+
+<h4>Korak 3 – Kontrolisani upis</h4>
+
+<p>
+U test VM-u sa thin diskom upisati mali fajl:
+</p>
+
+<pre><code class="language-bash">dd if=/dev/zero \
+   of=/data/capacity-test.bin \
+   bs=1M \
+   count=1024 \
+   status=progress
+
+sync</code></pre>
+
+<h4>Korak 4 – Praćenje</h4>
+
+<pre><code class="language-powershell">Get-Datastore -Name "LAB-VMFS01" |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da li je alarm aktiviran;</li>
+  <li>da li se promena vidi u datastore statistici;</li>
+  <li>koliko je vremena prošlo do osvežavanja;</li>
+  <li>ko prima obaveštenje;</li>
+  <li>da li alarm sadrži upotrebljive podatke.</li>
+</ul>
+
+<h4>Korak 5 – Uklanjanje test podataka</h4>
+
+<pre><code class="language-bash">rm -f /data/capacity-test.bin
+sync</code></pre>
+
+<h4>Korak 6 – Dokumentovanje postupka</h4>
+
+<p>
+Zabeležiti:
+</p>
+
+<ul>
+  <li>alarmni prag;</li>
+  <li>vreme detekcije;</li>
+  <li>odgovornu osobu ili grupu;</li>
+  <li>prvi korak odgovora;</li>
+  <li>proceduru eskalacije;</li>
+  <li>mogućnosti oslobađanja i proširenja prostora.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Potvrđeno je da monitoring uočava kapacitivni rizik pre potpunog popunjavanja datastore-a.
+</p>
+
+<h3>Scenario iz prakse 1 – Datastore je pun i thin VM je zaustavljen</h3>
+
+<h4>Simptomi</h4>
+
+<ul>
+  <li>VM prijavljuje da nema prostora za virtuelni disk;</li>
+  <li>aplikacija prestaje da odgovara;</li>
+  <li>VM može biti stunovana;</li>
+  <li>snapshot konsolidacija ne može da se završi;</li>
+  <li>backup posao pada;</li>
+  <li>datastore pokazuje gotovo nula slobodnog prostora.</li>
+</ul>
+
+<h4>Početna provera</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+vdf -h</code></pre>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Sort-Object FreeSpaceGB |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB</code></pre>
+
+<h4>Bezbedan redosled odgovora</h4>
+
+<ol>
+  <li>Identifikovati pogođeni datastore i VM-ove.</li>
+  <li>Zaustaviti nove deployment, clone, backup i snapshot poslove.</li>
+  <li>Ne brisati nasumično VMDK ili delta datoteke.</li>
+  <li>Pronaći bezbedne potrošače: zastarele ISO slike, potvrđeno nepotrebne datoteke ili VM-ove pogodne za migraciju.</li>
+  <li>Dodati kapacitet ili proširiti datastore ako procedura to dozvoljava.</li>
+  <li>Migrirati VM ili disk na drugi datastore ako postoji dovoljno prostora.</li>
+  <li>Tek nakon oslobađanja dovoljne rezerve nastaviti ili ponoviti snapshot konsolidaciju.</li>
+  <li>Pratiti storage latenciju tokom oporavka.</li>
+</ol>
+
+<h4>Šta ne treba raditi</h4>
+
+<ul>
+  <li>ne birati velike datoteke samo po veličini i brisati ih;</li>
+  <li>ne pokretati više konsolidacija istovremeno;</li>
+  <li>ne pretpostavljati da je thick VM bezbedan od ovog incidenta;</li>
+  <li>ne kliknuti Retry pre nego što je prostor stvarno obezbeđen;</li>
+  <li>ne gasiti storage servise bez razumevanja posledica.</li>
+</ul>
+
+<h3>Scenario iz prakse 2 – Datastore ima mnogo prostora, ali storage array je skoro pun</h3>
+
+<h4>Situacija</h4>
+
+<p>
+VMware datastore prikazuje 35% slobodnog prostora, ali storage tim prijavljuje da je fizički storage pool na 95%.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+VMFS datastore se nalazi na thin-provisioned LUN-u. VMware vidi logički kapacitet LUN-a, dok storage array fizički alocira blokove iz zajedničkog pool-a. Drugi LUN-ovi takođe troše isti pool.
+</p>
+
+<h4>Analiza</h4>
+
+<ul>
+  <li>Proveriti datastore used i free prostor.</li>
+  <li>Proveriti LUN potrošnju na array-u.</li>
+  <li>Proveriti ukupan pool kapacitet.</li>
+  <li>Proveriti snapshot-e i replike na storage array-u.</li>
+  <li>Proveriti očekivani rast svih sistema koji dele pool.</li>
+  <li>Proveriti space-reclamation funkcionalnost.</li>
+</ul>
+
+<h4>Pouka</h4>
+
+<p>
+Kapacitet se mora nadgledati na svakom sloju. VMware thick provisioning ne uklanja rizik thin provisioninga na storage array-u.
+</p>
+
+<h3>Scenario iz prakse 3 – Thick disk zauzima ceo datastore iako je gost gotovo prazan</h3>
+
+<h4>Situacija</h4>
+
+<p>
+VM ima thick disk od 1 TB. Operativni sistem koristi samo 120 GB, ali datastore prikazuje približno 1 TB zauzeća.
+</p>
+
+<h4>Objašnjenje</h4>
+
+<p>
+To je očekivano ponašanje thick diska. Celi kapacitet rezervisan je pri kreiranju. Brisanje podataka u gostu ne smanjuje rezervisanu veličinu VMDK-a.
+</p>
+
+<h4>Moguća rešenja</h4>
+
+<ul>
+  <li>zadržati format ako je puna rezervacija opravdana;</li>
+  <li>Storage vMotion-om konvertovati disk u thin format;</li>
+  <li>klonirati disk u novi thin VMDK;</li>
+  <li>premestiti VM na odgovarajući datastore;</li>
+  <li>pre konverzije proveriti da li aplikacija ili funkcionalnost zahteva thick format.</li>
+</ul>
+
+<h4>Važno</h4>
+
+<p>
+Konverzija u thin ne menja logički kapacitet koji vidi gost. Ona menja način fizičke alokacije prostora.
+</p>
+
+<h3>Scenario iz prakse 4 – Thin disk ne smanjuje zauzeće posle brisanja 500 GB podataka</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Korisnik je obrisao veliku količinu podataka. <code>df -h</code> u Linux gostu prikazuje više slobodnog prostora, ali datastore ne pokazuje očekivano oslobađanje.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Filesystem gosta je blokove označio slobodnim, ali datastore ili storage sistem nije dobio ili obradio UNMAP informaciju. Thin VMDK zato zadržava ranije alocirane blokove.
+</p>
+
+<h4>Provera</h4>
+
+<ul>
+  <li>da li gost podržava discard ili TRIM;</li>
+  <li>da li je filesystem montiran sa odgovarajućom podrškom;</li>
+  <li>da li virtuelni kontroler prosleđuje komandu;</li>
+  <li>da li datastore podržava reclamation;</li>
+  <li>da li je storage array pravilno konfigurisan;</li>
+  <li>da li snapshot sprečava potpuno oslobađanje blokova;</li>
+  <li>da li se statistike osvežavaju sa kašnjenjem.</li>
+</ul>
+
+<h4>Bezbedan pristup</h4>
+
+<p>
+Ne pokretati agresivno nuliranje slobodnog prostora ili velike reclaim operacije bez procene storage opterećenja. Pratiti zvaničnu proceduru za konkretan gost, datastore i storage sistem.
+</p>
+
+<h3>Scenario iz prakse 5 – Eager-zeroed thick disk se veoma dugo kreira</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Administrator kreira disk od 4 TB i smatra da je zadatak blokiran jer procenat napretka sporo raste.
+</p>
+
+<h4>Objašnjenje</h4>
+
+<p>
+Eager-zeroed thick operacija rezerviše i nulira ceo prostor. Trajanje zavisi od:
+</p>
+
+<ul>
+  <li>veličine diska;</li>
+  <li>performansi storage-a;</li>
+  <li>array offload podrške;</li>
+  <li>trenutnog opterećenja;</li>
+  <li>mrežne propusnosti kod mrežnog storage-a;</li>
+  <li>drugih migracija i backup poslova.</li>
+</ul>
+
+<h4>Postupak</h4>
+
+<ol>
+  <li>Proveriti Recent Tasks i događaje.</li>
+  <li>Proveriti datastore latenciju.</li>
+  <li>Proveriti <code>hostd.log</code> i <code>vmkernel.log</code> samo ako postoje greške.</li>
+  <li>Ne prekidati operaciju bez procene posledica.</li>
+  <li>Za buduće promene planirati maintenance period.</li>
+</ol>
+
+<h3>Scenario iz prakse 6 – Produženje eager-zeroed thick diska izaziva duži VM stun</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Produkcioni VMDK povećan je za nekoliko terabajta. Tokom operacije VM privremeno ne odgovara.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Novi deo eager-zeroed thick diska mora biti alociran i nuliran. Kod velikog povećanja operacija može izazvati značajan stun i storage opterećenje.
+</p>
+
+<h4>Prevencija</h4>
+
+<ul>
+  <li>proveriti aktuelnu Broadcom dokumentaciju za konkretnu verziju;</li>
+  <li>izvršiti promenu u maintenance periodu;</li>
+  <li>proceniti veličinu povećanja;</li>
+  <li>proveriti storage performanse i offload mogućnosti;</li>
+  <li>obavestiti aplikacioni tim;</li>
+  <li>imati plan povratka i backup;</li>
+  <li>razmotriti dodavanje novog VMDK-a umesto veoma velikog proširenja, ako aplikacioni dizajn to dozvoljava.</li>
+</ul>
+
+<h3>Scenario iz prakse 7 – Snapshot je popunio datastore sa thick diskovima</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Svi produkcioni VMDK diskovi su thick provisioned, pa tim smatra da nema rizika od nedostatka prostora. Backup snapshot ostaje aktivan nekoliko dana i datastore se popunjava.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Thick rezervacija važi za bazni VMDK. Snapshot delta disk raste u dodatnom slobodnom prostoru datastore-a.
+</p>
+
+<h4>Provera</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Get-Snapshot |
+Select-Object VM,
+              Name,
+              Created,
+              SizeGB |
+Sort-Object Created</code></pre>
+
+<p>
+Na ESXi hostu:
+</p>
+
+<pre><code class="language-bash">ls -lah \
+/vmfs/volumes/PROD-VMFS01/DB-SRV01/*-000*.vmdk</code></pre>
+
+<h4>Rešenje</h4>
+
+<ol>
+  <li>Zaustaviti uzrok produženog snapshot-a.</li>
+  <li>Obezbediti dovoljan prostor za konsolidaciju.</li>
+  <li>Proceniti storage opterećenje.</li>
+  <li>Pokrenuti Delete ili Consolidate kroz vSphere.</li>
+  <li>Pratiti zadatak i latenciju.</li>
+  <li>Ispraviti backup proces i snapshot monitoring.</li>
+</ol>
+
+<h3>Scenario iz prakse 8 – Masovni deployment izaziva neočekivan rast thin datastore-a</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Iz template-a je kreirano 80 VM-ova. Početno zauzeće je malo, ali tokom prvog dana datastore brzo gubi slobodan prostor.
+</p>
+
+<h4>Uzroci</h4>
+
+<ul>
+  <li>operativni sistemi istovremeno preuzimaju ažuriranja;</li>
+  <li>kreiraju pagefile ili swap;</li>
+  <li>instaliraju aplikacije;</li>
+  <li>generišu inicijalne logove;</li>
+  <li>antivirus preuzima baze;</li>
+  <li>configuration management upisuje pakete;</li>
+  <li>backup kreira snapshot-e.</li>
+</ul>
+
+<h4>Prevencija</h4>
+
+<ul>
+  <li>deployment u talasima;</li>
+  <li>kapacitivna simulacija pre masovnog kloniranja;</li>
+  <li>praćenje datastore-a tokom rollout-a;</li>
+  <li>ograničavanje paralelnih operacija;</li>
+  <li>rezerva za postdeployment rast;</li>
+  <li>provera template optimizacije.</li>
+</ul>
+
+<h3>Scenario iz prakse 9 – Storage vMotion u thin format nije oslobodio očekivani prostor</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Thick VMDK je migriran kao thin, ali fizičko zauzeće ostaje skoro jednako prethodnoj veličini.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>gost je ranije upisao podatke preko velikog dela diska;</li>
+  <li>obrisani blokovi nisu pravilno reclaim-ovani;</li>
+  <li>disk sadrži nule koje nisu prepoznate kao reclaimable u konkretnom putu migracije;</li>
+  <li>postoje snapshot-i;</li>
+  <li>storage statistika još nije osvežena;</li>
+  <li>odredišni storage drugačije prijavljuje alokaciju.</li>
+</ul>
+
+<h4>Pouka</h4>
+
+<p>
+Thin format znači da se nealocirani blokovi ne rezervišu unapred. Ne znači da će svaki ranije korišćen ili nuliran blok automatski nestati tokom svake migracije.
+</p>
+
+<h3>Scenario iz prakse 10 – PowerCLI izveštaj pogrešno klasifikuje disk</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Skripta koristi samo tekst u nazivu VMDK descriptor-a ili veličinu datoteke i zaključuje da je disk thin.
+</p>
+
+<h4>Problem</h4>
+
+<p>
+Naziv datoteke ne određuje provisioning format, a <code>ls -lh</code> prikazuje logičku veličinu. Za pouzdanu administraciju treba koristiti vSphere API podatke, <code>Get-HardDisk</code>, vSphere Client i odgovarajuće VMware alate.
+</p>
+
+<h4>Ispravka</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              StorageFormat,
+              CapacityGB,
+              Filename</code></pre>
+
+<p>
+Za kritičnu promenu podatak treba proveriti iz najmanje dva izvora.
+</p>
+
+<h3>Scenario iz prakse 11 – Eager-zeroed thick je izabran za sve produkcione VM-ove</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Organizacija koristi pravilo „produkcija mora biti eager thick” bez merenja ili aplikacionog zahteva. Datastore-i su veliki, ali veoma slabo iskorišćeni.
+</p>
+
+<h4>Posledice</h4>
+
+<ul>
+  <li>nepotrebna rezervacija velikog kapaciteta;</li>
+  <li>duže kreiranje i proširivanje diskova;</li>
+  <li>veći troškovi storage-a;</li>
+  <li>manja fleksibilnost;</li>
+  <li>lažan osećaj da snapshot-i ne mogu popuniti datastore.</li>
+</ul>
+
+<h4>Korektivni pristup</h4>
+
+<ol>
+  <li>Popisati sve formate.</li>
+  <li>Identifikovati stvarne funkcionalne zahteve.</li>
+  <li>Izmeriti performanse.</li>
+  <li>Odrediti klase workload-a.</li>
+  <li>Definisati standard po klasi, a ne po opštem nazivu „produkcija”.</li>
+  <li>Konvertovati diskove kontrolisano, uz change i rollback plan.</li>
+</ol>
+
+<h3>Scenario iz prakse 12 – Thin overcommit postoji, ali niko nije vlasnik alarma</h3>
+
+<h4>Situacija</h4>
+
+<p>
+vCenter redovno generiše datastore warning, ali ga svi administratori smatraju „uobičajenim”. Tokom vikenda datastore ostaje bez prostora.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Monitoring postoji, ali operativni proces ne postoji. Alarm nema:
+</p>
+
+<ul>
+  <li>vlasnika;</li>
+  <li>rok reakcije;</li>
+  <li>eskalaciju;</li>
+  <li>definisanu rezervu;</li>
+  <li>capacity plan;</li>
+  <li>odobren način hitnog proširenja.</li>
+</ul>
+
+<h4>Korektivne mere</h4>
+
+<ul>
+  <li>odrediti odgovornu grupu;</li>
+  <li>definisati warning i critical reakcije;</li>
+  <li>uključiti trend rasta;</li>
+  <li>automatski kreirati incident za kritične pragove;</li>
+  <li>testirati obaveštenja;</li>
+  <li>redovno pregledati otvorene alarme;</li>
+  <li>ne koristiti permanentno alarm suppression bez zamenske kontrole.</li>
+</ul>
+
+<h3>Najčešće administratorske greške</h3>
+
+<ul>
+  <li>Mešanje konfigurisane veličine diska sa trenutnim fizičkim zauzećem.</li>
+  <li>Storage overcommit bez monitoringa i procedure proširenja.</li>
+  <li>Pretpostavka da thin disk automatski vraća prostor posle brisanja podataka u gostu.</li>
+  <li>Pretpostavka da thick disk ne može doprineti popunjavanju datastore-a.</li>
+  <li>Zanemarivanje snapshot prostora kod thick diskova.</li>
+  <li>Izbor eager-zeroed thick formata za svaki produkcioni VM bez tehničkog razloga.</li>
+  <li>Masovno kreiranje VM-ova bez procene postdeployment rasta.</li>
+  <li>Praćenje samo VMware datastore-a, a ne i storage array pool-a.</li>
+  <li>Ručno editovanje VMDK descriptor-a radi promene formata.</li>
+  <li>Inflate ili konverzija diska bez dovoljno slobodnog prostora.</li>
+  <li>Konverzija produkcionog diska bez proverenog backupa.</li>
+  <li>Pokretanje više eager-zeroing ili Storage vMotion operacija istovremeno.</li>
+  <li>Korišćenje samo procentualnog alarma bez apsolutnog praga.</li>
+  <li>Ignorisanje brzine rasta datastore-a.</li>
+  <li>Automatsko zaključivanje da je sav unused provisioned prostor moguće reclaim-ovati.</li>
+  <li>Brisanje velikih VMDK datoteka radi oslobađanja prostora bez provere referenci.</li>
+  <li>Izmena formata bez provere storage politike i kompatibilnosti.</li>
+  <li>Očekivanje da će prelazak na thin smanjiti logički kapacitet u gostu.</li>
+  <li>Praćenje samo pojedinačnih VM-ova bez zbirne datastore analize.</li>
+  <li>Neproveravanje da li storage array koristi dodatni thin provisioning.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<h4>Definisati provisioning standard prema klasi workload-a</h4>
+
+<p>
+Umesto jednog pravila za sve VM-ove, definisati klase:
+</p>
+
+<pre><code class="language-none">DEV-TEST:
+Thin, kontrolisan overcommit, niži capacity pragovi
+
+STANDARD-PROD:
+Thin ili Thick prema rastu i SLA zahtevima
+
+DATABASE-HIGH-IO:
+Format prema izmerenim performansama i zahtevu proizvođača
+
+SPECIAL-CLUSTER:
+Format koji zahteva podržana clustering funkcionalnost
+
+VDI:
+Thin uz strogo praćenje masovnog rasta</code></pre>
+
+<h4>Dokumentovati razlog za eager-zeroed thick</h4>
+
+<p>
+Za svaki eager-zeroed thick disk treba moći odgovoriti:
+</p>
+
+<ul>
+  <li>koja funkcionalnost ga zahteva;</li>
+  <li>koja dokumentacija to potvrđuje;</li>
+  <li>da li zahtev još postoji;</li>
+  <li>kakav je uticaj na kapacitet;</li>
+  <li>ko je odobrio izuzetak.</li>
+</ul>
+
+<h4>Pratiti i provisioned i used kapacitet</h4>
+
+<p>
+Used pokazuje sadašnje stanje. Provisioned pokazuje potencijalnu obavezu. Za thin okruženje oba podatka su neophodna.
+</p>
+
+<h4>Pratiti brzinu rasta</h4>
+
+<p>
+Izveštaj treba da prikazuje:
+</p>
+
+<ul>
+  <li>rast u prethodna 24 sata;</li>
+  <li>sedmodnevni trend;</li>
+  <li>mesečni trend;</li>
+  <li>najveće potrošače;</li>
+  <li>predviđeni datum dostizanja kritičnog praga.</li>
+</ul>
+
+<h4>Održavati operativnu rezervu</h4>
+
+<p>
+Rezerva mora pokriti:
+</p>
+
+<ul>
+  <li>normalan rast thin diskova;</li>
+  <li>snapshot delta rast;</li>
+  <li>backup i konsolidaciju;</li>
+  <li>swap i suspend datoteke;</li>
+  <li>Storage vMotion ili recovery operaciju;</li>
+  <li>neočekivani aplikacioni rast;</li>
+  <li>vreme potrebno za proširenje storage-a.</li>
+</ul>
+
+<h4>Razdvojiti warning, critical i emergency postupak</h4>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Warning:
+analiza rasta, potvrda kapacitivnog plana
+
+Critical:
+ograničavanje novih deployment-a, priprema migracije ili proširenja
+
+Emergency:
+zaustavljanje nebitnih storage poslova, hitno obezbeđivanje prostora,
+uključivanje storage i aplikacionog tima</code></pre>
+
+<h4>Ne koristiti snapshot kao kapacitivnu rezervu</h4>
+
+<p>
+Snapshot povećava, a ne smanjuje potrebu za slobodnim prostorom. Pre kreiranja velikog ili dugotrajnog snapshot-a treba proveriti datastore i očekivanu stopu promena VM-a.
+</p>
+
+<h4>Proveravati storage array sloj</h4>
+
+<p>
+Za svaki datastore dokumentovati:
+</p>
+
+<ul>
+  <li>da li je LUN thin ili thick na array-u;</li>
+  <li>koji storage pool koristi;</li>
+  <li>koliki je pool overcommit;</li>
+  <li>koji alarmi postoje;</li>
+  <li>ko je odgovoran za proširenje;</li>
+  <li>da li je space reclamation podržan;</li>
+  <li>da li postoje array snapshot-i i replike.</li>
+</ul>
+
+<h4>Konverzije raditi migracijom ili kloniranjem</h4>
+
+<p>
+Podržana migracija ili kloniranje stvaraju novi disk odgovarajućeg formata i izbegavaju rizične ručne izmene metapodataka.
+</p>
+
+<h4>Pre konverzije proveriti snapshot-e</h4>
+
+<p>
+Snapshot lanac komplikuje procenu kapaciteta i migraciju. Pre promene:
+</p>
+
+<pre><code class="language-powershell">Get-VM -Name "APP-SRV01" |
+Get-Snapshot</code></pre>
+
+<p>
+Ako snapshot postoji, prvo treba utvrditi njegovu svrhu, starost i bezbedan plan uklanjanja.
+</p>
+
+<h4>Ograničiti paralelne velike storage operacije</h4>
+
+<p>
+Eager zeroing, kloniranje, Storage vMotion, backup i snapshot konsolidacija mogu istovremeno opteretiti isti storage sistem. Operacije se raspoređuju prema mogućnostima infrastrukture.
+</p>
+
+<h4>Testirati promenu na realnom workload-u</h4>
+
+<p>
+Sintetički benchmark može biti koristan, ali odluku treba potvrditi merenjem stvarne aplikacije, latencije i vršnog opterećenja.
+</p>
+
+<h4>Automatizovati izveštavanje, ne automatsko brisanje</h4>
+
+<p>
+Skripta može pronaći velike razlike između provisioned i used prostora ili stare diskove. Ne treba samostalno da briše ili konvertuje VMDK bez vlasnika, change odobrenja i recovery plana.
+</p>
+
+<h3>Operativna kontrolna lista pre kreiranja diska</h3>
+
+<ul>
+  <li>Koji kapacitet gost trenutno zahteva?</li>
+  <li>Koliki je očekivani godišnji rast?</li>
+  <li>Koji datastore i storage policy treba koristiti?</li>
+  <li>Da li je thin overcommit dozvoljen?</li>
+  <li>Da li aplikacija zahteva thick ili eager-zeroed thick?</li>
+  <li>Da li storage array koristi sopstveni thin provisioning?</li>
+  <li>Kolika je datastore operativna rezerva?</li>
+  <li>Da li će disk biti uključen u backup?</li>
+  <li>Kako će se disk mapirati u gostu?</li>
+  <li>Ko je vlasnik kapaciteta?</li>
+</ul>
+
+<h3>Operativna kontrolna lista pre konverzije</h3>
+
+<ul>
+  <li>Potvrditi VM, disk, putanju i trenutni format.</li>
+  <li>Potvrditi ciljni format i razlog promene.</li>
+  <li>Proveriti backup i restore mogućnost.</li>
+  <li>Proveriti snapshot-e.</li>
+  <li>Proveriti slobodan prostor na izvoru i odredištu.</li>
+  <li>Proveriti storage policy kompatibilnost.</li>
+  <li>Proceniti trajanje i I/O uticaj.</li>
+  <li>Izabrati maintenance period ako je potreban.</li>
+  <li>Obezbediti rollback ili zadržati originalni disk.</li>
+  <li>Dokumentovati rezultate posle promene.</li>
+</ul>
+
+<h3>Operativna kontrolna lista za datastore sa thin diskovima</h3>
+
+<h4>Dnevno</h4>
+
+<ul>
+  <li>proveriti kritične capacity alarme;</li>
+  <li>proveriti datastore-e sa ubrzanim rastom;</li>
+  <li>proveriti neuspešne snapshot i backup poslove;</li>
+  <li>proveriti VM-ove zaustavljene zbog nedostatka prostora;</li>
+  <li>proveriti storage array capacity alarme.</li>
+</ul>
+
+<h4>Nedeljno</h4>
+
+<ul>
+  <li>izvesti provisioned i used kapacitet;</li>
+  <li>pregledati overcommit odnos;</li>
+  <li>pronaći najbrže rastuće VM-ove;</li>
+  <li>pregledati stare snapshot-e;</li>
+  <li>proveriti planirane deployment-e i restore testove;</li>
+  <li>proveriti dovoljan prostor za konsolidaciju.</li>
+</ul>
+
+<h4>Mesečno</h4>
+
+<ul>
+  <li>ažurirati capacity prognozu;</li>
+  <li>proveriti opravdanost provisioning standarda;</li>
+  <li>uporediti VMware i array potrošnju;</li>
+  <li>proveriti alarmne pragove;</li>
+  <li>analizirati ponavljajuće incidente;</li>
+  <li>testirati hitnu proceduru proširenja;</li>
+  <li>pregledati eager-zeroed thick izuzetke.</li>
+</ul>
+
+<h3>Najčešće korišćene ESXi CLI komande</h3>
+
+<pre><code class="language-bash"># Lista datastore-a i kapacitet
+esxcli storage filesystem list
+
+# Sažet pregled zauzeća datastore-a
+vdf -h
+
+# Lista registrovanih VM-ova
+vim-cmd vmsvc/getallvms
+
+# Prelazak u VM folder
+cd /vmfs/volumes/DATASTORE/VM-NAME
+
+# Pregled VMDK datoteka
+ls -lah *.vmdk
+
+# Logička veličina podatkovne datoteke
+ls -lh VM-DISK-flat.vmdk
+
+# Stvarno zauzeće podatkovne datoteke
+du -h VM-DISK-flat.vmdk
+
+# Pregled VMDK descriptor-a
+cat VM-DISK.vmdk
+
+# Informacije o VMDK-u
+vmkfstools -P VM-DISK.vmdk
+
+# Provera disk lanca
+vmkfstools -q VM-DISK.vmdk
+
+# Provera integriteta
+vmkfstools -x check VM-DISK.vmdk
+
+# Thin disk
+vmkfstools -c 20G -d thin NEW-THIN.vmdk
+
+# Lazy-zeroed thick disk
+vmkfstools -c 20G -d zeroedthick NEW-LZT.vmdk
+
+# Eager-zeroed thick disk
+vmkfstools -c 20G -d eagerzeroedthick NEW-EZT.vmdk
+
+# Kloniranje u thin format
+vmkfstools -i SOURCE.vmdk TARGET-THIN.vmdk -d thin
+
+# Kloniranje u lazy-zeroed thick format
+vmkfstools -i SOURCE.vmdk TARGET-LZT.vmdk -d zeroedthick
+
+# Kloniranje u eager-zeroed thick format
+vmkfstools -i SOURCE.vmdk TARGET-EZT.vmdk -d eagerzeroedthick
+
+# Inflate thin diska u eager-zeroed thick
+vmkfstools -j VM-DISK.vmdk
+
+# Bezbedno uklanjanje VMDK-a preko descriptor-a
+vmkfstools -U VM-DISK.vmdk
+
+# Praćenje storage performansi
+esxtop
+# u – storage device prikaz
+# v – virtual disk prikaz</code></pre>
+
+<h3>Najčešće korišćene PowerCLI komande</h3>
+
+<pre><code class="language-powershell"># Povezivanje sa vCenter Serverom
+Connect-VIServer -Server vcsa.lab.local
+
+# Svi diskovi jednog VM-a
+Get-VM -Name "APP-SRV01" |
+Get-HardDisk
+
+# Format, kapacitet i lokacija
+Get-VM -Name "APP-SRV01" |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename
+
+# Svi thin diskovi
+Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.StorageFormat -eq "Thin"
+}
+
+# Svi thick diskovi
+Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.StorageFormat -ne "Thin"
+}
+
+# Grupisanje po formatu
+Get-VM |
+Get-HardDisk |
+Group-Object StorageFormat |
+Select-Object Name, Count
+
+# Thin disk od 100 GB
+New-HardDisk -VM "APP-SRV01" `
+             -CapacityGB 100 `
+             -Datastore "PROD-VMFS01" `
+             -StorageFormat Thin
+
+# Lazy-zeroed thick disk
+New-HardDisk -VM "APP-SRV01" `
+             -CapacityGB 100 `
+             -Datastore "PROD-VMFS01" `
+             -StorageFormat Thick
+
+# Eager-zeroed thick disk
+New-HardDisk -VM "APP-SRV01" `
+             -CapacityGB 100 `
+             -Datastore "PROD-VMFS01" `
+             -StorageFormat EagerZeroedThick
+
+# VM provisioned i used prostor
+Get-VM |
+Select-Object Name,
+              ProvisionedSpaceGB,
+              UsedSpaceGB
+
+# Datastore kapacitet
+Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(
+                      ($_.FreeSpaceGB /
+                       $_.CapacityGB) * 100,
+                      2
+                  )
+              }}
+
+# Snapshot-i
+Get-VM |
+Get-Snapshot |
+Select-Object VM,
+              Name,
+              Created,
+              SizeGB
+
+# Storage migracija i thin konverzija
+Move-VM -VM "LAB-APP01" `
+        -Datastore "LAB-VMFS02" `
+        -DiskStorageFormat Thin
+
+# Storage migracija i eager-zeroed thick konverzija
+Move-VM -VM "LAB-APP01" `
+        -Datastore "LAB-VMFS02" `
+        -DiskStorageFormat EagerZeroedThick
+
+# Izvoz inventara diskova
+Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename |
+Export-Csv "./provisioning-report.csv" `
+           -NoTypeInformation
+
+# Prekid sesije
+Disconnect-VIServer -Server vcsa.lab.local `
+                    -Confirm:$false</code></pre>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je završena kada administrator može, bez nagađanja i bez oslanjanja na naziv datoteke, da:</p>
+
+<ul>
+  <li>razlikuje konfigurisani, provisioned, used i reclaimable kapacitet i objasni zašto nisu međusobno zamenljivi;</li>
+  <li>identifikuje format svakog VMDK-a kroz vSphere Client i VCF PowerCLI, a na VMFS-u potvrdi logičko i fizičko zauzeće read-only ESXi komandama;</li>
+  <li>izračuna datastore overcommit, uključi ne-VMDK potrošače i dokumentuje rezervu za rast, snapshot, konsolidaciju, swap, backup i recovery;</li>
+  <li>izabere thin, lazy-zeroed thick ili eager-zeroed thick prema dokazanom zahtevu workload-a i karakteristikama odredišnog storage-a;</li>
+  <li>objasni ceo reclamation put od gosta do VMDK-a, datastore-a i storage array-a i potvrdi podršku pre slanja UNMAP/TRIM zahteva;</li>
+  <li>izvede laboratorijsku konverziju migracijom ili kloniranjem, proveri integritet i zadrži bezbedan rollback;</li>
+  <li>trijažira incident nedostatka prostora od najmanje invazivnih provera ka korektivnoj promeni, sa dokazima, vlasnikom i post-incident dokumentacijom.</li>
+</ul>
+
+<h3>Pitanja za proveru znanja</h3>
+
+<ol>
+  <li>Koja je razlika između konfigurisane veličine VMDK-a i stvarno zauzetog prostora?</li>
+  <li>Kada thin disk fizički alocira datastore blok?</li>
+  <li>Koja je razlika između lazy-zeroed thick i eager-zeroed thick diska?</li>
+  <li>Zašto je kreiranje eager-zeroed thick diska sporije?</li>
+  <li>Šta predstavlja storage overcommit?</li>
+  <li>Zašto overcommit nije automatski greška?</li>
+  <li>Koje kontrole su potrebne za bezbedan overcommit?</li>
+  <li>Zašto brisanje datoteke u gostu ne mora smanjiti VMDK zauzeće?</li>
+  <li>Šta je potrebno za UNMAP ili TRIM reclamation?</li>
+  <li>Zašto snapshot može popuniti datastore i kod thick diska?</li>
+  <li>Da li thick VMDK znači da je prostor rezervisan i na storage array-u?</li>
+  <li>Koja je razlika između VMware thin provisioninga i array thin provisioninga?</li>
+  <li>Kada je thin format prikladan izbor?</li>
+  <li>Kada eager-zeroed thick može biti opravdan?</li>
+  <li>Zašto naziv „produkcioni VM” nije dovoljan razlog za eager thick?</li>
+  <li>Kako se kroz PowerCLI prikazuje provisioning format?</li>
+  <li>Kako se kroz ESXi Shell porede logička i fizička veličina thin diska?</li>
+  <li>Čemu služi <code>vmkfstools -j</code>?</li>
+  <li>Zašto se format ne menja ručnim editovanjem descriptor-a?</li>
+  <li>Koji su bezbedni načini promene provisioning formata?</li>
+  <li>Zašto Storage vMotion u thin format ne mora osloboditi sav očekivani prostor?</li>
+  <li>Koji dodatni prostor VM zahteva osim osnovnog VMDK-a?</li>
+  <li>Zašto je brzina rasta važnija od same trenutne slobodne vrednosti?</li>
+  <li>Koje podatke treba pratiti na storage array-u?</li>
+  <li>Koje provere su obavezne pre konverzije produkcionog diska?</li>
+</ol>
+
+<h3>Zaključak</h3>
+
+<p>
+Thin i thick provisioning određuju način na koji se logički kapacitet virtuelnog diska pretvara u fizičku potrošnju storage prostora. Thin disk koristi kapacitet postepeno, dok thick disk rezerviše puni deklarisani prostor odmah. Lazy-zeroed i eager-zeroed thick razlikuju se po tome kada se rezervisani blokovi nuliraju.
+</p>
+
+<p>
+Thin provisioning omogućava efikasnije korišćenje storage-a, brže kreiranje diskova i fleksibilniji rast infrastrukture. Njegova korist postoji samo kada je praćen odgovornim capacity management procesom. Bez inventara, alarma, trendova i operativne rezerve, thin provisioning može pretvoriti logičku fleksibilnost u produkcioni incident.
+</p>
+
+<p>
+Thick provisioning pojednostavljuje rezervaciju osnovnog VMDK kapaciteta, ali ne uklanja potrebu za monitoringom. Snapshot-i, swap, suspend datoteke, backup i konsolidacija i dalje koriste dodatni prostor. Thick VMDK takođe ne dokazuje da je fizički kapacitet rezervisan na storage array sloju.
+</p>
+
+<p>
+Eager-zeroed thick nije univerzalni „najbolji” ili „najbrži” format. Njegova primena treba da bude povezana sa konkretnim tehničkim zahtevom, podržanom funkcionalnošću ili izmerenim I/O potrebama. U suprotnom može nepotrebno povećati potrošnju storage-a i produžiti kreiranje, migraciju i proširivanje diskova.
+</p>
+
+<p>
+Najvažnija administratorska veština nije izbor jednog formata za sve sisteme, već sposobnost da se provisioning uskladi sa vrstom workload-a, stopom rasta, backup politikom, SLA zahtevima, storage arhitekturom i mogućnošću oporavka.
+</p>
+
+<p>
+Pouzdano okruženje prati najmanje četiri nivoa: kapacitet unutar gosta, fizičko zauzeće VMDK-a, slobodan prostor datastore-a i stvarni kapacitet storage pool-a. Tek povezivanjem tih podataka administrator može razumeti da li sistem zaista ima prostor ili samo privremeno izgleda kao da ga ima.
+</p>
+
+<p>
+Dobra praksa zato podrazumeva kontrolisan overcommit, dokumentovane izuzetke, rano upozoravanje, redovno praćenje trenda, podržane metode konverzije i proverenu rezervnu kopiju pre svake rizične promene. Provisioning tada postaje sredstvo efikasnog upravljanja infrastrukturom, a ne skriveni izvor prekida rada.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Storage i Host Client dokumentacija za politike provisioning-a virtuelnih diskova, VMFS6 space reclamation i Storage vMotion; Broadcom Knowledge Base članci za UNMAP/TRIM, datastore bez slobodnog prostora, snapshot konsolidaciju i kapacitivne incidente; zvanične vmkfstools i VCF PowerCLI reference za Get-HardDisk, New-HardDisk i Move-VM; dokumentacija za vSAN storage politike, vVol i storage-array interoperabilnost.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-27-vmdk.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-29-nfs-iscsi-fc.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

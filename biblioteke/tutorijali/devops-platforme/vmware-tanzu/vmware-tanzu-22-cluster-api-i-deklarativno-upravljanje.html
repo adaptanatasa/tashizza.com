@@ -1,0 +1,666 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Cluster API i deklarativno upravljanje – željeno stanje, kontroleri i reconciliation | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Cluster API i deklarativno upravljanje VKS klasterima – željeno stanje, kontroleri i reconciliation proces.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Cluster API, deklarativno upravljanje, željeno stanje, kontroleri, reconciliation, VKS klaster, Kubernetes, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Cluster API i deklarativno upravljanje – željeno stanje, kontroleri i reconciliation">
+
+  <meta property="og:description"
+        content="Dvadeset druga lekcija VMware &amp; Tanzu tutorijala – Cluster API, željeno stanje, kontroleri i reconciliation VKS klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Cluster API i deklarativno upravljanje – željeno stanje, kontroleri i reconciliation">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.png"
+           alt="Cluster API i deklarativno upravljanje – željeno stanje, kontroleri i reconciliation">
+
+    </a>
+
+     <div class="page-subtitle">
+    VI. Kreiranje i lifecycle VKS klastera
+  </div>
+
+  <div class="page-subtitle">
+    22. Cluster API i deklarativno upravljanje – željeno stanje, kontroleri i reconciliation
+  </div>
+
+  <p>
+    U prethodnoj lekciji kreiran je prvi VKS klaster i potvrđeno je da njegov Kubernetes API odgovara na zahteve. Ova lekcija objašnjava mehanizam koji stoji iza tog rezultata: zašto YAML objekat nije samo jednokratno uputstvo za instalaciju, kako Supervisor pretvara deklarisano željeno stanje u virtuelne mašine i funkcionalan Kubernetes klaster, zbog čega isti kontroleri nastavljaju da rade i posle uspešnog provisioninga i kako administrator razlikuje normalan tok usaglašavanja od stvarnog kvara.
+  </p>
+
+  <p>
+    Cluster API, skraćeno CAPI, jeste Kubernetes projekat za deklarativno kreiranje, konfiguraciju, nadogradnju i upravljanje životnim ciklusom Kubernetes klastera. Njegova osnovna ideja često se opisuje izrazom <em>Kubernetes upravlja Kubernetes-om</em>: management klaster čuva API objekte koji predstavljaju workload klaster, a skup kontrolera kontinuirano približava realnu infrastrukturu stanju zapisanom u tim objektima. U vSphere okruženju management ulogu ima Supervisor, dok je VKS klaster upravljani workload klaster. Administrator zato ne upravlja pojedinačnim VM-ovima kao nezavisnim vSphere objektima, već menja podržanu specifikaciju klastera i dopušta kontrolerima da koordinisano sprovedu promenu.
+  </p>
+
+  <div class="alert alert-info" role="note">
+    <strong>Terminološka i verzijska napomena:</strong> u dokumentaciji i postojećim okruženjima sreću se nazivi Tanzu Kubernetes Grid Service, TKG Service, Tanzu Kubernetes Cluster odnosno TKC, kao i noviji naziv vSphere Kubernetes Service, VKS. Takođe postoje stariji i noviji API modeli, uključujući istorijski <code>run.tanzu.vmware.com/v1alpha3</code> i noviji ClusterClass-zasnovan <code>cluster.x-k8s.io/v1beta1</code>. Dostupnost modela, ugrađene <code>ClusterClass</code> klase, promenljive i dozvoljene tranzicije zavise od verzije Supervisor-a i instaliranog VKS/TKG Service izdanja. Primer iz dokumentacije nikada ne primenjuj pre provere CRD-ova i resursa koje oglašava konkretan Supervisor.
+  </div>
+
+  <h3>1. Deklarativni model: specifikacija nije skripta</h3>
+
+  <p>
+    Imperativni postupak opisuje niz naredbi: napravi VM, priključi mrežu, dodaj disk, instaliraj Kubernetes i konfiguriši čvor. Deklarativni postupak opisuje cilj: klaster određene Kubernetes verzije, sa određenim brojem control-plane i worker čvorova, VM klasama, storage klasama, mrežnim parametrima i dodatnim svojstvima. Kontroleri biraju podržani redosled radnji, ponavljaju neuspele korake i objavljuju rezultat kroz status i događaje. Time se povećavaju ponovljivost i auditabilnost, ali se odgovornost administratora ne smanjuje: loše željeno stanje može biti dosledno i automatski sprovedeno sa jednako doslednim lošim posledicama.
+  </p>
+
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Element</th>
+        <th>Značenje</th>
+        <th>Administratorsko pravilo</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>spec</code></td>
+        <td>Željeno stanje koje korisnik ili ovlašćeni automatizovani sistem deklariše.</td>
+        <td>Menjaj samo dokumentovana i podržana polja; specifikaciju čuvaj u kontroli verzija.</td>
+      </tr>
+      <tr>
+        <td><code>status</code></td>
+        <td>Stanje koje su kontroleri poslednje opazili, uključujući uslove, razloge i poruke.</td>
+        <td>Ne uređuj ručno. Koristi ga kao dokaz, ali proveri i vreme poslednjeg opažanja.</td>
+      </tr>
+      <tr>
+        <td><code>metadata.generation</code></td>
+        <td>Brojač promena željene specifikacije.</td>
+        <td>Uporedi ga sa <code>status.observedGeneration</code> kada je to polje izloženo.</td>
+      </tr>
+      <tr>
+        <td><code>conditions</code></td>
+        <td>Sažeti signali kao što su Ready, InfrastructureReady ili ControlPlaneReady, sa razlogom i porukom.</td>
+        <td>Ne gledaj samo True/False; čitaj <code>reason</code>, <code>message</code> i vreme tranzicije.</td>
+      </tr>
+      <tr>
+        <td><code>events</code></td>
+        <td>Hronologija važnih pokušaja i grešaka povezanih sa objektom.</td>
+        <td>Prikupljaj ih rano jer imaju ograničen period zadržavanja.</td>
+      </tr>
+      <tr>
+        <td><code>ownerReferences</code></td>
+        <td>Veza vlasništva koja omogućava praćenje zavisnih objekata i garbage collection.</td>
+        <td>Koristi je za rekonstrukciju lanca; ne uklanjaj je radi „odglavljivanja”.</td>
+      </tr>
+      <tr>
+        <td><code>finalizers</code></td>
+        <td>Zaštita koja odlaže brisanje dok kontroler ne očisti spoljne resurse.</td>
+        <td>Ručno uklanjanje je poslednja mera uz podršku proizvođača, jer može ostaviti VM-ove, diskove ili mrežne objekte bez vlasnika.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2. Management klaster, workload klaster i granica upravljanja</h3>
+
+  <p>
+    CAPI objekti za VKS klaster nalaze se na Supervisor-u, u Supervisor Namespace-u kojem je tim dobio pristup. Tu rade kontroleri i tu se posmatra lifecycle infrastrukture. Aplikativni objekti, kao što su <code>Deployment</code>, <code>Service</code> i <code>PersistentVolumeClaim</code>, nalaze se u API-ju samog VKS klastera. Ova dva konteksta ne smeju se mešati: komanda može biti sintaksno potpuno ispravna, ali beskorisna ili opasna ako je izvršena nad pogrešnim Kubernetes kontekstom.
+  </p>
+
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Sloj</th>
+        <th>Tipični objekti</th>
+        <th>Primarna odgovornost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Supervisor / management sloj</td>
+        <td><code>Cluster</code>, <code>Machine</code>, <code>MachineDeployment</code>, control-plane i vSphere infrastrukturni objekti, <code>VirtualMachine</code></td>
+        <td>Lifecycle VKS klastera, VM-ova, infrastrukture i bootstrap-a.</td>
+      </tr>
+      <tr>
+        <td>vSphere infrastruktura</td>
+        <td>VM, diskovi, mrežni interfejsi, load-balancer/VIP i povezani inventarski objekti</td>
+        <td>Realni resursi koje provider i VM Service stvaraju ili menjaju.</td>
+      </tr>
+      <tr>
+        <td>VKS / workload sloj</td>
+        <td><code>Node</code>, aplikativni workload-i, CNI/CSI komponente i add-on paketi</td>
+        <td>Rad Kubernetes control plane-a i korisničkih aplikacija.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Upstream CAPI koristi zajedničke ugovore i provider-specifične resurse. Core kontroleri upravljaju apstrakcijama kao što su <code>Cluster</code>, <code>Machine</code> i <code>MachineDeployment</code>; bootstrap provider priprema podatke za inicijalizaciju čvora; control-plane provider upravlja control-plane mašinama; infrastrukturni provider realizuje VM-ove, mrežu i druge resurse. VMware implementacija dodatno povezuje taj tok sa Supervisor servisima, VM Service-om, storage i mrežnim funkcijama platforme. Tačni nazivi vidljivih resursa razlikuju se po izdanju, zbog čega se topologija otkriva iz API-ja, a ne iz sećanja.
+  </p>
+
+  <h3>3. Reconciliation petlja: kako sistem približava stvarnost cilju</h3>
+
+  <p>
+    Kontroler posmatra objekte koji su u njegovoj nadležnosti. Kada dobije događaj ili periodično ponovo proveri stanje, čita željenu specifikaciju, posmatra zavisne Kubernetes i spoljne vSphere resurse, izračunava razliku, izvršava ograničenu idempotentnu akciju i ažurira status. Jedan prolaz ne mora završiti ceo posao. Kreiranje VM-a, dobijanje IP adrese, bootstrap, pridruživanje klasteru i provera zdravlja odvijaju se asinhrono i kroz više petlji.
+  </p>
+
+  <ol>
+    <li>API server prihvata objekat posle autentikacije, autorizacije, admission provera, podrazumevanih vrednosti i validacije šeme.</li>
+    <li>Kontroler opaža novu generaciju ili promenu zavisnog resursa.</li>
+    <li>Utvrđuje da li infrastruktura, control plane i worker sloj odgovaraju specifikaciji.</li>
+    <li>Kreira, menja ili označava zavisne objekte za brisanje; zatim čeka spoljne sisteme.</li>
+    <li>Upisuje uslove, razloge, poruke i opaženu generaciju u <code>status</code>.</li>
+    <li>Ponavlja postupak dok cilj nije dostignut, a zatim nastavlja nadzor radi korekcije budućeg odstupanja.</li>
+  </ol>
+
+  <div class="alert alert-warning" role="alert">
+    <strong>Reconciliation nije trenutna transakcija.</strong> Uspešan <code>kubectl apply</code> potvrđuje da je API prihvatio zahtev; ne potvrđuje da su VM-ovi kreirani, da je bootstrap završen niti da je klaster spreman. Obrnuto, privremeno stanje <code>False</code> ili <code>Unknown</code> tokom kontrolisane zamene čvora ne mora značiti incident. Presudni su smer napretka, razlog, trajanje, događaji i zdravlje zavisnosti.
+  </div>
+
+  <h3>4. ClusterClass i topologija: kontrolisana apstrakcija</h3>
+
+  <p>
+    Noviji CAPI model koristi <code>ClusterClass</code> kao administrativno definisan obrazac. Klasa objedinjuje infrastrukturne, bootstrap i control-plane šablone, dozvoljene promenljive i pravila lifecycle-a. Korisnički <code>Cluster</code> zatim navodi klasu, Kubernetes verziju, broj control-plane replika, worker topologiju i vrednosti izloženih promenljivih. Time platform tim centralizuje podržanu arhitekturu, a korisnički tim dobija jednostavniji i sigurniji ugovor.
+  </p>
+
+  <p>
+    Ugrađene klase i njihove verzije nisu univerzalne. Naziv poput <code>builtin-generic-...</code>, strukturu <code>variables</code> i podržane vrednosti treba preuzeti iz dokumentacije tačno instaliranog VKS/TKG Service izdanja i proveriti na Supervisor-u. Kopiranje manifesta iz drugog okruženja može proći YAML parsiranje, a pasti na admission validaciji ili kasnije u reconciliation-u zbog nedostupne VM klase, storage klase, image-a, mreže ili nekompatibilne Kubernetes verzije.
+  </p>
+
+  <pre><code class="language-bash"># READ-ONLY — izvršiti nad Supervisor kontekstom i ciljnim namespace-om
+kubectl config current-context
+kubectl api-resources | grep -E '(^|[[:space:]])(clusters|clusterclasses|machines|machinedeployments)([[:space:]]|$)'
+kubectl api-versions | grep -E 'cluster\.x-k8s\.io|run\.tanzu\.vmware\.com'
+kubectl get clusterclass
+kubectl explain cluster.spec --api-version=cluster.x-k8s.io/v1beta1</code></pre>
+
+  <p>
+    Ako <code>kubectl explain</code> ili <code>kubectl get clusterclass</code> ne uspe, ne zaključuj odmah da je servis pokvaren. Najpre potvrdi kontekst, namespace, RBAC dozvole i stvarno oglašene API resurse. Neki detalji provider resursa mogu biti skriveni korisniku namespace-a, dok ih platform administrator vidi sa višim privilegijama.
+  </p>
+
+  <h3>5. Deklarativna promena, mutabilnost i rollout</h3>
+
+  <p>
+    Nisu sve promene jednake. Skaliranje worker grupe može dodati ili ukloniti mašine; promena Kubernetes verzije ili dela šablona često pokreće rolling update; promena VM klase može zahtevati zamenu čvorova, a pojedina polja mogu biti nepromenljiva. Admission webhook može odbiti nepodržanu promenu pre nego što počne, dok drugi problem postaje vidljiv tek kada kontroler pokuša da realizuje novu generaciju.
+  </p>
+
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Promena</th>
+        <th>Moguća posledica</th>
+        <th>Pre produkcije proveriti</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Broj worker replika</td>
+        <td>Kreiranje ili kontrolisano uklanjanje čvorova; promena kapaciteta i troška.</td>
+        <td>Kvote, raspoloživ kapacitet, PodDisruptionBudget, anti-affinity i raspored podova.</td>
+      </tr>
+      <tr>
+        <td>Kubernetes verzija/image</td>
+        <td>Rolling zamena control-plane i worker mašina prema podržanom upgrade putu.</td>
+        <td>Kompatibilnost VKS izdanja, CNI/CSI i add-on paketa, backup i prozor održavanja.</td>
+      </tr>
+      <tr>
+        <td>VM klasa</td>
+        <td>Moguća zamena mašina; privremeni dodatni kapacitet tokom rollout-a.</td>
+        <td>Binding VM klase u namespace-u, host kapacitet, HA/DRS i aplikativna dostupnost.</td>
+      </tr>
+      <tr>
+        <td>Storage parametri</td>
+        <td>Nova politika za buduće objekte ili nepodržana/imutabilna promena; postojeći diskovi se ne „sele” nužno.</td>
+        <td>StorageClass/policy dostupnost, datastore kapacitet, zaštita podataka i podržana migracija.</td>
+      </tr>
+      <tr>
+        <td>Mrežna topologija</td>
+        <td>Može biti nepromenljiva ili zahtevati složen reprovisioning.</td>
+        <td>Dokumentovane granice, IPAM, DNS, load balancer, firewall i plan migracije.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Direktno menjanje VM-a u vCenter-u stvara drift između realnog i željenog stanja. Kontroler takvu promenu može poništiti, zameniti mašinu ili ostati u grešci. Isto važi za ručno brisanje provider objekata. Kada hitna intervencija zahteva odstupanje od deklarativnog toka, ona mora biti podržana, dokumentovana, vremenski ograničena i praćena planom povratka pod kontrolu reconciler-a.
+  </p>
+
+  <h3>6. Bezbednost, odgovornost i GitOps disciplina</h3>
+
+  <p>
+    Deklarativni API postaje upravljački interfejs infrastrukture. Pravo da se menja <code>Cluster</code> može posredno značiti pravo da se kreiraju ili brišu VM-ovi, troši storage, menja kapacitet i pokrene zamena čvorova. RBAC zato treba da prati podelu odgovornosti: platform administrator upravlja Supervisor servisom, klasama, kvotama i politikama; operator klastera menja dozvoljeni lifecycle u svom namespace-u; aplikativni tim upravlja workload-ima u VKS klasteru.
+  </p>
+
+  <ul>
+    <li>Manifeste čuvaj u Git-u bez kubeconfig fajlova, tokena, privatnih ključeva i tajni.</li>
+    <li>Za produkciju koristi pregled izmene, validaciju šeme, odobrenje i evidentiran prozor održavanja.</li>
+    <li>Jedan izvor treba da bude vlasnik polja. Ručni <code>kubectl edit</code>, pipeline i GitOps kontroler ne smeju se nadmetati nad istim poljima.</li>
+    <li>Pre primene sačuvaj trenutni manifest i relevantan status, ali ne vraćaj slepo ceo eksport jer sadrži serverska i statusna polja.</li>
+    <li>Koristi najmanje privilegije i poseban servisni identitet za automatizaciju; audit zapis treba da pokaže ko je promenio željeno stanje.</li>
+  </ul>
+
+  <pre><code class="language-bash"># READ-ONLY — prikaz prava trenutnog identiteta
+kubectl auth can-i get clusters.cluster.x-k8s.io -n &lt;supervisor-namespace&gt;
+kubectl auth can-i patch clusters.cluster.x-k8s.io -n &lt;supervisor-namespace&gt;
+kubectl auth can-i delete clusters.cluster.x-k8s.io -n &lt;supervisor-namespace&gt;
+
+# READ-ONLY — serverska validacija; ne menja objekat
+kubectl apply --server-side --dry-run=server \
+  -f vks-cluster.yaml -n &lt;supervisor-namespace&gt;</code></pre>
+
+  <p>
+    Server-side dry-run proverava autentikaciju, autorizaciju, admission i poznatu API šemu, ali ne dokazuje da postoje slobodni CPU, memorija, IP adrese i datastore kapacitet niti da će spoljni sistemi uspešno završiti posao. To su odvojene pre-flight provere.
+  </p>
+
+  <h3>7. Posmatranje željenog i opaženog stanja</h3>
+
+  <p>
+    Najpouzdanija dijagnostika ide od korenskog objekta ka zavisnim objektima i realnoj infrastrukturi. Počni sa <code>Cluster</code> uslovima, zatim identifikuj control-plane i worker resurse, prati <code>Machine</code> objekte, njihove provider reference i odgovarajuće <code>VirtualMachine</code> resurse. Tek potom prelazi na vCenter zadatke, događaje, mrežu, storage i API samog workload klastera.
+  </p>
+
+  <pre><code class="language-bash"># READ-ONLY — Supervisor kontekst
+NS=&lt;supervisor-namespace&gt;
+CLUSTER=&lt;vks-cluster&gt;
+
+kubectl get cluster "$CLUSTER" -n "$NS" -o wide
+kubectl describe cluster "$CLUSTER" -n "$NS"
+kubectl get cluster "$CLUSTER" -n "$NS" -o yaml
+kubectl get events -n "$NS" \
+  --field-selector involvedObject.name="$CLUSTER" \
+  --sort-by='.metadata.creationTimestamp'
+
+# Otkrivanje, pa pregled resursa koji su stvarno dostupni u izdanju
+kubectl api-resources | grep -E 'Cluster|Machine|VirtualMachine'
+kubectl get machines -n "$NS" -l cluster.x-k8s.io/cluster-name="$CLUSTER" -o wide
+kubectl get machinedeployments -n "$NS" \
+  -l cluster.x-k8s.io/cluster-name="$CLUSTER" -o wide</code></pre>
+
+  <p>
+    Promenljive <code>NS</code> i <code>CLUSTER</code> su lokalne shell vrednosti, ne sistemske opcije. Sve navedene komande su read-only. Ako određeni resource type nije oglašen ili nije dozvoljen korisniku, zabeleži rezultat <code>api-resources</code> i <code>auth can-i</code> umesto da nasumično isprobavaš stare nazive resursa.
+  </p>
+
+  <pre><code class="language-none">Primer tumačenja uslova:
+metadata.generation: 7
+status.observedGeneration: 7
+Ready: False
+Reason: ScalingUp
+Message: Waiting for 1 Machine to become ready
+
+Zaključak: kontroler je opazio poslednju specifikaciju, ali rad još traje.
+Sledeća provera: nova Machine, infrastrukturni/VM objekat, događaji i bootstrap.</code></pre>
+
+  <h3>8. Tipični kvarovi i dokazni lanac</h3>
+
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Simptom</th>
+        <th>Verovatna oblast</th>
+        <th>Dokaz pre korekcije</th>
+        <th>Bezbedna naredna akcija</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>API odbija manifest odmah</td>
+        <td>Pogrešan API, šema, RBAC, admission ili imutabilno polje</td>
+        <td>Tačna serverska poruka, <code>api-resources</code>, <code>explain</code>, <code>auth can-i</code></td>
+        <td>Ispravi manifest prema instaliranom izdanju; ne zaobilazi webhook.</td>
+      </tr>
+      <tr>
+        <td>Cluster dugo ostaje Provisioning/False</td>
+        <td>Kvote, VM klasa, image, IPAM, DNS, storage, load balancer ili bootstrap</td>
+        <td>Conditions, događaji, Machine/VM status i vCenter task/event</td>
+        <td>Otkloni potvrđenu zavisnost; dopusti kontroleru da ponovi petlju.</td>
+      </tr>
+      <tr>
+        <td><code>generation</code> je veći od opažene generacije</td>
+        <td>Kontroler još nije obradio zahtev, ne radi ili je red blokiran</td>
+        <td>Vreme izmene, controller workload-i i logovi dostupni platform administratoru</td>
+        <td>Proveri zdravlje VKS/CAPI servisa pre nove izmene specifikacije.</td>
+      </tr>
+      <tr>
+        <td>Jedna Machine nije Ready</td>
+        <td>Provisioning VM-a, bootstrap, mrežna dostupnost ili kubelet</td>
+        <td>Machine condition, provider objekat, VM status, IP i workload Node</td>
+        <td>Koriguj osnovni uzrok; ne briši nasumično više mašina.</td>
+      </tr>
+      <tr>
+        <td>Brisanje ostaje Terminating</td>
+        <td>Finalizer čeka čišćenje nedostupnog ili zavisnog resursa</td>
+        <td><code>deletionTimestamp</code>, finalizers, ownerReferences, događaji i stanje infrastrukture</td>
+        <td>Obnovi zavisnost ili ukloni prepreku; finalizer uklanjaj samo uz podržanu proceduru.</td>
+      </tr>
+      <tr>
+        <td>Promena iz Git-a se vraća ili nastaje konflikt</td>
+        <td>Više field manager-a ili drugi kontroler nameće stanje</td>
+        <td><code>metadata.managedFields</code>, GitOps događaji i audit zapis</td>
+        <td>Odredi jednog vlasnika polja i uskladi repo sa odobrenim stanjem.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Controller logovi se čitaju na Supervisor-u, ali nazivi namespace-a, paketa i deployment-a zavise od izdanja, a pristup je često rezervisan za platform administratora ili Broadcom podršku. Najpre otkrij raspoložive objekte, zatim ograniči logove na vreme incidenta, ime klastera, namespace, UID i vrednosti <code>reason</code>. Ne preuzimaj stare putanje ili nazive podova iz tuđeg KB članka bez potvrde da odgovaraju tvom izdanju.
+  </p>
+
+  <pre><code class="language-bash"># READ-ONLY — samo ako nalog ima platformske privilegije
+kubectl get namespaces
+kubectl get deployments -A | grep -E 'capi|cluster-api|kubeadm|tkg'
+kubectl get pods -A | grep -E 'capi|cluster-api|kubeadm|tkg'
+
+# Zameniti stvarnim namespace-om i deployment-om otkrivenim iznad
+kubectl logs -n &lt;controller-namespace&gt; \
+  deployment/&lt;controller-deployment&gt; \
+  --since=30m --all-containers=true \
+  | grep -E '&lt;vks-cluster&gt;|&lt;object-uid&gt;|error|failed|timeout'</code></pre>
+
+  <h3>9. Praktikum – praćenje i kontrolisana promena željenog stanja</h3>
+
+  <h4>9.1. Cilj, kontekst i topologija</h4>
+
+  <p>
+    Cilj je da operator na laboratorijskom VKS klasteru rekonstruiše CAPI lanac, napravi dokazni snimak početnog stanja, izvede jednu podržanu deklarativnu promenu i potvrdi da je reconciliation završen bez ručnog menjanja VM-ova. Topologija obuhvata jedan Supervisor, jedan namenski laboratorijski Supervisor Namespace i jedan postojeći VKS klaster sa najmanje jednom worker grupom. Vežba se izvršava sa administrativne radne stanice na kojoj su dostupni odgovarajući vSphere login dodatak i <code>kubectl</code>.
+  </p>
+
+  <h4>9.2. Preduslovi, privilegije i procena rizika</h4>
+
+  <ul>
+    <li>Supervisor i VKS servis su zdravi, a postojeći VKS klaster je Ready.</li>
+    <li>Operator ima pravo <code>get/list/watch</code> nad lifecycle resursima i <code>patch/update</code> nad ciljnim Cluster objektom.</li>
+    <li>Potvrđene su kvote, VM klasa, storage i najmanje jedna slobodna IP adresa za dodatni worker.</li>
+    <li>Aplikacije imaju odgovarajuće resource requests i pravila raspoređivanja; vežba se ne izvodi na produkcionom klasteru.</li>
+    <li>Početni broj worker replika je poznat. Rollback je vraćanje upravo na tu vrednost, ne brisanje klastera.</li>
+  </ul>
+
+  <div class="alert alert-danger" role="alert">
+    <strong>Laboratorijska promena stanja:</strong> skaliranje može kreirati ili ukloniti VM i promeniti potrošnju kvote. Ne smanjuj control-plane replike, ne uklanjaj finalizere i ne briši Machine ili VM objekte. Ako nema dovoljnog kapaciteta, vežbu završi read-only analizom.
+  </div>
+
+  <h4>9.3. Kontrolna tačka A – identitet, kontekst i API ugovor</h4>
+
+  <pre><code class="language-bash"># READ-ONLY
+kubectl config current-context
+kubectl config view --minify
+kubectl auth can-i get clusters.cluster.x-k8s.io -n &lt;supervisor-namespace&gt;
+kubectl api-resources | grep -E 'Cluster|Machine'
+kubectl get clusterclass
+kubectl get cluster &lt;vks-cluster&gt; -n &lt;supervisor-namespace&gt; -o yaml</code></pre>
+
+  <p>
+    Očekivani rezultat je potvrđen Supervisor kontekst, vidljiv ciljni Cluster i API/ClusterClass koju taj objekat stvarno koristi. Sačuvaj izlaz u evidenciju promene uz uklanjanje osetljivih podataka. Kriterijum prolaza: ime, namespace, <code>apiVersion</code>, klasa, trenutna verzija, topologija, replike i Ready uslov mogu se nedvosmisleno utvrditi.
+  </p>
+
+  <h4>9.4. Kontrolna tačka B – snimak zavisnih resursa</h4>
+
+  <pre><code class="language-bash"># READ-ONLY
+NS=&lt;supervisor-namespace&gt;
+CLUSTER=&lt;vks-cluster&gt;
+
+kubectl get cluster "$CLUSTER" -n "$NS" -o wide
+kubectl get machines -n "$NS" \
+  -l cluster.x-k8s.io/cluster-name="$CLUSTER" \
+  -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeRef.name,PROVIDER:.spec.providerID'
+kubectl get events -n "$NS" --sort-by='.metadata.creationTimestamp' | tail -n 30</code></pre>
+
+  <p>
+    Zabeleži početni broj Machine objekata, njihove faze i vreme poslednjih događaja. U vSphere Client-u pronađi isti namespace i klaster, ali ništa ne menjaj na VM-ovima. GUI služi za korelaciju Kubernetes objekta sa vCenter zadacima, događajima, VM stanjem, datastore-om i mrežom.
+  </p>
+
+  <h4>9.5. Kontrolna tačka C – priprema i serverska validacija izmene</h4>
+
+  <p>
+    Izvezi željenu konfiguraciju iz izvornog Git repozitorijuma ili pripremi minimalnu izmenu u formatu koji podržava konkretna ClusterClass. Ne koristi sirovi rezultat <code>kubectl get -o yaml</code> kao novi manifest bez uklanjanja <code>status</code>, <code>managedFields</code>, <code>resourceVersion</code>, <code>uid</code>, timestamp vrednosti i drugih serverskih polja. U laboratoriji povećaj samo broj replika jedne worker grupe za jedan.
+  </p>
+
+  <pre><code class="language-yaml"># Ilustracija namere, ne univerzalni VKS manifest.
+# Naziv worker grupe i putanja polja moraju odgovarati stvarnom ClusterClass ugovoru.
+spec:
+  topology:
+    workers:
+      machineDeployments:
+        - class: node-pool
+          name: workers
+          replicas: 3</code></pre>
+
+  <pre><code class="language-bash"># READ-ONLY simulacija prijema; API ne menja objekat
+kubectl apply --server-side --dry-run=server \
+  -f vks-cluster-lab.yaml -n "$NS"
+
+# Prikaz razlike; proveriti da li diff pokazuje samo odobrenu promenu
+kubectl diff -f vks-cluster-lab.yaml -n "$NS"</code></pre>
+
+  <p>
+    <code>kubectl diff</code> može vratiti izlazni kod <code>1</code> kada razlika postoji; to samo po sebi nije greška. Ako se pojavljuju promene klase, verzije, mreže, storage-a ili control-plane-a, zaustavi postupak i ispravi manifest.
+  </p>
+
+  <h4>9.6. Kontrolna tačka D – primena i praćenje reconciliation-a</h4>
+
+  <pre><code class="language-bash"># STATE-CHANGING — samo odobrena laboratorijska promena
+kubectl apply --server-side \
+  --field-manager=tashizza-lab-operator \
+  -f vks-cluster-lab.yaml -n "$NS"
+
+# READ-ONLY — odvojeni terminali za status i događaje
+kubectl get cluster "$CLUSTER" -n "$NS" -w
+kubectl get machines -n "$NS" \
+  -l cluster.x-k8s.io/cluster-name="$CLUSTER" -w
+kubectl get events -n "$NS" --sort-by='.metadata.creationTimestamp' -w</code></pre>
+
+  <p>
+    Očekivani tok je nova generacija Cluster objekta, kreiranje ili skaliranje odgovarajućeg <code>MachineDeployment</code>, novi <code>Machine</code> i provider/VM resurs, bootstrap i konačno Ready stanje. U vSphere Client-u koreliši vreme sa task-ovima kreiranja i uključivanja VM-a. Na VKS kontekstu potvrdi da se pojavio novi čvor; ne očekuj isti trenutak za nastanak VM-a, registraciju Node-a i spremnost workload-a.
+  </p>
+
+  <pre><code class="language-bash"># READ-ONLY — izvršiti tek nakon eksplicitnog prebacivanja na VKS kontekst
+kubectl config use-context &lt;vks-context&gt;
+kubectl get nodes -o wide
+kubectl get nodes
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded</code></pre>
+
+  <p>
+    Kriterijum uspeha: željeni broj replika je vidljiv u Supervisor specifikaciji, opažena generacija je sustigla novu generaciju kada je to polje dostupno, Cluster i Machine uslovi su zdravi, novi VKS Node je Ready, nema neočekivanih Pending/Failed sistemskih podova i vCenter ne pokazuje aktivan neuspešan task povezan sa promenom.
+  </p>
+
+  <h4>9.7. Troubleshooting grana – reconciliation ne napreduje</h4>
+
+  <ol>
+    <li><strong>Simptom i obim:</strong> utvrdi da li je problem samo nova Machine, cela worker grupa, control plane ili više klastera u namespace-u.</li>
+    <li><strong>Posledica:</strong> proveri da li je postojeći kapacitet zdrav i da li aplikacije i dalje ispunjavaju SLO.</li>
+    <li><strong>Dokazi:</strong> sačuvaj Cluster/Machine conditions, događaje, generacije, vCenter taskove i promene neposredno pre incidenta.</li>
+    <li><strong>Hipoteza:</strong> proveravaj redom kvotu i kapacitet, VM klasu/image, storage, IPAM/DNS/load balancer, bootstrap i zdravlje kontrolera.</li>
+    <li><strong>Korekcija:</strong> ukloni potvrđeni uzrok, na primer oslobodi odobrenu kvotu ili popravi nedostupnu infrastrukturnu zavisnost; ne pokreći više nepovezanih promena odjednom.</li>
+    <li><strong>Validacija:</strong> potvrdi novu successful reconciliation petlju, Ready stanje i funkcionalnost API-ja i workload-a.</li>
+    <li><strong>Dokumentacija:</strong> zapiši neposredni uzrok, osnovni uzrok, privremeno rešenje i trajnu meru.</li>
+  </ol>
+
+  <p>
+    Ako je uzrok nedostatak kapaciteta, privremeno zaobilazno rešenje može biti odustajanje od dodatne replike. Trajna mera je ispravno planiranje kvota i infrastrukturnog headroom-a. Ako je uzrok nevažeća specifikacija, rollback je Git revert ili kontrolisana ponovna primena prethodno odobrenog željenog stanja. Ako je sam CAPI/VKS servis degradiran, operator klastera prekida dalje promene i eskalira platform administratoru sa prikupljenim dokazima.
+  </p>
+
+  <h4>9.8. Rollback i povratak laboratorije</h4>
+
+  <pre><code class="language-bash"># Najpre: izmeniti Git/manifest tako da worker replicas bude početna vrednost.
+
+# READ-ONLY validacija povratne promene
+kubectl apply --server-side --dry-run=server \
+  -f vks-cluster-lab-rollback.yaml -n "$NS"
+kubectl diff -f vks-cluster-lab-rollback.yaml -n "$NS"
+
+# STATE-CHANGING — vraćanje odobrene početne vrednosti
+kubectl apply --server-side \
+  --field-manager=tashizza-lab-operator \
+  -f vks-cluster-lab-rollback.yaml -n "$NS"</code></pre>
+
+  <p>
+    Pre smanjenja replika proveri raspored podova, PodDisruptionBudget i slobodan kapacitet preostalih čvorova. Kontroler bira mašinu za uklanjanje prema svom algoritmu; nemoj unapred pretpostaviti koji će VM nestati. Završetak rollback-a potvrđuje se početnim brojem Ready Machine i Node objekata, zdravim uslovima, odsustvom neočekivanih podova i zatvorenim vCenter taskovima. Manifest i evidencija promene moraju odgovarati konačnom stanju.
+  </p>
+
+  <h3>10. Incident scenario – objekat ostaje u Terminating stanju</h3>
+
+  <p>
+    Brisanje Cluster objekta je asinhron lifecycle proces, a ne trenutno uklanjanje reda iz etcd-a. <code>deletionTimestamp</code> pokreće kontrolisano gašenje i čišćenje zavisnih objekata. Finalizer ostaje dok odgovorni kontroler ne potvrdi da su spoljne obaveze završene. Posebno je opasno prvo obrisati Supervisor Namespace: time se može ukloniti kontekst potreban VM Service-u, CAPI kontrolerima i garbage collection-u, pa klaster ostaje orphaned.
+  </p>
+
+  <pre><code class="language-bash"># READ-ONLY — prikupljanje dokaza; ne uklanja finalizere
+kubectl get cluster &lt;vks-cluster&gt; -n &lt;supervisor-namespace&gt; \
+  -o jsonpath='{.metadata.deletionTimestamp}{"\n"}{.metadata.finalizers}{"\n"}'
+kubectl get cluster &lt;vks-cluster&gt; -n &lt;supervisor-namespace&gt; -o yaml
+kubectl get events -n &lt;supervisor-namespace&gt; --sort-by='.metadata.creationTimestamp'
+kubectl get machines -n &lt;supervisor-namespace&gt; \
+  -l cluster.x-k8s.io/cluster-name=&lt;vks-cluster&gt; -o wide</code></pre>
+
+  <p>
+    Neposredni uzrok može biti nedostupan vCenter servis, provider kontroler, VM, disk ili mrežni resurs koji se ne može očistiti. Osnovni uzrok može biti ranije brisanje namespace-a, prekid identiteta, istekao sertifikat ili ručna infrastrukturna intervencija. Bezbedna mera je obnavljanje zavisnosti i omogućavanje kontroleru da dovrši posao. Ručno uklanjanje finalizera ne predstavlja popravku: ono samo uklanja zaštitu i može ostaviti naplative, bezbednosno rizične ili nerešivo orphaned resurse.
+  </p>
+
+  <h3>11. Administratorske prakse</h3>
+
+  <ul>
+    <li>Uvek eksplicitno potvrdi Kubernetes kontekst i namespace pre čitanja ili promene lifecycle objekata.</li>
+    <li>Otkrivaj API resurse, verziju i ClusterClass na ciljnom Supervisor-u; ne projektuj manifest prema drugom izdanju.</li>
+    <li>Razdvoji prihvatanje zahteva od ostvarenja željenog stanja i definiši timeout koji odgovara realnoj operaciji.</li>
+    <li>Pre promene zabeleži kapacitet, kvote, health, generaciju, uslove, događaje i povezane vCenter taskove.</li>
+    <li>Preferiraj jednu malu, reverzibilnu izmenu i prati njen ceo reconciliation tok pre sledeće promene.</li>
+    <li>Ne menjaj ručno VM-ove, provider objekte, <code>status</code>, owner reference ili finalizere da bi stanje izgledalo zdravo.</li>
+    <li>Planiraj dodatni kapacitet za rolling update, kao i disruption budget i raspored workload-a za smanjenje ili zamenu čvorova.</li>
+    <li>Čuvaj željenu konfiguraciju u Git-u, definiši vlasništvo nad poljima i koreliši commit, audit događaj i stanje platforme.</li>
+    <li>Namespace briši tek posle urednog uklanjanja svih VKS klastera i potvrđenog čišćenja zavisnih resursa.</li>
+    <li>Za incident beleži simptom, obim, posledicu, neposredni i osnovni uzrok, workaround, trajnu meru i dokaz oporavka.</li>
+  </ul>
+
+  <h3>12. Završna kontrolna tačka</h3>
+
+  <p>Nakon ove lekcije administrator treba da može da:</p>
+
+  <ul>
+    <li>objasni razliku između <code>spec</code>, <code>status</code>, generacije, opažene generacije, uslova i događaja;</li>
+    <li>razlikuje Supervisor management kontekst od API-ja VKS workload klastera;</li>
+    <li>opiše uloge core, bootstrap, control-plane i infrastructure kontrolera bez pretpostavljanja provider detalja;</li>
+    <li>otkrije API verzije, CRD-ove i ClusterClass dostupne na konkretnom Supervisor-u;</li>
+    <li>serverski validira manifest i pre primene utvrdi njegovu preciznu razliku u odnosu na live stanje;</li>
+    <li>izvede kontrolisano skaliranje worker grupe i dokazima potvrdi ceo reconciliation tok;</li>
+    <li>prati odnos Cluster, Machine, provider/VM i Node resursa i koreliše ih sa vCenter događajima;</li>
+    <li>razlikuje normalno prelazno stanje od zaglavljenog reconciliation-a;</li>
+    <li>organizuje troubleshooting od najmanje invazivnih provera ka potvrđenoj korektivnoj akciji;</li>
+    <li>bezbedno vrati laboratoriju na početno stanje bez ručnog brisanja VM-a ili finalizera.</li>
+  </ul>
+
+  <h3>Zaključak</h3>
+
+  <p>
+    Cluster API menja osnovnu jedinicu administratorskog rada: umesto niza ručnih infrastrukturnih koraka, izvor istine postaje validirana željena specifikacija, a kontroleri preuzimaju ponovljivo usaglašavanje stvarnog stanja. Ta automatizacija donosi brzinu, standardizaciju i self-healing samo kada su API ugovor, kapacitet, politike, identitet i zavisni servisi ispravni. Zreo VKS administrator zato ne pokušava da „pobedi” reconciler ručnim izmenama, već razume njegov lanac odgovornosti, meri napredak kroz generacije, uslove, događaje i zavisne objekte, potvrđuje osnovni uzrok i vraća sistem u podržano deklarativno stanje. To razumevanje je neposredna osnova za sledeću lekciju o verzijama, image resursima i podržanom Kubernetes release lifecycle-u.
+  </p>
+
+  <footer class="chapter-footer">
+    <p>
+      jul 2026 &nbsp;|&nbsp;
+      Zvanična Broadcom VMware vSphere Supervisor i vSphere Kubernetes Service dokumentacija za arhitekturu, Cluster v1beta1/ClusterClass provisioning, upravljanje i rolling update; upstream Kubernetes SIG Cluster Lifecycle Cluster API Book i API ugovori; Kubernetes dokumentacija za kontrolere, deklarativno upravljanje, CRD, owner references, finalizers, RBAC i server-side apply; Broadcom Knowledge Base članci za CAPI/VKS reconciliation, orphaned klastere, sertifikate, pakete i troubleshooting
+    </p>
+
+    <div class="footer-divider">
+      <span>❋</span>
+    </div>
+
+    <p>
+      Biblioteka „IT tutorijali”
+      &nbsp;|&nbsp;
+      VMware &amp; Tanzu
+      &nbsp;|&nbsp;
+      Nataša Mihajlović
+    </p>
+  </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-21-kreiranje-prvog-vks-klastera.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-23-verzije-images-i-kubernetes-release.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
+

@@ -1,0 +1,551 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-45-kapacitet-konfiguracioni-maksimumi.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Planiranje kapaciteta i Configuration Maximums – rast bez skrivenih uskih grla | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Planiranje kapaciteta VMware vSphere okruženja na osnovu baznih linija, trendova, rezervi i zvaničnih Configuration Maximums ograničenja.">
+
+  <meta name="keywords"
+        content="VMware kapacitet, planiranje kapaciteta, Configuration Maximums, vSphere skaliranje, bazna linija, usko grlo, ESXi kapacitet, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-45-kapacitet-konfiguracioni-maksimumi.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Planiranje kapaciteta i Configuration Maximums – rast bez skrivenih uskih grla">
+
+  <meta property="og:description"
+        content="Planiranje kapaciteta VMware vSphere okruženja na osnovu baznih linija, trendova, rezervi i zvaničnih Configuration Maximums ograničenja.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-45-kapacitet-konfiguracioni-maksimumi.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-45-kapacitet-konfiguracioni-maksimumi.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Planiranje kapaciteta i Configuration Maximums – rast bez skrivenih uskih grla">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-45-kapacitet-konfiguracioni-maksimumi.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-45-kapacitet-konfiguracioni-maksimumi.png"
+           alt="Planiranje kapaciteta i Configuration Maximums – rast bez skrivenih uskih grla">
+
+    </a>
+
+    <div class="page-subtitle">
+  XI. Automatizacija, kapacitet i kontrolisane promene
+</div>
+
+<div class="page-subtitle">
+  45. Planiranje kapaciteta i Configuration Maximums – rast bez skrivenih uskih grla
+</div>
+
+<p>
+  Stabilno vSphere okruženje ne nastaje tako što administrator povremeno proveri koliko je slobodnog prostora ostalo. Planiranje kapaciteta je upravljački proces kojim se potražnja workload-a, fizički resursi, politike dostupnosti, ograničenja proizvoda i vreme nabavke prevode u odluke koje mogu da se provere. Njegov cilj nije najveća moguća konsolidacija, već dovoljno resursa da infrastruktura podnese očekivani rast, vršno opterećenje, kvar i planirano održavanje bez nekontrolisanog pada kvaliteta usluge.
+</p>
+
+<p>
+  Lekcija se nadovezuje na monitoring i analizu performansi iz lekcija 34 i 37, na HA i DRS iz lekcija 32 i 33, kao i na bezbednu automatizaciju iz lekcije 44. Ovde njihove metrike i inventarski podaci postaju model kapaciteta. Rezultat nije samo grafikon, već dokumentovana odluka: koji resurs je ograničavajući, kada će prag biti dostignut, šta treba proširiti, koliko rezerve mora ostati i kojim dokazom se potvrđuje da plan radi. Takav model je neposredan preduslov za kontrolisanu promenu i održavanje u narednoj lekciji.
+</p>
+
+<div class="note">
+  <strong>Osnovno pravilo:</strong> Configuration Maximums predstavlja granicu podržane konfiguracije, a ne preporučenu radnu tačku, garanciju performansi niti cilj konsolidacije. Produkcioni dizajn mora ostati ispod odgovarajućeg limita i istovremeno zadovoljiti SLO, HA, maintenance, backup, oporavak i operativne zahteve.
+</div>
+
+<h3>1. Kapacitet nije isto što i trenutno slobodan resurs</h3>
+
+<p>
+  Fizički kapacitet je instalirana količina resursa: procesorska snaga, memorija, storage, mrežni interfejsi i portovi. Efektivni kapacitet uzima u obzir arhitekturu i politike — na primer rezervu za ESXi, HA failover, vSAN zaštitu podataka ili storage RAID. Upotrebljivi kapacitet je deo efektivnog kapaciteta koji organizacija dozvoljava workload-ima da potroše pre internog upozorenja. Preostali kapacitet je razlika između upotrebljivog kapaciteta i merene ili projektovane potražnje.
+</p>
+
+<pre><code class="language-none">Fizički kapacitet
+− sistemski overhead i arhitektonska zaštita
+− rezerva za kvar i održavanje
+− operativni sigurnosni prag
+= upotrebljivi kapacitet
+
+Upotrebljivi kapacitet − projektovana potražnja = preostali kapacitet</code></pre>
+
+<p>
+  „Slobodno sada” opisuje samo jedan trenutak. Kapacitet za odluku mora da obuhvati reprezentativan period, sezonske i poslovne vrhove, rast, kvar najveće relevantne jedinice i vremenski razmak od odobrenja do stavljanja nove opreme u rad. Zbog toga se prosečna iskorišćenost nikada ne koristi sama: prosek može sakriti kratke, ali poslovno kritične vrhove, neuravnotežen host, zasićen datastore ili VM sa dugim CPU Ready vremenom.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Pojam</th><th>Pitanje na koje odgovara</th><th>Tipična greška</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Utilization</td><td>Koliki deo resursa je korišćen u posmatranom intervalu?</td><td>Zaključak samo na osnovu proseka.</td></tr>
+    <tr><td>Demand</td><td>Koliko bi workload koristio da nema konkurencije ili ograničenja?</td><td>Izjednačavanje male potrošnje sa malom potrebom.</td></tr>
+    <tr><td>Contention</td><td>Da li workload čeka resurs?</td><td>Ignorisanje CPU Ready, swap-a, queue i latency pokazatelja.</td></tr>
+    <tr><td>Headroom</td><td>Kolika rezerva ostaje do internog praga?</td><td>Računanje rezerve iz fizičkog, umesto upotrebljivog kapaciteta.</td></tr>
+    <tr><td>Time remaining</td><td>Kada trend prelazi definisani prag?</td><td>Linearno produžavanje kratkog ili sezonski nereprezentativnog uzorka.</td></tr>
+    <tr><td>Configuration maximum</td><td>Da li je konfiguracija unutar podržane granice za tačnu verziju?</td><td>Tretiranje granice kao preporučenog dizajna.</td></tr>
+  </tbody>
+</table>
+
+<h3>2. Poslovni zahtev, SLO i jedinica planiranja</h3>
+
+<p>
+  Model počinje zahtevom, ne metrikom. Administrator mora da zna koje usluge su kritične, njihov radni kalendar, očekivani rast, period zadržavanja podataka, RPO/RTO, dozvoljeno vreme degradacije i koje operacije moraju moći da se izvrše u vrhu opterećenja. Dve infrastrukture sa istim brojem VM-ova mogu zahtevati potpuno različit kapacitet ako jedna mora preživeti gubitak hosta bez degradacije, a druga prihvata kratkotrajno smanjenje performansi.
+</p>
+
+<p>
+  Jedinicu planiranja odredi prema failure domain-u i mestu na kojem se donosi odluka. CPU i memorija se najčešće planiraju na nivou klastera, ali se proverava i svaki host. Storage se analizira po datastore-u, datastore cluster-u, vSAN klasteru, storage pool-u i backend kontroleru. Mreža se meri po pNIC-u, uplink timu, vmnic-u, vmkernel servisu, port grupi i fizičkom putu. vCenter i druge management komponente imaju zasebne inventarske, sesijske i operativne granice.
+</p>
+
+<ul>
+  <li><strong>Horizont podataka:</strong> najmanje jedan pun poslovni ciklus; za sezonske sisteme uključiti relevantnu sezonu i prethodnu godinu kada je dostupna.</li>
+  <li><strong>Granularnost:</strong> dovoljno fina da se vide vrhovi, ali uz istorijske rollup intervale koji omogućavaju dug trend.</li>
+  <li><strong>Percentili:</strong> p95 ili p99 pomažu da se odvoje tipična visoka opterećenja od pojedinačnih anomalija; kritični batch prozor se ipak ocenjuje posebno.</li>
+  <li><strong>Scenariji:</strong> normalan rad, poslovni vrh, N−1 kvar, planirani maintenance, oporavak i paralelne administrativne operacije.</li>
+  <li><strong>Lead time:</strong> prag za akciju mora biti dostignut pre nego što nabavka, isporuka, instalacija i validacija postanu kritični put.</li>
+</ul>
+
+<h3>3. CPU kapacitet: potražnja, contention i oblik workload-a</h3>
+
+<p>
+  Sabiranje GHz nije dovoljno. Procesorske generacije imaju različite performanse po jezgru, NUMA topologija utiče na široke VM-ove, a overcommit menja odnos dodeljenog vCPU-a i fizičkih jezgara. Posmatraj istovremeno host/cluster utilization i demand, VM CPU usage, CPU Ready, Co-Stop kod SMP VM-ova, limit i reservation, kao i frekvenciju i trajanje vrhova. Visok Ready uz umerenu prosečnu iskorišćenost može ukazivati na prevelike VM-ove, neuravnotežen klaster, affinity ograničenje ili vremenski sinhronizovan batch.
+</p>
+
+<p>
+  Odnos vCPU:pCPU je inventarska mera konsolidacije, ne dokaz da CPU ima dovoljno. Prihvatljiv odnos zavisi od profila workload-a, SLO-a, generacije procesora i kontencije. Ne postoji univerzalna bezbedna vrednost. Rightsizing vCPU-a se radi tek kada metrički dokazi pokažu da VM ne koristi dodeljenu širinu i kada aplikacioni vlasnik potvrdi prihvatljiv rizik; samo nizak prosek nije dovoljan.
+</p>
+
+<div class="warning">
+  <strong>NUMA kontrolna tačka:</strong> veoma širok VM može stati u zbirni CPU i memorijski kapacitet klastera, a ipak imati lošiji locality ili ograničen izbor hostova. Proveri fizičku NUMA topologiju, veličinu VM-a, hot-add posledice i podržanu konfiguraciju pre standardizacije velikih VM profila.
+</div>
+
+<h3>4. Memorija: aktivna potražnja, rezervacije i cena pritiska</h3>
+
+<p>
+  Provisioned memory pokazuje koliko je memorije konfigurisano VM-ovima, consumed koliko fizičkih stranica trenutno zauzimaju, a active procenjuje nedavno aktivno korišćene stranice. Nijedna od ovih metrika sama nije dovoljan model. Za bezbedan plan koreliši host i VM memory usage sa ballooning-om, compression-om, host swapping-om, VM swap-in/swap-out aktivnošću, reservations, limits i guest OS pokazateljima. Guest cache može izgledati kao visoka potrošnja, dok nizak active ne opravdava automatsko smanjenje memorije bez razumevanja workload-a.
+</p>
+
+<p>
+  Rezervacije utiču na admission i mogućnost uključivanja ili migracije VM-a: ne troše se kao običan prosek, ali moraju biti raspoložive. Kada počne host swapping, problem više nije samo „visoka iskorišćenost”; latencija može pogoditi aplikacije i produžiti vMotion ili maintenance. Plan zato mora da pokaže da se kritične VM rezervacije i overhead mogu zadovoljiti i posle predviđenog kvara.
+</p>
+
+<h3>5. Storage: prostor, performanse i zaštita podataka</h3>
+
+<p>
+  Storage ima najmanje dve odvojene dimenzije: kapacitet u bajtovima i servisni kapacitet u IOPS/throughput/latency. Datastore sa mnogo slobodnog prostora može biti zasićen I/O zahtevima, dok datastore sa malim slobodnim prostorom može trenutno imati nisku latenciju, ali visok rizik od prekida pri rastu thin diskova, snapshot-a ili backup operacije. Zato se prate used/provisioned/uncommitted prostor, stopa rasta, read/write IOPS, throughput, uređajna i kernel latencija, queue pokazatelji, greške i stanje svih putanja.
+</p>
+
+<table>
+  <thead><tr><th>Sloj</th><th>Kapacitet i dokaz</th><th>Skriveno usko grlo</th></tr></thead>
+  <tbody>
+    <tr><td>VM/VMDK</td><td>Provisioned, consumed, snapshot delta, guest free space</td><td>Guest filesystem se puni iako datastore ima prostor.</td></tr>
+    <tr><td>Datastore</td><td>Capacity, free, uncommitted, latency, IOPS, throughput</td><td>Thin overcommit ili jedan „noisy neighbor”.</td></tr>
+    <tr><td>Host putanja</td><td>Aktivne/dead putanje, queue, APD/PDL događaji</td><td>Degradirana redundansa pre potpunog prekida.</td></tr>
+    <tr><td>Array/pool</td><td>Fizički pool, RAID/erasure overhead, cache, controller portovi</td><td>Više datastore-a deli isti zasićen backend.</td></tr>
+    <tr><td>vSAN</td><td>Usable capacity prema politici, resync i operativna rezerva</td><td>Raw zbir ne predstavlja prostor koji workload može bezbedno da koristi.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Kod vSAN-a rezultat zavisi od storage policy-ja, zaštitne šeme, fault domain-a, slack/operations rezerve, deduplikacije ili kompresije gde su dostupne, kao i od prostora potrebnog za resynchronization i maintenance mode. Ne koristi prost zbir kapaciteta uređaja kao upotrebljiv prostor. Pre ulaska hosta u maintenance mode koristi odgovarajući pre-check/report i proceni uticaj izabrane data migration opcije.
+</p>
+
+<h3>6. Mrežni kapacitet i zajednički putevi</h3>
+
+<p>
+  Mrežni plan obuhvata propusni opseg, packet rate, latenciju, gubitke, greške, drops i burst karakteristike. Proveri svaki smer i svaki zajednički put: VM saobraćaj, management, vMotion, vSAN ili IP storage, backup i replikaciju. Dva 25 Gb/s uplinka nisu automatski 50 Gb/s za jedan tok; rezultat zavisi od teaming politike, broja tokova, hashing-a, fizičkih switch-eva i protokola. Plan mora da razmotri i gubitak jednog uplinka ili switch-a.
+</p>
+
+<p>
+  Posebno modeluj operacije koje stvaraju kratkotrajno veliko opterećenje: paralelni vMotion, backup, restore, vSAN resync, replikaciju i masovno patchovanje. Ako se svi servisi oslanjaju na isti fizički put, njihov zbirni vrh je važniji od proseka svakog servisa pojedinačno.
+</p>
+
+<h3>7. Dostupnost: N+1, maintenance i ograničavajući host</h3>
+
+<p>
+  N+1 ne znači samo „imamo jedan host više”. Klaster mora posle gubitka relevantnog hosta imati dovoljno CPU-a, memorije, mrežne i storage dostupnosti da zadovolji politike i prihvatljiv nivo performansi. U heterogenom klasteru gubitak najvećeg hosta može biti stroži scenario od prosečnog hosta. Ako affinity/anti-affinity pravila, licence, GPU uređaji, NUMA zahtevi ili posebna konektivnost ograničavaju smeštaj, zbirni slobodan kapacitet može biti neupotrebljiv za konkretan VM.
+</p>
+
+<pre><code class="language-none">Primer modela, ne proizvodni limit:
+6 hostova × 512 GiB = 3.072 GiB fizičke memorije
+rezerva za najveći host (N−1) = 512 GiB
+ESXi/servisni overhead i interna rezerva = 240 GiB
+upotrebljivi kapacitet = 2.320 GiB
+projektovana vršna potražnja = 2.050 GiB
+headroom = 270 GiB, odnosno 11,6% upotrebljivog kapaciteta</code></pre>
+
+<p>
+  Ovaj rezultat nije automatsko odobrenje: mora se proveriti da li preostalih pet hostova pojedinačno može prihvatiti evakuisane VM-ove, da li rezervacije mogu biti zadovoljene i da li storage i mreža podnose migraciju i novi raspored. HA Admission Control je zaštitni mehanizam, ali njegov procenat ili slot politika nisu zamena za performansni model. DRS može poboljšati raspored samo ako postoji dozvoljen i kompatibilan cilj sa stvarnim resursima.
+</p>
+
+<h3>8. Configuration Maximums: podržana granica i verzijski dokaz</h3>
+
+<p>
+  Zvanični Configuration Maximums alat ili dokument koristi se za tačnu verziju proizvoda i komponentu: ESXi host, virtuelnu mašinu, vCenter Server, klaster, mrežu, storage, vSAN i druge funkcije. Pre poređenja zabeleži edition/licencu, build i update nivo, topologiju i zavisne proizvode. Ako je mešovita verzija privremeno podržana tokom nadogradnje, planiraj prema najrestriktivnijem primenljivom skupu dok se stanje ne homogenizuje.
+</p>
+
+<ol>
+  <li>Identifikuj tačnu verziju i build svakog vCenter/ESXi sistema i komponentu čiji se limit proverava.</li>
+  <li>Otvori aktuelni zvanični Configuration Maximums prikaz za tu verziju; ne koristi memorisanu vrednost ili rezultat za drugu verziju.</li>
+  <li>Pročitaj fusnote, preduslove, izuzetke i zajedničke limite. Pojedinačne granice se ne mogu uvek istovremeno dostići.</li>
+  <li>Uporedi trenutno stanje, planirano stanje posle rasta i stanje tokom maintenance/DR scenarija.</li>
+  <li>U evidenciji navedi naziv metrike/objekta, trenutnu i projektovanu vrednost, limit, iskorišćenost limita, verziju izvora i datum provere.</li>
+  <li>Postavi interni prag dovoljno niže da tim može da reaguje pre podržane granice i pre degradacije operacija.</li>
+</ol>
+
+<table>
+  <thead><tr><th>Grupa limita</th><th>Primeri koje treba proveriti</th><th>Zašto operativni prag mora biti niži</th></tr></thead>
+  <tbody>
+    <tr><td>VM i host</td><td>vCPU/memorija po VM-u, VM-ovi i uređaji po hostu</td><td>NUMA, contention, boot storm i maintenance ograničavaju praktičan dizajn.</td></tr>
+    <tr><td>Klaster</td><td>Hostovi i powered-on VM-ovi, HA/DRS/FT granice</td><td>Failure domain i vreme rekomputacije/migracije rastu pre samog limita.</td></tr>
+    <tr><td>vCenter</td><td>Hostovi, VM-ovi, klasteri, sesije i operacije</td><td>Inventar, task/event volumen, backup i upgrade prozori imaju sopstvenu cenu.</td></tr>
+    <tr><td>Storage</td><td>Datastore, LUN, putanje, VMDK i protokolske granice</td><td>Queue, latencija i blast radius obično postaju važni pre broja objekata.</td></tr>
+    <tr><td>Mreža</td><td>vSwitch/dvSwitch, portovi, port grupe, VMkernel i NIC granice</td><td>Promene i troubleshooting postaju teži, a propusni opseg je odvojena dimenzija.</td></tr>
+    <tr><td>vSAN i dodatni proizvodi</td><td>Disk grupe, uređaji, objekti, fault domains i posebni operativni limiti</td><td>Policy overhead, resync i kompatibilnost zahtevaju poseban proračun.</td></tr>
+  </tbody>
+</table>
+
+<div class="warning">
+  <strong>Verzijska napomena:</strong> vSphere 7, vSphere 8 i VCF 9.x ne smeju se mešati u jednoj koloni „VMware maksimum”. Brand, pakovanje i licenciranje su se menjali, ali podržana granica i dalje mora biti potvrđena u dokumentaciji koja odgovara stvarno instaliranom proizvodu, build-u i funkciji. Funkcija koja postoji u dokumentaciji ne znači da je uključena u ugovorenu licencu.
+</div>
+
+<h3>9. Bazna linija, trend i prognoza</h3>
+
+<p>
+  Bazna linija opisuje normalno ponašanje za poznat poslovni period. Beleži medijanu, p95/p99, vrh, trajanje vrha, radni kalendar i događaje koji objašnjavaju odstupanja. Kapacitet se prognozira po resursu, a datum akcije određuje najraniji ograničavajući resurs. Jednostavna linearna stopa rasta može biti početni model, ali se ne primenjuje na sezonsku, stepenastu ili projektno vođenu potražnju bez korekcije.
+</p>
+
+<pre><code class="language-none">Mesečna stopa rasta = (potrošnja na kraju − potrošnja na početku) / broj meseci
+Meseci do internog praga = (prag − trenutna potrošnja) / mesečna stopa rasta
+Datum odluke = procenjeni datum praga − nabavni i implementacioni lead time</code></pre>
+
+<p>
+  Prognoza treba da ima najmanje osnovni, očekivani i stresni scenario. Uključi poznate projekte, migracije, retention promene i planirani decommission. Aria Operations, kada je licenciran i uveden, može izračunavati usable capacity, capacity remaining i time remaining prema politici i prognozi; rezultat zavisi od izabrane politike, praga, istorije i kvaliteta podataka. On je pomoć u odlučivanju, a ne zamena za proveru failure scenarija i Configuration Maximums.
+</p>
+
+<h3>10. Prikupljanje dokaza u vSphere Client-u i VCF PowerCLI-ju</h3>
+
+<p>
+  U vSphere Client-u koristi <code>Monitor &gt; Performance &gt; Advanced</code> na nivou klastera, hosta, VM-a i datastore-a, prilagodi brojače i vremenski opseg, zatim koreliši sa <code>Tasks and Events</code>, alarmima i poznatim promenama. Istorijska dostupnost i granularnost zavise od Statistics Level-a i retention intervala vCenter-a; podizanje nivoa statistike povećava obim baze i mora biti planska promena. Za precizne nazive brojača proveri <code>Get-StatType</code>, jer dostupnost zavisi od objekta, verzije i nivoa statistike.
+</p>
+
+<p>
+  Sledeći PowerCLI primeri su <strong>read-only</strong>. Izvršavaju se sa administratorske radne stanice nad vCenter-om, nalogom koji ima najmanje privilegije za čitanje inventara i performansi. Sertifikat mora biti validiran prema politici iz lekcije 42; trajno ignorisanje nevažećih sertifikata nije prihvatljiva produkciona praksa.
+</p>
+
+<pre><code class="language-powershell"># VCF PowerCLI / VMware.VimAutomation.Core
+Connect-VIServer -Server 'vcsa01.example.test'
+
+# Inventar verzija i build-ova; osnova za izbor Configuration Maximums skupa.
+Get-VMHost | Select-Object Name, Version, Build, ConnectionState |
+  Sort-Object Name
+
+# Brzi pregled fizičkog CPU/memory kapaciteta i trenutne potrošnje.
+Get-Cluster -Name 'PROD-CL01' | Get-VMHost |
+  Select-Object Name, ConnectionState,
+    @{N='CpuTotalGHz';E={[math]::Round($_.CpuTotalMhz / 1000, 1)}},
+    @{N='CpuUsageGHz';E={[math]::Round($_.CpuUsageMhz / 1000, 1)}},
+    @{N='MemoryTotalGiB';E={[math]::Round($_.MemoryTotalGB, 1)}},
+    @{N='MemoryUsageGiB';E={[math]::Round($_.MemoryUsageGB, 1)}}</code></pre>
+
+<p>
+  Ovaj snapshot nije prognoza. Za reprezentativan interval prikupi statistiku i agregiraj je po vremenu i objektu. Veliki <code>Get-Stat</code> upiti mogu opteretiti vCenter i vratiti mnogo podataka; prvo ograniči entitet, brojače i interval, a produkcioni izvoz zakazuj van vrha i testiraj na manjem uzorku.
+</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name 'PROD-CL01'
+$start   = (Get-Date).AddDays(-7)
+$metrics = @(
+  'cpu.usage.average',
+  'cpu.ready.summation',
+  'mem.usage.average',
+  'mem.swapinRate.average',
+  'mem.swapoutRate.average'
+)
+
+# Read-only upit. Najpre proveriti dostupne brojače za objekat.
+$available = Get-StatType -Entity ($cluster | Get-VMHost | Select-Object -First 1)
+$metrics | Where-Object { $_ -notin $available } |
+  ForEach-Object { Write-Warning "Brojač nije dostupan: $_" }
+
+$stats = Get-Stat -Entity ($cluster | Get-VMHost) `
+  -Stat $metrics -Start $start -ErrorAction Stop
+
+$stats |
+  Group-Object Entity, MetricId |
+  ForEach-Object {
+    $values = $_.Group.Value | Sort-Object
+    $p95Index = [math]::Ceiling($values.Count * 0.95) - 1
+    [pscustomobject]@{
+      Series = $_.Name
+      Samples = $values.Count
+      Average = [math]::Round(($values | Measure-Object -Average).Average, 2)
+      P95 = [math]::Round($values[[math]::Max(0, $p95Index)], 2)
+      Maximum = [math]::Round(($values | Measure-Object -Maximum).Maximum, 2)
+    }
+  } | Sort-Object Series</code></pre>
+
+<div class="note">
+  <strong>Tumačenje:</strong> <code>cpu.ready.summation</code> je zbir vremena u milisekundama tokom intervala uzorka, a ne procenat. Konverzija u procenat zahteva poznavanje intervala i broja vCPU-a; ne primenjuj formulu na rollup podatke bez provere semantike brojača u Performance Manager referenci za konkretnu verziju.
+</div>
+
+<pre><code class="language-powershell"># Read-only pregled datastore kapaciteta i thin overcommit indikatora.
+Get-Datastore |
+  Select-Object Name, Type,
+    @{N='CapacityGiB';E={[math]::Round($_.CapacityGB, 1)}},
+    @{N='FreeGiB';E={[math]::Round($_.FreeSpaceGB, 1)}},
+    @{N='UsedPct';E={
+      if ($_.CapacityGB -gt 0) {
+        [math]::Round((1 - $_.FreeSpaceGB / $_.CapacityGB) * 100, 1)
+      }
+    }} | Sort-Object UsedPct -Descending</code></pre>
+
+<p>
+  Izvoz u CSV je lokalna promena na administratorskoj stanici, ne menja vSphere inventar. Fajl mora biti zaštićen jer može sadržati imena sistema i operativne podatke. Za ponovljivost zapiši vremensku zonu, vCenter, period, brojače, interval, verziju modula i vreme izvoza.
+</p>
+
+<h3>11. Pragovi, alarmi i governance</h3>
+
+<p>
+  Prag nije jedna univerzalna cifra. Definiši warning, action i emergency nivo za svaki failure domain i resurs. Warning otvara analizu; action mora ostaviti dovoljno vremena za nabavku ili rightsizing; emergency aktivira ograničenje novih zahteva i incidentni postupak. Pragovi se odobravaju zajedno sa vlasnikom usluge i dokumentuju u CMDB-u ili capacity registru.
+</p>
+
+<table>
+  <thead><tr><th>Polje capacity registra</th><th>Obavezni sadržaj</th></tr></thead>
+  <tbody>
+    <tr><td>Scope</td><td>vCenter, datacenter, cluster/datastore/network failure domain i vlasnik.</td></tr>
+    <tr><td>Izvor</td><td>Brojači, vremenski opseg, granularnost, statistički nivo i alat.</td></tr>
+    <tr><td>Bazna linija</td><td>Prosek/medijana, p95/p99, maksimum, trajanje vrha i poznate anomalije.</td></tr>
+    <tr><td>Rezerve</td><td>HA, maintenance, sistemski overhead, storage protection i operativni headroom.</td></tr>
+    <tr><td>Prognoza</td><td>Scenariji, stopa rasta, datum praga i interval pouzdanosti/ograničenja modela.</td></tr>
+    <tr><td>Maksimum</td><td>Tačan naziv limita, verzija/build izvora, trenutna i projektovana vrednost.</td></tr>
+    <tr><td>Akcija</td><td>Vlasnik, rok, lead time, change zapis, validacija i rollback.</td></tr>
+  </tbody>
+</table>
+
+<h3>12. Tipični pogrešni zaključci i troubleshooting kapaciteta</h3>
+
+<table>
+  <thead><tr><th>Simptom</th><th>Hipoteze i dokaz</th><th>Bezbedna korekcija</th></tr></thead>
+  <tbody>
+    <tr><td>VM je spor, klaster CPU prosek nizak.</td><td>Proveriti VM Ready/Co-Stop, limits, affinity, host hotspot, NUMA i tačan vremenski prozor.</td><td>Prvo ukloniti pogrešan limit ili uravnotežiti smeštaj kroz odobrenu promenu; rightsizing tek uz dokaz.</td></tr>
+    <tr><td>Datastore ima prostor, aplikacije imaju I/O timeout.</td><td>Proveriti latency, queue, path stanje, backend pool i događaje; prostor nije performansni kapacitet.</td><td>Zaštititi workload, otkloniti path/array uzrok, zatim balansirati I/O; ne proširivati prostor naslepo.</td></tr>
+    <tr><td>HA ne može da garantuje failover iako postoji „slobodan” host.</td><td>Proveriti Admission Control, reservations, compatibility, pravila, posebne uređaje i najveći failure scenario.</td><td>Vratiti zaštitni headroom, korigovati pravila ili dodati kompatibilan kapacitet kroz change proces.</td></tr>
+    <tr><td>Naglo raste consumed storage.</td><td>Snapshot delta, backup/replication, thin rast, logovi, swap ili resync; korelisati Tasks/Events.</td><td>Zaustaviti uzrok i konsolidovati snapshot samo posle pre-check-a prostora i backup-a; ne brisati VMDK datoteke ručno.</td></tr>
+    <tr><td>Prognoza se menja iz dana u dan.</td><td>Kratka istorija, sezonalnost, promenjena politika ili brojači sa rupama.</td><td>Produžiti reprezentativan period, označiti promene i koristiti scenarije umesto lažne preciznosti.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Tok dijagnostike počinje potvrdom simptoma, scope-a i vremena. Sačuvaj dashboard/export, Tasks and Events, alarme i poslednje promene. Zatim proveri da li je problem fizički deficit, contention, neravnoteža, konfiguraciono ograničenje, degradirana putanja ili pogrešan model. Privremeno zaobilazno rešenje — na primer kontrolisana migracija VM-a — nije RCA. Trajna mera mora ukloniti osnovni uzrok, obnoviti rezervu, proći validaciju i ažurirati model.
+</p>
+
+<h3>Praktikum – od inventara do odobrenog capacity plana</h3>
+
+<h4>Topologija, preduslovi i rizik</h4>
+
+<p>
+  Laboratorija koristi jedan vCenter, klaster <code>LAB-CL01</code> sa najmanje tri ESXi hosta, nekoliko VM-ova i najmanje jedan datastore. Ako postoje Aria Operations ili vSAN, njihove capacity prikaze koristi kao dodatni izvor, ali vežba mora biti izvodljiva i bez njih. Potrebni su vSphere Client, VCF PowerCLI i nalog sa read-only pristupom inventaru i performansama. Sve do posebno označenog scenarija postupci su read-only.
+</p>
+
+<div class="warning">
+  <strong>Rizik:</strong> ne generiši CPU, memory ili storage stres u produkciji. Simulacija rasta radi se u tabeli ili izolovanoj laboratoriji. Ne menjaj Statistics Level, HA politiku, VM resurse, datastore niti alarm bez odobrene promene.
+</div>
+
+<h4>Vežba 1 – Utvrđivanje izvora i početnog stanja</h4>
+
+<ol>
+  <li>U vSphere Client-u zabeleži vCenter version/build, ESXi version/build, licence i enabled funkcije klastera.</li>
+  <li>Izaberi zvanični Configuration Maximums skup koji tačno odgovara stanju. U radnom listu evidentiraj datum pristupa i najmanje pet relevantnih limita, ali ne prepisuj vrednosti iz drugog izdanja.</li>
+  <li>Pokreni read-only inventarske PowerCLI komande iz ove lekcije i sačuvaj rezultat u kontrolisanom direktorijumu.</li>
+  <li>Potvrdi da se broj hostova, VM-ova, datastore-a i verzije slažu sa vSphere Client-om. Neslaganje tretiraj kao problem scope-a, privilegija ili konekcije, ne kao podatak za plan.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> verzijski označen inventar i dokaz da je odabran odgovarajući skup limita. <strong>Kriterijum završetka:</strong> svaki limit ima naziv, komponentu, verziju izvora, trenutnu vrednost i vlasnika provere.</p>
+
+<h4>Vežba 2 – Bazna linija i ograničavajući resurs</h4>
+
+<ol>
+  <li>Izaberi reprezentativnih sedam dana za laboratoriju; u produkciji koristi puni poslovni ciklus.</li>
+  <li>Za klaster i svaki host prikupi CPU i memory metrike. Za datastore prikupi prostor, latency, IOPS i throughput gde su brojači dostupni.</li>
+  <li>Izračunaj average, p95 i maximum. Obeleži intervale sa alarmom, backup-om, vMotion-om ili poznatim testom.</li>
+  <li>Uporedi zbirni klaster sa najopterećenijim hostom i datastore-om. Identifikuj resurs koji prvi prelazi interni prag, ne samo resurs sa najvećim procentom.</li>
+</ol>
+
+<p><strong>Validacija:</strong> ručno proveri najmanje jedan p95 interval u vSphere Client grafikonu. Ako se vrednosti razlikuju, proveri vremensku zonu, sampling/rollup interval, scope i jedinicu. <strong>Rollback:</strong> nema promene vSphere stanja; obriši samo laboratorijski lokalni izvoz ako sadrži podatke koje ne smeš zadržati.</p>
+
+<h4>Vežba 3 – N−1 i maintenance scenario</h4>
+
+<ol>
+  <li>Identifikuj host sa najvećim efektivnim CPU i memory kapacitetom.</li>
+  <li>Od ukupnog klasterskog kapaciteta oduzmi taj host, sistemski overhead, reservations i internu rezervu.</li>
+  <li>Uporedi rezultat sa p95 i dokumentovanim poslovnim vrhom; potom proveri da li najveći VM-ovi mogu biti smešteni na preostale kompatibilne hostove.</li>
+  <li>Pregledaj HA Admission Control i DRS/affinity pravila read-only. Za vSAN, ako postoji, pokreni pre-check/report za maintenance bez stvarnog ulaska hosta u maintenance mode.</li>
+  <li>Zabeleži rizik ako N−1 prolazi zbirno, ali ne prolazi zbog rezervacije, uređaja, pravila, fault domain-a ili storage/network ograničenja.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> dokaz da klaster može ili ne može da podnese definisani failure/maintenance scenario. <strong>Kriterijum završetka:</strong> odluka sadrži ograničavajući resurs i konkretan korektivni zahtev, a ne samo oznaku „N+1”.</p>
+
+<h4>Vežba 4 – Prognoza rasta i prag za akciju</h4>
+
+<ol>
+  <li>Na kopiji podataka simuliraj tri scenarija: 5%, 15% i 30% rasta demand-a, plus deset novih VM-ova standardnog profila.</li>
+  <li>Za svaki scenario ponovo izračunaj N−1 headroom i procenat relevantnog Configuration Maximums limita.</li>
+  <li>Dodaj lead time od, na primer, 90 dana kao laboratorijsku pretpostavku i odredi datum kada odluka mora biti doneta.</li>
+  <li>Predloži najmanje dve mere: rightsizing/reclaim i proširenje ili arhitektonska raspodela. Za svaku navedi rizik, uštedu/kapacitet, change zahtev i dokaz posle primene.</li>
+</ol>
+
+<p><strong>Validacija:</strong> nijedan scenario ne sme računati Configuration Maximums kao upotrebljiv kapacitet. <strong>Rollback:</strong> simulacija ne menja infrastrukturu; sačuvaj početne ulaze da bi model mogao biti reprodukovan.</p>
+
+<h4>Vežba 5 – Incident: „ima slobodnog kapaciteta, ali VM kasni”</h4>
+
+<p>
+  U laboratorijskom izveštaju uvedi simptom da jedna VM ima visoko CPU Ready vreme tokom batch prozora, dok je sedmodnevni prosek klastera nizak. Ne generiši stres ako laboratorija nije izolovana.
+</p>
+
+<ol>
+  <li><strong>Simptom i obim:</strong> potvrdi VM, korisnički uticaj, početak, trajanje i da li druge VM-ove imaju isti problem.</li>
+  <li><strong>Dokazi:</strong> sačuvaj VM/host CPU usage, demand, Ready/Co-Stop, limits/reservations, DRS preporuke, affinity pravila i Tasks/Events za isti interval.</li>
+  <li><strong>Hipoteza:</strong> razlikuj oversizing VM-a, host hotspot, CPU limit, pravilo smeštaja i fizički deficit.</li>
+  <li><strong>Privremena mera:</strong> predloži kontrolisanu migraciju samo ako je cilj kompatibilan i ima headroom; to je state-changing akcija i zahteva change/incident odobrenje.</li>
+  <li><strong>Trajna korekcija:</strong> uklanjanje pogrešnog limita, korekcija pravila, rightsizing ili dodavanje kapaciteta — samo prema potvrđenom uzroku.</li>
+  <li><strong>Validacija:</strong> uporedi isti batch prozor pre i posle, proveri aplikacioni SLO, Ready/Co-Stop i odsustvo novog hotspot-a.</li>
+  <li><strong>Rollback:</strong> ako se stanje pogorša, vrati prethodni VM resurs/pravilo ili migriraj na dokumentovani početni host, prema odobrenom planu.</li>
+</ol>
+
+<p><strong>Kriterijum završetka:</strong> izveštaj jasno razdvaja neposredni uzrok, osnovni uzrok, workaround i trajnu meru, sa dokazom oporavka.</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Capacity review vodi periodično i posle velike promene, incidenta, migracije, promene retention-a ili uvođenja novog workload profila.</li>
+  <li>Čuvaj verziju izvora, vremenski opseg, jedinice i metod proračuna; grafikon bez porekla nije audit dokaz.</li>
+  <li>Razdvoji capacity, performance i configuration limit, ali ih procenjuj zajedno.</li>
+  <li>Modeluj najveći relevantni failure domain, planirani maintenance i zajedničke storage/network zavisnosti.</li>
+  <li>Automatizuj read-only inventar i izveštaj; svaku korektivnu promenu vodi kroz odobrenje, pre-check, rollback i post-check.</li>
+  <li>Ne uklanjaj rezervu da bi dashboard privremeno postao zelen. Eskaliraj potražnju, rizik i rok razumljivim poslovnim jezikom.</li>
+  <li>Posle proširenja potvrdi balans, kompatibilnost, HA/DRS stanje, storage putanje, alarmiranje i novu baznu liniju.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Nakon ove lekcije administrator treba da može da:</p>
+
+<ul>
+  <li>razlikuje fizički, efektivni, upotrebljivi i preostali kapacitet;</li>
+  <li>izabere reprezentativan period i protumači average, p95/p99, vrh, demand i contention;</li>
+  <li>izradi CPU, memory, storage i network model koji uključuje HA i maintenance rezervu;</li>
+  <li>proveri Configuration Maximums prema tačnoj verziji, komponenti, fusnotama i licenci;</li>
+  <li>prikupi read-only inventar i performansne dokaze vSphere Client-om i VCF PowerCLI-jem;</li>
+  <li>prepozna skriveno usko grlo iza niskog proseka ili velikog zbirnog slobodnog kapaciteta;</li>
+  <li>izračuna osnovni, očekivani i stresni scenario i odredi datum za akciju prema lead time-u;</li>
+  <li>dokumentuje prag, rizik, vlasnika, korektivnu meru, rollback i dokaz posle promene.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Zrelo planiranje kapaciteta spaja metrike, arhitekturu, dostupnost i poslovno vreme. Ono ne pita samo koliko resursa postoji, već koliko je zaista upotrebljivo kada otkaže host, traje maintenance, raste workload i paralelno rade backup ili migracije. Configuration Maximums štiti podržanost dizajna, ali ne određuje njegovu bezbednu radnu tačku. Administrator je odgovoran da između stvarne potražnje i zvanične granice ostavi dokazivu rezervu, da na vreme prepozna ograničavajući resurs i da svako proširenje ili optimizaciju sprovede kao kontrolisanu, merljivu promenu.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere 8 administrativna, availability, resource management i performance dokumentacija; zvanični Configuration Maximums alat i verzijske napomene; Broadcom Knowledge Base članci za HA, CPU i storage dijagnostiku; VCF PowerCLI cmdlet reference; VMware Aria Operations capacity, metric i forecasting dokumentacija; vSAN administrativne i maintenance reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-44-vcf-powercli-api-automatizacija.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-46-upravljanje-promenama-odrzavanje.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

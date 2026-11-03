@@ -1,0 +1,493 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-43-inventar-verzije-kompatibilnost.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Inventar komponenti, verzijska kompatibilnost i podržani lifecycle | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako da izradite dokaziv inventar Kubernetes komponenti, proverite version skew, kompatibilnost zavisnosti, status podrške i spremnost klastera za bezbednu nadogradnju.">
+
+  <meta name="keywords"
+        content="Kubernetes inventar, Kubernetes verzije, version skew policy, Kubernetes lifecycle, kubeadm version, kubelet version, containerd, CRI-O, etcd, CNI, CSI, API deprecation, kompatibilnost Kubernetes, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-43-inventar-verzije-kompatibilnost.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+  <meta property="og:locale"
+        content="sr_RS">
+  <meta property="og:type"
+        content="article">
+  <meta property="og:title"
+        content="Inventar komponenti, verzijska kompatibilnost i podržani lifecycle">
+  <meta property="og:description"
+        content="Izradite operativni Kubernetes inventar, proverite version skew, lifecycle i kompatibilnost kontrolne ravni, nodova, runtime-a, etcd-a, CNI/CSI dodataka i API-ja.">
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-43-inventar-verzije-kompatibilnost.html">
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-43-inventar-verzije-kompatibilnost.png">
+  <meta property="og:image:type"
+        content="image/png">
+  <meta property="og:image:width"
+        content="1200">
+  <meta property="og:image:height"
+        content="630">
+  <meta property="og:image:alt"
+        content="Inventar komponenti, verzijska kompatibilnost i podržani lifecycle">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-43-inventar-verzije-kompatibilnost.png"
+       target="_blank"
+       rel="noopener">
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-43-inventar-verzije-kompatibilnost.png"
+           alt="Inventar komponenti, verzijska kompatibilnost i podržani lifecycle">
+    </a>
+
+    <div class="page-subtitle">
+      X. Lifecycle, nadogradnje i oporavak klastera
+    </div>
+    <div class="page-subtitle">
+      43. Inventar komponenti, verzijska kompatibilnost i podržani lifecycle
+    </div>
+
+    <p>
+      Bez pouzdanog inventara administrator ne zna šta zaista nadograđuje, koje zavisnosti mogu prekinuti rad i da li se klaster još nalazi u podržanom lifecycle-u. Kubernetes nije jedan paket sa jednom verzijom: kontrolna ravan, <code>kubelet</code>, <code>kube-proxy</code>, <code>kubectl</code>, <code>kubeadm</code>, etcd, container runtime, CNI i CSI dodaci, Ingress kontroler, DNS, operativni sistem, kernel i aplikacioni API resursi imaju sopstvene verzije, konfiguracije, matrice kompatibilnosti i rokove podrške. Oznaka verzije API servera zato je samo početna tačka, a ne inventar klastera.
+    </p>
+    <p>
+      Ova lekcija nastavlja sistematičan pristup iz prethodne lekcije: stanje se prvo dokazuje, zatim tumači i tek potom menja. Cilj nije izvođenje nadogradnje, jer je kontrolisana <code>kubeadm</code> nadogradnja tema lekcije 45, niti obnova sertifikata i privatnih ključeva, koja se obrađuje u lekciji 44. Ovde se pravi verifikovana tehnička osnova za obe aktivnosti: utvrđuju se stvarne verzije i topologija, proveravaju dozvoljeni odnosi, identifikuju zastareli API-ji i zavisnosti i donosi dokumentovana odluka da li klaster može bezbedno u sledeću fazu lifecycle-a.
+    </p>
+
+    <h3>Inventar kao operativni dokaz, a ne spisak imena</h3>
+    <p>
+      Koristan inventar odgovara na pitanja <strong>šta postoji, gde radi, koju verziju i konfiguraciju koristi, ko je vlasnik, od čega zavisi, do kada je podržano i kojim dokazom je podatak potvrđen</strong>. Jednokratna tabela bez vremena prikupljanja brzo zastareva. Produkcioni inventar zato treba da bude verzionisan snapshot sa UTC vremenom, identitetom klastera, izvorom svakog podatka i statusom provere. Podatak iz CMDB-a predstavlja očekivano administrativno stanje; podatak sa API-ja, noda ili paketskog sistema predstavlja opaženo stanje. Razlika između njih je nalaz koji treba istražiti.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Sloj</th><th>Minimalni podaci</th><th>Autoritativni ili primarni dokaz</th><th>Zašto je važan</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Identitet i topologija</td><td>Naziv, okruženje, vlasnik, API endpoint, broj i uloge nodova, HA model</td><td>Odobreni registar, kubeconfig kontekst, <code>kubectl cluster-info</code>, Node objekti</td><td>Određuje blast radius, redosled rada i odgovornost.</td></tr>
+        <tr><td>Kontrolna ravan</td><td>Verzije API servera, scheduler-a, controller manager-a i način instalacije</td><td><code>/version</code>, static Pod manifesti ili deklaracija provajdera</td><td>Postavlja gornju granicu dozvoljenog version skew-a.</td></tr>
+        <tr><td>Node sloj</td><td><code>kubelet</code>, <code>kube-proxy</code>, OS image, kernel, arhitektura, runtime i CRI endpoint</td><td>Node status, DaemonSet image, lokalne binarne i paketne komande</td><td>Otkriva heterogenost i redosled rotacije nodova.</td></tr>
+        <tr><td>State store</td><td>etcd verzija, topologija članova, endpointi i model upravljanja</td><td>Static Pod manifest, <code>etcdctl endpoint status</code>, kubeadm konfiguracija</td><td>Kompatibilnost i rollback zavise od formata podataka i quorum-a.</td></tr>
+        <tr><td>Platformski dodaci</td><td>CNI, CSI, CoreDNS, Ingress/Gateway, metrics i policy komponente</td><td>Workload image digest/tag, Helm release, Operator/manifest i vendor matrica</td><td>Dodaci često imaju užu matricu podrške od samog Kubernetes-a.</td></tr>
+        <tr><td>API potrošači</td><td>CRD-ovi, webhook-i, operatori, GitOps/backup/monitoring alati, korišćene API verzije</td><td>API discovery, manifest repozitorijum, audit/metrics podaci i release notes</td><td>Uklonjen API može zaustaviti rollout ili rad kontrolera.</td></tr>
+        <tr><td>Lifecycle i podrška</td><td>Upstream EOL, vendor EOL, paketni kanali, ugovor i plan sledeće verzije</td><td>Zvanični release kalendar i vendor lifecycle matrica</td><td>Razdvaja tehnički rad od podržanog produkcionog stanja.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Verzija se beleži najmanje kao puna semantička verzija, na primer <code>v1.36.2</code>, a za image i kao nepromenljivi digest kada je dostupan. Tag može biti pomeren ili prepisan u privatnom registry-ju; digest dokazuje tačan sadržaj. Za paket je važna i distribuciona revizija, izvor repozitorijuma i stanje pinovanja. Za konfiguraciju se beleže putanja ili objekat, checksum ili Git commit i odstupanje od standardnog profila. Tajne, privatni ključevi, tokeni i kompletan kubeconfig ne pripadaju inventarskom izvozu.
+    </p>
+
+    <h3>Prikupljanje verzija kontrolne ravni i nodova</h3>
+    <p>
+      Prikupljanje počinje potvrdom konteksta i identiteta klastera. Komande u nastavku su read-only i izvršavaju se sa administrativne radne stanice nalogom koji ima pravo čitanja Node i sistemskih workload objekata. Izlaz treba sačuvati u zaštićenoj radnoj fascikli incidenta ili change-a; podaci mogu otkriti interne adrese, imena nodova, verzije i poznatu površinu napada, pa se ne objavljuju nekontrolisano.
+    </p>
+
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl version -o yaml
+kubectl get --raw='/version'
+kubectl get nodes -o wide
+kubectl get nodes \
+  -o custom-columns='NAME:.metadata.name,ROLES:.metadata.labels.node-role\.kubernetes\.io/control-plane,KUBELET:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,ARCH:.status.nodeInfo.architecture'</code></pre>
+
+    <p>
+      <code>kubectl version</code> prikazuje verziju klijenta i servera, dok endpoint <code>/version</code> prikazuje build informacije API servera koji je odgovorio na zahtev. U HA klasteru load balancer može svaki put usmeriti zahtev drugoj instanci; jedan odgovor zato ne dokazuje da svi API serveri imaju istu verziju. Tokom rolling nadogradnje kratkotrajna razlika može biti očekivana, ali se mora proveriti na svakoj control-plane instanci kroz static Pod image, runtime ili drugi način koji odgovara načinu implementacije.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system get pods -l tier=control-plane -o wide
+kubectl -n kube-system get pods -l component=kube-apiserver \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,IMAGE:.spec.containers[0].image'
+kubectl -n kube-system get pods -l component=kube-controller-manager \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,IMAGE:.spec.containers[0].image'
+kubectl -n kube-system get pods -l component=kube-scheduler \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,IMAGE:.spec.containers[0].image'</code></pre>
+
+    <p>
+      Ove labele su tipične za kubeadm static podove, ali nisu univerzalni ugovor za svaku distribuciju. Ako selektor ne vrati objekte, administrator ne zaključuje da komponenta ne postoji, već proverava način implementacije i labele. U hosted ili managed servisu provajder može sakriti control-plane workload-e; tada su deklarisana verzija servisa, status nadogradnje i zvanična matrica provajdera merodavni za deo kojim on upravlja.
+    </p>
+    <p>
+      Node objekat pruža verziju <code>kubelet</code>-a i runtime-a koji se prijavio API serveru, ali ne dokazuje verziju instaliranog <code>kubeadm</code> ili paketa koji će biti upotrebljen pri sledećem restartu. Lokalna provera se zato radi na reprezentativnom, a pre promene na svakom nodu. Komande su read-only; <code>sudo</code> je potreban za zaštićene konfiguracije i CRI socket.
+    </p>
+
+    <pre><code class="language-bash">kubelet --version
+kubeadm version -o short
+kubectl version --client=true -o yaml
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock version
+sudo systemctl status kubelet --no-pager
+sudo systemctl status containerd --no-pager
+uname -r
+cat /etc/os-release</code></pre>
+
+    <p>
+      Putanja CRI socket-a zavisi od runtime-a i distribucije; za CRI-O je česta putanja <code>unix:///var/run/crio/crio.sock</code>. Ne treba nasumično menjati <code>/etc/crictl.yaml</code> niti restartovati runtime radi inventara. Ako se paketne verzije razlikuju od pokrenutih procesa, klaster se nalazi u potencijalno opasnom stanju „instalirano, ali neaktivno”, koje može postati vidljivo tek posle restarta noda.
+    </p>
+
+    <h3>Version skew: dozvoljena granica nije ciljna arhitektura</h3>
+    <p>
+      Kubernetes version skew policy definiše najveću podržanu razliku između osnovnih komponenti tokom rada i rolling nadogradnje. Pravila se odnose na minor verzije, pod pretpostavkom da se koriste podržani patch nivoi. Ona nisu preporuka da se klaster trajno održava na maksimalnoj razlici. Što je raspon veći, uži je zajednički skup funkcionalnosti, složenija je dijagnostika i veći je rizik da scheduler ili novi API prihvati konfiguraciju koju stariji node ne može potpuno da izvrši.
+    </p>
+
+    <table>
+      <thead><tr><th>Komponenta</th><th>Upstream pravilo</th><th>Operativno tumačenje</th></tr></thead>
+      <tbody>
+        <tr><td><code>kube-apiserver</code> u HA klasteru</td><td>Najnoviji i najstariji API server smeju se razlikovati najviše jednu minor verziju.</td><td>Stariji API server sužava dozvoljeni raspon svim klijentima koji moraju raditi sa svakom instancom.</td></tr>
+        <tr><td><code>kubelet</code></td><td>Ne sme biti noviji od API servera i može biti do tri minor verzije stariji; za verzije pre 1.25 važilo je uže pravilo.</td><td>Za API server 1.36 i 1.35 u istom HA klasteru podržani kubelet raspon računa se prema najstarijem API serveru: 1.35–1.32, ne prema 1.36.</td></tr>
+        <tr><td><code>kube-proxy</code></td><td>Ne sme biti noviji od API servera; može biti do tri minor verzije stariji, uz dodatno ograničenje u odnosu na lokalni kubelet.</td><td>Proverava se po nodu, jer neusaglašen DaemonSet rollout može ostaviti različite verzije.</td></tr>
+        <tr><td><code>kube-controller-manager</code>, <code>kube-scheduler</code>, cloud controller</td><td>Ne smeju biti noviji od API servera; očekuje se ista minor verzija, a do jedna starija dozvoljena je radi live upgrade-a.</td><td>Razlika je prelazno stanje, ne trajni dizajn.</td></tr>
+        <tr><td><code>kubectl</code></td><td>Podržan je unutar jedne minor verzije od API servera: klijent može biti jedan minor noviji ili stariji.</td><td>Administratorske radne stanice i CI runner-i moraju ući u inventar; sintaksa i podrška novim API mogućnostima zavise od klijenta.</td></tr>
+        <tr><td><code>kubeadm</code></td><td>Za upravljanje klasterom prate se posebna kubeadm pravila i dokumentovani koraci konkretne ciljne verzije.</td><td>Ne izvodi se upgrade samo zato što binarni fajl može da komunicira sa API serverom; verzija kubeadm-a bira se po zvaničnoj proceduri za svaki korak.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Patch verzije ne treba posmatrati kao dekoraciju. Kubernetes projekat redovno objavljuje ispravke kvarova i bezbednosnih propusta, a podrška za minor granu završava se njenim EOL datumom. U trenutku izrade ove lekcije, u julu 2026, održavane upstream grane su 1.36, 1.35 i 1.34; grana 1.33 dostigla je EOL 28. juna 2026. Pošto se brojevi patch izdanja i datumi menjaju, produkcioni change mora koristiti zvaničnu release stranicu proverenu na datum odobravanja, a ne broj prepisan iz statičnog tutorijala.
+    </p>
+
+    <div class="important-note">
+      <strong>Važno:</strong> podržani version skew ne produžava lifecycle minor grane. Kubelet na EOL verziji može tehnički biti unutar dozvoljene razlike prema API serveru, ali više nije pokriven upstream održavanjem te grane. Vendor ili managed service može imati drugačiji period podrške; merodavna je uža granica između upstream-a, distribucije, operativnog sistema, dodataka i ugovora organizacije.
+    </div>
+
+    <h3>Kompatibilnost etcd-a, runtime-a, CNI/CSI dodataka i operativnog sistema</h3>
+    <p>
+      Upstream version skew policy ne predstavlja kompletnu matricu platforme. Kubernetes release notes i kubeadm dokumentacija određuju koje verzije control-plane image-a i etcd-a se koriste ili podržavaju u konkretnoj ciljnoj verziji. Samostalna zamena etcd image-a „najnovijim” izdanjem nije bezbedna optimizacija. Etcd ima sopstvena pravila rolling nadogradnje i downgrade-a, a stariji binarni fajl ne mora moći da otvori podatke zapisane novijom šemom. Pre svake promene potrebni su potvrđen snapshot, poznata topologija članova, health/status dokaz i dokumentovana povratna procedura; sama lekcija 46 obrađuje backup i disaster recovery.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system get pods -l component=etcd \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,IMAGE:.spec.containers[0].image'
+
+# Izvršava se na kubeadm control-plane nodu; čita lokalni static Pod manifest.
+sudo grep -E 'image:|--initial-cluster=|--data-dir=' /etc/kubernetes/manifests/etcd.yaml</code></pre>
+
+    <p>
+      Druga komanda može u izlazu prikazati interne nazive i putanje, ali ne treba da prikazuje sadržaj privatnih ključeva. Direktan <code>etcdctl</code> zahteva odgovarajuće TLS fajlove i privilegije; njihove putanje i vrednosti ne kopiraju se u zajednički inventar. U laboratoriji ili odobrenoj produkcionoj proveri zdravlje se potvrđuje samo read-only operacijama <code>endpoint health</code> i <code>endpoint status</code>, sa tačno određenim endpointima i kratkim timeout-om.
+    </p>
+
+    <p>
+      Container runtime mora implementirati CRI koji kubelet očekuje. Od Kubernetes 1.26 zahteva se CRI v1; runtime koji podržava samo zastareli <code>v1alpha2</code> nije dovoljan. Docker Engine sam po sebi više nije ugrađeni Kubernetes runtime preko dockershim-a; ako se koristi, potreban je podržani CRI adapter, ali je za Vanilla Kubernetes uobičajeniji containerd ili CRI-O. Verzija runtime-a proverava se prema njegovoj dokumentaciji i Kubernetes zahtevima, ne samo prema činjenici da proces trenutno radi.
+    </p>
+    <p>
+      Kubelet i runtime moraju imati usklađen cgroup driver. Za kubeadm klastere sa systemd-om preporučen je <code>systemd</code>; kod cgroup v2 potrebni su podržani kernel, distribucija, runtime i odgovarajuća konfiguracija. Automatsko otkrivanje cgroup driver-a kroz CRI u novijim verzijama ne uklanja potrebu da se stvarno stanje proveri, naročito na klasterima nastalim pre te mogućnosti ili sa mešovitim verzijama nodova.
+    </p>
+
+    <p>
+      CNI i CSI nisu verzionisani kao deo osnovnog Kubernetes release-a. Njihovi proizvođači ili projekti objavljuju sopstvene matrice: podržane Kubernetes verzije, kernel module, eBPF zahteve, operativne sisteme, CRI, arhitekture i postupke prelaska. Isto važi za CoreDNS, Ingress ili Gateway kontrolere, load-balancer dodatke, metrics-server, autoscalere, policy engine, backup i observability agente. Verzija Deployment-a bez verzija njegovih CRD-ova, konfiguracije i upgrade metode nije dovoljan zapis.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system get daemonset,deployment -o wide
+kubectl -n kube-system get daemonset,deployment \
+  -o jsonpath='{range .items[*]}{.kind}{"\t"}{.metadata.name}{"\t"}{range .spec.template.spec.containers[*]}{.name}{"="}{.image}{" "}{end}{"\n"}{end}'
+kubectl get storageclass
+kubectl get csidriver
+kubectl get crd</code></pre>
+
+    <p>
+      Ovaj pregled otkriva image reference, ali ne i nužno verziju Helm chart-a ili Operator-a koji njima upravlja. Ručno menjanje image-a kontrolisanog Helm-om ili Operator-om stvara drift i može biti poništeno sledećom reconciliacijom. Inventar mora povezati runtime objekat sa izvorom deklaracije: Git commit-om, Helm release-om, Operator subscription-om ili konfiguracionim paketom.
+    </p>
+
+    <h3>API lifecycle, deprecations i kompatibilnost workload-a</h3>
+    <p>
+      Čak i kada su sve binarne komponente kompatibilne, nadogradnja može propasti zato što manifesti, operatori ili webhook-i koriste uklonjenu API verziju. Kubernetes deprecation policy daje minimalne rokove za stabilne i beta API-je, ali konkretan datum uklanjanja utvrđuje se u release notes i migration vodičima svake preskočene verzije. Polje <code>apiVersion</code> u Git repozitorijumu, živi objekti u klasteru i zahtevi koje stvarno šalju kontroleri nisu nužno isti skup.
+    </p>
+    <p>
+      API discovery pokazuje šta trenutni server nudi, ne šta će nuditi ciljna verzija. <code>kubectl api-resources</code> i <code>kubectl explain</code> potvrđuju trenutno stanje; server metrics, audit log ili alat za detekciju deprecated API-ja mogu pokazati stvarnu upotrebu. Statička analiza manifesta treba da obuhvati GitOps repozitorijume, Helm chart-ove, generisane manifeste, CI/CD templejte, backup/restore alate, operatore i interne klijente.
+    </p>
+
+    <pre><code class="language-bash">kubectl api-resources --verbs=list --namespaced=true
+kubectl api-versions
+kubectl explain deployment.spec
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations
+kubectl get apiservices
+kubectl get crd -o custom-columns='NAME:.metadata.name,STORED:.status.storedVersions,SERVED:.spec.versions[*].name'</code></pre>
+
+    <p>
+      Za CRD je posebno važna razlika između verzija koje se <em>serve</em> klijentima i verzija u kojima su objekti još zapisani u storage-u. Uklanjanje stare served ili storage verzije bez završene migracije može učiniti podatke nedostupnim. Conversion webhook mora biti zdrav i kompatibilan sa obe strane prelaza. Lekcija ne preporučuje ručno menjanje <code>status.storedVersions</code>; to polje se koriguje tek posle stvarne migracije svih objekata i prema dokumentovanom postupku vlasnika CRD-a.
+    </p>
+
+    <h3>Lifecycle: upstream, distribucija, provajder i organizacija</h3>
+    <p>
+      „Podržano” ima najmanje četiri značenja. Upstream Kubernetes održava ograničen broj poslednjih minor grana i objavljuje patch izdanja do EOL-a. Linux distribucija određuje dostupnost paketa, kernela i bezbednosnih ispravki. Proizvođač CNI/CSI ili druge komponente daje svoju matricu. Managed service ili komercijalna distribucija može produžiti, skratiti ili usloviti podršku i odrediti dozvoljene upgrade putanje. Organizacija zatim može postaviti stroži interni rok, na primer obaveznu migraciju pre ulaska grane u poslednjih 90 dana podrške.
+    </p>
+
+    <table>
+      <thead><tr><th>Status</th><th>Značenje</th><th>Administratorska odluka</th></tr></thead>
+      <tbody>
+        <tr><td>Podržano i aktuelno</td><td>Sve ključne komponente su u aktivnim granama i matricama, na odobrenim patch nivoima.</td><td>Redovno patchovanje i kontinuirana provera release napomena.</td></tr>
+        <tr><td>Podržano, ali pri kraju</td><td>Komponenta je još održavana, ali je EOL unutar organizacionog praga.</td><td>Otvoriti change/epic, rezervisati prozor, testirati putanju i zavisnosti.</td></tr>
+        <tr><td>Tehnički kompatibilno, ali nepodržano</td><td>Komponenta trenutno radi i možda je unutar skew-a, ali je grana EOL ili izvan vendor matrice.</td><td>Evidentirati rizik i hitno planirati prelaz; ne tretirati odsustvo simptoma kao dokaz bezbednosti.</td></tr>
+        <tr><td>Nekompatibilno</td><td>Prekršeno je skew/API/CRI/OS/add-on pravilo ili nema podržane putanje.</td><td>Zaustaviti planiranu promenu; projektovati međukorak, zamenu ili migraciju.</td></tr>
+        <tr><td>Nepoznato</td><td>Nema pouzdanog dokaza ili se izvori ne slažu.</td><td>Status je blokirajući dok se ne prikupi dokaz; pretpostavka nije odobrenje.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Lifecycle datum nije jedini kriterijum. Potrebno je pratiti sigurnosna obaveštenja, poznate kvarove, promene default vrednosti, feature gate faze, uklanjanje flag-ova, promene image registry-ja i zahteve platforme. Alpha mogućnosti su po pravilu isključene, mogu se menjati bez pune kompatibilnosti i nisu odgovarajuća osnova za kritičnu produkciju bez eksplicitnog prihvatanja rizika. Beta i GA status funkcije ne garantuju da je konkretan eksterni dodatak podržava.
+    </p>
+
+    <h3>Matrica kompatibilnosti i odluka o spremnosti</h3>
+    <p>
+      Pre nadogradnje se pravi matrica <strong>trenutno → prelazno → ciljno</strong>. Za svaki red navode se izvorna i ciljna verzija, dozvoljena putanja, preduslov, vlasnik, dokaz kompatibilnosti, test i rollback granica. „Nismo pronašli zabranu” nije isto što i „proizvođač eksplicitno podržava kombinaciju”. Kada dva dobavljača navode različite opsege, primenjuje se presek, odnosno uži skup.
+    </p>
+
+    <table>
+      <thead><tr><th>Stavka</th><th>Trenutno</th><th>Ciljno</th><th>Obavezna provera</th><th>Go/No-Go dokaz</th></tr></thead>
+      <tbody>
+        <tr><td>Kubernetes control plane</td><td>Puna patch verzija svih instanci</td><td>Sledeća podržana minor/patch grana</td><td>Jedna minor verzija po koraku, release notes, kubeadm plan</td><td>Podržana putanja i zdrav HA control plane.</td></tr>
+        <tr><td>Node komponente</td><td>Kubelet/kube-proxy po nodu</td><td>Ciljni nivo ili dokumentovano prelazno stanje</td><td>Skew prema najstarijem API serveru i lokalni odnos komponenti</td><td>Nijedan node izvan politike; kapacitet za rolling rad.</td></tr>
+        <tr><td>etcd</td><td>Verzija i data schema/topologija</td><td>Verzija koju podržava ciljna platforma</td><td>Zvanična matrica, snapshot i downgrade granica</td><td>Health/status, testiran restore i potvrđena putanja.</td></tr>
+        <tr><td>Runtime/OS/kernel</td><td>Po node pool-u</td><td>Podržana kombinacija</td><td>CRI v1, cgroup, kernel moduli, paketni repozitorijumi</td><td>Test noda, image pull, mreža, storage i resursi.</td></tr>
+        <tr><td>CNI/CSI i dodaci</td><td>Image digest, chart/operator i konfiguracija</td><td>Verzija iz preseka matrica</td><td>Redosled u odnosu na Kubernetes, CRD migracije</td><td>Vendor matrica i uspešan staging test.</td></tr>
+        <tr><td>API klijenti</td><td>Manifesti i stvarni zahtevi</td><td>API-ji dostupni na cilju</td><td>Deprecated/removed API i webhook kompatibilnost</td><td>Nema blokirajućih poziva; migracije proverene.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Go odluka zahteva zdravo početno stanje. Inventar sa upozorenjima <code>NotReady</code> nodova, neuspešnim kontrolerima, nepoznatim etcd stanjem, nevažećim sertifikatima ili nedokumentovanim add-on-om nije samo administrativni dug; on znači da se ne može pouzdano razlikovati posledica nadogradnje od prethodnog kvara. Izuzetak mora imati formalno prihvaćen rizik, vlasnika, vremensko ograničenje i recovery plan.
+    </p>
+
+    <h3>Integrisani praktikum: izrada verifikovanog lifecycle inventara</h3>
+    <p>
+      <strong>Kontekst i cilj.</strong> Tim priprema kubeadm klaster za buduću nadogradnju. Administrator treba da napravi vremenski označen inventar, pronađe heterogene verzije, proveri osnovni skew i označi zavisnosti čija kompatibilnost zahteva spoljašnju zvaničnu matricu. Praktikum ne menja stanje klastera i bezbedan je za produkciju ako su izlazi zaštićeni i RBAC odobren.
+    </p>
+    <p>
+      <strong>Topologija i preduslovi.</strong> Referentni klaster ima tri control-plane i najmanje dva worker noda, kubeadm implementaciju, containerd i administratorsku radnu stanicu sa <code>kubectl</code>. Potrebna su read prava nad Node, Namespace, workload, webhook, APIService, StorageClass, CSIDriver i CRD objektima. Lokalna provera nodova izvodi se preko odobrenog SSH ili konzolnog pristupa sa <code>sudo</code> pravom samo za čitanje konfiguracije i statusa servisa.
+    </p>
+    <p>
+      <strong>Rizik.</strong> Komande ne menjaju klaster, ali izvozi sadrže internu topologiju, verzije i image lokacije. Fascikla ne sme sadržati Secret objekte, kubeconfig sadržaj, PKI materijal ni environment promenljive procesa. Ne pokretati <code>kubectl get all -A -o yaml</code>: naziv „all” ne obuhvata sve tipove, a masovni YAML stvara nepotreban, potencijalno osetljiv skup podataka.
+    </p>
+
+    <h4>Vežba 1: početna snimka i dokaz porekla</h4>
+    <p>
+      Na radnoj stanici se pravi nova fascikla sa restriktivnim pravima. Prva komanda menja samo lokalni filesystem, ne klaster. Promenljiva se formira iz UTC vremena da bi se više inventara moglo porediti.
+    </p>
+
+    <pre><code class="language-bash">umask 077
+INVENTAR_DIR="${PWD}/k8s-inventar-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${INVENTAR_DIR}"
+
+date -u +'%Y-%m-%dT%H:%M:%SZ' &gt; "${INVENTAR_DIR}/collected-at-utc.txt"
+kubectl config current-context &gt; "${INVENTAR_DIR}/context.txt"
+kubectl cluster-info &gt; "${INVENTAR_DIR}/cluster-info.txt"
+kubectl version -o yaml &gt; "${INVENTAR_DIR}/kubectl-version.yaml"
+kubectl get --raw='/version' &gt; "${INVENTAR_DIR}/apiserver-version.json"
+kubectl get nodes -o wide &gt; "${INVENTAR_DIR}/nodes-wide.txt"
+kubectl get nodes -o json &gt; "${INVENTAR_DIR}/nodes.json"</code></pre>
+
+    <p>
+      <strong>Očekivani rezultat i validacija.</strong> Sve komande završavaju kodom 0, kontekst odgovara change zahtevu, API endpoint odgovara, a broj nodova odgovara odobrenoj topologiji. Provera lokalnih fajlova ne treba da ispisuje njihov sadržaj u deljeni chat ili tiket.
+    </p>
+
+    <pre><code class="language-bash">test -s "${INVENTAR_DIR}/apiserver-version.json"
+test -s "${INVENTAR_DIR}/nodes.json"
+find "${INVENTAR_DIR}" -maxdepth 1 -type f -printf '%M %s %f\n' | sort</code></pre>
+
+    <p>
+      Ako se pojavi <code>Forbidden</code>, ne povećavati privilegije na svoju ruku. Evidentira se koji resurs nije čitljiv i traži se minimalno dodatno read pravo ili izvoz od vlasnika platforme. Ako kontekst nije očekivan, vežba se prekida pre daljih komandi.
+    </p>
+
+    <h4>Vežba 2: normalizovan pregled version skew-a</h4>
+    <p>
+      Sledeća komanda iz Node objekata pravi TSV pogodan za pregled i kasniji uvoz u tabelu ili CMDB. Prazna polja nisu dokaz verzije; označavaju podatak koji treba dopuniti drugim izvorom.
+    </p>
+
+    <pre><code class="language-bash">{
+  printf 'node\tkubelet\truntime\tos\tkernel\tarch\n'
+  kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kubeletVersion}{"\t"}{.status.nodeInfo.containerRuntimeVersion}{"\t"}{.status.nodeInfo.osImage}{"\t"}{.status.nodeInfo.kernelVersion}{"\t"}{.status.nodeInfo.architecture}{"\n"}{end}'
+} &gt; "${INVENTAR_DIR}/node-versions.tsv"
+
+column -t -s $'\t' "${INVENTAR_DIR}/node-versions.tsv"
+cut -f2 "${INVENTAR_DIR}/node-versions.tsv" | tail -n +2 | sort | uniq -c
+cut -f3 "${INVENTAR_DIR}/node-versions.tsv" | tail -n +2 | sort | uniq -c</code></pre>
+
+    <p>
+      <strong>Kriterijum.</strong> Administrator može da objasni svaku različitu kubelet i runtime verziju: da li predstavlja planirani node pool, rolling rad, drift ili nepodržano stanje. Za HA control plane zasebno se izvoze image reference svake instance. Ako jedan API server zaostaje, skew se računa prema njemu dok se razlika ne ukloni.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system get pods -l tier=control-plane -o json \
+  &gt; "${INVENTAR_DIR}/control-plane-pods.json"
+kubectl -n kube-system get daemonset kube-proxy -o yaml \
+  &gt; "${INVENTAR_DIR}/kube-proxy.yaml"</code></pre>
+
+    <p>
+      Ako klaster nema <code>kube-proxy</code> zato što CNI koristi dokumentovan alternativni dataplane, to nije automatski kvar, ali mora biti eksplicitno označeno. Ako komanda ne nalazi static podove, proverava se distribucija ili managed model; ne izmišljaju se verzije na osnovu pretpostavke.
+    </p>
+
+    <h4>Vežba 3: add-on, API i lifecycle registar</h4>
+    <p>
+      Izvoze se sistemski workload-i, storage drajveri, webhook-i, agregirani API servisi i CRD metapodaci. Ovo je inventar kandidata za proveru, ne automatska potvrda kompatibilnosti.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system get daemonset,deployment,statefulset -o json \
+  &gt; "${INVENTAR_DIR}/kube-system-workloads.json"
+kubectl get storageclass,csidriver -o yaml \
+  &gt; "${INVENTAR_DIR}/storage-interfaces.yaml"
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations -o yaml \
+  &gt; "${INVENTAR_DIR}/admission-webhooks.yaml"
+kubectl get apiservices -o yaml \
+  &gt; "${INVENTAR_DIR}/api-services.yaml"
+kubectl get crd -o json \
+  &gt; "${INVENTAR_DIR}/crds.json"
+kubectl api-versions \
+  &gt; "${INVENTAR_DIR}/served-api-versions.txt"</code></pre>
+
+    <p>
+      Za svaki prepoznat dodatak u radni registar unose se vlasnik, trenutna verzija/digest, način instalacije, ciljna verzija Kubernetes-a, link ili oznaka zvanične matrice, poslednji datum provere i zaključak <code>PASS</code>, <code>BLOCK</code> ili <code>UNKNOWN</code>. Nepostojanje matrice ostaje <code>UNKNOWN</code> i blokira produkcioni Go dok vlasnik ne dostavi dokaz ili odobrenu zamenu.
+    </p>
+
+    <pre><code class="language-none">komponenta | vlasnik | trenutno | cilj | izvor kompatibilnosti | status | dokaz/test
+CNI        | NetOps  | ...      | ...  | zvanična matrica      | ...    | ...
+CSI        | Storage | ...      | ...  | zvanična matrica      | ...    | ...
+CoreDNS    | Platform| ...      | ...  | Kubernetes/kubeadm     | ...    | ...
+Ingress    | AppPlat | ...      | ...  | dokumentacija projekta | ...    | ...</code></pre>
+
+    <h4>Vežba 4: kontrolisana simulacija nalaza i troubleshooting grana</h4>
+    <p>
+      Nije bezbedno namerno instalirati pogrešan kubelet ili runtime na produkcioni node. Simulacija se zato radi bez promene klastera: kopija <code>node-versions.tsv</code> dobija laboratorijski red sa starijom verzijom, a administrator prolazi postupak klasifikacije. Originalni dokaz ostaje netaknut.
+    </p>
+
+    <pre><code class="language-bash">cp "${INVENTAR_DIR}/node-versions.tsv" \
+   "${INVENTAR_DIR}/node-versions-simulation.tsv"
+printf 'simulated-node\tv1.32.9\tcontainerd://1.7.x\tSIMULATION\tSIMULATION\tamd64\n' \
+  &gt;&gt; "${INVENTAR_DIR}/node-versions-simulation.tsv"
+column -t -s $'\t' "${INVENTAR_DIR}/node-versions-simulation.tsv"</code></pre>
+
+    <p>
+      Za hipotetički HA control plane u kome instance rade na 1.36 i 1.35, simulirani kubelet 1.32 nalazi se na donjoj granici raspona računatog prema najstarijem API serveru. Administrator ipak mora da proveri da li je ta grana još u upstream ili vendor lifecycle-u i da li dodaci podržavaju kombinaciju. Ako nije održavana, nalaz je <em>tehnički unutar skew-a, ali lifecycle nepodržan</em>. Neposredni problem je EOL komponenta; osnovni uzrok može biti izostanak lifecycle alarma ili neuspela rotacija node pool-a. Privremena mera je kontrola novih promena i pojačan monitoring, a trajna mera planirana zamena/nadogradnja po dokumentovanoj putanji.
+    </p>
+    <p>
+      Ako se stvarni node razlikuje od inventara, prvo se potvrđuju vreme poslednjeg javljanja, <code>Ready</code> stanje, instalirana i pokrenuta verzija i poslednji change. Ne radi se nasumičan restart. Ako je novi paket instaliran, ali stari proces još radi, restart može aktivirati novu verziju i promeniti stanje; zato se tretira kao state-changing operacija sa drain/PDB/kapacitet proverom i odobrenim rollback-om.
+    </p>
+
+    <h4>Vežba 5: završna validacija i predaja inventara</h4>
+    <p>
+      Završni inventar mora biti ponovljiv i proverljiv. Generiše se checksum, beleži spisak nedostajućih dokaza i donosi Go/No-Go zaključak za sledeću fazu planiranja. Checksum potvrđuje da se snapshot nije promenio; ne potvrđuje da su podaci tačni.
+    </p>
+
+    <pre><code class="language-bash">find "${INVENTAR_DIR}" -maxdepth 1 -type f ! -name 'SHA256SUMS' \
+  -printf '%f\n' | sort | while IFS= read -r file; do
+    sha256sum "${INVENTAR_DIR}/${file}"
+  done &gt; "${INVENTAR_DIR}/SHA256SUMS"
+
+(cd "${INVENTAR_DIR}" &amp;&amp; sha256sum --check SHA256SUMS)</code></pre>
+
+    <p>
+      <strong>Očekivani rezultat.</strong> Svaki checksum ima status <code>OK</code>; inventar sadrži vreme, kontekst, server/client build, node tabelu, control-plane i kube-proxy dokaze, sistemske dodatke, API/CRD pregled i zaseban registar kompatibilnosti. Kriterijum završetka nije „komande su izvršene”, već: svaki blokirajući <code>UNKNOWN</code> ima vlasnika i rok, svaki drift ima objašnjenje, a Go/No-Go odluka je potpisana dokazima.
+    </p>
+    <p>
+      <strong>Rollback i čišćenje.</strong> Praktikum nije menjao klaster. Simulacioni fajl se može ukloniti iz finalnog paketa, dok se originalni snapshot zadržava prema politici evidencije. Ako je inventar napravljen na neodobrenoj lokaciji, ne kopira se nekontrolisano; obaveštava se vlasnik podataka i premešta se u odobreni zaštićeni repozitorijum prema organizacionoj proceduri.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+    <ul class="checklist">
+      <li>☐ Inventar ima UTC vreme, identitet klastera, okruženje, vlasnika i izvor svakog kritičnog podatka.</li>
+      <li>☐ Odvojeni su deklarisano stanje iz CMDB/Git-a i stvarno stanje očitano sa klastera i nodova.</li>
+      <li>☐ Puna patch verzija potvrđena je za svaku control-plane instancu, a ne samo preko jednog load-balanced API odgovora.</li>
+      <li>☐ Kubelet, kube-proxy, runtime, OS, kernel i arhitektura pregledani su po nodu ili homogenom node pool-u.</li>
+      <li>☐ Dozvoljeni skew računat je prema najstarijem API serveru sa kojim komponenta mora komunicirati.</li>
+      <li>☐ Dozvoljeni skew nije korišćen kao zamena za aktivan upstream/vendor lifecycle.</li>
+      <li>☐ etcd verzija i topologija povezane su sa zvaničnom matricom ciljne Kubernetes/kubeadm verzije.</li>
+      <li>☐ CRI v1, cgroup driver, runtime, kernel i OS čine podržanu kombinaciju.</li>
+      <li>☐ CNI, CSI, CoreDNS, Ingress/Gateway, monitoring, policy i backup komponente imaju vlasnika i proverenu matricu.</li>
+      <li>☐ Pregledani su deprecated/removed API-ji, webhook-i, agregirani API-ji, CRD served i stored verzije i eksterni klijenti.</li>
+      <li>☐ Za svaku ciljnu verziju provereni su release notes, known issues, sigurnosne napomene i podržana upgrade putanja.</li>
+      <li>☐ Tajne, tokeni, kubeconfig sadržaj i privatni ključevi nisu uključeni u inventarski paket.</li>
+      <li>☐ Svaki status <code>UNKNOWN</code> ima vlasnika i predstavlja No-Go dok se ne dobije dokaz ili prihvati rizik.</li>
+      <li>☐ Snapshot ima checksum, kontrolisan pristup, rok čuvanja i vezu sa change/incident zapisom.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <p>
+      Lekcija je savladana kada administrator ume da napravi ponovljiv inventar kompletnog Kubernetes sklopa, razlikuje verziju API servera od verzija svih HA instanci, prikupi kubelet, kube-proxy, kubeadm, runtime, OS i kernel podatke i poveže svaki dodatak sa njegovim izvorom deklaracije i vlasnikom. Mora tačno da primeni version skew pravila, objasni zašto se raspon računa prema najstarijem API serveru i prepozna da tehnički dozvoljen odnos može istovremeno biti izvan podržanog lifecycle-a.
+    </p>
+    <p>
+      Praktični kriterijum je lifecycle paket iz praktikuma: sadrži vremenski označene dokaze, matricu trenutno–ciljno, status svih ključnih zavisnosti, API i CRD pregled, checksum i dokumentovanu Go/No-Go odluku. Administrator može da razdvoji činjenicu, pretpostavku i nepoznat podatak; da za drift formuliše neposredni i osnovni uzrok; i da za svaku narednu promenu navede preduslov, validaciju, vlasnika i rollback granicu.
+    </p>
+
+    <h3>Zaključak</h3>
+    <p>
+      Inventar komponenti je temelj lifecycle upravljanja zato što Kubernetes klaster čini skup verzionisanih i međuzavisnih sistema. Jedna oznaka „Kubernetes 1.x” ne opisuje stanje control plane-a, nodova, etcd-a, runtime-a, mreže, storage-a, dodataka ni API potrošača. Pouzdan administrator zato prikuplja dokaze iz više primarnih izvora, beleži njihovo vreme i poreklo, poredi opaženo stanje sa deklarisanim i tretira nepoznatu kompatibilnost kao stvarni rizik.
+    </p>
+    <p>
+      Version skew omogućava kontrolisanu rolling nadogradnju i ograničenu heterogenost, ali nije dozvola za trajni drift. Lifecycle se utvrđuje presekom upstream rasporeda, vendor matrice, podrške operativnog sistema i dodataka, ugovora provajdera i strožih organizacionih pravila. API deprecations, CRD storage verzije, CRI i cgroup zahtevi mogu biti jednako važni kao verzija samog API servera.
+    </p>
+    <p>
+      Odgovornost administratora je da ne započne promenu dok topologija, verzije, zavisnosti, health stanje i recovery granice nisu poznati. Dobro izrađen inventar ne garantuje uspeh nadogradnje, ali pretvara nepoznate pretpostavke u proverljive odluke. Time priprema teren za proveru PKI i kubeconfig lifecycle-a u narednoj lekciji, a zatim za kontrolisanu kubeadm nadogradnju i dokaziv oporavak klastera.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za release lifecycle, version skew i API deprecation politiku; Kubernetes i kubeadm administrativne, upgrade i CLI reference; dokumentacija za Node, CRI, container runtime i cgroup konfiguraciju; zvanične etcd reference za verzionisanje, kompatibilnost, upgrade i downgrade; primarne matrice i lifecycle dokumentacija CNI, CSI i drugih klasterskih dodataka
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn"
+         href="vanilla-k8s-42-sistematican-troubleshooting.html">
+        ← Prethodna lekcija
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s-44-sertifikati-pki-kubeconfig.html">
+        Sledeća lekcija →
+      </a>
+    </div>
+
+  </main>
+
+  <script src="../../../../js/syntax/prism.js"></script>
+</body>
+
+</html>

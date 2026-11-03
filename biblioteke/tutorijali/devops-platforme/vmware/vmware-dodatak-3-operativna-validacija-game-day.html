@@ -1,0 +1,693 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-dodatak-3-operativna-validacija-game-day.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Operativna validacija i game day – kvar, oporavak, dokazi i retrospektiva | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Praktikum operativne validacije VMware okruženja kroz game day, kontrolisani kvar, oporavak, prikupljanje dokaza i retrospektivu.">
+
+  <meta name="keywords"
+        content="VMware game day, operativna validacija, kontrolisani kvar, oporavak, dokazi, retrospektiva, VMware praktikum, vSphere laboratorija, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-dodatak-3-operativna-validacija-game-day.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Operativna validacija i game day – kvar, oporavak, dokazi i retrospektiva">
+
+  <meta property="og:description"
+        content="Praktikum operativne validacije VMware okruženja kroz game day, kontrolisani kvar, oporavak, prikupljanje dokaza i retrospektivu.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-dodatak-3-operativna-validacija-game-day.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-dodatak-3-operativna-validacija-game-day.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Operativna validacija i game day – kvar, oporavak, dokazi i retrospektiva">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Četvrti deo: Praktikumi, laboratorije i završni projekti
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-dodatak-3-operativna-validacija-game-day.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-dodatak-3-operativna-validacija-game-day.png"
+           alt="Operativna validacija i game day – kvar, oporavak, dokazi i retrospektiva">
+
+    </a>
+
+    <div class="page-subtitle">
+  XIII. Laboratorijsko okruženje i integrisani projekti
+</div>
+
+<div class="page-subtitle">
+  Dodatak 3. Operativna validacija i game day – kvar, oporavak, dokazi i retrospektiva
+</div>
+
+<p>
+  Pouzdano VMware okruženje nije ono u kome se kvar još nije dogodio, već ono za koje tim može da dokaže da kvar prepoznaje, ograničava, bezbedno oporavlja i pretvara u trajno poboljšanje. Ovaj dodatak je završni integrisani praktikum tutorijala: laboratorija iz Dodatka 1 i model upravljivog enterprise okruženja iz Dodatka 2 sada se proveravaju kontrolisanim <em>game day</em> vežbama. Posmatra se ceo operativni sistem rada — ljudi, procedure, vCenter Server, ESXi, vSphere HA, mreža, storage, gostujući sistem, aplikacija, monitoring, backup i evidencija promene.
+</p>
+
+<p>
+  Game day je vremenski ograničena i unapred odobrena vežba u kojoj se uvodi poznat poremećaj ili simulira gubitak zavisnosti, a zatim proveravaju detekcija, eskalacija, tehnički oporavak i komunikacija. To nije nekontrolisano „rušenje sistema”. U produkciji se sprovodi tek kada postoje vlasnik usluge, odobren opseg, održavan backup, potvrđen put povratka, kriterijumi za trenutno zaustavljanje i osoba ovlašćena da prekine eksperiment. Prvi ciklus se uvek izvodi u izolovanoj laboratoriji.
+</p>
+
+<h3>1. Ishodi učenja i operativni kriterijum uspeha</h3>
+
+<p>
+  Po završetku lekcije administrator treba da ume da prevede poslovni zahtev u proverljivu hipotezu, zabeleži početno stanje, uvede kontrolisan kvar, očuva vremenski sled dokaza, razlikuje restart virtuelne mašine od oporavka usluge, izmeri MTTD i MTTR, sprovede bezbedan rollback i napiše retrospektivu bez traženja krivca. Vežba je uspešna i kada otkrije slabost, pod uslovom da je blast radius ostao u odobrenim granicama, da su podaci sačuvani i nalaz pretvoren u odgovornu korektivnu meru.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam</th>
+      <th>Šta meri ili ograničava</th>
+      <th>Prihvatljiv dokaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Blast radius</td>
+      <td>Najveći dozvoljeni skup hostova, VM-ova, mreža, datastore-ova i korisnika koje vežba može da pogodi.</td>
+      <td>Imenovan inventar i eksplicitna lista objekata izvan opsega.</td>
+    </tr>
+    <tr>
+      <td>MTTD</td>
+      <td>Vreme od početka poremećaja do pouzdane detekcije.</td>
+      <td>Sinhronizovani timestamp injekcije kvara i alarma ili tiketa.</td>
+    </tr>
+    <tr>
+      <td>MTTA</td>
+      <td>Vreme do potvrde da je odgovorna osoba preuzela incident.</td>
+      <td>Audit trag ili vreme preuzimanja tiketa.</td>
+    </tr>
+    <tr>
+      <td>MTTR</td>
+      <td>Vreme do potvrđenog oporavka usluge, ne samo infrastrukture.</td>
+      <td>Sintetički test, aplikaciona transakcija i stabilne metrike.</td>
+    </tr>
+    <tr>
+      <td>RPO</td>
+      <td>Najveći prihvatljiv gubitak podataka izražen vremenom.</td>
+      <td>Poređenje poslednje potvrđene transakcije pre kvara i podataka posle oporavka.</td>
+    </tr>
+    <tr>
+      <td>RTO</td>
+      <td>Najduže prihvatljivo vreme nedostupnosti usluge.</td>
+      <td>Vremenska linija od prekida do poslovno potvrđene funkcionalnosti.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2. Granice testa: laboratorijska simulacija, produkciona vežba i incident</h3>
+
+<p>
+  Ista radnja nema isti rizik u svim okruženjima. Gašenje laboratorijskog ESXi hosta sa dve testne VM može dokazati HA oporavak; prekid oba management uplink-a produkcionog hosta može aktivirati isolation response, izgubiti administrativni pristup, poremetiti storage i produžiti zadržavanje lock-a. Zato se bira najmanje destruktivan fault injection koji proverava istu hipotezu.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nivo</th>
+      <th>Dozvoljena proba</th>
+      <th>Obavezna zaštita</th>
+      <th>Nije prihvatljivo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Izolovana laboratorija</td>
+      <td>Gašenje testnog servisa ili hosta, uklanjanje jednog redundantnog uplink-a, restore u novu lokaciju.</td>
+      <td>Out-of-band pristup, kopija konfiguracije, početno stanje i rollback.</td>
+      <td>Eksperiment koji može zahvatiti produkcioni VLAN ili storage.</td>
+    </tr>
+    <tr>
+      <td>Preprodukcija</td>
+      <td>Realističan kvar jedne redundantne komponente i aplikacioni test.</td>
+      <td>Odobrena promena, monitoring i prisutan vlasnik aplikacije.</td>
+      <td>Maskiranje alarma tako da se ne proveri eskalacija.</td>
+    </tr>
+    <tr>
+      <td>Produkcija</td>
+      <td>Tabletop, zatim ograničena reverzibilna proba bez ugrožavanja podataka.</td>
+      <td>Formalni change, stop authority, maintenance window i vendor support kada je potreban.</td>
+      <td>Prvi pokušaj procedure ili istovremeni test više kvarova.</td>
+    </tr>
+    <tr>
+      <td>Stvarni incident</td>
+      <td>Dijagnostika i korekcije potrebne za stabilizaciju.</td>
+      <td>Incident commander, dnevnik odluka i očuvanje dokaza.</td>
+      <td>Nastavljanje eksperimenta.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Snapshot nije backup niti podrazumevani rollback. Kratkotrajan snapshot pomaže kod reverzibilne promene u jednoj VM, ali ne štiti od gubitka datastore-a, ne zamenjuje aplikaciono konzistentan backup i uvećava I/O i delta disk. Restore se testira u zasebnoj lokaciji ili izolovanoj mreži.
+</p>
+
+<h3>3. Dizajn game day-a: od poslovne tvrdnje do hipoteze</h3>
+
+<p>
+  Tvrdnja „HA radi” nije dovoljna. Proverljiva hipoteza glasi: „Ako jedan ESXi host iznenada postane nedostupan, VM <code>gd-web01</code> biće automatski uključena na preživelom hostu u roku od 180 sekundi, HTTPS proba će ponovo davati status 200 u roku od 300 sekundi, bez gubitka poslednje potvrđene testne transakcije.” Ona navodi stimulus, granicu otkaza, objekt, mehanizam, vreme i dokaz na nivou aplikacije.
+</p>
+
+<h4>3.1. Eksperimentalni karton</h4>
+
+<ul>
+  <li><strong>Usluga i vlasnik:</strong> ko potvrđuje stvarni oporavak funkcije.</li>
+  <li><strong>Hipoteza i SLO:</strong> RTO, RPO i dozvoljeno pogoršanje.</li>
+  <li><strong>Topologija:</strong> vCenter, ESXi, DNS, NTP, identitet, mreža, datastore, backup i aplikaciona baza.</li>
+  <li><strong>Opseg:</strong> tačno imenovani objekti i isključenja.</li>
+  <li><strong>Preduslovi:</strong> zdrav klaster, potvrđen backup, kapacitet i out-of-band pristup.</li>
+  <li><strong>Uloge:</strong> lead, operator, observer, vlasnik aplikacije i stop authority.</li>
+  <li><strong>Fault injection:</strong> jedna promenljiva, tačan korak i maksimalno trajanje.</li>
+  <li><strong>Abort:</strong> gubitak dodatne redundanse, rast opsega, sumnja u integritet podataka ili nestanak out-of-band pristupa.</li>
+  <li><strong>Rollback:</strong> vlasnik, redosled i dokaz stabilnosti.</li>
+</ul>
+
+<h4>3.2. Minimalna laboratorijska topologija</h4>
+
+<pre><code class="language-none">vCenter Server: vcsa.lab.example
+Cluster: LAB-CL01 (HA uključen)
+ESXi: esx01.lab.example, esx02.lab.example
+Management: redundantne putanje ili out-of-band konzola
+Shared datastore: DS-LAB01
+Test VM: gd-web01, VMware Tools aktivan, aplikaciona health proba
+Observer: admin01 sa VCF PowerCLI i sinhronizovanim vremenom
+Backup: potvrđena restore tačka za gd-web01
+Izvan opsega: produkcioni VLAN-ovi, datastore-ovi i management VM</code></pre>
+
+<p>
+  Klaster sa dva hosta može demonstrirati restart, ali ima malu marginu kapaciteta. Admission Control mora pokazati da preživeli host ima resurse. Ako je vCenter na testiranom klasteru, unapred se proveravaju njegova lokacija, DNS i direktan pristup ESXi Host Client-u. HA može nastaviti određene funkcije bez aktivnog vCenter-a, ali vidljivost i orkestracija postaju ograničene.
+</p>
+
+<h3>4. Pre-flight validacija i paket početnih dokaza</h3>
+
+<p>
+  Dokazi se prikupljaju pre promene stanja. Inventar potvrđuje verzije i build brojeve, licencu, HA/DRS, admission control, datastore, putanje, VM restart priority, VM/Host pravila, kapacitet, alarme, VMware Tools i aplikacioni health. Proactive HA, DRS automatizacija, vSAN politike i orkestrisani DR nisu sinonimi za osnovni HA restart i zavise od platforme, integracije i licence.
+</p>
+
+<h4>4.1. Read-only VCF PowerCLI snimak</h4>
+
+<p>
+  Primer se izvršava na administrativnoj stanici sa aktuelnim VCF PowerCLI modulima i nalogom sa najmanjim privilegijama za čitanje. Ne menja vSphere stanje; direktorijum treba zaštititi jer sadrži operativne metapodatke.
+</p>
+
+<pre><code class="language-powershell">$vc = "vcsa.lab.example"
+$clusterName = "LAB-CL01"
+$evidenceRoot = Join-Path $PWD ("game-day-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
+
+Connect-VIServer -Server $vc
+$cluster = Get-Cluster -Name $clusterName
+
+Get-VMHost -Location $cluster |
+  Select-Object Name, ConnectionState, PowerState, Version, Build, CpuUsageMhz, MemoryUsageGB |
+  Export-Csv (Join-Path $evidenceRoot "hosts.csv") -NoTypeInformation -Encoding UTF8
+
+Get-VM -Location $cluster |
+  Select-Object Name, PowerState, VMHost, NumCpu, MemoryGB,
+    @{N="ToolsStatus";E={$_.ExtensionData.Guest.ToolsStatus}} |
+  Export-Csv (Join-Path $evidenceRoot "vms.csv") -NoTypeInformation -Encoding UTF8
+
+Get-Datastore -RelatedObject $cluster |
+  Select-Object Name, Type, State, CapacityGB, FreeSpaceGB |
+  Export-Csv (Join-Path $evidenceRoot "datastores.csv") -NoTypeInformation -Encoding UTF8
+
+Get-AlarmDefinition -Entity $cluster -Enabled $true |
+  Select-Object Name, Description |
+  Export-Csv (Join-Path $evidenceRoot "enabled-alarms.csv") -NoTypeInformation -Encoding UTF8
+
+Get-VIEvent -Entity $cluster -Start (Get-Date).AddMinutes(-30) -MaxSamples 5000 |
+  Select-Object CreatedTime, UserName, FullFormattedMessage |
+  Export-Csv (Join-Path $evidenceRoot "events-before.csv") -NoTypeInformation -Encoding UTF8</code></pre>
+
+<p>
+  <code>Get-VIEvent</code> može vratiti ograničen broj zapisa, pa se vremenski prozor i <code>-MaxSamples</code> biraju svesno. Sačuvati treba i ID promene, verziju runbook-a, HA konfiguraciju i aplikacionu probu. Lozinke, session cookie-je i private key materijal ne stavljati u tiket.
+</p>
+
+<h4>4.2. Vreme i marker eksperimenta</h4>
+
+<p>
+  Korelacija zahteva ispravno vreme na vCenter-u, ESXi-u, gostu i observer-u. Na odobrenom, vremenski ograničenom ESXi Shell-u stanje se čita prve dve komande; treća samo dodaje marker u syslog.
+</p>
+
+<pre><code class="language-bash">esxcli system time get
+esxcli system ntp get
+esxcli system syslog mark --message="GAME-DAY GD-2026-03 START host=esx01"</code></pre>
+
+<p>
+  Ako SSH nije dozvoljen, vreme i događaji se proveravaju kroz vSphere Client i centralni syslog. Privremeno uključen SSH na kraju se isključuje i promena evidentira.
+</p>
+
+<h3>5. Telemetrija, logovi i lanac čuvanja dokaza</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Izvor</th>
+      <th>Šta potvrđuje</th>
+      <th>Korelacija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Tasks, Events i Alarms</td>
+      <td>Izvršioca, vreme promene, HA događaje i reconnect.</td>
+      <td>vSphere Client ili <code>Get-VIEvent</code>; change ID i marker.</td>
+    </tr>
+    <tr>
+      <td><code>/var/run/log/fdm.log</code></td>
+      <td>FDM election, heartbeat, isolation i failover odluke.</td>
+      <td>Incidentni prozor na svim relevantnim hostovima.</td>
+    </tr>
+    <tr>
+      <td><code>/var/run/log/hostd.log</code> i <code>vpxa.log</code></td>
+      <td>Lokalne host operacije i vezu sa vCenter-om.</td>
+      <td><code>vpxd.log</code> i mrežni događaji.</td>
+    </tr>
+    <tr>
+      <td><code>/var/run/log/vmkernel.log</code></td>
+      <td>Storage putanje, uređaje, drajvere i kernel događaje.</td>
+      <td>Uređaj, vmnic ili naa ID plus vreme.</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmware/vpxd/vpxd.log</code> na VCSA</td>
+      <td>vCenter servisne operacije i host komunikaciju.</td>
+      <td>VCSA/support bundle i vCenter događaji.</td>
+    </tr>
+    <tr>
+      <td>Guest, aplikacija i monitoring</td>
+      <td>Start servisa, zahtev, podatke i korisnički uticaj.</td>
+      <td>Request ID i zajednički vremenski standard.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Na savremenom ESXi-u primarne lokacije su pod <code>/var/run/log</code>; starije reference često prikazuju <code>/var/log</code> ili simboličku vezu. Zvanična KB matrica za verziju ima prednost. Support bundle se prikuplja što pre jer rotacija uklanja prozor. Povećanje log nivoa, restart <code>hostd</code>/<code>vpxa</code> ili ponovno konfigurisanje HA nisu početne dijagnostičke radnje: menjaju stanje i mogu ukloniti dokaz.
+</p>
+
+<h3>6. Praktikum I – aplikaciona degradacija</h3>
+
+<p><strong>Cilj.</strong> Proveriti detekciju prekida jedne testne usluge i razlikovati dostupnost VM-a od dostupnosti aplikacije. Rizik je nizak jer se zaustavlja samo namenski servis u <code>gd-web01</code>.</p>
+
+<p><strong>Preduslovi.</strong> VMware Tools, testna HTTPS stranica, monitoring sa poznatim intervalom i backup. Operator ima guest privilegiju; vSphere administrativni nalog nije potreban.</p>
+
+<ol>
+  <li>Potvrditi tri uzastopne read-only probe:</li>
+</ol>
+
+<pre><code class="language-bash">for i in 1 2 3; do
+  date --iso-8601=seconds
+  curl --fail --silent --show-error --max-time 5 https://gd-web01.lab.example/health
+  sleep 5
+done</code></pre>
+
+<ol start="2">
+  <li>U testnoj VM izvršiti <code>sudo systemctl stop nginx</code>. Ovo menja stanje; ne primenjivati na zajedničkoj usluzi.</li>
+  <li>Meriti vreme do neuspeha probe, alarma i preuzimanja. Prvo proveriti DNS, TCP, VM i tek zatim guest servis.</li>
+  <li>Izvršiti <code>sudo systemctl start nginx</code>, proveriti <code>systemctl is-active nginx</code> i ponoviti probe.</li>
+  <li>Sačuvati alarm, događaj, probe i guest log istog prozora.</li>
+</ol>
+
+<p><strong>Rezultat.</strong> VM ostaje uključena, aplikacija pada, a monitoring prijavljuje servisni problem. Ako alarm ne stigne, proveriti pravilo, interval, dostavu i silence stanje. Ako se servis ne pokrene, čitati <code>systemctl status</code> i <code>journalctl -u nginx --since</code>; ne restartovati celu VM bez dokaza. Završetak zahteva stabilnu probu, zatvoren alarm i izmerene MTTD/MTTR.</p>
+
+<h3>7. Praktikum II – gubitak hosta i vSphere HA oporavak</h3>
+
+<p><strong>Hipoteza.</strong> Gubitak jednog laboratorijskog hosta pokreće HA restart testne VM na drugom hostu i aplikacija se vraća unutar RTO-a. HA restart nije vMotion: memorijsko stanje se ne prenosi, gost se podiže ponovo, a aplikacija obnavlja servis.</p>
+
+<p><strong>Rizik.</strong> Visok za laboratoriju i neprihvatljiv kao prvi produkcioni test. Ne izvlačiti napajanje bez out-of-band pristupa. Ne prekidati management mrežu ako uplink nosi storage. Prvo se radi tabletop, zatim planirano gašenje laboratorijskog hosta; simulacija iznenadnog kvara sledi samo prema zvaničnom Broadcom postupku.</p>
+
+<h4>7.1. Preduslovi</h4>
+
+<ul>
+  <li>HA agenti su zdravi, a admission control dozvoljava jedan host failure.</li>
+  <li>VM nije na lokalnom datastore-u niti vezana za host-local uređaj ili obavezno pravilo.</li>
+  <li>Preživeli host ima resurse; datastore je vidljiv i upisiv sa oba hosta.</li>
+  <li>Management mreža i heartbeat datastore-i nemaju aktivan alarm; isolation response je dokumentovan.</li>
+  <li>Backup je proverljiv, a vlasnik je uneo jedinstvenu testnu transakciju.</li>
+</ul>
+
+<h4>7.2. Koraci</h4>
+
+<ol>
+  <li>Pokrenuti kontinuiranu aplikacionu probu i zabeležiti baznu liniju.</li>
+  <li>Potvrditi trenutni host VM-a, restart priority, događaje i alarme.</li>
+  <li>Lead izgovara „inject”; operator izvršava samo odobren laboratorijski postupak gubitka hosta.</li>
+  <li>Observer prati stanje hosta, HA događaj, power-on VM-a, VMware Tools i aplikaciju bez promene stanja.</li>
+  <li>Vlasnik po oporavku proverava staru i novu testnu transakciju.</li>
+  <li>Host vratiti kontrolisano; pre workload-a proveriti management, NTP, storage, uplink, HA agent i hardver.</li>
+</ol>
+
+<p><strong>Očekivani rezultat.</strong> HA registruje kvar, bira kompatibilan host i uključuje VM. RTO se zaustavlja tek kada prođe poslovna provera, ne kada power state postane zelen.</p>
+
+<h4>7.3. Kada VM nije restartovana</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Dokaz</th>
+      <th>Bezbedna radnja</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Obim</td>
+      <td>Jedna VM, host ili klaster?</td>
+      <td>Tasks/Events/Alarms; ne menjati više objekata.</td>
+    </tr>
+    <tr>
+      <td>HA odluka</td>
+      <td>Failure, isolation ili partition; postoji li master?</td>
+      <td>Korelirati <code>fdm.log</code> svih hostova.</td>
+    </tr>
+    <tr>
+      <td>Resursi</td>
+      <td>Admission control, rezervacije ili memorija?</td>
+      <td>Ne isključivati admission control kao prečicu.</td>
+    </tr>
+    <tr>
+      <td>Kompatibilnost</td>
+      <td>Pravilo, uređaj, mreža ili datastore vezuju VM?</td>
+      <td>Dokumentovati constraint i kasnije korigovati dizajn.</td>
+    </tr>
+    <tr>
+      <td>Lock/storage</td>
+      <td>Originalni host drži lock ili datastore nije dostupan?</td>
+      <td>Potvrditi stanje pre lock postupka; eskalirati uz bundle.</td>
+    </tr>
+    <tr>
+      <td>Aplikacija</td>
+      <td>VM radi, ali servis ili baza nisu spremni?</td>
+      <td>Preći na guest runbook; ne rekonfigurisati HA.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Rollback.</strong> Ako HA ne vrati VM, prekinuti eksperiment. Originalni host vratiti samo ako je bezbedno; potvrditi storage i odsustvo paralelne instance pre ručnog power-on-a. Nikada ne uključivati istu VM sa dve lokacije niti nasilno uklanjati lock bez potvrde uzroka.</p>
+
+<h3>8. Praktikum III – mrežna redundansa bez totalne izolacije</h3>
+
+<p><strong>Cilj.</strong> Potvrditi da gubitak jednog redundantnog uplink-a ne prekida management ili testni VM saobraćaj i da alarm vidi degradaciju. Ovo nije host isolation test; isolation zavisi od isolation adresa, datastore heartbeat-a i isolation response politike.</p>
+
+<p><strong>Preduslovi.</strong> Dva nezavisna uplink-a, ispravan teaming, dosledni VLAN trunk-ovi, out-of-band pristup i potvrda da storage nije na jedinoj istoj putanji. LACP i vDS moraju biti usaglašeni sa fizičkim switch-em.</p>
+
+<pre><code class="language-bash">esxcli network nic list
+esxcli network ip interface list
+esxcli network vswitch standard uplink list</code></pre>
+
+<p>
+  Komande su read-only; poslednja važi za vSphere Standard Switch. Za distribuirani switch koristi se vSphere Client i podržana dijagnostika.
+</p>
+
+<ol>
+  <li>Pokrenuti management i aplikacione probe; zabeležiti latenciju i packet loss.</li>
+  <li>Na jednom unapred odabranom laboratorijskom portu izvršiti shutdown ili odvajanje. Drugi uplink i out-of-band moraju biti potvrđeni.</li>
+  <li>Potvrditi alarm, prelaz saobraćaja i odsustvo VLAN gubitka.</li>
+  <li>Vratiti port, sačekati stabilizaciju i proveriti flap ili neželjeni failback.</li>
+</ol>
+
+<p><strong>Rezultat.</strong> Jedna putanja pada, servis ostaje dostupan, a monitoring prijavljuje smanjenu redundansu. Ako padne sve, uzrok može biti lažna redundansa, pogrešan trunk, active/standby redosled, LACP nesaglasnost ili zajednička fizička tačka otkaza. Workaround je vraćanje porta; trajna mera je korekcija dizajna i ponovljeni test.</p>
+
+<h3>9. Praktikum IV – restore kao dokaz zaštite podataka</h3>
+
+<p><strong>Cilj.</strong> Dokazati da restore tačka proizvodi funkcionalnu izolovanu kopiju VM-a i da su RPO, integritet i konzistentnost poznati. Uspešan backup job nije dokaz oporavljivosti.</p>
+
+<p><strong>Preduslovi.</strong> Koristi se podržano backup rešenje. Restore ide kao <code>gd-web01-restore</code> u izolovanu port grupu. Sprečavaju se dupli IP/DNS, domain trust konflikt, slanje poruka i pristup produkcionoj bazi.</p>
+
+<ol>
+  <li>Zabeležiti restore point, timestamp, tip konzistentnosti i poslednju očekivanu transakciju.</li>
+  <li>Obnoviti VM u izolovani folder, resource pool, datastore i mrežu, bez konflikta identiteta.</li>
+  <li>Pre power-on-a pregledati adaptere i automatizacije; zatim meriti Tools, servis i aplikaciju.</li>
+  <li>Vlasnik potvrđuje konzistentnost, podatke i kontrolisan testni upis.</li>
+  <li>Sačuvati session log, restore point ID, trajanje i odstupanje od RPO/RTO.</li>
+</ol>
+
+<p><strong>Kriterijum.</strong> Kopija se pokreće bez konflikta, aplikaciona provera prolazi i podaci odgovaraju cilju. Bootabilna VM čija baza zahteva recovery samo je delimičan uspeh.</p>
+
+<p><strong>Čišćenje.</strong> Isključiti kopiju i ukloniti je tek po odobrenju. Brisanje mora ciljati samo testnu kopiju. Povlače se privremeni DNS, firewall, mount i kredencijali; originalni backup se ne briše.</p>
+
+<h3>10. Incident response: dokaz pre promene</h3>
+
+<p>
+  Kada ponašanje izađe iz okvira, game day prelazi u incident. Lead zaustavlja injekciju, incident commander preuzima prioritete, a zapisničar nastavlja vremensku liniju. Redosled je: zaštita podataka, ograničenje obima, dokazi, hipoteza, najmanje invazivna korekcija, validacija usluge i potom trajna promena.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Element</th>
+      <th>Primer za „VM se nije oporavila”</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Simptom</td>
+      <td>HTTPS ne uspeva; VM je isključena.</td>
+    </tr>
+    <tr>
+      <td>Obim/posledica</td>
+      <td>Jedna testna usluga; RTO prekoračen.</td>
+    </tr>
+    <tr>
+      <td>Neposredni uzrok</td>
+      <td>HA nije našao host sa pristupom datastore-u.</td>
+    </tr>
+    <tr>
+      <td>Osnovni uzrok</td>
+      <td>VM je na host-local datastore-u, a pre-flight to nije proveravao.</td>
+    </tr>
+    <tr>
+      <td>Workaround</td>
+      <td>Bezbedno vratiti host i uključiti VM posle provere lock-a.</td>
+    </tr>
+    <tr>
+      <td>Trajna mera</td>
+      <td>Migrirati na shared storage i dodati policy/pre-flight kontrolu.</td>
+    </tr>
+    <tr>
+      <td>Dokaz zatvaranja</td>
+      <td>Ponovljena vežba prolazi RTO i inventar više ne nalazi odstupanje.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>11. Automatska post-check evidencija</h3>
+
+<p>
+  Primer čita stanje posle vežbe i pravi porediv skup dokaza. Ne menja vSphere objekte.
+</p>
+
+<pre><code class="language-powershell">$end = Get-Date
+$start = $end.AddHours(-2)
+
+Get-VIEvent -Entity $cluster -Start $start -Finish $end -MaxSamples 10000 |
+  Sort-Object CreatedTime |
+  Select-Object CreatedTime, UserName, FullFormattedMessage |
+  Export-Csv (Join-Path $evidenceRoot "events-after.csv") -NoTypeInformation -Encoding UTF8
+
+Get-VM -Location $cluster |
+  Select-Object Name, PowerState, VMHost,
+    @{N="ToolsRunning";E={$_.ExtensionData.Guest.ToolsRunningStatus}} |
+  Export-Csv (Join-Path $evidenceRoot "vms-after.csv") -NoTypeInformation -Encoding UTF8
+
+Get-VMHost -Location $cluster |
+  Select-Object Name, ConnectionState, PowerState |
+  Export-Csv (Join-Path $evidenceRoot "hosts-after.csv") -NoTypeInformation -Encoding UTF8
+
+Get-FileHash -Algorithm SHA256 (Join-Path $evidenceRoot "*.csv") |
+  Select-Object Path, Algorithm, Hash |
+  Export-Csv (Join-Path $evidenceRoot "sha256-manifest.csv") -NoTypeInformation -Encoding UTF8
+
+Disconnect-VIServer -Server $vc -Confirm:$false</code></pre>
+
+<p>
+  Hash pokazuje da datoteke kasnije nisu neopaženo promenjene, ali ne dokazuje potpunost podataka. Paket navodi izvor, autora, zonu, prozor i ograničenja. Pre deljenja uklanjaju se tajne i nepotrebni lični podaci.
+</p>
+
+<h3>12. Retrospektiva bez krivice</h3>
+
+<p>
+  Retrospektiva se radi dok je vremenska linija sveža, posle stabilizacije. „Bez krivice” ne znači bez odgovornosti: razume se zašto je odluka delovala razumno, koja barijera je nedostajala i ko završava merljivu korekciju.
+</p>
+
+<ol>
+  <li><strong>Činjenice:</strong> redosled događaja i izvor timestamp-a.</li>
+  <li><strong>Odstupanje:</strong> potvrđena, delimična ili opovrgnuta hipoteza.</li>
+  <li><strong>Faktori:</strong> dizajn, konfiguracija, dokumentacija, monitoring i komunikacija.</li>
+  <li><strong>Dobre kontrole:</strong> šta je ograničilo posledicu.</li>
+  <li><strong>Mere:</strong> vlasnik, prioritet, rok, rizik i dokaz završetka.</li>
+  <li><strong>Ponovni test:</strong> datum i scenario validacije mere.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th>Loša mera</th>
+      <th>Proverljiva mera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>„Obučiti administratore.”</td>
+      <td>Ažurirati HA runbook; dva administratora ga izvršavaju bez usmenih dopuna uz zapis.</td>
+    </tr>
+    <tr>
+      <td>„Popraviti monitoring.”</td>
+      <td>Dodati HTTPS probu na 30 sekundi, alarm posle tri neuspeha i dokazati MTTD.</td>
+    </tr>
+    <tr>
+      <td>„Povećati kapacitet.”</td>
+      <td>Obezbediti rezervu za gubitak jednog hosta i dokazati pre-flight izveštajem i ponovnim testom.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>13. Administratorske prakse</h3>
+
+<ul>
+  <li>Počni od poslovne usluge; „VM je zelena” nije završni kriterijum.</li>
+  <li>Jedan game day menja jednu glavnu promenljivu.</li>
+  <li>Ne testiraj redundansu koju nisi fizički i logički mapirala.</li>
+  <li>Pre injekcije potvrdi backup, out-of-band, kapacitet, DNS/NTP i identitet.</li>
+  <li>Odvoji operatora i zapisničara.</li>
+  <li>Prikupi dokaze pre restarta servisa ili rekonfiguracije HA.</li>
+  <li>SSH i privilegovane naloge ograniči i zatvori u post-check fazi.</li>
+  <li>Ne isključuj admission control ili alarme da bi test „prošao”.</li>
+  <li>Meru poveži sa vlasnikom, rokom i ponovnim testom.</li>
+  <li>Support bundle i artefakte čuvaj prema klasifikaciji podataka.</li>
+</ul>
+
+<h3>14. Završna kontrolna tačka</h3>
+
+<p>Administrator je završio praktikum kada može da priloži:</p>
+
+<ul>
+  <li>karton sa hipotezom, RTO/RPO, blast radius-om, ulogama, abort kriterijumima i rollback-om;</li>
+  <li>pre-flight paket za HA kapacitet, storage, mrežu, backup i aplikaciju;</li>
+  <li>vremensku liniju injekcije, detekcije, preuzimanja i oporavka;</li>
+  <li>dokaz da razlikuje failure, isolation, management disconnect, storage i aplikacioni kvar;</li>
+  <li>rezultate degradacije servisa, HA scenarija i izolovanog restore testa;</li>
+  <li>log i event korelaciju, bez oslanjanja na jednu izdvojenu poruku;</li>
+  <li>post-check: zdrav klaster, vraćena redundansa, zatvoreni pristupi i stabilne probe;</li>
+  <li>RCA koji razdvaja simptom, neposredni i osnovni uzrok, workaround i trajnu meru;</li>
+  <li>meru sa vlasnikom, rokom i dokazom uspeha.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Operativna validacija zatvara krug tutorijala. HA, DRS, mreža, storage, backup, monitoring, identitet, automatizacija, promene i incident response postaju jedan proverljiv sistem. Ključna veština nije brzo izvršavanje komande, već kontrola rizika: razumeti zavisnosti, izabrati najmanje opasan test, sačuvati dokaze, zaustaviti rast opsega, potvrditi oporavak na nivou korisničke funkcije i pretvoriti nalaz u trajnu meru.
+</p>
+
+<p>
+  Zrela organizacija ne koristi game day za unapred očekivani „zeleni” izveštaj, već da bezbedno otkrije gde se dokumentacija, konfiguracija i stvarnost razilaze. Tek ponovljiva vežba, merljiv oporavak i zatvorena korektivna mera dokazuju da je VMware okruženje zaista upravljivo i otporno.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Availability i vSphere Monitoring and Performance dokumentacija; zvanični vSphere HA, ESXi i vCenter Server Knowledge Base članci; VCF PowerCLI reference za inventar, događaje i alarme; zvanične reference za ESXi/vCenter logove, support bundle, mrežnu i storage dijagnostiku; dokumentacija podržanog backup i restore proizvoda i interne procedure za promene, incidente i zaštitu dokaza
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-dodatak-2-mini-projekat-enterprise-okruzenje.html">
+       ← Prethodni dodatak
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+        <a class="close-btn"
+         href="vmware-zakljucak.html">
+        Zaključak →
+      </a>
+
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

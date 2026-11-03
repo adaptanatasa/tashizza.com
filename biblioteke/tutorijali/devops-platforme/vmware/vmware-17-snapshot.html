@@ -1,0 +1,555 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-17-snapshot.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Snapshot – trenutno stanje virtuelne mašine i oprez u korišćenju | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMware snapshot kao zapis trenutnog stanja virtuelne mašine i saznajte kada se koristi, koje prednosti donosi i zašto dugotrajno čuvanje snapshot-a može predstavljati rizik.">
+
+  <meta name="keywords"
+        content="VMware snapshot, snapshot virtuelne mašine, VMware, virtuelna mašina, VM, trenutno stanje VM, revert snapshot, delete snapshot, consolidate disks, VMDK, datastore, backup, ESXi, vCenter, vSphere, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-17-snapshot.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Snapshot – trenutno stanje virtuelne mašine i oprez u korišćenju">
+
+  <meta property="og:description"
+        content="Upoznajte VMware snapshot, njegovu namenu, vraćanje prethodnog stanja virtuelne mašine i rizike dugotrajnog čuvanja snapshot-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-17-snapshot.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-17-snapshot.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Snapshot – trenutno stanje virtuelne mašine i oprez u korišćenju">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-17-snapshot.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-17-snapshot.png"
+           alt="Snapshot – trenutno stanje virtuelne mašine i oprez u korišćenju">
+
+    </a>
+
+   <div class="page-subtitle">
+  IV. Svakodnevna administracija i prvi troubleshooting
+</div>
+
+<div class="page-subtitle">
+  17. Snapshot – kratkotrajna tačka povratka, ograničenja i bezbedna konsolidacija
+</div>
+
+<p>
+Snapshot je jedna od najkorisnijih, ali i najčešće pogrešno shvaćenih funkcija VMware vSphere platforme. On čuva tačku u vremenu iz koje administrator može brzo da vrati stanje virtuelne mašine ako kontrolisana promena, kao što su instalacija zakrpe, nadogradnja aplikacije ili izmena konfiguracije, ne uspe. Snapshot zato pripada upravljanju promenama i kratkotrajnom rollback-u; nije rezervna kopija, arhiva niti zamena za application-aware zaštitu podataka.
+</p>
+
+<p>
+Ova lekcija se nadovezuje na power operacije iz lekcije 16. Pre snapshot-a administrator mora da zna da li VM može ostati uključena, da li aplikacija zahteva quiescing ili potpuno gašenje i kakve posledice može imati povratak njenog diska i memorije u ranije stanje. Znanje iz ove lekcije biće važno i za kasnije teme o VMDK lancima, datastore kapacitetu, backup-u, performansama i sistematičnom troubleshootingu.
+</p>
+
+<h3>Šta snapshot jeste, a šta nije?</h3>
+
+<p>
+Snapshot čuva stanje i podatke VM-a u određenom trenutku. Kada se napravi prvi snapshot, postojeći virtuelni disk postaje roditelj, a novi upisi odlaze u child, odnosno delta disk. Aktivno stanje VM-a zato se ne nalazi u jednom fajlu, već se rekonstruiše prateći lanac od aktivnog delta diska do njegovih roditelja. Snapshot ne kopira samostalno ceo VM na nezavisnu lokaciju i bez osnovnog diska nije dovoljan za oporavak.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Mehanizam</th><th>Primarna svrha</th><th>Zavisnost od izvornog VM-a</th><th>Tipična retencija</th><th>Primer</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Snapshot</strong></td><td>Kratkotrajni rollback kontrolisane promene</td><td>Potpuna: oslanja se na bazni disk i ceo lanac</td><td>Minuti ili sati; prema Broadcom smernici ne duže od 72 sata</td><td>Povratak posle neuspešne zakrpe</td></tr>
+    <tr><td><strong>Backup</strong></td><td>Zaštita i oporavak podataka prema RPO/RTO ciljevima</td><td>Logički i fizički odvojen skup za oporavak</td><td>Dani, meseci ili godine prema politici</td><td>Oporavak posle gubitka datastore-a</td></tr>
+    <tr><td><strong>Clone</strong></td><td>Nova, odvojena VM za test, migraciju ili standardizaciju</td><td>Full clone je nezavisan; linked clone zavisi od roditelja</td><td>Prema životnom ciklusu nove VM</td><td>Testna kopija servera</td></tr>
+    <tr><td><strong>Replikacija</strong></td><td>DR kopija na drugom mestu i orkestrirani oporavak</td><td>Zavisi od proizvoda, politike i recovery plana</td><td>Kontinuirano ili u intervalima</td><td>Oporavak workload-a na DR lokaciji</td></tr>
+  </tbody>
+</table>
+
+<p>
+Ako datastore, bazni VMDK ili potreban član lanca postane nedostupan, snapshot na istom storage-u ne rešava incident. Jednako važno, vraćanje snapshot-a vraća ceo obuhvaćeni disk na starije stanje i ne daje granularni restore pojedinačne baze, tabele ili datoteke. Za baze podataka koriste se nativni alati proizvođača baze ili sertifikovano application-aware backup rešenje, uz zasebno testiran restore.
+</p>
+
+<h3>Šta se čuva i koji fajlovi učestvuju?</h3>
+
+<ul>
+  <li><strong>Stanje virtuelnih diskova:</strong> descriptor i delta/child diskovi čuvaju blokovske promene posle tačke snapshot-a. Na VMFS6 snapshot diskovi koriste SEsparse format; naziv fajla nije pouzdan pokazatelj redosleda grana.</li>
+  <li><strong>Snapshot metapodaci:</strong> <code>.vmsd</code> opisuje inventar i odnose u snapshot stablu koje prikazuje Snapshot Manager.</li>
+  <li><strong>Stanje i konfiguracija:</strong> <code>.vmsn</code> čuva snapshot state; kod memory snapshot-a uključuje i aktivno izvršno stanje, dok se za memoriju mogu pojaviti i veliki prateći fajlovi približni veličini dodeljenog RAM-a.</li>
+  <li><strong>Power state i uređaji:</strong> snapshot beleži stanje VM-a i relevantnih virtuelnih uređaja, ali diskovi u režimu <em>Independent</em> nisu obuhvaćeni standardnim snapshot lancem.</li>
+</ul>
+
+<pre><code class="language-none">Pre snapshot-a:
+VM → app.vmdk (descriptor) → app-flat.vmdk (podaci)
+
+Posle prvog snapshot-a:
+VM → app-000001.vmdk → app.vmdk → app-flat.vmdk
+
+Posle drugog snapshot-a:
+VM → app-000002.vmdk → app-000001.vmdk → app.vmdk → app-flat.vmdk</code></pre>
+
+<p>
+Aktivni descriptor u <code>.vmx</code> konfiguraciji pokazuje disk koji VM trenutno koristi. Administrator ne sme ručno brisati <code>-00000X.vmdk</code>, <code>-delta.vmdk</code>, <code>-sesparse.vmdk</code>, <code>.vmsd</code> ili <code>.vmsn</code> samo zato što izgledaju stari ili se ne vide u Snapshot Manager-u. Skriven ili neusaglašen lanac prvo se dokazuje konfiguracijom, descriptor odnosima, lock-ovima i zvaničnim postupkom konsolidacije.
+</p>
+
+<h3>Memory, crash-consistent i quiesced snapshot</h3>
+
+<table>
+  <thead>
+    <tr><th>Opcija</th><th>Stanje pri povratku</th><th>Prednost</th><th>Ograničenje i rizik</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Snapshot virtual machine's memory</strong></td><td>VM se vraća u uključeno izvršno stanje, sa sadržajem RAM-a i otvorenim sesijama</td><td>Najverniji kratkotrajni povratak laboratorijskog ili pažljivo procenjenog workload-a</td><td>Duže kreiranje, dodatni prostor i VM stun; stari mrežni i aplikacioni kontekst može biti nebezbedan</td></tr>
+    <tr><td><strong>Bez memorije i bez quiescing-a</strong></td><td>Po povratku VM je ugašena; disk je tipično crash-consistent</td><td>Brže i sa manjim storage troškom</td><td>Gost se oporavlja kao posle neočekivanog prekida napajanja; transakcije u memoriji nisu garantovane</td></tr>
+    <tr><td><strong>Quiesce guest file system</strong></td><td>Po povratku VM je ugašena, a on-disk stanje je prethodno umireno preko VMware Tools-a</td><td>Flush keša i konzistentniji filesystem</td><td>Nije automatski garant puna aplikaciona ili transakciona konzistentnost; može propasti pod visokim I/O opterećenjem</td></tr>
+    <tr><td><strong>Snapshot ugašene VM</strong></td><td>Čisto, ugašeno stanje gosta</td><td>Najjednostavnija konzistentna tačka za aplikaciju koja je pravilno zaustavljena</td><td>Zahteva prekid usluge</td></tr>
+  </tbody>
+</table>
+
+<p>
+Memory i quiesce opcije su međusobno isključive u aktuelnom vSphere Client-u. Quiescing zahteva uključenu VM, instaliran i funkcionalan VMware Tools i podržan gostujući sistem. Na Windows-u mogu biti uključeni VSS writer-i i VMware Snapshot Provider; uspešna vSphere task poruka ipak nije dovoljan dokaz da je svaka poslovna aplikacija transakciono konzistentna. Za Oracle, SQL Server, Active Directory i slične sisteme mora se poštovati dokumentacija proizvođača aplikacije, podržana metoda zaustavljanja/backup-a i plan oporavka.
+</p>
+
+<h3>Administratorska odluka: kada snapshot ima smisla?</h3>
+
+<p>
+Dobar scenario ima jasno definisanu promenu, vlasnika, rok brisanja i kriterijum odluke: ili se promena potvrđuje pa se snapshot briše, ili se rollback izvršava u dogovorenom prozoru. Primeri su OS patch, promena konfiguracionog fajla, kratko testiranje automatizacije i laboratorijska vežba. Snapshot ne treba praviti „za svaki slučaj” bez plana, niti ga zadržavati nakon što je validacija završena.
+</p>
+
+<ul>
+  <li>Za produkcioni VM proceni write rate, slobodan prostor na svakom relevantnom datastore-u, dodeljeni RAM ako se čuva memorija i očekivano trajanje promene.</li>
+  <li>Proveri da nema tekućeg backup-a, Storage vMotion-a, kloniranja, druge snapshot operacije ili zaključanog diska.</li>
+  <li>Za višeslojnu aplikaciju odredi application-consistent recovery redosled; nezavisni snapshot-i nekoliko VM-ova nisu automatski konzistentna zajednička tačka.</li>
+  <li>Dokumentuj change/incident ID, vlasnika, tačan razlog, vreme kreiranja i najkasnije vreme uklanjanja.</li>
+  <li>Za bazu podataka snapshot koristi samo ako je to kratkotrajno, podržano i usklađeno sa DBA procedurom; ne kao database backup.</li>
+</ul>
+
+<p>
+Broadcom podržava najviše 32 snapshot-a u jednom lancu, ali zbog performansi preporučuje samo dva do tri. I ta preporuka je tehnički maksimum za razuman rad, a ne cilj. Produkciona politika je obično stroža: jedan kratkotrajan snapshot po promeni, automatski alarm za starost i uklanjanje odmah po validaciji. Zvanična smernica je da jedan snapshot ne ostaje duže od 72 sata; write-intensive baze treba meriti minutima ili satima, ne danima.
+</p>
+
+<h3>Kapacitet, performanse, dostupnost i bezbednost</h3>
+
+<p>
+Delta disk raste sa promenjenim blokovima i može dostići približno provisioned veličinu svog virtuelnog diska uz overhead. Više diskova, više snapshot tačaka i memory state dodatno povećavaju zahtev. Kod thin baznog diska i konsolidacija može povećati njegovu fizičku zauzetost do provisioned granice. Zbog toga procena „trenutna veličina snapshot-a plus nekoliko gigabajta” nije dovoljna: mora obuhvatiti očekivane nove upise tokom promene i tokom merge-a, rast baznog thin diska, druge VM-ove na datastore-u i operativnu rezervu.
+</p>
+
+<p>
+Dug lanac povećava broj slojeva iz kojih se blokovi pronalaze i može pogoršati latenciju. Efekat zavisi od storage tehnologije: klasični VMFS/NFS delta lanci nisu isto što i nativni snapshot mehanizmi na vVol, NFS sa VAAI ili određenim vSAN arhitekturama. Ipak, nijedna optimizacija ne menja osnovnu politiku kratke retencije. Kreiranje, brisanje i konsolidacija mogu izazvati kratke VM stun periode; rizik raste sa velikim snapshot-ima, intenzivnim upisima, sporim ili zagušenim storage-om i lošim lancem.
+</p>
+
+<p>
+Snapshot s memorijom može sadržati poverljive podatke koji su bili u RAM-u: tokene, ključeve, sesije ili delove poslovnih podataka. Pristup datastore-u, VM fajlovima i privilegijama <code>Virtual machine &gt; Snapshot management</code> zato mora slediti princip najmanjih privilegija, a događaji kreiranja, povratka i brisanja moraju ostati u audit tragu. Snapshot takođe nije bezbedan način za „zamrzavanje dokaza” ako incident-response procedura zahteva forenzičku nepromenljivost.
+</p>
+
+<h3>Kreiranje snapshot-a u vSphere Client-u</h3>
+
+<pre><code class="language-none">VM → Actions → Snapshots → Take Snapshot</code></pre>
+
+<ol>
+  <li>Na karticama <strong>Summary</strong>, <strong>Tasks</strong> i <strong>Events</strong> proveri health, upozorenja, postojeće snapshot-e i aktivne zadatke.</li>
+  <li>Proveri slobodan kapacitet i performanse svih datastore-ova na kojima su VM Home i virtuelni diskovi.</li>
+  <li>Unesi jednoznačan naziv, na primer <code>CHG-4821_pre_os_patch_expires_2026-07-22T18-00Z</code>, i opis sa vlasnikom, razlogom i rokom.</li>
+  <li>Izaberi ili memory ili quiesce samo ako je to opravdano prethodnom procenom. Za ugašenu VM obe opcije su nepotrebne.</li>
+  <li>Pokreni operaciju i sačekaj da task završi; ne tretiraj pojavljivanje stavke u Snapshot Manager-u kao jedinu validaciju.</li>
+  <li>Potvrdi novo stanje u Snapshot Manager-u, task rezultat, event i datastore metrike. Kod aplikacione konzistentnosti proveri i gostujuće logove/VSS writer-e ili nativni status aplikacije.</li>
+</ol>
+
+<p>
+Nazivi poput <code>Before Update</code> brzo postaju neupotrebljivi jer ne sadrže vlasnika, predmet promene ni rok. Smislen opis je operativna kontrola, ne ukras. Administrator koji preuzima smenu mora iz njega razumeti zašto snapshot postoji i ko odlučuje o njegovom uklanjanju.
+</p>
+
+<h3>Snapshot Manager: Go To, Delete, Delete All i Consolidate</h3>
+
+<table>
+  <thead>
+    <tr><th>Operacija</th><th>Šta radi</th><th>Šta ne radi</th><th>Glavni rizik</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Go To / Revert</strong></td><td>Vraća VM na izabranu tačku; trenutno stanje posle te tačke više nije aktivno</td><td>Ne predstavlja granularni restore i ne čuva automatski sadašnje stanje</td><td>Gubitak svih kasnijih promena i nekonzistentnost sa spoljnim sistemima</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Uklanja izabranu tačku i commit-uje njene promene u roditeljski disk, uz očuvanje aktuelnog stanja VM-a</td><td>Ne vraća VM na starije stanje i ne „briše izmene” iz aktivnog sistema</td><td>I/O opterećenje, trajanje, stun i nedostatak prostora</td></tr>
+    <tr><td><strong>Delete All</strong></td><td>Commit-uje ceo vidljivi lanac prema baznim diskovima i uklanja snapshot tačke</td><td>Ne rešava nužno svaki orphaned/locked fajl</td><td>Veliki merge, rast thin baze i dugo trajanje</td></tr>
+    <tr><td><strong>Consolidate</strong></td><td>Usklađuje redundantne delta fajlove kada lanac na datastore-u nije u skladu sa Snapshot Manager-om</td><td>Nije rutinska zamena za Delete i ne znači rollback</td><td>Lock, prostor, backup proxy ili oštećen lanac</td></tr>
+  </tbody>
+</table>
+
+<p>
+Pre Go To/Revert operacije precizno utvrdi koji podaci nastali posle snapshot-a nestaju, kako će se uskladiti DNS, baze, direktorijum, redovi poruka i drugi sistemi i da li je potrebno prvo napraviti zaštitnu kopiju aktuelnog stanja. Povratak memory snapshot-a vraća i stare mrežne sesije i vreme izvršavanja, što udaljeni sistemi ne moraju prihvatiti. U produkciji Go To zahteva odobren change ili incident postupak i verifikovan application recovery plan.
+</p>
+
+<p>
+Delete ne briše aktuelne poslovne podatke: on uklanja snapshot tačku tako što spaja blokovske promene. Ne prekidaj operaciju samo zato što GUI dugo prikazuje 99%. Na vSphere 8.x/Broadcom preporuka je da se tekući delete/consolidate ne otkazuje zbog rizika od korupcije. ESX 9 uvodi izveštavanje o progresu i proceni završetka, kontrolisano otkazivanje i nastavak određene offline konsolidacije, ali to je verzijski uslovljena mogućnost, a ne dozvola da se operacija prekida bez procene.
+</p>
+
+<h3>VCF PowerCLI: inventar, kreiranje, povratak i uklanjanje</h3>
+
+<p>
+Sledeće komande izvršavaju se u PowerShell-u sa instaliranim aktuelnim VCF PowerCLI modulima. Nalog mora imati samo potrebne vCenter privilegije. <code>Get-*</code> komande su read-only; <code>New-Snapshot</code>, <code>Set-VM -Snapshot</code> i <code>Remove-Snapshot</code> menjaju stanje.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+
+$vm = Get-VM -Name 'Ubuntu-Server'
+$snapshots = Get-Snapshot -VM $vm |
+  Sort-Object Created
+
+$snapshots |
+  Select-Object VM, Name, Created, SizeGB, Description |
+  Format-Table -AutoSize</code></pre>
+
+<p>
+Prvo proveri da <code>Get-VM</code> vraća tačno jedan objekat i pregledaj postojeći lanac. Kreiranje bez memory state-a i uz quiescing prikladno je samo ako VMware Tools i gost podržavaju postupak:
+</p>
+
+<pre><code class="language-powershell">$snapshot = New-Snapshot `
+  -VM $vm `
+  -Name 'CHG-4821_pre_patch' `
+  -Description 'Owner: NOC; expires: 2026-07-22T18:00Z' `
+  -Memory:$false `
+  -Quiesce:$true
+
+$snapshot | Select-Object VM, Name, Created, SizeGB</code></pre>
+
+<p>
+Ako quiescing nije podržan ili nije potreban, nemoj mehanički zadržati <code>-Quiesce:$true</code>; primeni unapred odobrenu konzistentnost. Za memory snapshot koristi <code>-Memory:$true</code> i nemoj istovremeno zahtevati quiescing.
+</p>
+
+<pre><code class="language-powershell">$target = Get-Snapshot -VM $vm -Name 'CHG-4821_pre_patch'
+
+# STATE-CHANGING: vraća VM na starije stanje.
+Set-VM -VM $vm -Snapshot $target -Confirm:$true</code></pre>
+
+<p>
+Interaktivna potvrda je namerno ostavljena. <code>-Confirm:$false</code> koristi se tek u kontrolisanoj automatizaciji sa pre-check-ovima, jednoznačnim objektom, change odobrenjem i logovanjem. Uklanjanje jedne potvrđene tačke:
+</p>
+
+<pre><code class="language-powershell">$target = Get-Snapshot -VM $vm -Name 'CHG-4821_pre_patch'
+
+# STATE-CHANGING: commit delta podataka i uklanjanje snapshot tačke.
+$task = Remove-Snapshot -Snapshot $target -RunAsync -Confirm:$true
+
+$task | Wait-Task
+Get-Snapshot -VM $vm</code></pre>
+
+<p>
+Za inventar starih snapshot-a može se koristiti read-only izveštaj; prag je interna kontrola, ne dokaz da je svaki mlađi snapshot bezbedan:
+</p>
+
+<pre><code class="language-powershell">$cutoff = (Get-Date).AddHours(-24)
+
+Get-VM | Get-Snapshot |
+  Where-Object Created -lt $cutoff |
+  Select-Object VM, Name, Created, SizeGB, Description |
+  Sort-Object Created</code></pre>
+
+<h3>ESXi Shell i vim-cmd: dijagnostika sa oprezom</h3>
+
+<p>
+ESXi Shell/SSH nije primarni svakodnevni interfejs ako vCenter radi. Privremeno ga omogući samo prema bezbednosnoj politici, prijavi se administrativnim nalogom i po završetku ga isključi. Sledeće komande za listanje i pregled su read-only:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+vim-cmd vmsvc/snapshot.get 12</code></pre>
+
+<p>
+Za dokaz koji descriptor VM trenutno koristi pronađi <code>.vmx</code> putanju iz prethodnog izlaza i pregledaj VMDK reference. Navodnici su važni ako putanja sadrži razmake:
+</p>
+
+<pre><code class="language-bash">grep -i 'fileName.*vmdk' '/vmfs/volumes/datastore01/Ubuntu-Server/Ubuntu-Server.vmx'</code></pre>
+
+<pre><code class="language-none">scsi0:0.fileName = "Ubuntu-Server-000001.vmdk"</code></pre>
+
+<p>
+Sledeća komanda menja stanje i uklanja sve snapshot-e za dati VMID. Pokreni je samo kada je identitet VM-a dvostruko potvrđen, nema backup posla, prostor i storage health su provereni i postoji odobren prozor. Ne pokušavaj da je prekineš na vSphere 8.x samo zato što dugo traje.
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/snapshot.removeall 12</code></pre>
+
+<p>
+Komanda <code>vim-cmd vmsvc/snapshot.revert</code> ima verzijski osetljivu sintaksu i nosi visok rizik gubitka podataka; za planirani povratak prednost imaju Snapshot Manager ili objektno jednoznačan PowerCLI postupak. Ručno editovanje descriptor-a, brisanje delta fajlova i kloniranje lancem pomoću <code>vmkfstools</code> nisu početni koraci: izvode se tek prema odgovarajućem Broadcom KB postupku, nakon zaštite podataka i po potrebi uz podršku proizvođača.
+</p>
+
+<h3>Monitoring, događaji i logovi</h3>
+
+<table>
+  <thead>
+    <tr><th>Izvor dokaza</th><th>Šta proveravamo</th><th>Tumačenje</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>vSphere Client: Recent Tasks i Events</td><td>Početak, završetak, korisnik, greška, konkurentni zadaci</td><td>Osnovna vremenska linija; korelisati sa promenom i backup sistemom</td></tr>
+    <tr><td>VM Summary / Alarms</td><td><em>Virtual machine disks consolidation is needed</em>, datastore usage, VM health</td><td>Upozorenje zahteva dokaz lanca i uzroka, ne nasumično brisanje fajlova</td></tr>
+    <tr><td><code>/var/log/hostd.log</code> na ESXi hostu</td><td>VM task, snapshot create/remove, lock i konfiguracione greške</td><td>Korelacija po vremenu, VMID-u, nazivu i task-u</td></tr>
+    <tr><td><code>/var/log/vmkernel.log</code></td><td>Storage I/O, APD/PDL, lock i uređajski problemi</td><td>Pokazuje infrastrukturni uzrok, ne samo snapshot simptom</td></tr>
+    <tr><td><code>vmware.log</code> u VM direktorijumu</td><td>VMX proces, disk chain, stun i snapshot poruke</td><td>Koristan za konkretan VM i tačno vreme događaja</td></tr>
+    <tr><td>Datastore performance</td><td>Latency, IOPS, throughput, queue i slobodan prostor</td><td>Pokazuje da li merge napreduje i kakav je uticaj na susedne VM-ove</td></tr>
+    <tr><td>Guest/application logovi</td><td>VSS, filesystem, database recovery i servisni health</td><td>Jedini pouzdan dokaz funkcionalnog oporavka aplikacije</td></tr>
+  </tbody>
+</table>
+
+<pre><code class="language-bash">grep -Ei 'snapshot|consolidat|lock|stun' /var/log/hostd.log | tail -n 200
+grep -Ei 'APD|PDL|I/O|lock' /var/log/vmkernel.log | tail -n 200</code></pre>
+
+<p>
+Ove komande samo čitaju lokalne logove, ali mogu vratiti mnogo podataka. Ograniči analizu na vreme incidenta i koreliši časovnike između vCenter-a, hosta, backup sistema i gosta. Nemoj zaključiti da je operacija zaglavljena samo zato što procenat dugo miruje: na vSphere 8.x GUI progres može biti neprecizan. Dokaz napretka su aktivan task, storage I/O i promene vremenskih oznaka relevantnih fajlova; u ESX 9 koristi se i nova procena progresa kada je dostupna.
+</p>
+
+<h3>Troubleshooting: „Virtual machine disks consolidation is needed”</h3>
+
+<p>
+<strong>Simptom:</strong> Snapshot Manager može biti prazan, ali Summary prikazuje upozorenje da je potrebna konsolidacija. <strong>Posledica:</strong> VM možda i dalje radi iz delta diska, prostor se ne oslobađa, backup može nastaviti da ostavlja nove delta fajlove, a buduće operacije mogu propasti. <strong>Neposredni uzrok:</strong> brisanje snapshot-a nije dovršilo commit ili je ostao rezidualni lanac. <strong>Osnovni uzrok</strong> često je nedostatak prostora, storage problem, file lock koji drži backup proxy ili prekinut/loše očišćen VADP posao.
+</p>
+
+<ol>
+  <li><strong>Zaustavi eskalaciju:</strong> ne kreiraj nove rutinske snapshot-e i ne briši fajlove; proveri da li teče backup ili druga storage operacija.</li>
+  <li><strong>Odredi obim:</strong> da li je pogođen jedan VM, više VM-ova na datastore-u ili ceo storage; proveri alarme, slobodan prostor i latenciju.</li>
+  <li><strong>Prikupi dokaze:</strong> Tasks/Events, Snapshot Manager, <code>Get-Snapshot</code>, <code>vim-cmd vmsvc/snapshot.get</code>, aktivni VMDK iz <code>.vmx</code>, <code>hostd.log</code>, <code>vmkernel.log</code> i backup job istoriju.</li>
+  <li><strong>Postavi hipotezu:</strong> razdvoji nevidljiv snapshot inventory, nedostatak prostora, zaključan disk, storage grešku i aktivnu konsolidaciju.</li>
+  <li><strong>Bezbedna korekcija:</strong> kada nema aktivnog backup-a/lock-a i kapacitet je dovoljan, pokreni <strong>Snapshots → Consolidate</strong>. Broadcom u određenim slučajevima neusaglašenog inventara propisuje kreiranje novog non-memory snapshot-a, zatim Delete All i Consolidate; to radi samo prema KB postupku i nakon procene prostora.</li>
+  <li><strong>Ako postoji backup proxy lock:</strong> potvrdi vlasnika lock-a i u koordinaciji sa backup timom odspoji hot-added disk sa proxy VM-a. Izaberi uklanjanje uređaja, nikada <em>Delete files from datastore</em>. Ne radi to dok backup traje.</li>
+  <li><strong>Eskalacija:</strong> ako konsolidacija ponovo propadne, lanac je nejasan ili prostor nije bezbedno obezbediti, zaustavi pokušaje i uključi storage/backup tim i Broadcom Support. Offline retry, clone VM-a ili <code>vmkfstools -i</code> su kontrolisane recovery opcije, ne prvi potez.</li>
+  <li><strong>Validacija:</strong> task je uspešan, upozorenje nestaje, <code>.vmx</code> više ne pokazuje aktivni <code>-00000X.vmdk</code>, nema očekivanih delta fajlova u aktivnom lancu, aplikacija radi, backup ponovo prolazi i datastore ima bezbednu rezervu.</li>
+</ol>
+
+<h3>Troubleshooting grane za tipične kvarove</h3>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Najverovatniji uzroci</th><th>Bezbedna prva akcija</th><th>Trajna mera</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Snapshot creation failed</td><td>Nedostatak prostora, Independent disk, Tools/quiesce greška, konkurentan task</td><td>Proveri task/event, prostor, disk mode, Tools i guest log; ne ponavljaj naslepo</td><td>Ispravi kapacitet ili application-consistency proceduru</td></tr>
+    <tr><td>Quiesced snapshot ne uspeva</td><td>Visok I/O, nema slobodnog prostora u gostu, VSS/Tools servis ili writer nije zdrav</td><td>Proveri Tools, VSS writers, guest disk prostor i aplikaciju</td><td>Planiraj niže opterećenje ili podržani application-aware backup</td></tr>
+    <tr><td>Datastore se brzo puni</td><td>Visok write rate, stari/višestruki snapshot-i, veliki memory fajlovi</td><td>Zaustavi nepotrebne promene, proceni headroom i bezbedan merge prozor</td><td>Alarmi starosti/kapaciteta, vlasništvo i automatski izveštaj</td></tr>
+    <tr><td>Delete stoji na 99%</td><td>GUI ne prikazuje precizno progres; VM nastavlja upise; spor storage</td><td>Ne prekidaj; proveri task, I/O, timestamp i logove</td><td>Merge u periodu niskog I/O; na ESX 9 koristi procenu progresa</td></tr>
+    <tr><td>Unable to access file / locked</td><td>Backup proxy HotAdd, drugi host/proces ili stale lock</td><td>Identifikuj vlasnika lock-a i proveri backup posao</td><td>Ispravi backup cleanup/workflow i ažuriraj backup proizvod</td></tr>
+    <tr><td>VM spora dok snapshot postoji</td><td>Dug lanac, storage latencija, visok write rate</td><td>Izmeri latency/IOPS i starost/veličinu lanca</td><td>Skraćena retencija, manje tačaka i kapacitet/performance politika</td></tr>
+  </tbody>
+</table>
+
+<h3>Praktikum: kontrolisani životni ciklus snapshot-a</h3>
+
+<p>
+<strong>Cilj i kontekst:</strong> u laboratoriji napraviti kratkotrajnu tačku povratka pre izmene konfiguracije, dokazati razliku između trenutnog i starog stanja, zatim izabrati rollback ili commit i završiti bez preostalog snapshot-a. Vežba se ne izvodi na produkcionoj bazi, Domain Controller-u, vCenter Server Appliance-u ili drugom infrastrukturno kritičnom sistemu.
+</p>
+
+<p>
+<strong>Topologija i preduslovi:</strong> jedan vCenter/ESXi, testna VM <code>Ubuntu-Server</code> sa VMware Tools/open-vm-tools u stanju Running, jedan dependent virtuelni disk, dovoljno slobodnog datastore prostora i nalog sa privilegijama za pregled, kreiranje, povratak i uklanjanje snapshot-a. Obezbedi konzolni pristup i zabeleži početno stanje. Rizik je srednji jer Go To briše kasnije stanje; poslovni podaci se ne koriste.
+</p>
+
+<h3>Vežba 1 – Pre-check i bazna linija</h3>
+
+<ol>
+  <li>U vSphere Client-u proveri da nema snapshot-a, alarma ni aktivnih taskova i zabeleži datastore free space.</li>
+  <li>Proveri da su Tools Running i da disk nije Independent.</li>
+  <li>U gostu napravi bezazlenu kontrolnu datoteku i zabeleži vreme:</li>
+</ol>
+
+<pre><code class="language-bash">date -Is | sudo tee /var/tmp/snapshot-lab-state.txt
+cat /var/tmp/snapshot-lab-state.txt</code></pre>
+
+<p>
+<strong>Očekivani rezultat:</strong> postoji jedna datoteka sa vremenom T0, VM je zdrava i nema snapshot-a. <strong>Kriterijum završetka:</strong> snimljeni su VM naziv/MoRef ili VMID, datastore slobodan prostor, Tools status i T0 sadržaj.
+</p>
+
+<h3>Vežba 2 – Kreiranje i validacija quiesced snapshot-a</h3>
+
+<ol>
+  <li>Izaberi <strong>Take Snapshot</strong>, naziv <code>LAB17_T0_quiesced</code>, isključi memory i uključi quiesce.</li>
+  <li>Sačekaj uspešan task i proveri Events. Ako operacija propadne, prvo proveri Tools, guest prostor i logove; ne prelazi na crash-consistent snapshot bez zapisane odluke.</li>
+  <li>Potvrdi snapshot u Snapshot Manager-u ili PowerCLI-jem.</li>
+  <li>U gostu promeni datoteku i dodaj novu:</li>
+</ol>
+
+<pre><code class="language-bash">printf '%s\n' 'STATE=T1_AFTER_SNAPSHOT' | sudo tee /var/tmp/snapshot-lab-state.txt
+date -Is | sudo tee /var/tmp/created-after-snapshot.txt
+cat /var/tmp/snapshot-lab-state.txt /var/tmp/created-after-snapshot.txt</code></pre>
+
+<p>
+<strong>Očekivani rezultat:</strong> VM radi iz child diska, a obe izmene posle T0 su vidljive. <strong>Validacija:</strong> snapshot ima ispravan naziv/vreme, task je Success, datastore nije pod pritiskom i aplikaciona/probna datoteka pokazuje T1.
+</p>
+
+<h3>Vežba 3 – Kontrolisani rollback</h3>
+
+<p>
+Pre rollback-a naglas identifikuj podatke koji će nestati: T1 sadržaj i nova datoteka. Zatim iz Snapshot Manager-a izaberi <code>LAB17_T0_quiesced</code> i <strong>Go To</strong>. Potvrdi upozorenje. Pošto snapshot nema memory state, očekuj ugašenu VM; uključi je kroz postupak iz lekcije 16.
+</p>
+
+<pre><code class="language-bash">cat /var/tmp/snapshot-lab-state.txt
+test ! -e /var/tmp/created-after-snapshot.txt
+printf 'exit=%s\n' "$?"</code></pre>
+
+<p>
+<strong>Očekivani rezultat:</strong> prva datoteka ponovo sadrži T0, druga ne postoji, a <code>test</code> vraća <code>exit=0</code>. Proveri guest boot log, mrežu, Tools i servisni health; sama mogućnost prijave nije potpuna validacija. Ako se stanje ne poklapa, zaustavi vežbu, proveri izabranu granu i Events i ne izvršavaj dodatni revert.
+</p>
+
+<h3>Vežba 4 – Commit, praćenje i čišćenje</h3>
+
+<ol>
+  <li>Kada je vraćeno stanje potvrđeno, izaberi preostali snapshot i <strong>Delete</strong>. Ovim se ne vraća stanje, već uklanja tačka uz očuvanje aktuelnog sadržaja.</li>
+  <li>Prati Recent Tasks i datastore latency/space. Ne prekidaj task na vSphere 8.x.</li>
+  <li>Potvrdi da Snapshot Manager više nema snapshot, da nema <em>Needs Consolidation</em> upozorenja i da T0 datoteka i dalje postoji.</li>
+  <li>PowerCLI-jem potvrdi da <code>Get-Snapshot -VM $vm</code> ne vraća objekte.</li>
+</ol>
+
+<p>
+<strong>Rollback laboratorije:</strong> ukloni samo dve probne datoteke iz gosta. Ako se pojavi consolidation warning, ne briši ručno datastore fajlove; pređi na narednu vežbu. <strong>Kriterijum završetka:</strong> nema aktivnog snapshot lanca, VM i servis su zdravi, datastore ima očekivan prostor, a task/event trag je dokumentovan.
+</p>
+
+<pre><code class="language-bash">sudo rm -f /var/tmp/snapshot-lab-state.txt /var/tmp/created-after-snapshot.txt</code></pre>
+
+<h3>Vežba 5 – Incident response simulacija: neuspešna konsolidacija</h3>
+
+<p>
+Ne izazivaj kvar brisanjem fajlova, punjenjem datastore-a ili prekidanjem merge-a. Bezbedna simulacija koristi unapred pripremljenu karticu incidenta: „Snapshot Manager je prazan; Summary prikazuje <em>Virtual machine disks consolidation is needed</em>; poslednji backup je Failed; datastore ima 22% slobodnog prostora.” Cilj je napraviti dokazni i korektivni tok, a ne stvarno oštetiti VM.
+</p>
+
+<ol>
+  <li>Klasifikuj simptom, obim i moguću posledicu.</li>
+  <li>Napiši redosled read-only provera: Tasks/Events, backup status, prostor/latencija, <code>Get-Snapshot</code>, <code>snapshot.get</code>, <code>.vmx</code> referenca i logovi.</li>
+  <li>Formuliši najmanje tri hipoteze: orphaned delta posle backup-a, proxy lock i storage/space problem.</li>
+  <li>Za svaku hipotezu navedi dokaz koji je potvrđuje ili odbacuje.</li>
+  <li>Predloži najmanje invazivnu korekciju: obustava novog backup-a, uklanjanje potvrđenog proxy lock-a u koordinaciji, zatim GUI Consolidate.</li>
+  <li>Definiši stop-uslov: nejasan lanac, nedovoljno prostora, aktivan lock nepoznatog vlasnika, rastuća latencija ili ponovljen failure zahteva eskalaciju.</li>
+  <li>Napiši post-check: upozorenje uklonjeno, bazni/aktivni disk potvrđen, aplikacija zdrava, prostor stabilan, sledeći backup uspešan i RCA evidentiran.</li>
+</ol>
+
+<p>
+<strong>Kriterijum završetka:</strong> polaznik ume da odvoji privremeno zaobilazno rešenje od trajne mere. Privremena mera može biti zaustavljanje novih backup poslova i planiranje low-I/O prozora; trajna mera je ispravka backup cleanup-a, monitoring starosti snapshot-a i kapaciteta, vlasništvo i testiran operativni runbook.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Snapshot uvek veži za change/incident, vlasnika, razlog i rok; ukloni ga odmah nakon odluke o prihvatanju ili rollback-u.</li>
+  <li>Ne koristi snapshot kao backup, arhivu ili zamenu za nativni database recovery.</li>
+  <li>Pre kreiranja i brisanja proveri storage kapacitet, latenciju, write rate, postojeći lanac, backup i konkurentne zadatke.</li>
+  <li>Preferiraj najmanji broj tačaka; podržani maksimum od 32 nije operativna preporuka. Broadcom preporučuje dva do tri, a produkciona politika treba da bude stroža.</li>
+  <li>Ne zadržavaj snapshot duže od 72 sata; za intenzivne baze planiraj minute ili sate i vendor-podržan oporavak.</li>
+  <li>Ne proširuj VMDK dok postoji snapshot. Broadcom izričito upozorava da pokušaj može dovesti do korupcije i gubitka podataka.</li>
+  <li>Ne prekidaj delete/consolidate na vSphere 8.x i ne primenjuj ESX 9 mogućnosti otkazivanja na starije hostove.</li>
+  <li>Nikada ručno ne briši snapshot/delta fajlove bez dokazanog aktivnog lanca, backup-a i odgovarajućeg KB/support postupka.</li>
+  <li>Uvedi alarm i periodični PowerCLI izveštaj za starost, broj i veličinu snapshot-a, uz praćenje neuspelih backup snapshot-a.</li>
+  <li>Posle svake operacije validiraj i infrastrukturno i aplikaciono stanje; „task completed” nije isto što i uspešan poslovni servis.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je savladana kada administrator može da objasni parent/child VMDK lanac i ulogu <code>.vmsd</code>/<code>.vmsn</code> fajlova; razlikuje memory, crash-consistent, quiesced i offline stanje; opravda izbor snapshot-a u odnosu na backup, clone i replikaciju; proceni prostor i performansni rizik; bezbedno izvede i validira Take, Go To, Delete i Delete All; razlikuje Delete od Consolidate; pomoću vSphere Client-a, VCF PowerCLI-ja, <code>vim-cmd</code>, konfiguracije i logova prikupi dokaze; i za upozorenje <em>Needs Consolidation</em> sprovede dijagnostiku od najmanje invazivne provere do kontrolisane eskalacije bez ručnog oštećenja lanca.
+</p>
+
+<h3>Zaključak</h3>
+
+<p>
+Snapshot nije „sigurnosna kopija jednim klikom”, već vremenski ograničena zavisnost u lancu virtuelnih diskova. Njegova vrednost nastaje tek kada je deo discipline promene: unapred poznat cilj, odgovarajuća konzistentnost, dovoljno storage prostora, kratak rok, merljiva validacija i jasna odluka o rollback-u ili commit-u. Pogrešno ostavljen snapshot pretvara alat za smanjenje rizika u izvor pada performansi, popunjenog datastore-a i složenog oporavka.
+</p>
+
+<p>
+Odgovoran VMware administrator zato ne pita samo „da li mogu da napravim snapshot”, već „koje stanje zaista čuvam, ko od njega zavisi, koliko brzo delta raste, kako dokazujem konzistentnost i kada ga bezbedno uklanjam”. Takav način razmišljanja neposredno priprema čitaoca za standardizovane slike i template u sledećoj lekciji, kao i za kasnije teme o storage-u, backup-u, performansama i incidentima.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere administrativna dokumentacija za upravljanje snapshot-ima i snapshot fajlovima; zvanični Knowledge Base članci o najboljim praksama, quiescing-u, disk konsolidaciji, dugotrajnim operacijama, zaključanim fajlovima i database workload-ima; VCF PowerCLI reference za Snapshot i VM cmdlet-e; ESXi CLI i troubleshooting reference za vim-cmd, logove i VMDK lance
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-16-power-operacije.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-18-konverzija-template.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

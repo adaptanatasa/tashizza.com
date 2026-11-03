@@ -1,0 +1,807 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-5-game-day-oporavak.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Dodatak 5. Game day – kvar čvora, degradacija servisa i oporavak | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Vođena Vanilla Kubernetes game day laboratorija za kontrolisani kvar worker čvora, degradaciju servisa, oporavak, prikupljanje dokaza i operativnu retrospektivu.">
+
+  <meta name="keywords"
+        content="Vanilla Kubernetes game day, Kubernetes kvar čvora, degradacija servisa, Kubernetes oporavak, incident response, PodDisruptionBudget, kubectl drain, readiness probe, Kubernetes dokazi, retrospektiva, DevOps laboratorija, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-5-game-day-oporavak.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Dodatak 5. Game day – kvar čvora, degradacija servisa, oporavak, dokazi i retrospektiva">
+
+  <meta property="og:description"
+        content="Praktična Vanilla Kubernetes game day laboratorija: bezbedna simulacija kvara, dijagnostika, oporavak zasnovan na dokazima i retrospektiva.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-5-game-day-oporavak.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-dodatak-5-game-day-oporavak.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Dodatak 5. Vanilla Kubernetes game day – kvar čvora, degradacija servisa i oporavak">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-dodatak-5-game-day-oporavak.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-dodatak-5-game-day-oporavak.png"
+           alt="Dodatak 5. Vanilla Kubernetes game day – kvar čvora, degradacija servisa i oporavak">
+
+    </a>
+
+    <div class="page-subtitle">
+      XII. Laboratorijsko okruženje i integrisani projekti
+    </div>
+
+    <div class="page-subtitle">
+      Dodatak 5. Game day – kvar čvora, degradacija servisa, oporavak, dokazi i retrospektiva
+    </div>
+
+    <p>
+      Game day je vremenski ograničena, unapred odobrena i posmatrana vežba u kojoj tim namerno uvodi kontrolisan poremećaj da bi proverio pretpostavke o otpornosti sistema, spremnost ljudi, kvalitet procedura i pouzdanost dokaza. Cilj nije demonstracija dramatičnog kvara niti takmičenje u brzini, već bezbedno učenje: da li monitoring prepoznaje problem, da li se uticaj pravilno procenjuje, da li se uzrok lokalizuje bez nasumičnih intervencija, da li oporavak vraća stvarnu funkcionalnost i da li tim može da objasni šta se dogodilo.
+    </p>
+
+    <p>
+      Laboratorija nadograđuje klaster iz prethodnih dodataka: jedan control plane čvor <code>k8s-cp01</code>, dva worker čvora <code>k8s-w01</code> i <code>k8s-w02</code>, administratorsku stanicu <code>admin01</code>, containerd i funkcionalan CNI. Izvode se dva glavna eksperimenta. Prvi simulira neočekivanu nedostupnost jednog worker čvora. Drugi degradira aplikacioni servis tako što jedna replika postaje nespremna, ali ostaje pokrenuta. Time se jasno razdvajaju infrastrukturni kvar, Node kontrola, raspoređivanje, readiness signal, EndpointSlice stanje i korisnički rezultat.
+    </p>
+
+    <p>
+      Referentni baseline prati Kubernetes 1.35 iz Dodatka 4, ali se vežba ne vezuje za proizvoljnu oznaku <code>latest</code>. Pre izvođenja proveravaju se tačna patch verzija klastera, verzija klijenta, CNI i runtime-a, kao i dokumentacija koja pripada instaliranoj minor grani. Komande u ovoj lekciji koriste stabilne Kubernetes objekte i standardne <code>kubectl</code> postupke, ali stvarne podrazumevane pragove Node kontrolera i eviction ponašanje treba očitati iz konkretne konfiguracije control plane-a, a ne pretpostaviti.
+    </p>
+
+    <h3>1. Ishodi učenja i granice eksperimenta</h3>
+
+    <p>
+      Po završetku game day-a polaznik treba da ume da izmeri početno stanje, definiše hipotezu i blast radius, razlikuje dobrovoljnu od nedobrovoljne disrupcije, prepozna posledice gubitka čvora, pronađe promenu u Node Lease-u i uslovima čvora, prati ponovno raspoređivanje podova, protumači readiness i EndpointSlice stanje, vrati sistem u poznato dobro stanje i izradi retrospektivu bez okrivljavanja pojedinca.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Granica</th><th>Dozvoljeno u vežbi</th><th>Nije dozvoljeno</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Okruženje</td><td>Izolovan laboratorijski klaster bez produkcionih korisnika i podataka</td><td>Izvođenje na produkciji bez zasebnog dizajna, odobrenja i change procesa</td></tr>
+        <tr><td>Čvor</td><td>Zaustavljanje samo <code>k8s-w02</code> ili njegove VM nakon potvrđenog baseline-a</td><td>Gašenje <code>k8s-cp01</code>, oba worker-a ili ESXi hosta u ovoj vežbi</td></tr>
+        <tr><td>Aplikacija</td><td>Promena ConfigMap-a kontrolisane aplikacije <code>game-day/web</code></td><td>Izmena CNI-ja, kube-proxy pravila, sertifikata ili stvarnih tajni</td></tr>
+        <tr><td>Podaci</td><td>Stateless demo workload i privremeni dijagnostički podovi</td><td>Test gubitka persistent volume-a bez zasebnog backup/restore scenarija</td></tr>
+        <tr><td>Intervencija</td><td>Jedna promena u jednom trenutku, sa vremenom i vlasnikom</td><td>Nasumičan restart više komponenti, brisanje podova bez dokaza ili korišćenje <code>--force</code> radi ubrzanja</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>Stop kriterijumi:</strong> facilitator odmah prekida eksperiment ako Kubernetes API postane nedostupan, ako drugi worker pređe u <code>NotReady</code>, ako se pojavi gubitak trajnih podataka, ako se više ne može pristupiti VM konzoli, ako opterećenje napusti laboratorijski opseg ili ako tim ne može pouzdano da utvrdi poslednju izvršenu promenu. Prekid nije neuspeh vežbe; to je dokaz da je bezbednosna granica funkcionisala.
+    </p>
+
+    <h3>2. Referentna topologija i promenljive</h3>
+
+    <table>
+      <thead>
+        <tr><th>Uloga</th><th>Hostname</th><th>Node IP</th><th>Resursi</th><th>Operativna uloga u vežbi</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Control plane</td><td><code>k8s-cp01</code></td><td><code>192.168.50.11</code></td><td>4 vCPU, 8 GB RAM, 80 GB</td><td>API, scheduler, controller manager i lokalni etcd; ne uvodi se kvar</td></tr>
+        <tr><td>Worker 1</td><td><code>k8s-w01</code></td><td><code>192.168.50.21</code></td><td>4 vCPU, 8 GB RAM, 100 GB</td><td>Preživeli čvor i cilj ponovnog raspoređivanja</td></tr>
+        <tr><td>Worker 2</td><td><code>k8s-w02</code></td><td><code>192.168.50.22</code></td><td>4 vCPU, 8 GB RAM, 100 GB</td><td>Čvor na kome se izaziva kontrolisani prekid</td></tr>
+        <tr><td>Administratorska stanica</td><td><code>admin01</code></td><td><code>192.168.50.10</code></td><td>Linux, kubectl, curl, SSH</td><td>Komandni, dokazni i vremenski zapis</td></tr>
+        <tr><td>Node mreža</td><td>VMware port group</td><td><code>192.168.50.0/24</code></td><td>MTU prema baseline-u</td><td>SSH, API i Node saobraćaj</td></tr>
+        <tr><td>Pod / Service mreža</td><td>CNI / Kubernetes</td><td><code>10.244.0.0/16</code> / <code>10.96.0.0/12</code></td><td>Bez preklapanja</td><td>Pod komunikacija i ClusterIP</td></tr>
+      </tbody>
+    </table>
+
+    <table>
+      <thead>
+        <tr><th>Promenljiva</th><th>Referentna vrednost</th><th>Pravilo</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>TARGET_NODE</code></td><td><code>k8s-w02</code></td><td>Jedini čvor na kome se uvodi kvar</td></tr>
+        <tr><td><code>SURVIVING_NODE</code></td><td><code>k8s-w01</code></td><td>Mora ostati zdrav i imati dovoljan allocatable kapacitet</td></tr>
+        <tr><td><code>LAB_NAMESPACE</code></td><td><code>game-day</code></td><td>Svi aplikacioni resursi vežbe nalaze se ovde</td></tr>
+        <tr><td><code>APP_NAME</code></td><td><code>web</code></td><td>Deployment, Service i PDB koriste iste labels</td></tr>
+        <tr><td><code>EVIDENCE_DIR</code></td><td><code>game-day-evidence-YYYYMMDD-HHMMSS</code></td><td>Ne sadrži kubeconfig, tokene, Secrets ni privatne ključeve</td></tr>
+        <tr><td><code>OBSERVATION_WINDOW</code></td><td>15 minuta po scenariju</td><td>Nije timeout produkcionog incidenta; facilitator ga prilagođava laboratoriji</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Ako se shell promenljive koriste radi pogodnosti, važe samo u tekućoj sesiji. Na <code>admin01</code>, običnim korisnikom sa ispravnim kubeconfig-om, sledeće komande samo postavljaju lokalne vrednosti i odmah ih proveravaju. Ne koriste se za destruktivne petlje.
+    </p>
+
+    <pre><code class="language-bash">export TARGET_NODE='k8s-w02'
+export LAB_NAMESPACE='game-day'
+printf 'TARGET_NODE=%s\nLAB_NAMESPACE=%s\n' "$TARGET_NODE" "$LAB_NAMESPACE"
+test -n "$TARGET_NODE" &amp;&amp; test -n "$LAB_NAMESPACE"</code></pre>
+
+    <h3>3. Mapa game day laboratorije</h3>
+
+    <table>
+      <thead>
+        <tr><th>Faza</th><th>Mesto</th><th>Promena</th><th>Dokaz uspeha</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1. Odobrenje i uloge</td><td>Tim</td><td>Definišu se obim, vreme, stop kriterijumi i komunikacija</td><td>Popunjen game day brief</td></tr>
+        <tr><td>2. Baseline</td><td><code>admin01</code> i sva tri čvora</td><td>Nema promene; prikuplja se početno stanje</td><td>API, čvorovi, sistemski podovi, DNS i runtime zdravi</td></tr>
+        <tr><td>3. Workload</td><td><code>admin01</code></td><td>Kreiraju se namespace, Deployment, Service i PDB</td><td>Tri spremne replike, endpoint-i i HTTP odgovor</td></tr>
+        <tr><td>4. Kvar čvora</td><td><code>k8s-w02</code> ili vCenter</td><td>Zaustavlja se kubelet ili VM</td><td>Node heartbeat zastaje; uticaj je ograničen</td></tr>
+        <tr><td>5. Dijagnostika</td><td><code>admin01</code>, <code>k8s-w02</code>, vCenter</td><td>Read-only korelacija slojeva</td><td>Potvrđena hipoteza i vremenska linija</td></tr>
+        <tr><td>6. Oporavak čvora</td><td><code>k8s-w02</code> i <code>admin01</code></td><td>Vraća se VM/kubelet i scheduling</td><td>Ready, sve replike spremne, nema kritičnih događaja</td></tr>
+        <tr><td>7. Degradacija servisa</td><td><code>admin01</code></td><td>Jedna replika postaje NotReady</td><td>EndpointSlice uklanja nespreman backend; Service ostaje funkcionalan</td></tr>
+        <tr><td>8. Oporavak aplikacije</td><td><code>admin01</code></td><td>Vraća se ispravna konfiguracija</td><td>Tri endpoint-a i stabilan funkcionalni test</td></tr>
+        <tr><td>9. Retrospektiva</td><td>Tim</td><td>Nema promene klastera</td><td>Činjenice, nalazi, vlasnici i rokovi akcija</td></tr>
+      </tbody>
+    </table>
+
+    <h3>4. Uloge, komunikacija i game day brief</h3>
+
+    <ul>
+      <li><strong>Facilitator</strong> vodi faze, potvrđuje preduslove, odobrava fault injection i ima pravo da prekine vežbu.</li>
+      <li><strong>Operator</strong> izvršava unapred dogovorene state-changing komande; ne improvizuje dodatne kvarove.</li>
+      <li><strong>Incident commander</strong> održava zajedničku sliku uticaja, prioriteta, odluka i eskalacija.</li>
+      <li><strong>Observer/scribe</strong> beleži UTC vreme, komandu, izvršioca, rezultat, hipotezu i odluku, ali ne vodi paralelnu intervenciju.</li>
+      <li><strong>Service owner</strong> potvrđuje očekivano ponašanje aplikacije i kriterijume poslovnog oporavka.</li>
+    </ul>
+
+    <table>
+      <thead><tr><th>Polje brief-a</th><th>Primer</th></tr></thead>
+      <tbody>
+        <tr><td>Hipoteza 1</td><td>Gubitak jednog worker-a ne prekida dostupnost troreplikatnog stateless servisa duže od dogovorenog laboratorijskog prozora</td></tr>
+        <tr><td>Hipoteza 2</td><td>Readiness kvar uklanja neispravnu repliku iz Service endpoint-a bez nepotrebnog restartovanja kontejnera</td></tr>
+        <tr><td>Blast radius</td><td>Samo namespace <code>game-day</code> i worker <code>k8s-w02</code></td></tr>
+        <tr><td>Početak/kraj</td><td>UTC timestamp i maksimalno trajanje</td></tr>
+        <tr><td>Rollback</td><td>Start kubelet/VM, uncordon po potrebi, povratak ConfigMap-a i rollout status</td></tr>
+        <tr><td>Komunikacioni kanal</td><td>Jedan dogovoreni kanal i jedna vremenska linija</td></tr>
+        <tr><td>Stop autoritet</td><td>Facilitator i bilo koji član koji uoči izlazak iz blast radius-a</td></tr>
+      </tbody>
+    </table>
+
+    <h3>5. Faza baseline-a – dokaz poznatog dobrog stanja</h3>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; običan korisnik sa odobrenim kubeconfig-om. <strong>Vrsta:</strong> read-only. Cilj je da se pre fault injection-a dokaže zdravlje upravljačke ravni, čvorova i mreže. Ako baseline nije uspešan, game day se ne pokreće: postojeći kvar ne sme postati deo eksperimenta bez jasne oznake.
+    </p>
+
+    <pre><code class="language-bash">kubectl version
+kubectl cluster-info
+kubectl get nodes -o wide
+kubectl get --raw='/readyz?verbose'
+kubectl get pods -n kube-system -o wide
+kubectl get events -A --sort-by='.metadata.creationTimestamp'</code></pre>
+
+    <p>
+      Očekuje se odziv API-ja, uspešan <code>readyz</code>, sva tri Node objekta u stanju <code>Ready</code> i sistemski podovi bez nerešenih <code>CrashLoopBackOff</code>, <code>ImagePullBackOff</code> ili dugotrajnog <code>Pending</code> stanja. Upozorenje u Events nije automatski aktivna greška: proveravaju se vreme, broj ponavljanja, pogođeni objekat i da li se događaj i dalje ponavlja.
+    </p>
+
+    <p>
+      <strong>Mesto:</strong> svaki Kubernetes čvor pojedinačno; korisnik <code>labadmin</code> sa <code>sudo</code>. Sledeće provere su read-only i potvrđuju servise, vreme, disk i mrežni identitet.
+    </p>
+
+    <pre><code class="language-bash">sudo systemctl is-active kubelet containerd
+timedatectl show -p NTPSynchronized
+df -h /
+ip -br address
+ip route
+sudo journalctl -u kubelet --since '-15 min' --no-pager | tail -n 80</code></pre>
+
+    <p>
+      Preživeli worker mora imati dovoljno CPU-a, memorije i dozvoljenih scheduling uslova za zamenske podove. Sa <code>admin01</code> proveriti allocatable resurse, zahteve i postojeće taint vrednosti:
+    </p>
+
+    <pre><code class="language-bash">kubectl describe node k8s-w01
+kubectl describe node k8s-w02
+kubectl get pods -A -o custom-columns='NS:.metadata.namespace,POD:.metadata.name,NODE:.spec.nodeName,CPU:.spec.containers[*].resources.requests.cpu,MEM:.spec.containers[*].resources.requests.memory'</code></pre>
+
+    <p>
+      <strong>Kontrolna tačka:</strong> API je spreman, CoreDNS i CNI su zdravi, oba worker-a su <code>Ready</code>, nema pressure uslova, runtime i kubelet rade, vreme je sinhronizovano, disk nije pri kritičnom pragu i <code>k8s-w01</code> ima kapacitet za tri demo replike. U suprotnom zabeležiti nalaz i odložiti vežbu.
+    </p>
+
+    <h3>6. Priprema dokaznog paketa</h3>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; običan korisnik. Kreiranje lokalnog direktorijuma menja samo administratorsku stanicu. U dokazni paket ne smeju ući <code>~/.kube/config</code>, Secret sadržaj, bootstrap tokeni, privatni ključevi ni nefiltrirani environment podaci.
+    </p>
+
+    <pre><code class="language-bash">EVIDENCE_DIR="game-day-evidence-$(date -u +%Y%m%d-%H%M%S)"
+test -n "$EVIDENCE_DIR" || exit 1
+mkdir -m 0700 -- "$EVIDENCE_DIR"
+printf '%s\n' "$EVIDENCE_DIR"
+
+date -u +%FT%TZ | tee "$EVIDENCE_DIR/00-start-utc.txt"
+kubectl get nodes -o wide &gt; "$EVIDENCE_DIR/01-nodes-before.txt"
+kubectl get pods -A -o wide &gt; "$EVIDENCE_DIR/02-pods-before.txt"
+kubectl get events -A --sort-by='.metadata.creationTimestamp' &gt; "$EVIDENCE_DIR/03-events-before.txt"
+kubectl version -o yaml &gt; "$EVIDENCE_DIR/04-kubectl-version.yaml"</code></pre>
+
+    <p>
+      Datoteke predstavljaju snimak, ne kompletnu observability platformu. Za realnu organizaciju koriste se centralni monitoring, logovi, audit i vremenski usklađeni dashboard-i sa pravilima retention-a. Game day zapis mora navesti vremensku zonu; UTC olakšava korelaciju između Kubernetes, systemd, vCenter i aplikacionih zapisa.
+    </p>
+
+    <h3>7. Postavljanje otpornog probnog workload-a</h3>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; korisnik sa pravom kreiranja resursa u laboratorijskom namespace-u. <strong>Vrsta:</strong> state-changing, ali ograničena na <code>game-day</code>. Manifest kreira tri replike, anti-affinity preferencu, requests, readiness/liveness probe, Service i PDB. Preferirana anti-affinity nije garancija raspodele; zato se stvarni položaj podova proverava pre kvara.
+    </p>
+
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: game-day
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: game-day
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: web
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args: ["netexec", "--http-port=8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: game-day
+spec:
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: game-day
+spec:
+  minAvailable: 2
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app: web</code></pre>
+
+    <p>
+      Pre primene manifest sačuvati kao <code>game-day.yaml</code>, pregledati, verzionisati i izvršiti server-side proveru. Referencu slike i digest, kada organizacija zahteva reproducibilnost, potvrditi u odobrenom registru; ako instalirana Kubernetes grana koristi drugačiju verziju test slike, promena mora biti dokumentovana.
+    </p>
+
+    <pre><code class="language-bash">kubectl apply --server-side --dry-run=server -f game-day.yaml
+kubectl apply -f game-day.yaml
+kubectl rollout status deployment/web -n game-day --timeout=180s
+kubectl get pods -n game-day -o wide
+kubectl get pdb -n game-day
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o wide</code></pre>
+
+    <p>
+      PDB štiti od dobrovoljnih evikcija pokrenutih Eviction API-jem, kao što je standardni <code>kubectl drain</code>. Ne može sprečiti nestanak VM, kvar diska, mrežnu particiju ili drugu nedobrovoljnu disrupciju; takav kvar se uračunava u dostupni budžet. PDB takođe nije mehanizam koji ograničava Deployment rolling update. Polje <code>unhealthyPodEvictionPolicy: AlwaysAllow</code> sprečava da trajno nespreman pod nepotrebno blokira administrativni drain, ali ne zamenjuje analizu uzroka nespremnosti.
+    </p>
+
+    <p>
+      Funkcionalni test iz privremenog Pod-a dokazuje DNS, Service i aplikacioni odgovor. Komanda menja stanje samo kreiranjem kratkotrajnog Pod-a koji se posle završetka uklanja.
+    </p>
+
+    <pre><code class="language-bash">kubectl run service-check -n game-day --rm -i --restart=Never \
+      --image=busybox:1.36.1 \
+  -- /bin/sh -c 'for i in 1 2 3 4 5; do wget -qO- http://web/hostname; echo; done'</code></pre>
+
+    <p>
+      <strong>Kontrolna tačka:</strong> Deployment ima <code>3/3</code> dostupne replike; bar jedna replika je na <code>k8s-w02</code>; EndpointSlice sadrži tri spremne adrese; PDB prikazuje dozvoljenu disrupciju u skladu sa trenutnim zdravljem; pet zahteva uspeva. Ako scheduler smesti sve replike na jedan worker zbog kapaciteta ili ograničenja, ne nastavljati dok se topologija i resursi ne isprave.
+    </p>
+
+    <h3>8. Kontrolni eksperiment – cordon, drain i uncordon</h3>
+
+    <p>
+      Pre neočekivanog kvara korisno je dokazati kako izgleda planirana disrupcija. <code>cordon</code> sprečava novo raspoređivanje, ali ne uklanja postojeće podove. <code>drain</code> koristi bezbedne evikcije, poštuje PDB i grace period; DaemonSet podovi ostaju i zato je potreban <code>--ignore-daemonsets</code>. <strong>Mesto:</strong> <code>admin01</code>. <strong>Vrsta:</strong> state-changing. Ne koristi se <code>--disable-eviction</code>, jer bi zaobišao PDB, niti <code>--force</code> bez prethodne analize unmanaged podova.
+    </p>
+
+    <pre><code class="language-bash">kubectl cordon k8s-w02
+kubectl get node k8s-w02
+kubectl drain k8s-w02 --ignore-daemonsets --timeout=180s
+kubectl get pods -n game-day -o wide
+kubectl get pdb -n game-day
+kubectl uncordon k8s-w02
+kubectl get node k8s-w02</code></pre>
+
+    <p>
+      Ako drain blokira PDB, ne povećavati silom dozvoljeni prekid. Proveriti broj zdravih replika, kapacitet drugog čvora, readiness probe, tačan selector PDB-a i unmanaged/emptyDir podove. Opcija <code>--delete-emptydir-data</code> prihvata gubitak lokalnih ephemeral podataka i koristi se samo kada je taj rizik eksplicitno odobren. Uspešan drain znači da su odgovarajući workload podovi bezbedno eviktovani; ne znači da je aplikacija funkcionalno proverena.
+    </p>
+
+    <h3>9. Scenario A – neočekivani kvar worker čvora</h3>
+
+    <p>
+      Scenario ima dve varijante. Varijanta A1, za početnu vežbu, zaustavlja samo kubelet i ostavlja SSH dostupan; lakša je za oporavak i omogućava lokalne dokaze. Varijanta A2 gasi VM i realističnije prikazuje potpuni gubitak čvora, ali zahteva potvrđen pristup vCenter-u ili hipervizorskoj konzoli. Izvodi se samo jedna varijanta po prolazu.
+    </p>
+
+    <h4>9.1. Poslednja provera pre fault injection-a</h4>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; read-only. Scribe beleži vreme i položaj podova. Facilitator potvrđuje da je <code>k8s-w02</code> schedulable posle kontrolnog drain-a i da je najmanje jedna replika na njemu.
+    </p>
+
+    <pre><code class="language-bash">date -u +%FT%TZ
+kubectl get node k8s-w02
+kubectl get pods -n game-day -o wide
+kubectl get lease -n kube-node-lease k8s-w02 -o yaml
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o yaml</code></pre>
+
+    <h4>9.2. Varijanta A1 – zaustavljanje kubelet-a</h4>
+
+    <p>
+      <strong>Mesto:</strong> samo <code>k8s-w02</code>; <code>labadmin</code> sa <code>sudo</code>. <strong>Vrsta:</strong> state-changing i reverzibilna. Containerd može nastaviti da drži postojeće kontejnere aktivnim, ali čvor prestaje da šalje kubelet heartbeat i ne izvršava nove PodSpec odluke.
+    </p>
+
+    <pre><code class="language-bash">date -u +%FT%TZ
+sudo systemctl stop kubelet
+sudo systemctl is-active kubelet</code></pre>
+
+    <p>
+      Očekivani izlaz poslednje komande je <code>inactive</code>. Ako se zaustavi containerd ili izgubi SSH, scenario više nije A1; primenjuje se stop kriterijum i prelazi na konzolu, bez dodatnog improvizovanog kvara.
+    </p>
+
+    <h4>9.3. Varijanta A2 – gašenje VM</h4>
+
+    <p>
+      <strong>Mesto:</strong> vCenter ili drugi odobreni VMware alat; ovlašćeni operator. Najpre se potvrđuje tačan VM identitet <code>k8s-w02</code>. Guest shutdown je uredno gašenje, dok power-off više liči na nagli kvar, ali nosi veći rizik po lokalni filesystem. Za ovu vežbu prednost ima uredan shutdown, osim kada je zasebno odobreno testiranje naglog prekida. Ne vraća se stari VM snapshot kao način oporavka Node-a.
+    </p>
+
+    <h3>10. Posmatranje, trijaža i potvrda uzroka</h3>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; read-only. Ne očekuje se da Node odmah postane <code>NotReady</code>. Kubelet heartbeat i Lease prestaju, zatim Node kontroler nakon svojih pragova menja uslov i dodaje odgovarajuće taint vrednosti. Pod evikcije takođe nisu trenutne. Podrazumevane vrednosti postoje u upstream dokumentaciji, ali rezultat se meri u ovom klasteru i povezuje sa stvarnom konfiguracijom controller manager-a.
+    </p>
+
+    <pre><code class="language-bash">kubectl get nodes -w</code></pre>
+
+    <p>
+      U drugom terminalu pratiti podove i endpoint-e:
+    </p>
+
+    <pre><code class="language-bash">kubectl get pods -n game-day -o wide -w</code></pre>
+
+    <p>
+      U trećem terminalu, bez beskonačnog čuvanja izlaza, periodično prikupiti sledeće dokaze:
+    </p>
+
+    <pre><code class="language-bash">date -u +%FT%TZ
+kubectl get node k8s-w02 -o yaml
+kubectl get lease -n kube-node-lease k8s-w02 -o yaml
+kubectl describe node k8s-w02
+kubectl get pods -n game-day -o wide
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o yaml
+kubectl get events -n game-day --sort-by='.metadata.creationTimestamp'</code></pre>
+
+    <p>
+      Dokazi se tumače po slojevima. Zastareo <code>renewTime</code> Lease-a potvrđuje prestanak heartbeat-a. <code>Ready: Unknown</code> ili <code>False</code> i taint <code>node.kubernetes.io/unreachable</code> ili <code>node.kubernetes.io/not-ready</code> pokazuju reakciju control plane-a. Pod koji je još prikazan kao <code>Running</code> na nedostupnom Node-u nije dokaz da stvarno uslužuje zahteve: API stanje može biti zastarelo. Service dostupnost se dokazuje zahtevom, EndpointSlice stanjem i, kada postoji, metrikama uspešnosti i latencije.
+    </p>
+
+    <h4>10.1. Funkcionalni test tokom kvara</h4>
+
+    <pre><code class="language-bash">kubectl run outage-check -n game-day --rm -i --restart=Never \
+  --image=busybox:1.36.1 \
+  -- /bin/sh -c 'n=0; while [ "$n" -lt 20 ]; do date -u +%FT%TZ; wget -T 2 -qO- http://web/hostname || echo REQUEST_FAILED; n=$((n+1)); sleep 1; done'</code></pre>
+
+    <p>
+      Rezultat se beleži kao broj uspešnih i neuspešnih zahteva i najveća primećena pauza, ne samo kao „radi/ne radi”. Troreplikatni stateless workload na dva worker-a može ostati dostupan, ali to nije garantovano ako su sve replike bile na pogođenom Node-u, ako preživeli čvor nema kapacitet, ako topology/affinity pravila onemogućavaju raspoređivanje ili ako sama aplikacija zavisi od node-local stanja.
+    </p>
+
+    <h4>10.2. Lokalni dokazi za A1</h4>
+
+    <p>
+      <strong>Mesto:</strong> <code>k8s-w02</code>; <code>labadmin</code> sa <code>sudo</code>; read-only. Birati vremenski prozor koji počinje nekoliko minuta pre fault injection-a.
+    </p>
+
+    <pre><code class="language-bash">sudo systemctl status kubelet --no-pager
+sudo journalctl -u kubelet --since '-20 min' --no-pager
+sudo systemctl status containerd --no-pager
+sudo crictl ps -a
+ip -br address
+ip route
+df -h / /var/lib/containerd /var/lib/kubelet</code></pre>
+
+    <p>
+      Za A2 se lokalni podaci možda ne mogu prikupiti dok se VM ne vrati. Tada vCenter stanje, VM događaji, konzola, datastore i mrežni podaci postaju primarni infrastrukturni dokazi. Nedostupan SSH sam po sebi ne dokazuje kvar kubelet-a; uzrok može biti VM power state, guest mreža, firewall, DNS ili host infrastruktura.
+    </p>
+
+    <h3>11. Oporavak worker čvora</h3>
+
+    <p>
+      Oporavak počinje tek kada su zabeleženi simptom, obim, poslednja promena, hipoteza i dokazi koji potvrđuju uzrok. Za A1, na <code>k8s-w02</code> se vraća samo kubelet. Za A2 se VM uključuje i čeka se operativni sistem; ne izvodi se <code>kubeadm reset</code> niti ponovni <code>kubeadm join</code> nad postojećim članom bez dokaza da je identitet čvora nepovratno izgubljen.
+    </p>
+
+    <p><strong>A1 – mesto:</strong> <code>k8s-w02</code>; <code>sudo</code>; state-changing.</p>
+
+    <pre><code class="language-bash">sudo systemctl start kubelet
+sudo systemctl is-active kubelet
+sudo journalctl -u kubelet --since '-5 min' --no-pager</code></pre>
+
+    <p>
+      Ako je čvor ostao cordon-ovan iz ranije faze, tek nakon stabilnog <code>Ready</code> stanja i provere lokalnih servisa vratiti scheduling sa <code>admin01</code>:
+    </p>
+
+    <pre><code class="language-bash">kubectl get node k8s-w02
+kubectl uncordon k8s-w02
+kubectl get nodes
+kubectl get pods -n game-day -o wide
+kubectl rollout status deployment/web -n game-day --timeout=180s
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o wide</code></pre>
+
+    <p>
+      Vraćanje Node-a u <code>Ready</code> ne vraća automatski prethodni raspored podova i ne treba ručno „balansirati” klaster brisanjem zdravih podova bez potrebe. Scheduler reaguje na nove zahteve; postojeći zdravi podovi ostaju gde jesu. Ako je cilj ponovna raspodela, koristi se kontrolisan rollout ili alat/politika predviđena za to, uz proveru dostupnosti.
+    </p>
+
+    <p>
+      <strong>Kriterijum oporavka:</strong> Node je stabilno <code>Ready</code>; Lease se obnavlja; kubelet i containerd su aktivni; Deployment ima <code>3/3</code> dostupne replike; EndpointSlice ima očekivane spremne adrese; CoreDNS i CNI pod na vraćenom čvoru su zdravi; funkcionalni test nema greške; nema novih nerešenih warning događaja. Tek tada se scenario zatvara.
+    </p>
+
+    <h3>12. Scenario B – kontrolisana degradacija servisa</h3>
+
+    <p>
+      Cilj drugog scenarija je da se pokaže razlika između procesa koji radi i instance koja je spremna da prima saobraćaj. Readiness neuspeh uklanja Pod iz Service backend-a, ali kubelet zbog toga ne restartuje kontejner. Liveness neuspeh može izazvati restart i zato se ne zloupotrebljava za zavisnosti ili prolazno opterećenje: pogrešna liveness provera može proizvesti kaskadni kvar.
+    </p>
+
+    <p>
+      Pošto referentna slika daje isti <code>/healthz</code> odgovor za sve replike, najbezbednija vežba degradacije koristi privremenu promenu readiness putanje u novom Deployment rollout-u. To utiče na sve nove Podove i zato se rollout strategija i PDB posmatraju. Blast radius ostaje namespace <code>game-day</code>. Pre promene izvesti aktivni Deployment kao dokaz, ali ga ne koristiti kao jedini izvor istine umesto verzionisanog manifesta.
+    </p>
+
+    <pre><code class="language-bash">kubectl get deployment web -n game-day -o yaml &gt; "$EVIDENCE_DIR/20-web-before-degradation.yaml"
+kubectl patch deployment web -n game-day --type='json' \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/path","value":"/not-ready"}]'
+kubectl rollout status deployment/web -n game-day --timeout=60s || true
+kubectl get pods -n game-day -o wide
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o yaml
+kubectl describe deployment web -n game-day
+kubectl get events -n game-day --sort-by='.metadata.creationTimestamp'</code></pre>
+
+    <p>
+      <code>|| true</code> se ovde koristi samo da očekivani timeout ne prekine laboratorijski niz provera; ne znači da se greška ignoriše. Očekuje se da novi Pod ostane <code>Running</code>, ali <code>0/1 Ready</code>, dok stari spremni podovi ostaju zbog rolling update pravila. Deployment ne završava rollout, a Service treba da zadrži samo spremne endpoint-e. Ako nema nijednog endpoint-a ili korisnički test potpuno otkaže, aktivira se stop kriterijum i odmah se prelazi na rollback.
+    </p>
+
+    <pre><code class="language-bash">kubectl run degraded-check -n game-day --rm -i --restart=Never \
+  --image=busybox:1.36.1 \
+  -- /bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do wget -T 2 -qO- http://web/hostname || echo REQUEST_FAILED; done'</code></pre>
+
+    <h4>12.1. Dijagnostički tok</h4>
+
+    <ol>
+      <li><strong>Simptom:</strong> rollout ne završava, novi Pod je <code>Running</code> ali nije spreman.</li>
+      <li><strong>Obim:</strong> samo novi ReplicaSet u namespace-u <code>game-day</code>; Node i sistemski podovi ostaju zdravi.</li>
+      <li><strong>Dokaz:</strong> <code>kubectl describe pod</code> prikazuje readiness probe failure; EndpointSlice ne označava taj Pod kao spreman backend.</li>
+      <li><strong>Neposredni uzrok:</strong> readiness HTTP putanja <code>/not-ready</code> vraća neuspeh.</li>
+      <li><strong>Osnovni uzrok:</strong> kontrolisana promena Pod template-a bez odgovarajućeg health endpoint-a.</li>
+      <li><strong>Posledica:</strong> smanjen broj kapaciteta i zaglavljen rollout, ali Service nastavlja da koristi spremne replike.</li>
+      <li><strong>Korekcija:</strong> povratak verzionisanog manifesta ili <code>rollout undo</code> na prethodnu reviziju.</li>
+    </ol>
+
+    <p>
+      Za konkretan nespreman Pod, sa <code>admin01</code> izvršiti read-only proveru:
+    </p>
+
+    <pre><code class="language-bash">kubectl get pods -n game-day
+kubectl describe pod -n game-day &lt;NAZIV_NESPREMNOG_PODA&gt;
+kubectl logs -n game-day &lt;NAZIV_NESPREMNOG_PODA&gt; --since=10m
+kubectl get rs -n game-day
+kubectl rollout history deployment/web -n game-day</code></pre>
+
+    <p>
+      Zamenska vrednost se najpre kopira iz <code>kubectl get pods</code>; ne izvršava se doslovno. U HTML prikazu je znak <code>&lt;</code> escapovan. Nije opravdano restartovati kubelet, CNI ili ceo čvor, jer su dokazi lokalizovali problem u Pod template-u.
+    </p>
+
+    <h3>13. Rollback degradacije i puna validacija</h3>
+
+    <p>
+      <strong>Mesto:</strong> <code>admin01</code>; state-changing. Preferirani rollback je ponovna primena ispravnog, pregledanog i verzionisanog <code>game-day.yaml</code>. <code>rollout undo</code> je dozvoljena laboratorijska alternativa kada je prethodna revizija jasno identifikovana.
+    </p>
+
+    <pre><code class="language-bash">kubectl apply -f game-day.yaml
+kubectl rollout status deployment/web -n game-day --timeout=180s
+kubectl get deployment,replicaset,pods,service,pdb -n game-day -o wide
+kubectl get endpointslice -n game-day -l kubernetes.io/service-name=web -o yaml
+kubectl get events -n game-day --sort-by='.metadata.creationTimestamp'</code></pre>
+
+    <p>
+      Zatim ponoviti funkcionalni test i sačuvati završne dokaze:
+    </p>
+
+    <pre><code class="language-bash">kubectl run recovery-check -n game-day --rm -i --restart=Never \
+  --image=busybox:1.36.1 \
+  -- /bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do wget -T 2 -qO- http://web/hostname || exit 1; done'
+
+date -u +%FT%TZ | tee "$EVIDENCE_DIR/90-end-utc.txt"
+kubectl get nodes -o wide &gt; "$EVIDENCE_DIR/91-nodes-after.txt"
+kubectl get pods -A -o wide &gt; "$EVIDENCE_DIR/92-pods-after.txt"
+kubectl get events -A --sort-by='.metadata.creationTimestamp' &gt; "$EVIDENCE_DIR/93-events-after.txt"
+kubectl get all,pdb,endpointslice -n game-day -o yaml &gt; "$EVIDENCE_DIR/94-game-day-after.yaml"</code></pre>
+
+    <p>
+      Komanda <code>kubectl get all</code> ne obuhvata sve vrste resursa; zato su PDB i EndpointSlice izričito navedeni. Dokazni YAML može sadržati interne IP adrese i metapodatke, pa se pre deljenja klasifikuje i sanitizuje. Hash paketa dokaza omogućava proveru naknadne izmene, ali ne dokazuje istinitost prvobitno prikupljenih podataka.
+    </p>
+
+    <pre><code class="language-bash">tar -czf "${EVIDENCE_DIR}.tar.gz" -- "$EVIDENCE_DIR"
+sha256sum "${EVIDENCE_DIR}.tar.gz" &gt; "${EVIDENCE_DIR}.tar.gz.sha256"</code></pre>
+
+    <h3>14. Matrica simptoma i dijagnostičkih grana</h3>
+
+    <table>
+      <thead><tr><th>Simptom</th><th>Prvi dokaz</th><th>Verovatna grana</th><th>Ne raditi automatski</th></tr></thead>
+      <tbody>
+        <tr><td>Node je <code>NotReady</code> ili <code>Unknown</code></td><td>Node conditions, Lease, kubelet journal, VM power state</td><td>Kubelet, OS, mreža, runtime ili hipervizor</td><td><code>kubeadm reset</code> i ponovni join</td></tr>
+        <tr><td>Pod je <code>Pending</code></td><td>Pod Events i scheduler poruke</td><td>Nedovoljan kapacitet, affinity, taint, PVC</td><td>Restart containerd-a pre odluke schedulera</td></tr>
+        <tr><td>Pod je Running, <code>0/1 Ready</code></td><td>Probe Events, opis Pod-a, endpoint condition</td><td>Readiness konfiguracija ili aplikaciona zavisnost</td><td>Brisanje svih podova ili Node restart</td></tr>
+        <tr><td>Service nema endpoint-e</td><td>Selector, labels, EndpointSlice, readiness</td><td>Pogrešna oznaka ili sve replike nespremne</td><td>Nasumična izmena CNI/firewall pravila</td></tr>
+        <tr><td>Endpoint-i postoje, HTTP ne radi</td><td>Direktan Pod test, port/targetPort, NetworkPolicy, proxy sloj</td><td>Aplikacija, Service mapiranje ili transport</td><td>Zaključak da je DNS uzrok bez DNS testa</td></tr>
+        <tr><td>API je nedostupan</td><td><code>cluster-info</code>, <code>readyz</code>, control plane VM i static Pod logovi</td><td>Control plane/etcd/mreža; stop kriterijum</td><td>Nastavak fault injection-a</td></tr>
+      </tbody>
+    </table>
+
+    <h3>15. RTO, RPO, SLI i dokaz oporavka</h3>
+
+    <p>
+      Game day ne treba proglasiti uspešnim samo zato što su podovi ponovo zeleni. Unapred se definiše šta se meri. Za stateless demo servis RPO je praktično nula jer nema poslovnih podataka, ali to ne govori ništa o stvarnom StatefulSet-u ili bazi. RTO se meri od dogovorenog početka korisničkog uticaja do potvrđenog povratka funkcionalnog SLI-ja, ne do trenutka kada je operator izvršio poslednju komandu.
+    </p>
+
+    <table>
+      <thead><tr><th>Mera</th><th>Početak</th><th>Kraj</th><th>Dokaz</th></tr></thead>
+      <tbody>
+        <tr><td>Vreme detekcije</td><td>Fault injection</td><td>Prvi tačan signal/alert</td><td>UTC vremenska linija i monitoring događaj</td></tr>
+        <tr><td>Vreme trijaže</td><td>Prvi signal</td><td>Potvrđena komponenta i blast radius</td><td>Hipoteza potkrepljena Lease/Node/probe dokazom</td></tr>
+        <tr><td>Vreme oporavka</td><td>Početak uticaja</td><td>Stabilan funkcionalni test</td><td>Niz uspešnih zahteva i zdravi backend-i</td></tr>
+        <tr><td>Greške zahteva</td><td>Tokom scenarija</td><td>Kraj observation prozora</td><td>Broj REQUEST_FAILED i ukupnih zahteva</td></tr>
+        <tr><td>Kapacitet</td><td>Pre kvara</td><td>Tokom degradacije</td><td>Broj Ready replika i EndpointSlice adresa</td></tr>
+        <tr><td>RPO</td><td>Poslednji pouzdan podatak</td><td>Potvrđeno vraćeno stanje</td><td>Za stateful sistem: aplikaciona konzistentnost i probni restore</td></tr>
+      </tbody>
+    </table>
+
+    <h3>16. Retrospektiva bez okrivljavanja</h3>
+
+    <p>
+      Retrospektiva se održava dok su činjenice sveže, ali tek nakon stabilizacije. Usmerena je na sistem, interfejse, procedure i pretpostavke, a ne na pronalaženje krivca. Ljudska odluka se analizira u kontekstu informacija, ovlašćenja, pritiska i alata koji su bili dostupni u tom trenutku. Svaki zaključak mora razlikovati činjenicu, pretpostavku i naknadnu interpretaciju.
+    </p>
+
+    <table>
+      <thead><tr><th>Celina</th><th>Pitanja</th><th>Obavezni izlaz</th></tr></thead>
+      <tbody>
+        <tr><td>Očekivanje</td><td>Šta smo mislili da će se dogoditi i zašto?</td><td>Početna hipoteza i izvor pretpostavke</td></tr>
+        <tr><td>Činjenice</td><td>Šta se zaista dogodilo, kojim redosledom?</td><td>UTC timeline sa dokazima</td></tr>
+        <tr><td>Detekcija</td><td>Koji signal je prvi bio koristan, a koji bučan ili odsutan?</td><td>Promena alerta/dashboard-a ili potvrda da nije potrebna</td></tr>
+        <tr><td>Odgovor</td><td>Koja odluka je pomogla, šta je usporilo trijažu?</td><td>Izmena runbook-a, pristupa ili uloga</td></tr>
+        <tr><td>Otpornost</td><td>Da li su PDB, replike, requests i probes radili kako je zamišljeno?</td><td>Tehnička akcija sa vlasnikom i kriterijumom prihvatanja</td></tr>
+        <tr><td>Dokazi</td><td>Šta nismo mogli da rekonstruišemo?</td><td>Logging/audit/retention poboljšanje</td></tr>
+        <tr><td>Rizik</td><td>Da li se blast radius zadržao i da li su stop kriterijumi bili dovoljni?</td><td>Ažurirana sigurnosna granica naredne vežbe</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Akcija bez vlasnika, roka, prioriteta i proverljivog kriterijuma nije zatvorena akcija. Primer dobre formulacije je: „Platform tim do 15. avgusta dodaje alert za zastareo Node Lease; prihvatanje: u ponovljenoj A1 vežbi alert nastaje u odobrenom pragu i sadrži naziv čvora i link ka runbook-u.” Formulacija „poboljšati monitoring” nije merljiva.
+    </p>
+
+    <h3>17. Očuvanje ili uklanjanje laboratorijskih resursa</h3>
+
+    <h4>Mogućnost A – očuvanje klastera i workload-a</h4>
+
+    <p>
+      Klaster se može sačuvati kao poznato dobro okruženje za ponavljanje game day-a. Zadržavaju se verzionisani manifest, brief, sanitizovani dokazni paket, retrospektiva i otvorene akcije. Proverava se da nijedan Node nije ostao cordon-ovan, da nema privremenih taint vrednosti, zaglavljenog rollout-a ili dijagnostičkog Pod-a i da svi resursi imaju vlasnika.
+    </p>
+
+    <pre><code class="language-bash">kubectl get nodes
+kubectl get deployment,pods,service,pdb -n game-day -o wide
+kubectl rollout status deployment/web -n game-day --timeout=180s
+kubectl get events -n game-day --sort-by='.metadata.creationTimestamp'</code></pre>
+
+    <h4>Mogućnost B – uklanjanje samo resursa vežbe</h4>
+
+    <p>
+      <strong>State-changing postupak.</strong> Sa <code>admin01</code> se briše samo namespace <code>game-day</code>. Ovo uklanja namespaced workload, Service, PDB i povezane Podove; ne resetuje klaster i ne uklanja dokazni paket sa administratorske stanice.
+    </p>
+
+    <pre><code class="language-bash">kubectl delete namespace game-day
+kubectl get namespace game-day</code></pre>
+
+    <p>
+      Ako namespace ostane u stanju <code>Terminating</code>, finalizer se ne uklanja naslepo. Identifikuje se resurs ili API servis koji sprečava završetak. Potpuni <code>kubeadm reset</code> nije deo ovog game day-a: kvar čvora i aplikaciona degradacija moraju se oporaviti bez rušenja poznato dobrog klastera.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+
+    <ul>
+      <li><strong>Vežba ima vlasnika i change zapis.</strong> Obim, hipoteza, blast radius, vreme, stop kriterijumi, komunikacioni kanal i rollback odobravaju se pre fault injection-a.</li>
+      <li><strong>Baseline prethodi promeni.</strong> API, Node, kube-system, DNS, Service putanja, runtime, vreme, disk i kapacitet proveravaju se dokazima; postojeći kvar odlaže vežbu.</li>
+      <li><strong>Jedna greška u jednom trenutku.</strong> Svaka state-changing radnja ima UTC vreme, izvršioca, očekivani efekat, validaciju i povratnu komandu.</li>
+      <li><strong>PDB se ne tumači kao apsolutna dostupnost.</strong> On reguliše dobrovoljne evikcije, ne sprečava hardverski kvar, mrežnu particiju niti loš rolling update.</li>
+      <li><strong>Readiness i liveness imaju različite namene.</strong> Readiness upravlja prijemom saobraćaja, a liveness restartom. Zavisnost koja je prolazno nedostupna obično nije opravdanje za agresivan liveness restart.</li>
+      <li><strong>Dokazi se čuvaju pre korekcije.</strong> Node conditions, Lease, Events, EndpointSlice, rollout istorija, kubelet/runtime journal i infrastrukturni događaji korelišu se po vremenu.</li>
+      <li><strong>Tajne se isključuju iz paketa.</strong> Kubeconfig, Secret sadržaj, tokeni i privatni ključevi ne ulaze u običan tar arhiv niti u Git.</li>
+      <li><strong>Oporavak je funkcionalan, ne kozmetički.</strong> <code>Ready</code> i <code>Running</code> nisu dovoljni bez DNS, Service, endpoint i korisničkog testa.</li>
+      <li><strong>Retrospektiva proizvodi merljive promene.</strong> Svaka akcija ima vlasnika, rok, prioritet i dokaz prihvatanja u narednoj vežbi.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+
+    <ul>
+      <li>Čitalac može da objasni topologiju, blast radius i zašto se u ovoj vežbi ne gasi single control plane.</li>
+      <li>Može komandama da dokaže početno zdravlje API-ja, čvorova, kube-system podova, kubelet-a, containerd-a, DNS-a i Service putanje.</li>
+      <li>Može da postavi tri replike, requests, probe, Service i <code>policy/v1</code> PDB i da objasni svaki izbor.</li>
+      <li>Može da razlikuje cordon, drain, eviction, gašenje Node-a i ponovno uključivanje scheduling-a.</li>
+      <li>Može da objasni zašto PDB poštuje dobrovoljnu disrupciju, ali ne sprečava nestanak VM.</li>
+      <li>Može da prati Lease, Node condition, taint, Events, Pod raspored i EndpointSlice tokom kvara.</li>
+      <li>Može da lokalizuje uzrok na Kubernetes, Linux/runtime ili VMware sloju bez nasumičnog restartovanja.</li>
+      <li>Može da vrati kubelet ili VM bez nepotrebnog <code>kubeadm reset</code>/<code>join</code> postupka.</li>
+      <li>Može da dokaže oporavak Node-a servisnim, sistemskim i funkcionalnim dokazima.</li>
+      <li>Može da izazove i protumači readiness degradaciju, uključujući uklanjanje nespremnog backend-a iz EndpointSlice-a.</li>
+      <li>Može da izvrši kontrolisan rollback iz verzionisanog manifesta i potvrdi stabilan rollout.</li>
+      <li>Može da izmeri detekciju, trijažu, funkcionalni RTO i broj neuspešnih zahteva, uz pravilno ograničenje RPO zaključka.</li>
+      <li>Može da napravi sanitizovan dokazni paket, hash i UTC vremensku liniju bez tajni.</li>
+      <li>Može da vodi retrospektivu bez okrivljavanja i napiše akciju sa vlasnikom, rokom i kriterijumom prihvatanja.</li>
+      <li>Može da očuva poznato dobro stanje ili ukloni samo namespace vežbe bez rušenja klastera.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+
+    <p>
+      Otpornost Kubernetes sistema ne nastaje samim brojem replika. Ona zavisi od raspodele podova, realnog kapaciteta preživelih čvorova, kvalitetnih health signala, odgovarajućih disruption budžeta, mreže i skladišta, ali i od sposobnosti tima da brzo razlikuje simptom od uzroka. Game day pretvara te pretpostavke u proverljive tvrdnje. Ako čvor nestane, administrator mora znati šta Node kontroler zaista vidi, kada API stanje može biti zastarelo i kako se korisnički uticaj meri. Ako pod radi ali nije spreman, mora razumeti zašto Service menja skup backend-a bez restartovanja kontejnera.
+    </p>
+
+    <p>
+      Najvažnija veština nije izvršenje fault injection komande, već disciplina oko nje: odobren blast radius, poznato dobro početno stanje, jedna promena u jednom trenutku, jasni stop kriterijumi, očuvanje dokaza, hipoteza pre korekcije i puna validacija posle oporavka. Nasumični restart može privremeno ukloniti simptom, ali istovremeno uništiti podatke potrebne da se spreči ponavljanje. Odgovoran operator bira najmanju korekciju koja odgovara potvrđenom uzroku.
+    </p>
+
+    <p>
+      Ova laboratorija namerno ostaje u granicama stateless workload-a i jednog worker kvara. Produkcioni game day zahteva dodatne scenarije za HA control plane, etcd, CSI i podatke, DNS, ingress/load balancer, identitet, registrije, spoljne zavisnosti, zone otkaza, backup i probni restore. Svaki takav scenario mora imati sopstveni RPO/RTO, bezbednosnu procenu, vlasnike i povratni plan. Zrelost se ne meri veličinom izazvanog kvara, već količinom pouzdanog znanja i trajnih poboljšanja koja tim iz vežbe dobije.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za Node status, heartbeat, taint i eviction ponašanje, bezbedan drain čvora, PodDisruptionBudget i Eviction API, Deployment rollout, health probe, Service i EndpointSlice objekte, događaje, logove i kubectl dijagnostiku; dokumentacija systemd-a, kubelet-a i containerd-a za servisne i journal dokaze; kao i zvanične VMware administrativne reference za stanje virtuelne mašine, konzolu, događaje i kontrolisani oporavak
+      </p>
+
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-dodatak-4-vK8s-na-vmware-komplet-lab-devops-obuka.html">
+        ← Dodatak 4
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-zakljucak.html">
+        Zaključak →
+      </a>
+
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,811 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-31-pv-pvc-storageclass-csi.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Persistent Volume i Persistent Volume Claim – trajno skladištenje podataka | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Persistent Volume i Persistent Volume Claim omogućavaju trajno skladištenje podataka u Kubernetes klasteru nezavisno od životnog ciklusa Pod-ova.">
+
+  <meta name="keywords"
+        content="Persistent Volume, Persistent Volume Claim, PV, PVC, Kubernetes storage, StorageClass, trajno skladištenje, Kubernetes diskovi, YAML, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-31-pv-pvc-storageclass-csi.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Persistent Volume i Persistent Volume Claim – trajno skladištenje podataka">
+
+  <meta property="og:description"
+        content="Naučite kako funkcionišu Persistent Volume, Persistent Volume Claim i StorageClass za pouzdano i trajno skladištenje podataka u Kubernetes okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-31-pv-pvc-storageclass-csi.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-29-persistent-volume.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Persistent Volume i Persistent Volume Claim – trajno skladištenje podataka">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-29-persistent-volume.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-29-persistent-volume.png"
+           alt="Persistent Volume i Persistent Volume Claim – trajno skladištenje podataka">
+
+    </a>
+
+ 
+<div class="page-subtitle">
+ VII. Storage i stateful aplikacije
+</div>
+   <div class="page-subtitle">
+31. PV, PVC, StorageClass i CSI – dinamičko provisionovanje i životni ciklus volumena
+</div>
+
+<p>
+  Kontejner je potrošna izvršna jedinica: može biti restartovan, zamenjen novom instancom ili pokrenut na drugom worker čvoru. Pod takođe nije trajni nosilac identiteta. Kada Deployment zameni Pod, novi Pod dobija novi UID, a lokalni sloj kontejnerskog fajl-sistema ne predstavlja pouzdano mesto za poslovne podatke. Kubernetes zato razdvaja životni ciklus aplikacije od životnog ciklusa skladišta pomoću objekata <strong>PersistentVolume</strong> i <strong>PersistentVolumeClaim</strong>.
+</p>
+<p>
+  PersistentVolume, skraćeno PV, predstavlja skladišni resurs dostupan klasteru. Može opisivati NFS eksport, blok uređaj, LUN, cloud disk ili skladište koje obezbeđuje CSI drajver. PersistentVolumeClaim, skraćeno PVC, predstavlja zahtev aplikacije za kapacitetom i određenim karakteristikama skladišta. Pod ne mora da zna adresu storage sistema, naziv LUN-a ili parametre cloud provajdera; on koristi PVC, dok administratorski i infrastrukturni sloj rešavaju kako će zahtev biti realizovan.
+</p>
+<h3>Zašto su PersistentVolume i PersistentVolumeClaim odvojeni objekti</h3>
+<p>
+  Razdvajanje PV-a i PVC-a nije samo pogodnost u YAML konfiguraciji. Ono predstavlja granicu odgovornosti. Administrator platforme definiše koje vrste skladišta postoje, kako se kreiraju, kakvu pouzdanost nude, gde fizički postoje i šta se dešava nakon prestanka korišćenja. Vlasnik aplikacije navodi koliko prostora zahteva i na koji način aplikacija mora da mu pristupa. Time aplikacioni manifest ostaje manje zavisan od konkretnog proizvođača skladišta.
+</p>
+<p>
+  PV je resurs na nivou klastera i ne pripada namespace-u. PVC je namespaced objekat i aplikacija mu pristupa iz istog namespace-a. Pod može da koristi samo PVC koji se nalazi u njegovom namespace-u. Ovakav model omogućava da više timova koriste zajedničku storage infrastrukturu bez neposrednog upravljanja njenim uređajima, administratorskim nalozima ili mrežnim parametrima.
+</p>
+<p>
+  PersistentVolume ima životni ciklus nezavisan od pojedinačnog Poda. Brisanje ili ponovno kreiranje Poda ne briše automatski PVC niti podatke na pripadajućem skladištu. Međutim, trajnost podataka ne znači da su oni automatski zaštićeni od brisanja PVC-a, greške aplikacije, kvara storage sistema ili pogrešno postavljene reclaim politike. Kubernetes povezuje aplikaciju sa skladištem, ali ne zamenjuje projektovanje dostupnosti, backup, zaštitu od korupcije i disaster recovery.
+</p>
+<h3>Statičko i dinamičko obezbeđivanje skladišta</h3>
+<p>
+  Kod <strong>statičkog provisioning-a</strong> administrator najpre priprema skladište izvan Kubernetes API-ja, a zatim ručno kreira PV koji ga opisuje. PVC se vezuje za odgovarajući raspoloživi PV. Ovaj model je koristan kada organizacija koristi unapred dodeljene NFS eksport direktorijume, postojeće SAN LUN-ove, strogo kontrolisane storage zone ili resurse koje infrastrukturni tim izdaje kroz zaseban proces promene.
+</p>
+<p>
+  Statički model pruža neposrednu kontrolu, ali zahteva evidenciju kapaciteta, ručno usklađivanje, sanitizaciju oslobođenih volumena i koordinaciju između timova. Greška u adresi servera, putanji, tipu fajl-sistema ili topologiji može dovesti do toga da PVC ostane u stanju <code>Pending</code> ili da Pod ne uspe da montira volumen.
+</p>
+<p>
+  Kod <strong>dinamičkog provisioning-a</strong> PVC pokreće automatsko kreiranje skladišnog resursa. Objekat StorageClass definiše provisioner, parametre, reclaim politiku, režim vezivanja, mogućnost proširenja i, kada je potrebno, dozvoljene topologije. Savremene produkcione implementacije najčešće koriste CSI drajver koji je podržan od proizvođača storage platforme ili cloud provajdera.
+</p>
+<p>
+  Dinamičko kreiranje smanjuje ručni rad, ali ne uklanja administratorsku odgovornost. StorageClass mora biti projektovan prema poslovnoj nameni. Podrazumevana klasa ne sme slučajno da kreira preskupo, nedovoljno otporno ili geografski neprikladno skladište. Parametri StorageClass objekta zavise od CSI drajvera i ne treba ih prepisivati između platformi bez provere zvanične dokumentacije proizvođača.
+</p>
+<h3>CSI arhitektura i tok dinamičkog provisioning-a</h3>
+<p>
+  <strong>Container Storage Interface</strong> (CSI) je standardizovan interfejs između orkestratora i storage drajvera. Kubernetes ne implementira protokol konkretnog SAN, NAS ili cloud sistema, već preko CSI poziva traži kreiranje, objavljivanje, montiranje, proširenje, snimanje ili uklanjanje volumena. Savremene integracije treba da koriste spoljašnji CSI drajver podržan za konkretnu verziju Kubernetes-a i backend platforme; istorijski <em>in-tree</em> volume plug-in moduli su uklonjeni ili migrirani ka CSI modelu i nisu osnova za novo projektovanje.
+</p>
+<p>
+  CSI instalacija tipično ima <strong>controller</strong> deo, raspoređen kao Deployment ili StatefulSet, i <strong>node</strong> deo, najčešće kao DaemonSet na odgovarajućim čvorovima. Controller servis komunicira sa storage API-jem i obavlja operacije kao što su <code>CreateVolume</code>, <code>DeleteVolume</code>, attach/detach i controller-side proširenje. Node servis na konkretnom worker čvoru izvršava stage/unstage i publish/unpublish operacije, odnosno priprema uređaj i izlaže ga kubelet-u za Pod. Tačan skup operacija zavisi od sposobnosti koje drajver oglašava.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Uloga</th>
+      <th>Tipičan dokaz ili kvar</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CSI driver controller</td>
+      <td>Implementira controller RPC pozive ka backend-u; obično radi uz standardne sidecar kontejnere.</td>
+      <td>Greške autentikacije, kapaciteta, topologije ili backend API-ja; log drajvera sadrži odgovarajući CSI poziv i status.</td>
+    </tr>
+    <tr>
+      <td><code>external-provisioner</code></td>
+      <td>Prati PVC objekte i za odgovarajući <code>provisioner</code> poziva <code>CreateVolume</code>; zatim kreira PV.</td>
+      <td>PVC ostaje <code>Pending</code>, a događaji i log pokazuju neuspešno provisioning ponavljanje.</td>
+    </tr>
+    <tr>
+      <td><code>external-attacher</code></td>
+      <td>Prati <code>VolumeAttachment</code> i koordinira controller publish/unpublish kada drajver zahteva attach.</td>
+      <td><code>FailedAttachVolume</code>, zastareo <code>VolumeAttachment</code>, limit uređaja ili disk vezan za drugi čvor.</td>
+    </tr>
+    <tr>
+      <td><code>external-resizer</code></td>
+      <td>Prati zahtev za većim PVC kapacitetom i pokreće controller-side proširenje.</td>
+      <td>PVC condition ukazuje na resize koji čeka ili se ponavlja; backend ne podržava zahtevanu veličinu.</td>
+    </tr>
+    <tr>
+      <td><code>external-snapshotter</code> i snapshot controller</td>
+      <td>Koordiniraju CSI snapshot pozive i vezu <code>VolumeSnapshot</code>–<code>VolumeSnapshotContent</code>; CRD objekti i snapshot controller nisu deo osnovnog CSI drajvera u svakoj distribuciji.</td>
+      <td>Snapshot nije <code>readyToUse</code>, nedostaje odgovarajuća klasa, CRD ili podrška drajvera.</td>
+    </tr>
+    <tr>
+      <td><code>node-driver-registrar</code> i CSI node driver</td>
+      <td>Registruju drajver kod kubelet-a i izvršavaju node-side pripremu i mount.</td>
+      <td><code>FailedMount</code>, nema registracionog socket-a, nedostaje alat ili uređaj na čvoru.</td>
+    </tr>
+    <tr>
+      <td><code>CSIDriver</code>, <code>CSINode</code> i <code>CSIStorageCapacity</code></td>
+      <td>Objavljuju identitet, mogućnosti, raspoloživost drajvera po čvorovima i, kada se koristi, topološki kapacitet za scheduling.</td>
+      <td>Drajver nije oglašen na ciljnom čvoru, pogrešna topologija ili scheduler nema podatak potreban za izbor.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Redosled dinamičkog toka je važan za dijagnostiku. PVC bira StorageClass; external-provisioner poziva drajver; backend kreira volumen; provisioner kreira PV i binder uspostavlja vezu. Kada Pod bude raspoređen, attach/detach controller po potrebi kreira <code>VolumeAttachment</code>, CSI controller vezuje uređaj za čvor, a kubelet preko node drajvera priprema i montira volumen. Zato <code>Bound</code> potvrđuje uspešno obezbeđivanje i vezivanje, ali ne dokazuje uspešan attach, mount niti aplikacioni I/O.
+</p>
+<p>
+  CSI sidecar kontejneri imaju sopstvene matrice kompatibilnosti sa Kubernetes i CSI verzijama. Njihove image tagove ne treba nasumično nadograđivati nezavisno od drajvera. Podržanu kombinaciju, RBAC, socket putanju, liveness proveru, leader election, topologiju i način nadogradnje određuje manifest ili operator proizvođača. Pre promene čuvaju se trenutne verzije i proverava rollback procedura; rolling update node plug-in-a mora uzeti u obzir aktivne mount operacije i PodDisruptionBudget controller dela.
+</p>
+<h3>Životni ciklus PV i PVC objekata</h3>
+<p>
+  Statički kreiran PV najčešće prvo dobija fazu <code>Available</code>. Kada Kubernetes pronađe PVC čiji zahtevi odgovaraju PV-u, uspostavlja se vezivanje, a oba objekta prelaze u stanje <code>Bound</code>. Veza je ekskluzivna na nivou PV–PVC para: jedan PV se u datom trenutku vezuje za jedan PVC. Više Podova može koristiti isti PVC samo kada storage sistem, drajver, pristupni režim i obrazac aplikacije to dozvoljavaju.
+</p>
+<p>
+  Kubernetes pri izboru proverava zahtevani kapacitet, access mode, StorageClass, <code>volumeMode</code>, selektor i druge uslove. PV može imati veći kapacitet od zahtevanog, ali Kubernetes ne deli jedan PV na više manjih PVC zahteva. PVC koji zahteva 20 Gi može biti vezan za raspoloživi PV od 50 Gi, nakon čega preostalih 30 Gi nije zaseban raspoloživ resurs.
+</p>
+<p>
+  Vezivanje nije zasnovano na „najbližem nazivu”, već na kompatibilnosti i odluci kontrolera. Administrator može unapred rezervisati PV pomoću <code>spec.claimRef</code>, dok vlasnik PVC-a može zahtevati konkretan PV poljem <code>spec.volumeName</code>. Obe strane i dalje moraju biti kompatibilne po klasi, access mode-u, <code>volumeMode</code> i kapacitetu. PVC <code>selector</code> dodatno filtrira statičke PV objekte po labelama, ali PVC sa ne-praznim selektorom ne može pokrenuti dinamički provisioning. Pre-binding je moćna administratorska intervencija i ne treba ga koristiti za zaobilaženje topologije ili prava vlasništva.
+</p>
+<p>
+  Kada odgovarajući PV ne postoji, statički PVC ostaje <code>Pending</code>. Kod dinamičkog provisioning-a odgovarajući provisioner pokušava da kreira volumen. Stanje <code>Pending</code> zato nije dijagnoza već simptom. Administrator mora pregledati događaje PVC-a, StorageClass, stanje provisioner kontrolera, kvote, kapacitet backend sistema i eventualna topološka ograničenja.
+</p>
+<p>
+  Nakon brisanja PVC-a ponašanje zavisi od reclaim politike. Kod politike <code>Retain</code> PV prelazi u fazu <code>Released</code>, ali se ne smatra automatski spremnim za novog korisnika. Podaci ostaju na storage sistemu i administrator mora odlučiti da li ih arhivira, oporavlja ili bezbedno uklanja. Kod politike <code>Delete</code> očekuje se da se uklone Kubernetes PV objekat i pripadajući dinamički kreiran storage resurs. Stvarno ponašanje mora biti provereno za konkretan CSI drajver.
+</p>
+<p>
+  Stara politika <code>Recycle</code> nije preporučeni savremeni model i ne treba je koristiti kao osnovu novih rešenja. Za ponovno korišćenje statičkih volumena primenjuje se kontrolisan postupak sa politikom <code>Retain</code>, proverom vlasništva, sanitizacijom podataka i kreiranjem odgovarajućeg novog PV objekta.
+</p>
+<h3>Kapacitet, pristupni režimi i volumeMode</h3>
+<p>
+  Polje <code>resources.requests.storage</code> u PVC-u definiše minimalni zahtevani kapacitet. Ono nije isto što i kvota koju aplikacija nužno može precizno da koristi. Način sprovođenja ograničenja zavisi od vrste skladišta, fajl-sistema, CSI drajvera i backend platforme. Administrator mora razlikovati deklarisani Kubernetes kapacitet, stvarni kapacitet uređaja i potrošnju vidljivu iz aplikacije.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Access mode</th>
+      <th>Značenje</th>
+      <th>Tipična primena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ReadWriteOnce</code> – RWO</td>
+      <td>Volumen može biti montiran za čitanje i pisanje sa jednog čvora. Više Podova na istom čvoru može ga koristiti ako drajver to podržava.</td>
+      <td>Blok storage za bazu podataka ili stateful aplikaciju sa jednom aktivnom instancom.</td>
+    </tr>
+    <tr>
+      <td><code>ReadOnlyMany</code> – ROX</td>
+      <td>Više čvorova može montirati volumen samo za čitanje.</td>
+      <td>Zajednički statički sadržaj, modeli ili referentni podaci.</td>
+    </tr>
+    <tr>
+      <td><code>ReadWriteMany</code> – RWX</td>
+      <td>Više čvorova može montirati volumen za čitanje i pisanje.</td>
+      <td>NFS ili distribuirani fajl-sistem za zajedničke dokumente i sadržaj.</td>
+    </tr>
+    <tr>
+      <td><code>ReadWriteOncePod</code> – RWOP</td>
+      <td>Volumen može biti montiran za pisanje samo u jednom Podu u celom klasteru, uz odgovarajuću CSI podršku.</td>
+      <td>Radno opterećenje kod kojeg je važno strogo sprečiti istovremeno pisanje iz dve instance.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Access mode ne predstavlja automatsku aplikacionu bravu niti garantuje bezbednu paralelnu obradu. RWX dozvoljava višestruko montiranje, ali aplikacije i dalje moraju pravilno rešavati zaključavanje fajlova, konkurentne izmene i konzistentnost. RWO takođe nije sinonim za „jedan Pod”; ograničenje se odnosi na čvor, osim kada se koristi RWOP sa podržanim CSI drajverom.
+</p>
+<p>
+  <code>volumeMode: Filesystem</code> predstavlja podrazumevani način rada. Uređaj je formatiran odgovarajućim fajl-sistemom i montiran u direktorijum kontejnera. <code>volumeMode: Block</code> aplikaciji izlaže sirovi blok uređaj. Raw block zahteva eksplicitnu podršku aplikacije i povećava rizik, jer Kubernetes ne kreira fajl-sistem i ne štiti administratora od pogrešnog pisanja na uređaj.
+</p>
+<h3>StorageClass, binding i proširenje volumena</h3>
+<p>
+  PVC sa navedenim <code>storageClassName</code> traži skladište iz konkretne klase. PVC bez tog polja može koristiti podrazumevanu StorageClass ako je ona definisana. Vrednost <code>storageClassName: ""</code> eksplicitno znači da PVC ne traži klasu za dinamičko provisioning rešenje. Ova razlika je važna kod statičkih volumena, jer izostavljeno polje i prazan string ne moraju imati isto ponašanje u klasteru sa podrazumevanom klasom.
+</p>
+<p>
+  StorageClass može koristiti <code>volumeBindingMode: Immediate</code>, pri čemu se volumen kreira ili vezuje čim nastane PVC. Za topološki ograničene diskove često je bezbedniji <code>WaitForFirstConsumer</code>. Tada se odluka odlaže dok scheduler ne razmotri Pod, njegove node selektore, affinity pravila, taint toleracije i dostupne zone. Time se izbegava kreiranje diska u zoni u kojoj Pod ne može biti raspoređen.
+</p>
+<p>
+  Kod <code>WaitForFirstConsumer</code> PVC koji čeka prvi Pod može opravdano ostati <code>Pending</code>; to samo po sebi nije incident. Pod ne treba forsirati poljem <code>spec.nodeName</code>, jer se time zaobilazi scheduler i PVC može ostati bez provisioning odluke. Za laboratorijsko usmeravanje koristi se <code>nodeSelector</code> ili affinity. Polje <code>allowedTopologies</code> u StorageClass-u dodatno ograničava gde volume sme da postoji, ali se uvodi samo kada je zahtev arhitekture jasan.
+</p>
+<p>
+  U klasteru može postojati najviše jedna operativno podrazumevana StorageClass, označena anotacijom <code>storageclass.kubernetes.io/is-default-class: "true"</code>. Ako ih administrativnom greškom ima više, Kubernetes bira najnoviju pri dinamičkom provisioning-u PVC-a bez <code>storageClassName</code>. PVC bez tog polja može naknadno dobiti novu podrazumevanu klasu kada je administrator uvede; PVC koji eksplicitno ima <code>storageClassName: ""</code> ostaje bez klase. Zbog toga je prazan string važan ugovor za statičko vezivanje, a promena default klase mora biti kontrolisana platformska promena.
+</p>
+<p>
+  Proširenje PVC-a moguće je samo kada StorageClass dozvoljava <code>allowVolumeExpansion</code> i kada CSI drajver, backend i fajl-sistem podržavaju proširenje. Volumen se može povećati, ali ne i smanjiti standardnim Kubernetes postupkom. Pre izmene administrator proverava slobodan kapacitet backend sistema, podržane granice, backup, stanje aplikacije i dokumentaciju drajvera. Nakon izmene proveravaju se PVC conditions, događaji, kapacitet PV-a i veličina fajl-sistema unutar Poda.
+</p>
+<p>
+  Ne menja se direktno <code>spec.capacity</code> PV-a kao zamena za povećanje PVC-a: time kontroler može zaključiti da je željeno stanje već ostvareno i preskočiti stvarni resize backend-a. Ako je zahtevana veličina izvan mogućnosti drajvera i proširenje se beskonačno ponavlja, podržani recovery zavisi od verzije klastera. Savremeni klaster može automatski oporaviti resize ka manjoj, ali i dalje većoj vrednosti od trenutnog kapaciteta, kada je ta mogućnost podržana; stariji kontrolisani postupak sa <code>Retain</code>, brisanjem i ponovnim vezivanjem PVC-a nosi znatno veći rizik i zahteva zvaničnu proceduru, backup i odobrenu promenu.
+</p>
+<h3>Snapshot, kloniranje i promenljivi storage atributi</h3>
+<p>
+  CSI može omogućiti kreiranje novog PVC-a iz postojećeg PVC-a ili <code>VolumeSnapshot</code> objekta. Kloniranje je CSI mogućnost dinamičkog provisioner-a i izvorni PVC mora biti <code>Bound</code>; tradicionalno su izvor i odredište u istom namespace-u, a podrška za cross-namespace data source zahteva odgovarajuću verziju, feature gate, <code>dataSourceRef</code>, <code>ReferenceGrant</code> i podršku populatera. Ove mogućnosti ne treba pretpostaviti samo zato što je drajver CSI: proveravaju se capability, verzija sidecar-a i dokumentacija proizvođača.
+</p>
+<p>
+  Volume Snapshot API koristi CRD objekte <code>VolumeSnapshot</code>, <code>VolumeSnapshotContent</code> i <code>VolumeSnapshotClass</code>, kao i snapshot controller i CSI snapshotter. Oni se u mnogim vanilla instalacijama moraju instalirati odvojeno. Snapshot klasa ima sopstveni <code>deletionPolicy</code>, nezavisan od reclaim politike PV-a. Snapshot nije automatski udaljeni backup: može ostati u istom storage sistemu i failure domenu kao izvor.
+</p>
+<p>
+  <code>VolumeAttributesClass</code> služi promeni određenih, drajverom podržanih atributa postojećeg CSI volumena, na primer QoS profila, bez migracije u novu StorageClass. Funkcionalnost je stabilna od Kubernetes 1.36 i zahteva podršku CSI drajvera i odgovarajućeg external-provisioner-a. Ne treba je mešati sa StorageClass-om, koja opisuje parametre pri kreiranju, niti je prikazivati kao univerzalno dostupnu u starijim klasterima.
+</p>
+<h3>Zaštita podataka, bezbednost i produkcioni rizici</h3>
+<p>
+  Kubernetes koristi zaštitne finalizere kako bi sprečio uklanjanje PV ili PVC objekta dok je resurs još potreban. Objekat može privremeno ostati u stanju <code>Terminating</code> ako ga koristi Pod ili ako storage kontroler još završava operaciju. Ručno uklanjanje finalizera bez razumevanja uzroka može ostaviti montiran uređaj, orphan resurs ili podatke bez odgovarajuće evidencije.
+</p>
+<p>
+  Dozvola za kreiranje PVC-a može indirektno trošiti skup storage kapacitet. Namespace zato treba da ima ResourceQuota i, kada organizacija koristi više storage klasa, kvote po StorageClass kategoriji. RBAC treba da omogući aplikacionom timu upravljanje PVC objektima samo u njegovom namespace-u, dok kreiranje PV i StorageClass objekata ostaje administratorska privilegija.
+</p>
+<p>
+  Prava unutar montiranog fajl-sistema ne određuju se samo Kubernetes RBAC pravilima. Važni su UID i GID procesa u kontejneru, vlasništvo direktorijuma, <code>securityContext</code>, <code>fsGroup</code>, ponašanje CSI drajvera, NFS export opcije i bezbednosni mehanizmi operativnog sistema. Davanje privilegovanog kontejnera ili korišćenje režima <code>0777</code> radi „brzog rešavanja” problema predstavlja bezbednosni dug, a ne trajno rešenje.
+</p>
+<p>
+  PV i PVC nisu backup. Snapshot može biti koristan za point-in-time kopiju, ali njegova konzistentnost zavisi od storage sistema i stanja aplikacije. Snapshot napravljen tokom aktivnog upisa može biti samo crash-consistent. Za baze podataka često su potrebni application-aware backup, flush, freeze, transakcioni backup ili koordinacija sa operatorom baze. Backup mora biti čuvan izvan istog failure domena i periodično potvrđen probnim restore postupkom.
+</p>
+<h3>Dijagnostika PV i PVC problema</h3>
+<p>
+  Administrator najpre razdvaja problem u tri ravni: Kubernetes kontrolna ravan, node i mount ravan, odnosno backend skladište. PVC u stanju <code>Pending</code> najčešće ukazuje na problem izbora ili kreiranja volumena. PVC može biti <code>Bound</code>, a Pod ipak ostati u <code>ContainerCreating</code> zbog neuspešnog mount-a. Aplikacija može biti <code>Running</code>, ali dobijati <code>Permission denied</code>, <code>Read-only file system</code>, I/O timeout ili nedostatak prostora.
+</p>
+<p>
+  Osnovne komande su <code>kubectl get pv</code>, <code>kubectl get pvc -A</code>, <code>kubectl describe pvc</code>, <code>kubectl describe pod</code> i pregled događaja sortiranih po vremenu. Za dinamičko skladište pregledaju se CSI controller i node plugin Podovi, njihovi kontejnerski logovi, VolumeAttachment objekti i objekti koje dokumentacija konkretnog drajvera zahteva. Na worker čvoru se proveravaju kubelet logovi, mrežna dostupnost storage endpointa, potrebni klijentski paketi i stanje mount tačaka.
+</p>
+<pre><code class="language-bash">kubectl get pv
+kubectl get pvc -A
+kubectl describe pvc -n data-lab reporting-data
+kubectl describe pod -n data-lab -l app=reporting-writer
+kubectl get events -n data-lab --sort-by=.metadata.creationTimestamp
+kubectl get storageclass
+kubectl get csidriver,csinode
+kubectl get volumeattachment</code></pre>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Neposredna hipoteza i dokaz</th>
+      <th>Bezbedna korektivna grana</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PVC <code>Pending</code>, bez Poda</td>
+      <td>Nema klase/PV-a, selector onemogućava dinamički provisioning ili <code>WaitForFirstConsumer</code> opravdano čeka Pod. Čitati PVC događaje i YAML klase.</td>
+      <td>Ispraviti zahtev ili kreirati potrošački Pod; ne menjati default klasu naslepo.</td>
+    </tr>
+    <tr>
+      <td>Događaj <code>ProvisioningFailed</code></td>
+      <td>Provisioner, credential, kvota, kapacitet ili backend API. Korelisati vreme događaja sa logovima external-provisioner-a, drajvera i storage audit zapisom.</td>
+      <td>Otkloniti potvrđeni uzrok; ne brisati PVC pre provere da backend nije već kreirao orphan volumen.</td>
+    </tr>
+    <tr>
+      <td><code>FailedAttachVolume</code></td>
+      <td>VolumeAttachment, attach limit, uređaj vezan za drugi čvor ili controller kvar. Proveriti Pod node, attachment i controller log.</td>
+      <td>Vratiti controller ili osloboditi potvrđeno zastareli attachment postupkom proizvođača; ručno odvajanje aktivnog diska može izazvati korupciju.</td>
+    </tr>
+    <tr>
+      <td><code>FailedMount</code></td>
+      <td>Node plug-in, filesystem alat, secret, mreža, export ili uređaj. Kubelet i CSI node log vezati za tačan node i Pod UID.</td>
+      <td>Popraviti node zavisnost ili pristup; cordon/drain samo uz procenu dostupnosti i pravila za stateful workload.</td>
+    </tr>
+    <tr>
+      <td>Pod radi, I/O je spor ili vraća greške</td>
+      <td>Latency, saturacija, path failover, quota, inode ili readonly remount. Prikupiti aplikacione metrike, filesystem stanje i backend alarme.</td>
+      <td>Zaštititi podatke i opterećenje; ne restartovati sve replike pre korelacije i potvrde recovery plana.</td>
+    </tr>
+    <tr>
+      <td>PVC/PV dugo <code>Terminating</code></td>
+      <td>Resurs je još u upotrebi, finalizer čeka controller ili backend operaciju. Pregledati consumers, finalizere, događaje i drajver.</td>
+      <td>Ukloniti zavisnost ili oporaviti controller. Finalizer se ručno uklanja samo kroz odobrenu recovery proceduru i uz backend proveru.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Normalno stanje znači da su PV i PVC <code>Bound</code>, Pod raspoređen i spreman, mount vidljiv u kontejneru, upis i čitanje uspešni, a podaci opstaju nakon zamene Poda. Sam status <code>Bound</code> nije dovoljan dokaz funkcionalnosti. Potrebna je end-to-end provera iz aplikacionog konteksta.
+</p>
+<h3>Vežba: audit dinamičkog provisioning-a i bezbedan test proširenja</h3>
+<p>
+  <strong>Cilj i granice.</strong> Vežba koristi već instaliran i podržan CSI drajver; ne kreira proizvoljnu StorageClass jer su <code>provisioner</code> i parametri specifični za platformu. Cilj je dokazati ceo tok od PVC-a do aplikacionog I/O-a, identifikovati komponente i, samo ako klasa podržava resize, bezbedno povećati laboratorijski volumen. Potreban je test namespace, dozvola za PVC i Pod, najmanje 1 Gi slobodnog backend kapaciteta i odobrenje da se kreira i ukloni laboratorijski volumen.
+</p>
+<ol>
+  <li>
+    <strong>Inventarisati drajver i klase read-only komandama.</strong>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl get storageclass
+kubectl get storageclass -o custom-columns='NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\.kubernetes\.io/is-default-class,PROVISIONER:.provisioner,BINDING:.volumeBindingMode,EXPAND:.allowVolumeExpansion,RECLAIM:.reclaimPolicy'
+kubectl get csidriver
+kubectl get csinode</code></pre>
+    <strong>Validacija:</strong> izabrati eksplicitni naziv laboratorijski odobrene klase i zabeležiti provisioner, binding, expansion i reclaim vrednosti. Ako nema podržanog CSI drajvera ili odobrene klase, vežba se zaustavlja; ne instalira se nepoznat drajver radi demonstracije.
+  </li>
+  <li>
+    <strong>Kreirati izolovani zahtev i potrošački Pod.</strong> U manifestu zameniti <code>LAB_STORAGE_CLASS</code> stvarnim nazivom. Pod je potreban odmah, naročito kada klasa koristi <code>WaitForFirstConsumer</code>.
+    <pre><code class="language-bash">kubectl create namespace csi-lab
+
+cat &gt; 01-csi-lab.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-data
+  namespace: csi-lab
+  labels:
+    app.kubernetes.io/part-of: csi-lab
+spec:
+  storageClassName: LAB_STORAGE_CLASS
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-writer
+  namespace: csi-lab
+spec:
+  securityContext:
+    fsGroup: 2000
+  containers:
+    - name: writer
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args: ["echo csi-end-to-end &gt; /data/probe.txt; sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 2000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: csi-data
+EOF
+
+# Posle kontrolisane zamene tokena LAB_STORAGE_CLASS:
+kubectl apply -f 01-csi-lab.yaml
+kubectl wait --for=condition=Ready pod/csi-writer -n csi-lab --timeout=180s</code></pre>
+    <strong>Validacija:</strong> PVC je <code>Bound</code>, Pod <code>Ready</code>, a fajl čitljiv. Zabeležiti PV, node i provisioner pre naredne izmene.
+    <pre><code class="language-bash">kubectl get pvc,pod -n csi-lab -o wide
+kubectl get pvc csi-data -n csi-lab -o jsonpath='{.spec.volumeName}{"\n"}'
+kubectl exec -n csi-lab csi-writer -- cat /data/probe.txt
+kubectl describe pvc csi-data -n csi-lab
+kubectl get events -n csi-lab --sort-by=.metadata.creationTimestamp</code></pre>
+  </li>
+  <li>
+    <strong>Korelisati Kubernetes objekte sa CSI komponentama.</strong>
+    <pre><code class="language-bash">PV_NAME=$(kubectl get pvc csi-data -n csi-lab -o jsonpath='{.spec.volumeName}')
+NODE_NAME=$(kubectl get pod csi-writer -n csi-lab -o jsonpath='{.spec.nodeName}')
+kubectl get pv "$PV_NAME" -o yaml
+kubectl get volumeattachment -o wide
+kubectl get csinode "$NODE_NAME" -o yaml
+kubectl get pods -A -o wide | grep -Ei 'csi|storage'
+kubectl get events -n csi-lab --sort-by=.metadata.creationTimestamp</code></pre>
+    <strong>Očekivanje:</strong> PV <code>spec.csi.driver</code> odgovara StorageClass provisioner-u. <code>VolumeAttachment</code> može izostati kod drajvera koji ne zahteva attach; njegovo odsustvo nije automatski kvar. Za logove se zatim bira tačan namespace, Pod i container ime iz instalacije, uz filter vremena incidenta:
+    <pre><code class="language-bash">kubectl logs -n CSI_NAMESPACE CSI_CONTROLLER_POD -c csi-provisioner --since=30m
+kubectl logs -n CSI_NAMESPACE CSI_CONTROLLER_POD -c CSI_DRIVER_CONTAINER --since=30m
+kubectl logs -n CSI_NAMESPACE CSI_NODE_POD -c CSI_DRIVER_CONTAINER --since=30m</code></pre>
+  </li>
+  <li>
+    <strong>Uslovno testirati proširenje.</strong> Korak menja backend i izvršava se samo ako je u prvom koraku potvrđeno <code>allowVolumeExpansion: true</code>, drajver podržava resize, postoji backup relevantnih podataka i 2 Gi je dozvoljena veličina. Smanjenje nije rollback.
+    <pre><code class="language-bash">kubectl patch pvc csi-data -n csi-lab --type merge \
+  -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
+
+kubectl get pvc csi-data -n csi-lab -w</code></pre>
+    Nakon završetka prekinuti praćenje sa <code>Ctrl+C</code> i proveriti deklarisani i stvarni kapacitet:
+    <pre><code class="language-bash">kubectl describe pvc csi-data -n csi-lab
+kubectl get pv "$PV_NAME" -o jsonpath='{.spec.capacity.storage}{"\n"}'
+kubectl exec -n csi-lab csi-writer -- df -h /data
+kubectl exec -n csi-lab csi-writer -- cat /data/probe.txt</code></pre>
+    <strong>Kriterijum:</strong> PVC i PV prikazuju 2 Gi, fajl-sistem vidi proširen prostor, podatak je očuvan i nema ponavljajućih resize grešaka. Ako resize ne uspe, ne pokušavati smanjenje na 1 Gi kao običan rollback; sačuvati događaje i logove i slediti dokumentovani recovery konkretnog klastera i drajvera.
+  </li>
+  <li>
+    <strong>Kontrolisani cleanup.</strong> Najpre zabeležiti reclaim politiku stvarnog PV-a. Brisanje je laboratorijsko i može ukloniti backend volumen ako je politika <code>Delete</code>.
+    <pre><code class="language-bash">kubectl get pv "$PV_NAME" -o jsonpath='{.spec.persistentVolumeReclaimPolicy}{"\n"}'
+kubectl delete pod csi-writer -n csi-lab --wait=true
+kubectl delete pvc csi-data -n csi-lab --wait=true
+kubectl get pv "$PV_NAME"
+kubectl delete namespace csi-lab</code></pre>
+    <strong>Validacija:</strong> kod <code>Delete</code> PV i backend volumen treba da nestanu; to se potvrđuje Kubernetes događajima i storage inventarom. Kod <code>Retain</code> PV/podaci ostaju i predaju se storage administratoru; namespace cleanup nije dokaz sanitizacije.
+  </li>
+</ol>
+<p>
+  <strong>Kriterijum završetka.</strong> Administrator je dokazao provisioner–PV vezu, razumeo da attachment može biti drajver-specifičan, potvrdio I/O iz neprivilegovanog Poda, izvršio resize samo pod potvrđenim uslovima i povezao reclaim politiku sa stvarnim stanjem backend resursa.
+</p>
+<hr>
+<h3>Integrisani praktikum: statički NFS volumen za zajedničke izveštaje</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Interna reporting aplikacija generiše tekstualne izveštaje koje naredna instanca aplikacije mora da vidi i nakon restarta Poda. Aplikacija može kasnije imati više replika na različitim worker čvorovima, pa je potreban ReadWriteMany fajl-sistem. Organizacija već poseduje upravljani NFS server <code>storage01.lab.example</code> na adresi <code>10.20.0.50</code>. Storage tim je pripremio eksport <code>/srv/nfs/k8s/reporting</code>.
+</p>
+<p>
+  <strong>Cilj.</strong> Kreirati statički PV sa politikom <code>Retain</code>, vezati ga za PVC u namespace-u <code>data-lab</code>, montirati ga u Deployment <code>reporting-writer</code>, potvrditi trajnost podataka nakon zamene Poda i dokazati da neodgovarajući PVC ostaje nevezan.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Vanilla Kubernetes klaster ima najmanje dva Linux worker čvora. Administratorska stanica poseduje ispravan <code>kubectl</code> kontekst. Svi worker čvorovi mogu da razreše ime <code>storage01.lab.example</code> i pristupe TCP portu 2049. NFS klijentski paket je instaliran na svim worker čvorovima. NFS eksport je ograničen na mrežu klastera i koristi <code>root_squash</code>. Direktorijum na serveru pripada numeričkoj grupi <code>2000</code>, uz prava koja dozvoljavaju grupni upis.
+</p>
+<p>
+  <strong>Potrebna prava.</strong> Za kreiranje namespace-a i cluster-scoped PV objekta potreban je administratorski ili namenski storage-administrator nalog. Za kreiranje PVC-a, Deployment-a, Podova i izvršavanje komandi u Podu potrebne su odgovarajuće namespaced dozvole. U produkciji ove privilegije treba razdvojiti između platformskog i aplikacionog tima.
+</p>
+<p>
+  <strong>Preduslovi na NFS serveru.</strong> Sledeća konfiguracija predstavlja već odobrenu infrastrukturnu pripremu, a ne komandu koja se izvršava na Kubernetes worker čvoru:
+</p>
+<pre><code class="language-none">/srv/nfs/k8s/reporting 10.20.0.0/24(rw,sync,root_squash,no_subtree_check)</code></pre>
+<p>
+  Pre promene treba dokumentovati vlasnika podataka, klasifikaciju sadržaja, očekivani rast, backup politiku, period zadržavanja i kontakt storage tima. NFS eksport ne treba otvarati svim mrežama niti koristiti <code>no_root_squash</code> bez posebno opravdane i odobrene potrebe.
+</p>
+<ol>
+  <li>
+    <strong>Proveriti identitet, kontekst i postojeće storage stanje.</strong>
+    Pogrešan kubeconfig kontekst može promeniti drugi klaster. Pre kreiranja resursa proveravaju se trenutni korisnik, klaster, postojeći namespace, PV objekti i StorageClass konfiguracija.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl auth can-i create persistentvolumes
+kubectl auth can-i create namespaces
+kubectl get namespace data-lab
+kubectl get pv
+kubectl get storageclass</code></pre>
+    <strong>Validacija:</strong> kontekst mora odgovarati referentnom klasteru, dozvole moraju vratiti <code>yes</code>, a naziv <code>pv-reporting-nfs</code> ne sme već biti zauzet. Ako namespace ne postoji, poruka <code>NotFound</code> je očekivana.
+  </li>
+  <li>
+    <strong>Proveriti dostupnost NFS servisa sa worker čvorova.</strong>
+    Mount izvršava kubelet na čvoru na koji je Pod raspoređen. Provera samo sa administratorske stanice nije dovoljna. Na svakom worker čvoru treba potvrditi DNS, port 2049 i prisustvo NFS klijentskih alata. Primer komandi izvršava se kroz odobren SSH ili node-management kanal.
+    <pre><code class="language-bash">getent hosts storage01.lab.example
+nc -vz storage01.lab.example 2049
+command -v mount.nfs
+showmount -e storage01.lab.example</code></pre>
+    <strong>Validacija:</strong> ime mora pokazati na <code>10.20.0.50</code>, TCP konekcija mora uspeti, <code>mount.nfs</code> mora postojati, a eksport lista treba da sadrži <code>/srv/nfs/k8s/reporting</code>. Organizacija može onemogućiti <code>showmount</code>; tada se eksport potvrđuje dokumentacijom storage tima i kontrolisanim test mount-om.
+  </li>
+  <li>
+    <strong>Kreirati namespace i manifest statičkog PV-a.</strong>
+    Namespace odvaja aplikacione objekte, dok PV ostaje cluster-scoped. <code>storageClassName: manual-nfs</code> predstavlja logičku oznaku za usklađivanje PV-a i PVC-a; u ovom statičkom scenariju ne postoji dinamički provisioner.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s-lab/lesson-31
+cd ~/vanilla-k8s-lab/lesson-31
+
+cat &gt; 01-namespace-pv.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-lab
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-reporting-nfs
+  labels:
+    app.kubernetes.io/part-of: reporting
+    storage.tashizza.rs/purpose: shared-reports
+spec:
+  capacity:
+    storage: 20Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual-nfs
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    server: storage01.lab.example
+    path: /srv/nfs/k8s/reporting
+EOF
+
+kubectl apply -f 01-namespace-pv.yaml</code></pre>
+Opcija <code>hard</code> sprečava da privremeni NFS prekid aplikaciji izgleda kao uspešan nepotpun I/O, ali može učiniti procese neodzivnim dok se server ne vrati. Odluka mora biti usklađena sa zahtevima aplikacije i storage standardom organizacije. <strong>Validacija:</strong> PV treba da bude u fazi <code>Available</code>, sa kapacitetom 20 Gi, RWX režimom, klasom <code>manual-nfs</code> i politikom <code>Retain</code>. <pre><code class="language-bash">kubectl get pv pv-reporting-nfs
+kubectl get pv pv-reporting-nfs -o jsonpath='{.status.phase}{"\n"}{.spec.persistentVolumeReclaimPolicy}{"\n"}{.spec.nfs.server}{":"}{.spec.nfs.path}{"\n"}'</code></pre>
+
+  </li>
+  <li>
+    <strong>Kreirati PVC sa preciznim vezivanjem.</strong>
+    PVC zahteva 10 Gi i RWX. Polje <code>volumeName</code> eksplicitno cilja pripremljeni PV, što je korisno kada je resurs unapred odobren za određenu aplikaciju. U dinamičkim okruženjima ovo polje se najčešće izostavlja.
+    <pre><code class="language-bash">cat &gt; 02-pvc.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reporting-data
+  namespace: data-lab
+  labels:
+    app.kubernetes.io/part-of: reporting
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  storageClassName: manual-nfs
+  volumeName: pv-reporting-nfs
+  resources:
+    requests:
+      storage: 10Gi
+EOF
+
+kubectl apply -f 02-pvc.yaml
+kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/reporting-data \
+  -n data-lab --timeout=60s</code></pre> <strong>Validacija:</strong> PVC mora biti <code>Bound</code> za <code>pv-reporting-nfs</code>. PV može biti veći od zahteva, ali ceo PV pripada ovom PVC-u. <pre><code class="language-bash">kubectl get pvc reporting-data -n data-lab -o wide
+kubectl get pv pv-reporting-nfs
+kubectl describe pvc reporting-data -n data-lab</code></pre>
+
+  </li>
+  <li>
+    <strong>Kreirati aplikacioni Deployment.</strong>
+    Kontejner periodično upisuje vremensku oznaku i ime Poda u zajednički fajl. <code>fsGroup: 2000</code> omogućava grupni pristup kada ga podržavaju NFS dozvole i ponašanje volumena. Kontejner ne radi kao root i ne dobija privilege escalation.
+    <pre><code class="language-bash">cat &gt; 03-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-writer
+  namespace: data-lab
+  labels:
+    app: reporting-writer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reporting-writer
+  template:
+    metadata:
+      labels:
+        app: reporting-writer
+    spec:
+      securityContext:
+        fsGroup: 2000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: writer
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                printf '%s pod=%s\n' "$(date -u +%FT%TZ)" "$HOSTNAME" \
+                  &gt;&gt; /var/reports/activity.log
+                sleep 30
+              done
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10000
+            runAsGroup: 2000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: reports
+              mountPath: /var/reports
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: reporting-data
+EOF
+
+kubectl apply -f 03-deployment.yaml
+kubectl rollout status deployment/reporting-writer \
+  -n data-lab --timeout=120s</code></pre> <strong>Validacija:</strong> Deployment treba da ima jednu dostupnu repliku. Pod mora biti <code>Running</code> i <code>Ready</code>. Ako ostane u <code>ContainerCreating</code>, pregledaju se događaji pre bilo kakvog menjanja prava na NFS serveru. <pre><code class="language-bash">kubectl get deployment,pod -n data-lab -l app=reporting-writer
+kubectl describe pod -n data-lab -l app=reporting-writer
+kubectl get events -n data-lab --sort-by=.metadata.creationTimestamp</code></pre>
+
+  </li>
+  <li>
+    <strong>Potvrditi mount, upis i sadržaj.</strong>
+    Provera se obavlja iz istog sigurnosnog i aplikacionog konteksta u kojem radi workload. Time se potvrđuje više od samog Kubernetes statusa.
+    <pre><code class="language-bash">POD_NAME=$(kubectl get pod -n data-lab -l app=reporting-writer \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n data-lab "$POD_NAME" -- \
+  sh -c 'id; mount | grep /var/reports; ls -ld /var/reports; tail -n 5 /var/reports/activity.log'</code></pre> <strong>Validacija:</strong> proces treba da radi kao UID 10000 i GID 2000, mount treba da bude vidljiv na <code>/var/reports</code>, a <code>activity.log</code> da sadrži aktuelne UTC oznake i ime Poda. Poruka <code>Permission denied</code> ukazuje na problem UID/GID, export opcija ili prava direktorijuma, a ne na RBAC problem.
+
+  </li>
+  <li>
+    <strong>Dokazati trajnost podataka nakon zamene Poda.</strong>
+    Pre brisanja beleži se ime trenutnog Poda i kontrolna linija. Brisanje Poda je bezbedno u ovom laboratorijskom scenariju jer Deployment automatski kreira zamenu, ali u produkciji najpre treba proveriti uticaj na dostupnost aplikacije.
+    <pre><code class="language-bash">OLD_POD=$(kubectl get pod -n data-lab -l app=reporting-writer \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n data-lab "$OLD_POD" -- \
+  sh -c 'echo "persistence-check-before-restart" &gt;&gt; /var/reports/activity.log'
+
+kubectl delete pod -n data-lab "$OLD_POD"
+kubectl wait --for=condition=Ready pod \
+  -n data-lab -l app=reporting-writer --timeout=120s
+
+NEW_POD=$(kubectl get pod -n data-lab -l app=reporting-writer \
+  -o jsonpath='{.items[0].metadata.name}')
+
+printf 'Old pod: %s\nNew pod: %s\n' "$OLD_POD" "$NEW_POD"
+kubectl exec -n data-lab "$NEW_POD" -- \
+  grep 'persistence-check-before-restart' /var/reports/activity.log</code></pre> <strong>Validacija:</strong> imena Podova moraju biti različita, a nova instanca mora pronaći kontrolnu liniju koju je upisala prethodna. Time je dokazano da podatak nije zavisio od životnog ciklusa Poda.
+
+  </li>
+  <li>
+    <strong>Izvesti negativni test neodgovarajućeg zahteva.</strong>
+    Kreira se PVC koji traži 50 Gi, dok raspoloživi PV ne postoji. Koristi se ista statička klasa, ali bez <code>volumeName</code>. Očekivano stanje je <code>Pending</code>; test potvrđuje da Kubernetes neće proizvoljno vezati nedovoljan ili već zauzet volumen.
+    <pre><code class="language-bash">cat &gt; 04-negative-pvc.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reporting-data-oversized
+  namespace: data-lab
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: manual-nfs
+  resources:
+    requests:
+      storage: 50Gi
+EOF
+
+kubectl apply -f 04-negative-pvc.yaml
+kubectl get pvc reporting-data-oversized -n data-lab
+kubectl describe pvc reporting-data-oversized -n data-lab</code></pre> <strong>Očekivani rezultat:</strong> PVC ostaje <code>Pending</code>, a događaji ukazuju da nije pronađen odgovarajući volumen. To nije kvar provisionera jer klasa <code>manual-nfs</code> nema dinamički provisioner. <pre><code class="language-bash">kubectl delete pvc reporting-data-oversized -n data-lab</code></pre>
+
+  </li>
+  <li>
+    <strong>Pregledati relevantne logove i razlikovati kvarove.</strong>
+    Kubernetes događaji su prva lokacija za probleme sa scheduling-om i mount-om. Kubelet logovi na worker čvoru prikazuju operacije montiranja. Na NFS serveru pregledaju se sistemski logovi, stanje NFS servisa, eksporti i storage alarmi.
+    <pre><code class="language-bash">kubectl get events -n data-lab --sort-by=.metadata.creationTimestamp
+kubectl describe pod -n data-lab -l app=reporting-writer
+
+# Na worker čvoru na kojem se nalazi Pod:
+
+journalctl -u kubelet --since "30 minutes ago" | grep -Ei 'nfs|mount|volume'
+
+# Na NFS serveru, kroz odobren administratorski kanal:
+
+systemctl status nfs-server
+exportfs -v
+journalctl -u nfs-server --since "30 minutes ago"</code></pre> <strong>Tumačenje:</strong> <code>access denied by server</code> ukazuje na export pravila ili mrežni identitet klijenta; <code>Connection timed out</code> na mrežu, firewall ili nedostupan server; <code>bad option</code> ili odsustvo pomoćnog programa na nedostajući NFS klijentski paket; <code>Permission denied</code> unutar aktivnog mount-a na UNIX identitete i prava direktorijuma.
+
+  </li>
+  <li>
+    <strong>Kontrolisani cleanup i povratak.</strong>
+    Brisanje PVC-a prekida vezu sa PV-om. Pošto PV koristi <code>Retain</code>, podaci neće automatski biti uklonjeni. Pre cleanup-a čuva se potreban sadržaj i potvrđuje da nijedan poslovni proces više ne koristi volumen.
+    <p><strong>Upozorenje:</strong> brisanje PVC-a može aplikaciji trajno ukloniti pristup podacima. Komande se ne izvršavaju u produkciji bez odobrene promene, potvrđenog backup-a i vlasnika podataka.</p>
+    <pre><code class="language-bash">kubectl scale deployment reporting-writer -n data-lab --replicas=0
+kubectl get pod -n data-lab -l app=reporting-writer
+
+kubectl delete deployment reporting-writer -n data-lab
+kubectl delete pvc reporting-data -n data-lab
+kubectl get pv pv-reporting-nfs</code></pre> <strong>Validacija:</strong> PV treba da pređe u <code>Released</code>, a ne da bude automatski obrisan. Podaci ostaju u NFS direktorijumu dok ih storage administrator ne obradi. <p>Za potpuno uklanjanje laboratorije, nakon dokumentovane potvrde da su podaci arhivirani ili bezbedno obrisani na NFS serveru, uklanja se PV i namespace:</p> <pre><code class="language-bash">kubectl delete pv pv-reporting-nfs
+kubectl delete namespace data-lab</code></pre>
+Brisanje PV objekta sa politikom <code>Retain</code> ne predstavlja sanitizaciju NFS direktorijuma. Brisanje ili ponovno dodeljivanje sadržaja obavlja storage administrator prema pravilima čuvanja podataka.
+
+  </li>
+</ol>
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> PV i PVC su bili u stanju <code>Bound</code>; Deployment je dostigao jednu dostupnu repliku; aplikacija je uspešno upisala fajl kao UID 10000; novi Pod je pročitao kontrolni zapis prethodnog Poda; neodgovarajući PVC od 50 Gi ostao je <code>Pending</code>; nakon uklanjanja ispravnog PVC-a PV je prešao u <code>Released</code>; nijedan korak nije zahtevao privilegovan kontejner, režim <code>0777</code> ili <code>no_root_squash</code>.
+</p>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje kapaciteta.</strong> Najmanje dnevno i nakon većeg deploy-a pregledati zauzeće backend skladišta, kapacitet fajl-sistema iz workload-a i alarme storage platforme. Kubernetes zahtev u PVC-u nije dovoljan pokazatelj potrošnje. Reakcija je potrebna kada se dostigne interni upozoravajući prag, na primer 75%, ili kada projektovani rast pokazuje da će prostor biti iscrpljen pre narednog ciklusa proširenja. Prva reakcija je potvrda izvora rasta i vlasnika podataka, a ne nekontrolisano povećanje. Trend, zahtev, odobrenje i rezultat beleže se u sistemu promena i CMDB evidenciji. Uspeh se meri odsustvom neplaniranih <code>ENOSPC</code> incidenata.</li>
+  <li><strong>Pregled PVC objekata bez vlasnika.</strong> Nedeljno izvršiti <code>kubectl get pvc -A</code> i povezati claim-ove sa aktivnim workload objektima, vlasnikom servisa i poslovnom namenom. PVC bez aktivnog korisnika, oznake vlasništva ili dokumentovane svrhe zahteva proveru, ali ne i automatsko brisanje. Prva reakcija je kontakt sa vlasnikom i provera sadržaja. Odluka se dokumentuje u registru storage resursa. Uspeh se meri procentom PVC objekata sa poznatim vlasnikom, klasifikacijom i retention pravilom.</li>
+  <li><strong>Kontrola reclaim politika.</strong> Nakon kreiranja ili izmene StorageClass i pre puštanja poslovnog workload-a proveriti <code>kubectl get storageclass -o yaml</code> i <code>kubectl get pv</code>. Politika <code>Delete</code> za kritične podatke ili <code>Retain</code> bez operativnog procesa čišćenja zahteva reakciju. Prva reakcija je zaustavljanje automatizovanog uklanjanja i potvrda zahteva vlasnika podataka. Odobreni standard beleži se u dokumentaciji platforme, a odstupanja u change i risk evidenciji.</li>
+  <li><strong>Provera mount grešaka.</strong> Nakon promene storage mreže, CSI drajvera, node image-a ili NFS politike pregledati događaje, kubelet logove i storage alarme. Ponavljanje <code>FailedMount</code>, <code>FailedAttachVolume</code> ili I/O timeout događaja zahteva trenutnu reakciju. Prvo se utvrđuje da li je problem ograničen na Pod, node, zonu ili ceo storage sistem. Incident mora sadržati pogođene PVC/PV identifikatore, node, vreme, događaje i backend korelacioni ID.</li>
+  <li><strong>Backup i probni restore.</strong> Čuvaju se poslovni podaci, potrebni aplikacioni metapodaci i manifesti koji opisuju PVC, StorageClass i workload. Raspored zavisi od RPO zahteva; za dnevne poslovne izveštaje to može biti dnevni inkrementalni i nedeljni puni backup, uz kopiju van primarnog storage failure domena. Integritet se proverava checksum-om, katalogom backup sistema i automatizovanim proverama čitljivosti. Najmanje kvartalno, kao i posle promene drajvera ili backup platforme, radi se restore u izolovani namespace ili test klaster. Backup je upotrebljiv tek kada obnovljena aplikacija pročita reprezentativne fajlove, potvrde se broj i kontrolne sume objekata i izmeri stvarno vreme oporavka u odnosu na RTO.</li>
+  <li><strong>Kontrola privilegija.</strong> Kvartalno i nakon reorganizacije timova proveriti ko može da kreira, menja i briše PV, PVC i StorageClass objekte pomoću <code>kubectl auth can-i</code>, RBAC pregleda i audit logova API servera. Namespaced aplikacioni nalog koji može menjati cluster-scoped PV ili StorageClass zahteva reakciju. Prva mera je ograničavanje uloge uz proveru uticaja. Promena se dokumentuje u IAM evidenciji i change sistemu, a uspeh meri odsustvom nepotrebnih cluster-wide storage privilegija.</li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Potvrđen je tačan <code>kubectl</code> kontekst i identitet korisnika pre promene.</li>
+  <li>Dokumentovani su vlasnik podataka, klasifikacija, očekivani kapacitet, RPO i RTO.</li>
+  <li>Provereni su StorageClass, access mode, <code>volumeMode</code>, binding režim i reclaim politika.</li>
+  <li>Administrator ume da objasni tok PVC → provisioner → backend volumen → PV → attach/stage/mount i da za svaku fazu pronađe odgovarajući dokaz.</li>
+  <li>Identifikovani su CSI controller i node deo, podržane sidecar verzije, <code>CSIDriver</code>/<code>CSINode</code> objekti i odgovarajući logovi.</li>
+  <li>Sa svakog mogućeg worker čvora potvrđeni su DNS, mrežni pristup i potrebni storage klijentski alati.</li>
+  <li>PV i PVC prikazuju očekivani par u stanju <code>Bound</code>.</li>
+  <li>Pod je <code>Ready</code>, mount je vidljiv, a aplikacioni UID/GID može da upisuje i čita podatke.</li>
+  <li>Zamenski Pod je pročitao podatak koji je upisala prethodna instanca.</li>
+  <li>Pregledani su Kubernetes događaji, kubelet logovi i relevantni backend storage logovi.</li>
+  <li>Reclaim politika je testirana i njeno ponašanje dokumentovano pre produkcione upotrebe.</li>
+  <li>Backup je napravljen izvan primarnog failure domena i potvrđen uspešnim probnim restore postupkom.</li>
+  <li>ResourceQuota, RBAC i audit evidencija ograničavaju i beleže korišćenje storage resursa.</li>
+  <li>Rollback ili cleanup postupak jasno razlikuje brisanje Kubernetes objekta od sanitizacije stvarnih podataka.</li>
+  <li>Za resize, snapshot, kloniranje i VolumeAttributesClass nije pretpostavljena podrška; potvrđene su verzija Kubernetes-a, capability drajvera i ograničenja backend-a.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da trajno skladištenje u Kubernetes-u nije osobina samog Poda, već rezultat koordinacije između PVC zahteva, PV resursa, StorageClass politike, scheduler-a, node komponenti, storage drajvera i fizičkog backend sistema. Treba da ume da izabere statičko ili dinamičko obezbeđivanje, pravilno uskladi kapacitet i pristupni režim, primeni odgovarajuću reclaim politiku i potvrdi funkcionalnost stvarnim upisom i čitanjem.
+</p>
+<p>
+  Operativna osposobljenost podrazumeva razlikovanje PVC-a koji je <code>Pending</code>, neuspelog attach ili mount postupka, problema mrežne dostupnosti, greške UNIX prava i kvara samog storage sistema. Bezbedna promena zahteva proveru konteksta, kapaciteta, topologije, backup-a, prava pristupa i posledica brisanja. Svaka promena mora ostaviti proverljiv zapis o vlasniku, nameni, odobrenju, rezultatu validacije i postupku oporavka.
+</p>
+<p>
+  Granica tehnologije je jasna: PV i PVC obezbeđuju deklarativno povezivanje workload-a sa skladištem, ali ne garantuju aplikacionu konzistentnost, backup, neograničen kapacitet, performanse niti otpornost na kvar čitavog storage domena. Administrator ne sme samostalno menjati retention pravila, brisati nepoznate podatke, uklanjati finalizere ili proširivati privilegije izvan odobrenog opsega. Nejasno vlasništvo, mogući gubitak podataka, kvar CSI kontrolera, korupcija fajl-sistema, nedostupnost više čvorova ili neuspešan restore predstavljaju razloge za blagovremenu eskalaciju storage, bezbednosnom, aplikacionom ili disaster-recovery timu.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes konceptualna, administrativna i API dokumentacija za PersistentVolume, PersistentVolumeClaim, StorageClass, dinamičko obezbeđivanje, vezivanje, proširenje, snapshot, kloniranje, kvote i zaštitne finalizere; Kubernetes CSI Developer Documentation za arhitekturu drajvera, sidecar komponente, verzijsku kompatibilnost, registraciju, attach, provisioning i resize; dokumentacija podržanog CSI i backend proizvođača za implementacione, bezbednosne i troubleshooting postupke
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes 
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-30-volume.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-32-statefulset-headless-service.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

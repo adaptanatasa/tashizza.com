@@ -1,0 +1,478 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-35-container-registry-i-image-pull.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Registry – skladište image-a za razvojne i produkcione timove | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Registry je centralno skladište container image-a koje razvojnim, DevOps i produkcionim timovima omogućava verzionisanje, distribuciju i bezbedno korišćenje image-a u VMware Tanzu i Kubernetes okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, registry, container registry, image registry, Harbor, container image, OCI image, DevOps, cloud native, TKG, vSphere with Tanzu, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-35-container-registry-i-image-pull.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Registry – skladište image-a za razvojne i produkcione timove">
+
+  <meta property="og:description"
+        content="Dvadeset treća lekcija VMware & Tanzu tutorijala – razumevanje registry sistema kao centralnog mesta za čuvanje, verzionisanje i distribuciju container image-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-35-container-registry-i-image-pull.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-35-registry.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Registry – skladište image-a za razvojne i produkcione timove">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-35-registry.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-35-registry.png"
+           alt="Registry – skladište image-a za razvojne i produkcione timove">
+
+    </a>
+
+ <div class="page-subtitle">
+  IX. Registry, paketi, platform services i implementacija aplikacija
+</div>
+<div class="page-subtitle">
+  35. Container registry i image pull – poverenje, autentikacija i distribucija image-a
+</div>
+<h3>Uloga registry-ja u životnom ciklusu aplikacije</h3>
+<p>Container registry je servis za kontrolisano skladištenje, distribuciju i upravljanje kontejnerskim image-ima i drugim OCI artefaktima. Ranije lekcije postavile su infrastrukturne preduslove klastera, mreže i trajnog skladištenja; ova lekcija prelazi na kontrolisanu distribuciju izvršnih artefakata. Registry čini image dostupnim build sistemima, administratorima i Kubernetes klasterima kroz standardizovani API. Bez registry-ja tim može lokalno da napravi image, ali ne može pouzdano da ga prenese kroz razvojno, testno i produkciono okruženje.</p>
+<p>U tipičnom enterprise toku CI sistem napravi image, dodeli mu tag, pošalje ga u registry i zabeleži njegov digest. Sistem za skeniranje proverava poznate ranjivosti, politika određuje da li je artefakt dozvoljen, a Kubernetes čvorovi ga zatim preuzimaju pri pokretanju podova. Registry zato nije običan direktorijum sa arhivama. On je kontrolna tačka lanca isporuke softvera.</p>
+<p>Komunikacija se najčešće odvija prema OCI Distribution Specification protokolu. Klijent proverava dostupnost registry-ja, autentifikuje se, pronalazi manifest, preuzima konfiguraciju i potrebne slojeve, a zatim lokalni container runtime rekonstruiše image. Slojevi koji već postoje na čvoru ne preuzimaju se ponovo, što smanjuje mrežni saobraćaj i ubrzava pokretanje workload-a.</p>
+<p>U Tanzu okruženju registry može biti implementiran kao Harbor, kao drugi OCI kompatibilan proizvod u lokalnom data centru ili kao upravljani cloud servis. Harbor je naročito značajan zato što, pored osnovnog čuvanja artefakata, obezbeđuje projekte, korisničke uloge, robot naloge, kvote, retention pravila, replikaciju, audit evidenciju, proxy cache i integraciju sa skenerima ranjivosti. Tačan način instalacije i skup podržanih funkcija zavise od izdanja Tanzu platforme, Harbor verzije i modela implementacije.</p>
+<h3>Registry, repository, artefakt, tag i digest</h3>
+<p>Administrator mora precizno razlikovati nivoe adresiranja jer se veliki broj incidenata javlja zbog pogrešnog imena, projekta ili taga. U referentnom primeru koristi se adresa:</p>
+<pre><code class="language-none">harbor.platforma.example/apps-prod/web-portal:1.4.0</code></pre>
+<ul>
+<li><strong>Registry</strong> je serverska adresa <code>harbor.platforma.example</code>.</li>
+<li><strong>Projekat</strong> je Harbor organizaciona i bezbednosna granica <code>apps-prod</code>.</li>
+<li><strong>Repository</strong> je kolekcija verzija jednog artefakta, u ovom slučaju <code>web-portal</code>.</li>
+<li><strong>Tag</strong> je čitljiva oznaka, ovde <code>1.4.0</code>. Tag je pokazivač i, ako politika to dozvoljava, može biti premešten na drugi digest.</li>
+<li><strong>Digest</strong> je sadržajno određen identifikator, na primer <code>sha256:...</code>. Promena bilo kog dela manifesta proizvodi drugi digest.</li>
+</ul>
+<p>Za razvoj su tagovi praktični jer ljudi lakše rade sa oznakama kao što su <code>1.4.0</code>, <code>build-4821</code> ili <code>main-7f8c2ad</code>. Za produkcionu sledljivost digest je pouzdaniji zato što nedvosmisleno određuje sadržaj. Dobra praksa je da CI proces objavi jedinstveni tag, sačuva vraćeni digest i da produkciona konfiguracija referencira odobreni artefakt po digestu ili koristi nepromenljive tagove čiju izmenu registry zabranjuje.</p>
+<p>Tag <code>latest</code> nema posebno tehničko značenje osim što ga pojedini klijenti podrazumevaju kada tag nije naveden. On ne garantuje da je image nov, testiran ili odobren. U produkciji otežava audit, rollback i utvrđivanje tačno pokrenute verzije, pa ga ne treba koristiti kao identitet izdanja.</p>
+<h3>Arhitektura enterprise registry servisa</h3>
+<p>Produkcioni registry mora se posmatrati kao distribuirani servis sa sopstvenim zavisnostima. Harbor implementacija obično sadrži API i portal, registry servis za OCI operacije, bazu podataka za metapodatke, Redis za privremeno stanje i redove poslova, job service za asinhrone zadatke, skladište blobova, skener ranjivosti i opcioni servis za potpisivanje ili dodatne integracije. U zavisnosti od načina instalacije komponente mogu raditi kao kontejneri na zasebnoj virtuelnoj mašini ili kao workload-i u Kubernetes klasteru.</p>
+<p>Skladište može biti lokalni filesystem, NFS ili podržano objektno skladište. Izbor utiče na dostupnost, performanse, backup i proceduru oporavka. Registry baza čuva projekte, politike, korisnike, rezultate poslova i druge metapodatke, dok se stvarni slojevi image-a nalaze u blob skladištu. Backup samo baze ili samo blobova nije dovoljan za konzistentan oporavak.</p>
+<p>TLS je obavezan za produkcionu upotrebu. Sertifikat mora odgovarati DNS imenu registry-ja, lanac poverenja mora biti poznat build agentima, administratorskim stanicama i svim Kubernetes čvorovima, a vreme na sistemima mora biti sinhronizovano. Dodavanje opcije za preskakanje TLS provere nije prihvatljiva zamena za ispravan sertifikat. Takva prečica pretvara problem poverenja u trajni rizik presretanja saobraćaja i krađe kredencijala.</p>
+<p>Visoka dostupnost zahteva više od pokretanja dve replike portala. Potrebni su dostupni load balancer, zajedničko ili distribuirano skladište, pouzdana baza, podržan način rada svih stateful komponenti, ispravan DNS i testiran oporavak. Registry koji je nedostupan možda neće odmah zaustaviti već pokrenute podove jer image može postojati u lokalnom cache-u čvora. Problem postaje vidljiv pri rescheduling-u, skaliranju, zameni čvora ili deploy-u nove verzije.</p>
+<h3>Verzijski i implementacioni kontekst u VMware Tanzu okruženju</h3>
+<p>Nazivi i integracije zavise od generacije platforme. Dokumentacija za vSphere 8 često koristi nazive <em>vSphere with Tanzu</em>, Tanzu Kubernetes Grid Service i TKG klaster, dok dokumentacija za VMware Cloud Foundation 9 koristi <em>vSphere Supervisor</em>, vSphere Kubernetes Service i VKS klaster. Harbor može biti instaliran kao podržani Supervisor Service, kao paket u namenskom klasteru ili kao spoljašnji OCI registry. Zato administrator pre primene procedure mora proveriti tačno izdanje vSphere/VCF platforme, VKS ili TKG servisnu verziju, Harbor verziju i matricu interoperabilnosti.</p>
+<p>Integrisana instalacija ne znači uvek i automatsko poverenje svakog workload klastera. U pojedinim podržanim VCF 9 topologijama VKS klasteri na istom Supervisor-u automatski veruju sertifikatu Harbor servisa, dok spoljašnji registry, druga sigurnosna zona ili starija TKG implementacija mogu zahtevati eksplicitnu distribuciju CA lanca kroz podržanu klastersku konfiguraciju. Ručno menjanje trust store-a pojedinačnog čvora je krhko: promena može nestati posle zamene ili nadogradnje čvora. Merodavna je procedura za konkretnu verziju i lifecycle mehanizam klastera.</p>
+<p>Posebno treba razlikovati registry za korisničke aplikacije od repozitorijuma koji platforma koristi za VKS release image-e, Supervisor Services ili standardne pakete. Broadcom za pojedine verzije propisuje posebne postupke relokacije i može ograničiti gde se platformski image-i smeju hostovati. Uspešan ručni <code>docker pull</code> nije dokaz da je određena topologija podržana za lifecycle platforme.</p>
+<h3>Organizacija projekata i razdvajanje okruženja</h3>
+<p>Harbor projekat je granica za članstvo, kvotu, javnu ili privatnu vidljivost, retention pravila, skeniranje i druge politike. Projekti se ne planiraju samo prema aplikacijama, već prema vlasništvu, okruženju, nivou poverenja i odgovornosti. Uobičajena podela može sadržati <code>apps-dev</code>, <code>apps-test</code> i <code>apps-prod</code>, pri čemu produkcioni projekat ima stroža prava i prima samo artefakte koji su prošli definisan promotion proces.</p>
+<p>Direktno ponovno pravljenje produkcionog image-a iz istog izvornog koda nije isto što i promocija testiranog artefakta. Razlike u zavisnostima, vremenu build-a ili spoljnim repozitorijumima mogu proizvesti drugi digest. Pouzdan tok promoviše isti već testirani digest iz razvojne u produkcionu zonu, uz zapis o odobrenju.</p>
+<p>Javni projekat dozvoljava anonimno preuzimanje i zato nije podrazumevani izbor za interne aplikacije. Privatni projekat zahteva autentifikaciju. Administrator mora proveriti i da li korisnik koji vidi portal zaista ima potrebna repository prava; mogućnost prijave ne znači automatski pravo na push, delete ili upravljanje projektom.</p>
+<table>
+<thead>
+<tr><th>Identitet</th><th>Tipična prava</th><th>Namena</th></tr>
+</thead>
+<tbody>
+<tr><td>Developer</td><td>Pull i kontrolisani push u razvojni projekat</td><td>Razvoj i testiranje</td></tr>
+<tr><td>CI robot nalog</td><td>Push i pull samo u određene repozitorijume</td><td>Automatizovani build</td></tr>
+<tr><td>Klaster robot nalog</td><td>Samo pull iz produkcionog projekta</td><td>Pokretanje workload-a</td></tr>
+<tr><td>Project administrator</td><td>Članstvo i politike projekta</td><td>Upravljanje jednim projektom</td></tr>
+<tr><td>System administrator</td><td>Globalna konfiguracija</td><td>Rad registry platforme</td></tr>
+</tbody>
+</table>
+<p>Ljudski administratorski nalog ne treba ugrađivati u CI/CD sistem ili Kubernetes Secret. Za automatizaciju se koriste robot nalozi sa najmanjim potrebnim pravima i ograničenim rokom važenja kada platforma to podržava. Kredencijal robota se prikazuje pri kreiranju i mora odmah biti smešten u odobreni secrets manager; ne treba ga čuvati u Git repozitorijumu, shell istoriji ili dokumentaciji promene.</p>
+<h3>Autentifikacija Kubernetes klastera</h3>
+<p>Kada kubelet treba da preuzme image iz privatnog registry-ja, mora dobiti odgovarajući autentifikacioni materijal. Standardni Kubernetes način je Secret tipa <code>kubernetes.io/dockerconfigjson</code>, naveden u polju <code>imagePullSecrets</code> poda ili ServiceAccount-a. Secret mora postojati u istom namespace-u kao pod koji ga koristi.</p>
+<p>Dodavanje pull Secret-a podrazumevanom ServiceAccount-u može biti praktično, ali automatski daje registry kredencijal svim podovima koji koriste taj nalog. Preciznije rešenje je poseban ServiceAccount za aplikaciju. Time se smanjuje opseg izlaganja i jednostavnije se utvrđuje koji workload koristi određeni identitet.</p>
+<p>Registry autentifikacija i poverenje u TLS sertifikat rešavaju različite probleme. Ispravan username i token neće pomoći ako čvor ne veruje izdavaču sertifikata. Obrnuto, instaliran CA sertifikat ne daje pravo za pristup privatnom projektu. Kod greške <code>ImagePullBackOff</code> administrator prvo čita događaje poda, a zatim razlikuje DNS, mrežni, TLS, autentifikacioni i problem sa nepostojećim manifestom.</p>
+<p>U okruženjima sa kratkotrajnim cloud kredencijalima ili zahtevom da se statički podaci ne čuvaju u Kubernetes Secret objektima može se koristiti kubelet credential provider, ali samo kada je odgovarajući provider podržan i bezbedno konfigurisan na čvorovima. To je promena klasterskog nivoa i nije zamena koju aplikacioni tim može samostalno uvesti u manifest.</p>
+<h3>Politike zadržavanja, brisanje i garbage collection</h3>
+<p>Registry kapacitet se ne kontroliše povremenim ručnim brisanjem. Potrebne su projektne kvote, standard za tagove, retention pravila i nadzor rasta. Retention pravilo može, na primer, sačuvati poslednjih dvadeset release tagova i sve tagove koji odgovaraju produkcionom obrascu. Pravilo se prvo testira u dry-run režimu kada je ta mogućnost dostupna, jer pogrešan filter može označiti važan artefakt za brisanje.</p>
+<p>Brisanje taga, manifesta i fizičko oslobađanje prostora nisu ista operacija. Slojevi mogu biti deljeni između više image-a, a uklonjeni manifest može ostaviti nereferencirane blobove. Harbor garbage collection pronalazi i uklanja takve podatke. GC se planira u kontrolisanom terminu, prati kroz istoriju poslova i ne pokreće nasumično kao reakcija na skoro popunjen disk bez prethodne procene.</p>
+<p>Neposredno brisanje produkcionog artefakta može onemogućiti kasnije skaliranje i rollback, čak i kada aplikacija trenutno radi. Pre brisanja se proveravaju aktivni Deployment, StatefulSet, Job i GitOps manifesti, retention izuzeci, replikacione destinacije i backup. Za zakonski ili bezbednosno obavezno uklanjanje mora se pratiti odobrena procedura koja uzima u obzir replike i cache sisteme.</p>
+<h3>Replikacija, proxy cache i dostupnost artefakata</h3>
+<p>Harbor može replicirati artefakte između kompatibilnih registry-ja u push ili pull režimu. Replikacija se koristi za disaster recovery, geografsko približavanje artefakata klasterima, razdvajanje sigurnosnih zona i kontrolisanu promociju. Ona nije isto što i backup: pogrešno ili zlonamerno brisanje može se preneti, zavisno od pravila, a replika ne mora sadržati sve sistemske metapodatke potrebne za potpuni restore.</p>
+<p>Svako pravilo mora definisati smer, filtere, destinacioni namespace, okidač, rukovanje konfliktima i očekivano vreme prenosa. Posle konfiguracije nije dovoljna oznaka uspešnog zadatka; administrator na odredištu proverava digest izabranog artefakta. Jednaki tagovi sa različitim digestima predstavljaju konflikt identiteta koji mora biti razrešen pre deploy-a.</p>
+<p>Proxy cache projekat omogućava da lokalni Harbor kešira artefakte iz udaljenog registry-ja. Time se smanjuje zavisnost od spoljne mreže, ubrzavaju ponovljena preuzimanja i ublažavaju ograničenja javnih servisa. Ipak, proxy cache nije opravdanje za nekontrolisano korišćenje spoljnih image-a. Organizacija i dalje mora definisati dozvoljene izvore, skeniranje, licence, retention i proceduru reagovanja kada upstream artefakt bude povučen ili kompromitovan.</p>
+<h3>Bezbednost, skeniranje i granice ove lekcije</h3>
+<p>Registry može pokrenuti skeniranje image-a i prikazati pronađene CVE zapise, ali rezultat mora biti tumačen u kontekstu verzije baze ranjivosti, operativnog sistema, paketa i načina korišćenja komponente. Oznaka „scan completed” nije potvrda da je image bezbedan. Istovremeno, svaka prijavljena ranjivost ne znači automatski da je aplikacija praktično izložena, ali mora imati evidentiranu procenu i odluku.</p>
+<p>Ova lekcija obrađuje registry kao distribucionu i operativnu komponentu. Detaljno upravljanje pragovima ranjivosti, SBOM dokumentima, potpisima, proverom porekla, admission politikama i karantinom image-a pripada lekciji o sigurnosti image-a. Registry administrator ipak mora već sada obezbediti da se skeniranje izvršava, da su baze skenera ažurne i da se artefakt sa neuspešnim ili zastarelim rezultatom ne smatra automatski odobrenim.</p>
+<p>Registry nije odgovarajuće mesto za čuvanje izvornog koda, lozinki, konfiguracionih backup-a ili trajnih aplikacionih podataka. OCI registry može skladištiti različite OCI artefakte, ali to ne pretvara svaki proizvoljni fajl u pravilno upravljan aplikacioni podatak. Namena, retention, kontrola pristupa i restore moraju odgovarati tipu sadržaja.</p>
+<h3>Integrisani praktikum: objavljivanje image-a i bezbedno preuzimanje iz Tanzu klastera</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Razvojni tim isporučuje verziju <code>1.4.0</code> interne aplikacije <code>web-portal</code>. Produkcioni Tanzu workload klaster mora da preuzme image iz privatnog Harbor projekta. CI nalog sme da objavljuje artefakte, dok klaster dobija zaseban robot nalog sa isključivo pull pravom.</p>
+<p><strong>Cilj.</strong> Napraviti privatni projekat <code>apps-prod</code>, objaviti verzionisani image, zabeležiti digest, konfigurisati namenski Kubernetes ServiceAccount i dokazati da autorizovan workload može, a neautorizovan workload ne može da preuzme image.</p>
+<p><strong>Referentno okruženje.</strong> Harbor je dostupan na <code>harbor.platforma.example</code> sa sertifikatom iz organizacionog CA lanca. Administratorska stanica ima Docker kompatibilan CLI i <code>kubectl</code>. Tanzu workload klaster je dostupan kroz kontekst <code>tkg-prod-admin@tkg-prod</code>. Koristi se namespace <code>portal-prod</code>. Lokalni image <code>web-portal:1.4.0</code> već je napravljen i funkcionalno testiran u build procesu.</p>
+<p><strong>Preduslovi i prava.</strong> Harbor sistem administrator kreira projekat i robot naloge. CI operater dobija samo push/pull pravo nad projektom <code>apps-prod</code>. Kubernetes administrator ima pravo da kreira Namespace, Secret, ServiceAccount i testni Pod. Vrednosti <code>ROBOT_CI_SECRET</code> i <code>ROBOT_PULL_SECRET</code> u primerima su bezbedne zamene, a ne stvarni podaci.</p>
+<ol>
+<li>
+<strong>Proveriti DNS, TLS i API dostupnost pre promene.</strong>
+Početna provera odvaja infrastrukturni problem od problema sa nalogom ili repository-jem. <code>getent</code> potvrđuje DNS rezoluciju, <code>openssl</code> prikazuje sertifikat, a Harbor health API proverava stanje servisa.
+<pre><code class="language-bash">getent hosts harbor.platforma.example
+openssl s_client -connect harbor.platforma.example:443 \
+  -servername harbor.platforma.example \
+  -verify_return_error &lt;/dev/null
+curl --fail --silent --show-error \
+  https://harbor.platforma.example/api/v2.0/health</code></pre>
+<strong>Validacija:</strong> DNS mora vratiti očekivanu adresu, TLS provera mora završiti sa <code>Verify return code: 0 (ok)</code>, a health endpoint vratiti JSON sa ukupnim statusom <code>healthy</code>. Ne nastavljati ako je sertifikat istekao, ime ne odgovara ili neka ključna komponenta nije zdrava.
+</li>
+<li>
+<strong>Proveriti klasterski kontekst i početno stanje namespace-a.</strong>
+Pogrešan <code>kubectl</code> kontekst je čest uzrok promene na pogrešnom klasteru.
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get namespace portal-prod</code></pre>
+<strong>Validacija:</strong> aktivni kontekst mora biti <code>tkg-prod-admin@tkg-prod</code>. Očekivano je da poslednja komanda vrati <code>NotFound</code> ako se praktikum izvodi prvi put. Drugačiji kontekst zahteva prekid postupka i izbor odobrenog konteksta.
+</li>
+<li>
+<strong>Kreirati privatni Harbor projekat i ograničene robot naloge.</strong>
+U Harbor portalu sistem administrator bira <code>Projects</code>, zatim <code>New Project</code>, unosi <code>apps-prod</code>, ostavlja projekat privatnim i postavlja kvotu prema odobrenom kapacitetu. U projektu kreira robot nalog <code>robot$apps-prod+ci-publisher</code> sa pravima push i pull, kao i <code>robot$apps-prod+tkg-prod-puller</code> samo sa pull pravom. Tačan prikaz imena može zavisiti od Harbor verzije i konfigurisanog prefiksa robot naloga.
+<p>Tajne se odmah kopiraju u odobreni secrets manager. Njihovo upisivanje u tiket promene ili Git nije dozvoljeno. Rok važenja treba ograničiti prema politici organizacije, uz dovoljno vremena za kontrolisanu rotaciju.</p>
+<strong>Validacija:</strong> u kartici članova ili robot naloga proveriti da CI robot ima repository push/pull, a klasterski robot samo pull. U audit evidenciji mora postojati zapis o kreiranju projekta i naloga.
+</li>
+<li>
+<strong>Prijaviti CI identitet bez otkrivanja tajne u komandnoj liniji.</strong>
+Opcija <code>--password-stdin</code> sprečava pojavljivanje tajne u listi procesa i smanjuje rizik njenog čuvanja u shell istoriji.
+<pre><code class="language-bash">export HARBOR_HOST='harbor.platforma.example'
+export HARBOR_PROJECT='apps-prod'
+export IMAGE_NAME='web-portal'
+export IMAGE_TAG='1.4.0'
+export CI_ROBOT='robot$apps-prod+ci-publisher'
+
+read -r -s -p 'CI robot secret: ' ROBOT_CI_SECRET
+printf '\n'
+printf '%s' "${ROBOT_CI_SECRET}" | docker login "${HARBOR_HOST}" \
+  --username "${CI_ROBOT}" \
+  --password-stdin
+unset ROBOT_CI_SECRET</code></pre> <strong>Validacija:</strong> komanda mora vratiti <code>Login Succeeded</code>. Greška <code>unauthorized</code> ukazuje na pogrešan identitet, tajnu, istek naloga ili nedovoljna prava; TLS greška se ne rešava opcijom za nebezbedan registry, već ispravkom CA poverenja.
+
+</li>
+<li>
+<strong>Označiti i objaviti postojeći image.</strong>
+Komanda <code>docker tag</code> ne menja sadržaj image-a već dodaje referencu sa punom registry putanjom. <code>docker push</code> šalje manifest i samo slojeve koji još ne postoje na registry-ju.
+<pre><code class="language-bash">docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" \
+  --format '{{.Id}}'
+
+docker tag "${IMAGE_NAME}:${IMAGE_TAG}" \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+docker push \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"</code></pre> <strong>Validacija:</strong> push mora završiti bez greške i prikazati digest manifesta. Sačuvati digest u evidenciji izdanja. Zatim proveriti lokalno zabeležen registry digest:
+
+<pre><code class="language-bash">docker image inspect \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}" \
+  --format '{{json .RepoDigests}}'</code></pre>
+
+Očekuje se referenca oblika <code>harbor.platforma.example/apps-prod/web-portal@sha256:...</code>. U Harbor portalu repository mora prikazati tag <code>1.4.0</code>, veličinu, vreme push-a i isti digest.
+
+</li>
+<li>
+<strong>Proveriti da pull-only robot nema pravo objavljivanja.</strong>
+Ovo je negativni test najmanjih privilegija. Test koristi postojeći image, ali pokušava push drugog taga sa nalogom namenjenim klasteru.
+<pre><code class="language-bash">export PULL_ROBOT='robot$apps-prod+tkg-prod-puller'
+read -r -s -p 'Pull robot secret: ' ROBOT_PULL_SECRET
+printf '\n'
+printf '%s' "${ROBOT_PULL_SECRET}" | docker login "${HARBOR_HOST}" \
+  --username "${PULL_ROBOT}" \
+  --password-stdin
+
+docker tag \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}" \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:negative-push-test"
+
+docker push \
+  "${HARBOR_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:negative-push-test"</code></pre> <strong>Očekivani rezultat:</strong> push mora biti odbijen porukom o zabrani ili neautorizovanom pristupu. Uspešan push predstavlja kritičnu grešku u dozvolama; potrebno je odmah ukloniti testni tag, korigovati prava robota i pregledati audit log. Tajnu za sledeći korak privremeno zadržati samo u promenljivoj trenutne sesije.
+
+</li>
+<li>
+<strong>Kreirati izolovan namespace i namenski ServiceAccount.</strong>
+Poseban ServiceAccount sprečava automatsko deljenje registry kredencijala sa svim workload-ima u namespace-u.
+<pre><code class="language-bash">kubectl create namespace portal-prod
+
+cat &gt; /tmp/portal-runtime-sa.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal-runtime
+  namespace: portal-prod
+EOF
+
+kubectl apply -f /tmp/portal-runtime-sa.yaml
+kubectl get serviceaccount portal-runtime \
+  --namespace portal-prod -o yaml</code></pre> <strong>Validacija:</strong> namespace mora imati status <code>Active</code>, a ServiceAccount mora postojati u <code>portal-prod</code>. U ovom trenutku još ne treba da sadrži <code>imagePullSecrets</code>.
+
+</li>
+<li>
+<strong>Kreirati registry Secret bez upisivanja tajne u YAML fajl.</strong>
+Komanda generiše Secret tipa <code>kubernetes.io/dockerconfigjson</code>. Iako je vrednost u objektu kodirana, nije šifrovana samo zato što je prikazana kao Base64, pa pristup Secret objektu mora biti ograničen RBAC pravilima i zaštitom etcd-a.
+<pre><code class="language-bash">kubectl create secret docker-registry harbor-apps-prod-pull \
+  --namespace portal-prod \
+  --docker-server="${HARBOR_HOST}" \
+  --docker-username="${PULL_ROBOT}" \
+  --docker-password="${ROBOT_PULL_SECRET}" \
+  --docker-email='not-used@example.invalid'
+
+unset ROBOT_PULL_SECRET
+
+kubectl get secret harbor-apps-prod-pull \
+  --namespace portal-prod  \
+  -o jsonpath='{.type}{"\n"}'</code></pre> <strong>Validacija:</strong> rezultat mora biti <code>kubernetes.io/dockerconfigjson</code>. Ne prikazivati sadržaj polja <code>.dockerconfigjson</code> u terminalu, tiketima ili snimcima ekrana.
+
+</li>
+<li>
+<strong>Povezati Secret sa namenskim ServiceAccount-om.</strong>
+Manifest se koristi umesto izmene podrazumevanog ServiceAccount-a.
+<pre><code class="language-bash">cat &gt; /tmp/portal-runtime-sa.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal-runtime
+  namespace: portal-prod
+imagePullSecrets:
+  - name: harbor-apps-prod-pull
+EOF
+
+kubectl apply -f /tmp/portal-runtime-sa.yaml
+
+kubectl get serviceaccount portal-runtime \
+  --namespace portal-prod  \
+  -o jsonpath='{.imagePullSecrets[*].name}{"\n"}'</code></pre> <strong>Validacija:</strong> izlaz mora sadržati tačno <code>harbor-apps-prod-pull</code>. Secret i ServiceAccount moraju biti u istom namespace-u.
+
+</li>
+<li>
+<strong>Pokrenuti funkcionalni pull test odobrenim identitetom.</strong>
+Testni Pod koristi image po digestu koji je zabeležen nakon push-a. U narednoj komandi administrator zamenjuje <code>sha256:ZABELEZENI_DIGEST</code> stvarnom vrednošću iz koraka 5.
+<pre><code class="language-bash">cat &gt; /tmp/registry-pull-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-pull-test
+  namespace: portal-prod
+spec:
+  serviceAccountName: portal-runtime
+  restartPolicy: Never
+  containers:
+    - name: web-portal
+      image: harbor.platforma.example/apps-prod/web-portal@sha256:ZABELEZENI_DIGEST
+      imagePullPolicy: Always
+EOF
+
+kubectl apply -f /tmp/registry-pull-test.yaml
+kubectl get pod registry-pull-test \
+  --namespace portal-prod --watch</code></pre> <strong>Validacija:</strong> Pod mora proći kroz <code>Pending</code> i <code>ContainerCreating</code> do stanja koje odgovara ponašanju aplikacije. Ako se aplikacija završava, uspešan <code>Completed</code> je prihvatljiv; ako je serverski proces, očekuje se <code>Running</code>. Pull potvrditi događajima:
+
+<pre><code class="language-bash">kubectl describe pod registry-pull-test \
+  --namespace portal-prod
+
+kubectl get events --namespace portal-prod \
+  --field-selector involvedObject.name=registry-pull-test \
+  --sort-by='.lastTimestamp'</code></pre>
+
+Događaji treba da sadrže uspešno preuzimanje ili potvrdu da je image prisutan, bez <code>FailedToRetrieveImagePullSecret</code>, <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>.
+
+</li>
+<li>
+<strong>Dokazati da workload bez kredencijala ne može da preuzme privatni image.</strong>
+Negativni Pod namerno ne koristi <code>portal-runtime</code> ServiceAccount.
+<pre><code class="language-bash">cat &gt; /tmp/registry-negative-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-negative-test
+  namespace: portal-prod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: web-portal
+      image: harbor.platforma.example/apps-prod/web-portal:1.4.0
+      imagePullPolicy: Always
+EOF
+
+kubectl apply -f /tmp/registry-negative-test.yaml
+kubectl describe pod registry-negative-test \
+  --namespace portal-prod</code></pre> <strong>Očekivani rezultat:</strong> pošto je projekat privatan, događaji treba da pokažu odbijen anonimni pristup, nakon čega Pod prelazi u <code>ErrImagePull</code> i zatim <code>ImagePullBackOff</code>. Ako se image ipak preuzme, proveriti da li je projekat greškom javan, da li podrazumevani ServiceAccount sadrži pull Secret ili da li čvor koristi drugi credential provider.
+
+</li>
+<li>
+<strong>Razlikovati najčešće klase grešaka.</strong>
+Kubernetes događaji daju najbrži početni signal. Poruka <code>manifest unknown</code> obično znači pogrešan repository, tag ili digest. <code>unauthorized</code> i <code>denied</code> ukazuju na kredencijal ili prava. <code>x509: certificate signed by unknown authority</code> ukazuje na CA poverenje čvora. <code>no such host</code> ukazuje na DNS, a timeout na mrežnu putanju, firewall, load balancer ili nedostupan servis.
+<pre><code class="language-bash">kubectl get pod registry-pull-test \
+  --namespace portal-prod -o wide
+
+kubectl get events --namespace portal-prod \
+  --sort-by='.lastTimestamp'
+
+kubectl get secret harbor-apps-prod-pull \
+  --namespace portal-prod
+
+kubectl get serviceaccount portal-runtime \
+  --namespace portal-prod -o yaml</code></pre>
+Ako događaji nisu dovoljni, administrator klastera na čvoru proverava kubelet i container runtime logove, na primer kroz <code>journalctl -u kubelet</code> i odgovarajući containerd servis. Na Harbor strani pregledaju se audit log, job service zadaci i komponentni logovi. Kod instalacije zasnovane na Docker Compose-u podrazumevana lokacija može biti <code>/var/log/harbor</code>, dok se kod Kubernetes instalacije koriste logovi odgovarajućih podova. Tačna lokacija mora se potvrditi prema konkretnoj instalaciji.
+
+</li>
+<li>
+<strong>Očistiti testne objekte bez uklanjanja produkcionog artefakta.</strong>
+Negativni i funkcionalni Pod više nisu potrebni. ServiceAccount i pull Secret se zadržavaju samo ako će ih koristiti stvarni deploy iz sledeće lekcije.
+<pre><code class="language-bash">kubectl delete pod registry-pull-test registry-negative-test \
+  --namespace portal-prod
+
+rm -f /tmp/portal-runtime-sa.yaml \
+  /tmp/registry-pull-test.yaml \
+  /tmp/registry-negative-test.yaml
+
+docker logout harbor.platforma.example</code></pre> <strong>Rollback:</strong> ako je promena otkazana pre korišćenja u aplikaciji, ukloniti Secret i ServiceAccount, zatim namespace ako je prazan:
+
+<pre><code class="language-bash">kubectl delete secret harbor-apps-prod-pull \
+  --namespace portal-prod
+kubectl delete serviceaccount portal-runtime \
+  --namespace portal-prod
+kubectl delete namespace portal-prod</code></pre>
+
+Brisanje Harbor image-a nije automatski deo rollback-a. Pre toga moraju se proveriti reference, promotion evidencija i retention politika. Produkcioni artefakt se ne briše samo zato što je testni Kubernetes Pod uklonjen.
+
+</li>
+</ol>
+<p><strong>Merljivi kriterijumi prihvatanja.</strong></p>
+<ul>
+<li>Harbor health API vraća stanje <code>healthy</code>, a TLS validacija završava bez greške.</li>
+<li>Projekat <code>apps-prod</code> je privatan i ima definisanu kvotu.</li>
+<li>CI robot može da izvrši push, dok pull robot ne može.</li>
+<li>Harbor prikazuje tag <code>1.4.0</code> i digest jednak zapisu u evidenciji izdanja.</li>
+<li>Pod sa ServiceAccount-om <code>portal-runtime</code> uspešno preuzima image.</li>
+<li>Pod bez pull kredencijala dobija očekivani <code>ImagePullBackOff</code>.</li>
+<li>Ni jedna tajna nije ostala u Git-u, YAML fajlovima, shell istoriji ili dokumentaciji promene.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+<li><strong>Zdravlje servisa i dostupnost API-ja.</strong> Proveravati Harbor health endpoint, HTTPS odziv, load balancer i ključne komponente najmanje na svakih nekoliko minuta kroz monitoring, kao i neposredno pre i posle promene. Reakciju zahtevaju neuspešan health odgovor, ponovljeni HTTP 5xx, rast latencije ili nedostupnost iz mreže klastera. Prvo proveriti zavisnosti, kapacitet i komponentne logove, a zatim sprečiti nove promene ako integritet nije potvrđen. Incident i vreme oporavka evidentiraju se u ITSM sistemu; uspeh se meri dostupnošću servisa i vremenom potrebnim za obnovu pull operacija.</li>
+<li><strong>Kapacitet i kvote.</strong> Pratiti iskorišćenost blob skladišta, filesystem inode resurse, rast projekata i dostizanje kvota dnevno i nakon velikih release ciklusa. Upozorenje treba postaviti dovoljno rano da postoji vreme za analizu, tipično pre 80% ukupnog kapaciteta, uz kritični prag prema internom SLO-u. Prva reakcija nije trenutno brisanje, već identifikovanje najvećih repozitorijuma, provera retention pravila i planiranje GC-a. Trend, vlasnik podataka i odobrena korekcija dokumentuju se u kapacitetnom planu.</li>
+<li><strong>Robot nalozi i rotacija.</strong> Najmanje mesečno i nakon promene vlasništva proveravati svrhu, prava, poslednju upotrebu i rok važenja robota. Neaktivan, istekao ili preširoko privilegovan nalog zahteva rotaciju ili ukidanje. Prvo se kreira novi kredencijal, ažurira potrošač, validira pull ili push, pa tek onda ukida stari. Evidencija se vodi u secrets manager-u i registru servisnih identiteta; uspeh znači da nema prekida i da stari kredencijal više ne radi.</li>
+<li><strong>Retention i garbage collection.</strong> Retention pravila pregledati kvartalno, nakon promene obrasca tagovanja i pre smanjenja kapaciteta. Dry-run mora pokazati da zaštićene release verzije i aktivni digest-i ostaju sačuvani. Neočekivano veliki broj kandidata zahteva obustavljanje izvršenja i proveru filtera. GC se pokreće prema planu održavanja, a rezultat, trajanje i oslobođeni prostor beleže se u operativnom dnevniku.</li>
+<li><strong>Audit i neuspele prijave.</strong> Audit zapise i centralni syslog pratiti kontinuirano. Višestruki neuspešni login pokušaji, push od neočekivanog identiteta, brisanje artefakta ili promena javnosti projekta zahtevaju bezbednosnu proveru. Prva reakcija je očuvanje logova, identifikovanje naloga i izvora, a po potrebi blokiranje ili rotacija kredencijala. Uspeh se meri potpunom sledljivošću privilegovanih operacija i vremenom detekcije.</li>
+<li><strong>Skeniranje artefakata.</strong> Posle svakog push-a proveriti da li je skeniranje završeno i da li je baza skenera ažurna. Neuspešan scan, zastarela baza ili nalaz iznad odobrenog praga sprečavaju promociju dok vlasnik aplikacije i bezbednosni tim ne donesu dokumentovanu odluku. Rezultat se vezuje za digest, ne samo za tag.</li>
+<li><strong>Backup i probni restore.</strong> Čuvati konzistentan backup Harbor baze, konfiguracije, tajni potrebnih za oporavak, sertifikata i blob skladišta. Učestalost se određuje prema RPO-u, najmanje dnevno za kritičan registry, uz kopiju u odvojenoj sigurnosnoj zoni. Integritet se proverava checksum-om i čitljivošću backup seta. Najmanje kvartalno izvršiti probni restore u izolovanom okruženju, prijaviti korisnika, pronaći izabrani projekat i preuzeti reprezentativan image po digestu. Tek uspešan pull sa jednakim digestom potvrđuje upotrebljiv backup.</li>
+<li><strong>Replikacija.</strong> Posle svake promene pravila i najmanje dnevno proveravati status poslova, kašnjenje i digest reprezentativnog artefakta na destinaciji. Neuspeh ili različit digest zahteva zaustavljanje oslanjanja na repliku i pregled autentifikacije, filtera, konflikata i mrežne veze. RPO replike i rezultati testova vode se u DR dokumentaciji.</li>
+</ul>
+<h3>Završna kontrolna lista</h3>
+<ul>
+<li>DNS ime registry-ja razrešava se sa administratorske stanice i klasterskih čvorova.</li>
+<li><code>openssl s_client</code> potvrđuje odgovarajuće ime sertifikata, važeći rok i pouzdan CA lanac.</li>
+<li>Harbor health API vraća <code>healthy</code> bez nezdravih ključnih komponenti.</li>
+<li>Produkcioni projekat je privatan, ima vlasnika, kvotu i dokumentovan standard tagovanja.</li>
+<li>CI robot ima samo potrebna push/pull prava, a klasterski robot isključivo pull.</li>
+<li>Objavljeni tag i zabeleženi digest odgovaraju vrednostima prikazanim u Harbor-u.</li>
+<li>Kubernetes Secret je tipa <code>kubernetes.io/dockerconfigjson</code> i nalazi se u istom namespace-u kao workload.</li>
+<li>Namenski ServiceAccount referencira tačan <code>imagePullSecret</code>.</li>
+<li>Autorizovani testni Pod uspešno preuzima image, bez <code>ErrImagePull</code> događaja.</li>
+<li>Negativni test bez kredencijala završava očekivanim odbijanjem privatnog registry-ja.</li>
+<li>Retention, GC, backup, restore test i rotacija robota imaju definisan raspored i vlasnika.</li>
+<li>Tajni podaci nisu sačuvani u manifestima, Git repozitorijumu, tiketima ili shell istoriji.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>Registry predstavlja infrastrukturnu i bezbednosnu granicu između procesa izgradnje aplikacije i njenog izvršavanja u Tanzu klasteru. Administrator mora razumeti kako OCI klijent pronalazi manifest i slojeve, kako se repository identifikuje tagom i digestom i zašto dostupnost artefakta zavisi od DNS-a, TLS-a, skladišta, baze, autentifikacije i mrežne putanje.</p>
+<p>Nakon ove lekcije administrator treba da ume da organizuje privatne projekte, razdvoji CI i runtime identitete, objavi i proveri image, sačuva njegov digest, poveže Kubernetes workload sa minimalno privilegovanim pull nalogom i potvrdi rezultat kroz događaje poda i Harbor audit evidenciju. Takođe mora umeti da razlikuje nepostojeći manifest od odbijene autorizacije, nepoznatog CA sertifikata, DNS greške i nedostupnog registry servisa.</p>
+<p>Promena taga, retention pravila, robot naloga ili GC rasporeda može uticati na budući deploy, skaliranje i rollback čak i kada postojeći podovi trenutno rade. Zato se pre promene proveravaju aktivne reference, kapacitet, replike, backup i prava, a nakon promene API zdravlje, digest, audit zapis i stvarni pull iz klastera. Svaka produkciona promena mora imati vlasnika, kriterijum prihvatanja, evidenciju i bezbedan povratak.</p>
+<p>Registry administrator nije ovlašćen da samostalno prihvati bezbednosni rizik aplikacije, ukloni zakonski zadržan artefakt ili proširi pristup bez odobrenja vlasnika sistema. Neuspešan restore, nekonzistentni digest-i između replika, sumnjiva privilegovana aktivnost, kompromitovan robot nalog, gubitak podataka ili nepoznat uzrok oštećenja skladišta predstavljaju razlog za eskalaciju storage, platformskom, bezbednosnom ili disaster recovery timu.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Broadcom dokumentacija za vSphere Supervisor, vSphere Kubernetes Service, privatne registry-je i Harbor Supervisor Service; Harbor administrativni, API, bezbednosni, robot account, retention, garbage collection, replikacioni i troubleshooting vodiči; Kubernetes dokumentacija za container image-e, image pull politike, Secret i ServiceAccount objekte i kubelet credential provider; OCI Image i Distribution specifikacije
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-34-volume-snapshot-backup-i-restore.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-36-vks-standard-packages-i-package-management.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

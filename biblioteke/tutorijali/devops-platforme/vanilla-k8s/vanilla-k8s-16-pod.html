@@ -1,0 +1,613 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-16-pod.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Pod – najmanja izvršna jedinica u Kubernetes-u | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes Pod predstavlja najmanju izvršnu jedinicu u klasteru i omogućava pokretanje jednog ili više blisko povezanih kontejnera koji dele mrežu i resurse.">
+
+  <meta name="keywords"
+        content="Kubernetes Pod, Pod u Kubernetes-u, Kubernetes objekti, kontejneri, workload, kubectl, YAML manifest, container runtime, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-16-pod.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Pod – najmanja izvršna jedinica u Kubernetes-u">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes Pod kao osnovnu izvršnu jedinicu za pokretanje kontejnera, deljenje mreže i organizovanje aplikacionih procesa u klasteru.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-16-pod.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-16-pod.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Pod – najmanja izvršna jedinica u Kubernetes-u">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-16-pod.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-16-pod.png"
+           alt="Pod – najmanja izvršna jedinica u Kubernetes-u">
+
+    </a>
+
+  
+<div class="page-subtitle">
+ IV. Osnovni workload objekti i kontrolne petlje
+</div>
+    <div class="page-subtitle">
+16. Pod – životni ciklus, init kontejneri, sidecar obrazac i granice izvršne jedinice
+</div>
+<p>
+  Pod je najmanja izvršna jedinica koju Kubernetes može da rasporedi na radni čvor i kojom može da upravlja kao celinom. Iako se aplikacija fizički izvršava u jednom ili više kontejnera, Kubernetes uobičajeno ne raspoređuje pojedinačan kontejner neposredno. Umesto toga, kontejner postaje deo Pod objekta koji definiše zajednički mrežni prostor, priključene volumene, bezbednosni kontekst, zahteve za resursima, zdravstvene provere i druga pravila izvršavanja. Zbog toga administrator Pod ne treba da posmatra samo kao „omotač oko kontejnera”, već kao operativnu granicu u kojoj Kubernetes izvršava jedan tesno povezan skup procesa.
+</p>
+<p>
+  U jednostavnom slučaju Pod sadrži jedan aplikacioni kontejner. U složenijem slučaju može sadržati glavni kontejner, init kontejnere koji pripremaju okruženje i pomoćne sidecar kontejnere koji pružaju funkciju neposredno povezanu sa aplikacijom. Svi kontejneri u istom Pod-u raspoređuju se na isti čvor, dele životni kontekst Pod-a i mogu da koriste zajedničke volumene. Takva povezanost je korisna samo kada komponente zaista moraju da budu zajedno; nezavisne aplikacije ne treba smeštati u isti Pod radi prividne jednostavnosti.
+</p>
+
+<h3>Pod kao logički host aplikacije</h3>
+<p>
+  Pod predstavlja aplikacioni „logički host”. Kontejneri unutar njega dele jednu IP adresu Pod-a i isti mrežni namespace. Svaki kontejner može da komunicira sa drugim kontejnerom u istom Pod-u preko adrese <code>localhost</code>, ali portovi moraju biti jedinstveni na nivou Pod-a. Ako glavni kontejner sluša na TCP portu 8080, pomoćni kontejner u istom Pod-u ne može istovremeno da veže isti port na istoj adresi.
+</p>
+<p>
+  Pod dobija IP adresu od mrežnog dodatka klastera, odnosno CNI implementacije. Ta adresa pripada Pod-u, a ne pojedinačnom kontejneru. Kada Pod bude obrisan i napravljen ponovo, novi Pod može dobiti drugu IP adresu. Zbog toga aplikacije ne treba trajno da pamte Pod IP adrese niti da ih koriste kao stabilne identifikatore. Stabilno mrežno otkrivanje obezbeđuje se Kubernetes Service objektom i DNS imenima, dok viši kontroleri, kao što su Deployment, StatefulSet ili DaemonSet, održavaju potreban broj Pod-ova.
+</p>
+<p>
+  Kontejneri u Pod-u mogu da dele podatke preko volumena definisanih u <code>spec.volumes</code>. Svaki kontejner pojedinačno priključuje potreban volumen kroz <code>volumeMounts</code>. Volumen <code>emptyDir</code> postoji tokom života konkretnog Pod-a i može služiti za privremene podatke ili razmenu datoteka između kontejnera. Brisanje Pod-a briše i sadržaj <code>emptyDir</code> volumena. Podaci koji moraju da prežive zamenu Pod-a moraju biti smešteni na trajni volumen ili u odgovarajući spoljašnji servis.
+</p>
+
+<h3>Zašto se produkcioni Pod-ovi ne kreiraju ručno</h3>
+<p>
+  Kubernetes dozvoljava direktno kreiranje Pod objekta, ali samostalan Pod nema kontroler koji bi ga nadoknadio ako bude obrisan, ako njegov čvor postane nedostupan ili ako je potrebna kontrolisana izmena aplikacije. Kubelet na čvoru može ponovo pokrenuti kontejner unutar postojećeg Pod-a, ali ne može napraviti zamenski Pod na drugom čvoru nakon gubitka originalnog Pod objekta ili čvora.
+</p>
+<p>
+  Produkcione aplikacije se zato uobičajeno ne implementiraju kao samostalni Pod-ovi. Deployment upravlja replikovanim stateless aplikacijama i njihovim kontrolisanim izmenama, StatefulSet aplikacijama kojima su potrebni stabilan identitet i trajno skladište, DaemonSet po jednim Pod-om na odgovarajućim čvorovima, a Job i CronJob poslovima koji treba da se završe. Direktan Pod je prikladan za učenje, ograničeno testiranje, kratkotrajnu proveru i određene dijagnostičke situacije, ali nije zamena za odgovarajući workload kontroler.
+</p>
+<p>
+  Pod specifikacija je velikim delom nepromenljiva nakon kreiranja. Moguće su samo određene izmene pojedinih polja, dok promena slike, volumena, komandi, portova ili većine bezbednosnih postavki tipično zahteva zamenu Pod-a. Kontroler upravo tu zamenu obavlja predvidljivo. Ručna izmena samostalnog Pod-a često završava greškom zbog nepromenljivog polja ili kratkotrajnim stanjem koje sledeća automatizovana implementacija prepisuje.
+</p>
+
+<h3>Struktura Pod manifesta</h3>
+<p>
+  Pod koristi osnovnu strukturu Kubernetes API objekta: <code>apiVersion</code>, <code>kind</code>, <code>metadata</code>, <code>spec</code> i status koji održava sistem. Za osnovni Pod koristi se API grupa jezgra i vrednost <code>apiVersion: v1</code>. Administrator opisuje željeno stanje u delu <code>spec</code>, dok Kubernetes popunjava <code>status</code>. Status ne treba ručno kopirati u deklarativne manifeste.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Polje</th>
+      <th>Administratorska svrha</th>
+      <th>Važna napomena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>metadata.name</code></td>
+      <td>Jedinstveno ime Pod-a u namespace-u</td>
+      <td>Samostalni Pod zadržava ime, dok kontroleri generišu imena svojih Pod-ova</td>
+    </tr>
+    <tr>
+      <td><code>metadata.labels</code></td>
+      <td>Selekcija, inventar, Service povezivanje, politike i monitoring</td>
+      <td>Labela nije samo opis; pogrešna labela može promeniti mrežno ili operativno ponašanje</td>
+    </tr>
+    <tr>
+      <td><code>spec.containers</code></td>
+      <td>Definicija aplikacionih kontejnera</td>
+      <td>Lista mora sadržati najmanje jedan kontejner</td>
+    </tr>
+    <tr>
+      <td><code>image</code></td>
+      <td>Slika iz registra</td>
+      <td>Za produkciju koristiti kontrolisan registar i nepromenljiv digest kada proces to zahteva</td>
+    </tr>
+    <tr>
+      <td><code>resources</code></td>
+      <td>CPU i memorijski zahtevi i ograničenja</td>
+      <td>Utiče na raspoređivanje, kvalitet usluge i ponašanje pri pritisku resursa</td>
+    </tr>
+    <tr>
+      <td><code>securityContext</code></td>
+      <td>UID, GID, privilegije, capability skup i profil zaštite</td>
+      <td>Pod i kontejner imaju različite nivoe bezbednosnog konteksta</td>
+    </tr>
+    <tr>
+      <td><code>restartPolicy</code></td>
+      <td>Politika ponovnog pokretanja kontejnera u Pod-u</td>
+      <td>Dozvoljene vrednosti su <code>Always</code>, <code>OnFailure</code> i <code>Never</code></td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Kontejnerski port naveden u manifestu prvenstveno dokumentuje nameru i može ga koristiti drugi Kubernetes objekat ili alat. Samo polje <code>containerPort</code> ne otvara port na firewall-u, ne kreira Service i ne čini aplikaciju dostupnom izvan klastera. Administrator mora posebno da razume mrežnu putanju, Service, NetworkPolicy, CNI pravila i eventualni Ingress ili Gateway sloj.
+</p>
+
+<h3>Životni ciklus, faze i stanja kontejnera</h3>
+<p>
+  Polje <code>status.phase</code> daje sažetu fazu Pod-a: <code>Pending</code>, <code>Running</code>, <code>Succeeded</code>, <code>Failed</code> ili <code>Unknown</code>. Faza nije detaljna dijagnoza. Pod u fazi <code>Pending</code> može čekati raspoređivanje, preuzimanje slike, priključivanje volumena ili izvršavanje init kontejnera. Pod u fazi <code>Running</code> raspoređen je na čvor i najmanje jedan glavni kontejner radi ili se pokreće, ali aplikacija ne mora biti spremna za saobraćaj.
+</p>
+<p>
+  Svaki kontejner ima stanje <code>Waiting</code>, <code>Running</code> ili <code>Terminated</code>. Komanda <code>kubectl describe pod</code> prikazuje razlog čekanja, poslednji završetak, izlazni kod i broj ponovnih pokretanja. Prikaz <code>CrashLoopBackOff</code> nije faza Pod-a, već kubectl prikaz razloga zbog koga kontejner čeka pre sledećeg pokušaja pokretanja. U standardnom ponašanju kubelet koristi eksponencijalni razmak približno 10, 20, 40 sekundi i dalje, do najviše 300 sekundi, a brojač vraća na početak nakon približno deset minuta stabilnog rada kontejnera. Novija izdanja imaju verzijski i feature-gate uslovljene mogućnosti za kraći backoff, zato prikazano vreme ne treba tumačiti bez provere konfiguracije konkretnog klastera. Administrator mora istražiti prvi uzrok, a ne samo čekati novi pokušaj.
+</p>
+<p>
+  Pod uslovi daju precizniji tok od same faze. Najvažniji su <code>PodScheduled</code>, <code>PodReadyToStartContainers</code>, <code>Initialized</code>, <code>ContainersReady</code> i <code>Ready</code>; u novijim izdanjima mogu se pojaviti i uslovi povezani sa prekidom ili promenom resursa. <code>PodReadyToStartContainers</code> potvrđuje da su runtime sandbox i mreža Pod-a pripremljeni, pa pomaže da se zastoj pre pokretanja kontejnera razdvoji od greške slike ili aplikacije. Dodatni <code>readinessGates</code> omogućavaju kontroleru ili integraciji da u spremnost uključi spoljašnji uslov, ali nedostajući uslov tada se smatra netačnim i može opravdano zadržati Pod van Service endpoint-a.
+</p>
+<p>
+  Uobičajeni razlozi problema uključuju <code>ImagePullBackOff</code>, <code>ErrImagePull</code>, <code>CreateContainerConfigError</code>, neuspešno montiranje volumena, nedovoljno resursa za raspoređivanje i prekid zbog prekoračenja memorijskog limita. Kod oznake <code>OOMKilled</code> treba proveriti limit, stvarnu potrošnju, ponašanje aplikacije i metrike čvora. Samo povećavanje limita bez analize može prikriti curenje memorije ili preneti problem na čvor.
+</p>
+
+<h3>Restart politika i ponašanje pri otkazu</h3>
+<p>
+  <code>restartPolicy</code> važi za aplikacione kontejnere u Pod-u i podrazumevano ima vrednost <code>Always</code>. Politika <code>Always</code> znači da kubelet ponovo pokreće završeni kontejner bez obzira na izlazni kod. <code>OnFailure</code> ga ponovo pokreće kada se završi neuspešno, dok <code>Never</code> ne pokreće završeni kontejner ponovo. Ova politika ne znači da će Kubernetes ponovo kreirati ceo Pod na drugom čvoru.
+</p>
+<p>
+  Za dugotrajne servise kontroler kao Deployment koristi Pod sa politikom <code>Always</code>. Za završive poslove treba koristiti Job, koji koordinira ponavljanje i evidentira uspešan završetak. Samostalni Pod sa <code>OnFailure</code> nije odgovarajuća zamena za Job jer nema njegovu semantiku izvršenja, broj pokušaja, paralelizam i kontrolisano čišćenje.
+</p>
+
+<h3>Init i sidecar kontejneri</h3>
+<p>
+  Init kontejneri se izvršavaju pre običnih aplikacionih kontejnera. Klasični init kontejner mora uspešno da se završi pre prelaska na sledeći. Pogodni su za proveru zavisnosti, pripremu konfiguracije, postavljanje dozvola nad zajedničkim volumenom ili generisanje datoteka koje glavni kontejner kasnije koristi. Ne treba ih koristiti kao beskonačne procese, niti u njih ugrađivati operacije koje pri svakom ponovnom kreiranju Pod-a nekontrolisano menjaju spoljašnje sisteme.
+</p>
+<p>
+  Kubernetes podržava nativne sidecar kontejnere definisane u <code>spec.initContainers</code> sa kontejnerskom politikom <code>restartPolicy: Always</code>. Mehanizam je stabilan od Kubernetes 1.33, dok je feature gate podrazumevano uključen od 1.29. Kubelet prelazi na sledeći init kontejner kada je sidecar pokrenut, odnosno kada njegova startup provera uspe ako je definisana; readiness provera sidecar-a učestvuje u spremnosti celog Pod-a. Pri gašenju najpre završavaju aplikacioni kontejneri, a zatim sidecar kontejneri obrnutim redosledom od onog u manifestu. Za mešovita ili starija okruženja administrator mora proveriti verziju API servera i čvorova, feature gate i podršku konkretne distribucije pre uvođenja ovog obrasca.
+</p>
+<p>
+  Više običnih kontejnera u <code>spec.containers</code> može takođe formirati pomoćni obrazac, naročito zbog kompatibilnosti sa starijim klasterima, ali ne daje iste garancije redosleda pokretanja i gašenja kao nativni sidecar mehanizam. Nativni sidecar može da se restartuje nezavisno, a kod Job workload-a ne sprečava završetak posla kada se glavni kontejner uspešno završi. Pomoćni kontejner ima smisla samo kada mora da deli mrežu, volumen i sudbinu sa glavnom aplikacijom. Centralni agent koji treba da radi na svakom čvoru često pripada DaemonSet-u, a ne svakom pojedinačnom aplikacionom Pod-u; pogrešno umnožavanje sidecar-a povećava CPU, memoriju, troškove i površinu napada.
+</p>
+
+<h3>Zdravstvene provere i spremnost aplikacije</h3>
+<p>
+  Kubernetes razlikuje startup, readiness i liveness probe. Startup probe potvrđuje da je aplikacija završila pokretanje. Dok ona ne uspe, liveness i readiness provere se ne izvršavaju. Korisna je za aplikacije sa sporim inicijalnim podizanjem jer sprečava da prerano aktivirana liveness provera izazove beskonačnu petlju ponovnih pokretanja.
+</p>
+<p>
+  Readiness probe odgovara na pitanje da li kontejner trenutno može da prima saobraćaj. Neuspešna readiness provera ne mora da restartuje kontejner, već stanje <code>Ready</code> postaje netačno i odgovarajući Service endpoint prestaje da usmerava saobraćaj ka Pod-u. Liveness probe proverava da li je aplikacija zaglavljena u stanju iz kojeg se može oporaviti restartovanjem kontejnera. Loše osmišljena liveness provera može izazvati prekide potpuno zdrave aplikacije, naročito tokom kratkog zagušenja zavisnog sistema.
+</p>
+<p>
+  Provera treba da meri ono što tvrdi da meri. Liveness endpoint ne treba da zavisi od svake spoljašnje baze, reda poruka ili udaljenog API-ja, jer kvar zavisnosti može izazvati restart svih replika i dodatno pogoršati incident. Readiness provera može biti stroža kada aplikacija bez zavisnosti zaista ne može bezbedno da obradi zahtev. Pragovi, intervali i vremenska ograničenja moraju biti usklađeni sa realnim vremenom odziva i posmatrani kroz metrike, a ne preuzeti iz generičkog primera.
+</p>
+
+<h3>Resursi, raspoređivanje i kvalitet usluge</h3>
+<p>
+  Zahtev za CPU ili memoriju predstavlja količinu koju scheduler uzima u obzir pri izboru čvora. Limit predstavlja gornju granicu koju runtime i operativni sistem sprovode u skladu sa vrstom resursa i platformom. Prekoračenje memorijskog limita najčešće završava prekidom procesa, dok CPU limit ograničava raspoloživo procesorsko vreme. Vrednosti se određuju na nivou kontejnera, a Kubernetes ih sabira radi procene potreba Pod-a, uz posebna pravila za init kontejnere i novije mogućnosti upravljanja resursima na nivou Pod-a.
+</p>
+<p>
+  Pod bez pravilnih zahteva može biti raspoređen na već opterećen čvor, dok previsoki zahtevi mogu ostaviti Pod u stanju <code>Pending</code> iako bi realna potrošnja bila mala. Prenizak memorijski limit uzrokuje <code>OOMKilled</code>, a prenizak CPU limit povećava latenciju i može oboriti probe. Administrator treba da koristi istorijske metrike, profil opterećenja i kontrolisano testiranje. Vrednosti iz razvojnog okruženja ne treba automatski prenositi u produkciju.
+</p>
+
+<h3>Bezbednosni kontekst Pod-a</h3>
+<p>
+  Bezbednosni kontekst određuje pod kojim identitetom proces radi i koje privilegije dobija. Bez eksplicitne konfiguracije ponašanje zavisi od sadržaja slike, runtime-a, politika klastera i prijemnih kontrola. Produkcioni Pod treba, kada aplikacija to podržava, da radi kao korisnik bez privilegija, da zabrani eskalaciju privilegija, ukloni nepotrebne Linux capabilities i koristi read-only korenski sistem datoteka. Privilegovani režim, host mreža, host PID prostor, hostPath volumen i dodatne capabilities značajno proširuju posledice kompromitovanja.
+</p>
+<p>
+  Pod Security Standards definišu nivoe <code>privileged</code>, <code>baseline</code> i <code>restricted</code>. Pod Security Admission može ih sprovoditi kroz labele namespace-a. Raniji PodSecurityPolicy objekat uklonjen je iz Kubernetes-a i ne treba ga predstavljati kao aktuelni mehanizam. Pošto <code>restricted</code> politika može odbiti manifest koji nije eksplicitno bezbednosno podešen, administrator treba prvo da koristi režime upozorenja i audita, pregleda rezultate, a zatim planirano ukloni neusaglašenosti pre uključivanja primene.
+</p>
+
+<h3>Brisanje i uredno gašenje Pod-a</h3>
+<p>
+  Pri redovnom brisanju Pod-a Kubernetes započinje period urednog gašenja, čija je podrazumevana vrednost 30 sekundi ako manifest ne odredi drugačije. Kubelet pokreće odgovarajući <code>preStop</code> hook kada je definisan; vreme njegovog izvršavanja ulazi u isti grace period. Zatim runtime šalje signal za završetak glavnom procesu kontejnera i čeka do isteka <code>terminationGracePeriodSeconds</code>. Ako <code>preStop</code> još traje kada rok istekne, kubelet može zatražiti jednokratno produženje od dve sekunde, ali se na to ne projektuje redovan shutdown. Nakon isteka preostali procesi mogu biti prinudno prekinuti. Aplikacija zato mora pravilno da obrađuje signal za završetak, prestane da prihvata nove zahteve, dovrši ili bezbedno prekine aktivan rad i isprazni baferovane podatke.
+</p>
+<p>
+  Komanda za prinudno brisanje sa nultim grace periodom može ukloniti API objekat bez potvrde da je proces na čvoru zaista prestao. To nosi rizik paralelnog rada stare i nove instance, nedovršenih transakcija i oštećenja podataka. Takva komanda koristi se samo u incidentu, nakon procene stanja čvora i aplikacije, uz zabeleženo odobrenje. Za uobičajeno održavanje treba koristiti kontroler i standardno uredno gašenje.
+</p>
+
+<hr>
+
+<h3>Integrisani praktikum: bezbedan Pod za internu web-proveru</h3>
+<p>
+  Enterprise infrastrukturni tim želi da u razvojnom namespace-u potvrdi osnovno ponašanje Pod-a pre uvođenja Deployment objekta. Potrebno je napraviti jednu privremenu web instancu sa init kontejnerom koji priprema sadržaj, ograničenim resursima, zdravstvenim proverama i restriktivnim bezbednosnim kontekstom. Pod nije namenjen produkcionoj visokoj raspoloživosti; cilj je proverljiv tehnički obrazac i uvežbavanje dijagnostike.
+</p>
+<p><strong>Referentno okruženje.</strong> Klaster ima Linux radne čvorove, funkcionalan CNI dodatak i pristup javnom registru <code>registry.k8s.io</code>. Koristi se namespace <code>pod-lab</code>, Pod <code>web-check</code> i lokalni fajl <code>pod-lab/web-check-pod.yaml</code>. Kubectl klijent treba da bude u podržanom odstupanju od verzije API servera.</p>
+<p><strong>Potrebna prava.</strong> Korisniku su potrebna prava za čitanje namespace-a i čvorova, kao i za kreiranje, čitanje, praćenje logova, izvršavanje komandi i brisanje Pod objekata u namespace-u <code>pod-lab</code>. Kreiranje namespace-a može zahtevati posebno klastersko pravo. U produkciji ova ovlašćenja treba dodeliti kroz namenski Role i RoleBinding, a ne kroz široki <code>cluster-admin</code> pristup.</p>
+<p><strong>Kriterijumi prihvatanja.</strong> Pod mora biti raspoređen, init kontejner mora završiti izlaznim kodom 0, glavni kontejner mora imati stanje <code>Ready</code>, broj restartovanja mora ostati 0 tokom provere, HTTP zahtev mora vratiti tekst <code>Pod web-check radi ispravno.</code>, negativni test mora potvrditi da proces ne radi kao UID 0, a cleanup mora ukloniti sve resurse napravljene u praktikumu.</p>
+
+<ol>
+  <li>
+    <strong>Provera konteksta, pristupa i kapaciteta klastera.</strong>
+    Pre promene treba potvrditi da kubectl koristi očekivani klaster, da API server odgovara i da postoji najmanje jedan spreman radni čvor. Provera ovlašćenja sprečava da implementacija bude započeta sa nalogom koji može samo delimično da izvrši scenario.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+kubectl auth can-i create namespaces
+kubectl auth can-i create pods --namespace=pod-lab
+kubectl auth can-i get pods/log --namespace=pod-lab
+kubectl auth can-i create pods/exec --namespace=pod-lab</code></pre>
+    <strong>Validacija:</strong> očekuje se tačan naziv konteksta, dostupan control plane i najmanje jedan čvor sa statusom <code>Ready</code>. Provere <code>can-i</code> treba da vrate <code>yes</code> za radnje koje će korisnik izvršavati. Ako kreiranje namespace-a nije dozvoljeno, namespace mora unapred napraviti ovlašćeni administrator.
+  </li>
+  <li>
+    <strong>Kreiranje izolovanog namespace-a sa Pod Security pravilima.</strong>
+    Namespace se pravi odvojeno kako laboratorijski objekti ne bi bili pomešani sa aplikacionim resursima. Labele uključuju primenu, audit i upozorenja za <code>restricted</code> profil prema stabilnoj verziji politike, čime se manifest proverava pre prijema.
+    <pre><code class="language-bash">kubectl create namespace pod-lab
+kubectl label namespace pod-lab \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/enforce-version=latest \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/audit-version=latest \
+  pod-security.kubernetes.io/warn=restricted \
+  pod-security.kubernetes.io/warn-version=latest</code></pre>
+    <strong>Validacija:</strong> proveriti da namespace postoji i da su sve labele pravilno upisane.
+    <pre><code class="language-bash">kubectl get namespace pod-lab --show-labels</code></pre>
+    Rezultat mora prikazati status <code>Active</code> i šest postavljenih Pod Security labela. U strogo kontrolisanoj produkciji verzija standarda se može fiksirati na testiranu Kubernetes minor verziju umesto vrednosti <code>latest</code>.
+  </li>
+  <li>
+    <strong>Priprema lokalnog direktorijuma i manifesta.</strong>
+    Direktorijum služi kao dokumentovani radni prostor promene. Init kontejner upisuje statičku stranicu u <code>emptyDir</code> volumen, a nginx kontejner je čita iz istog volumena. Nginx radi kao UID 101, bez dodatnih capabilities i bez mogućnosti eskalacije privilegija. Privremeni direktorijumi koje nginx mora da menja obezbeđeni su posebnim <code>emptyDir</code> volumenima, dok korenski sistem datoteka ostaje read-only.
+    <pre><code class="language-bash">mkdir -p pod-lab</code></pre>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: web-check
+  namespace: pod-lab
+  labels:
+    app.kubernetes.io/name: web-check
+    app.kubernetes.io/component: diagnostics
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Always
+  terminationGracePeriodSeconds: 20
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: prepare-content
+      image: registry.k8s.io/busybox:1.36.1
+      command:
+        - sh
+        - -c
+        - printf '%s\n' 'Pod web-check radi ispravno.' &gt; /work/index.html
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+      volumeMounts:
+        - name: web-content
+          mountPath: /work
+  containers:
+    - name: web
+      image: registry.k8s.io/nginx-slim:0.27
+      ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      startupProbe:
+        httpGet:
+          path: /
+          port: http
+        periodSeconds: 2
+        failureThreshold: 15
+        timeoutSeconds: 1
+      readinessProbe:
+        httpGet:
+          path: /
+          port: http
+        periodSeconds: 5
+        failureThreshold: 2
+        timeoutSeconds: 1
+      livenessProbe:
+        httpGet:
+          path: /
+          port: http
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        failureThreshold: 3
+        timeoutSeconds: 1
+      volumeMounts:
+        - name: web-content
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+  volumes:
+    - name: web-content
+      emptyDir:
+        sizeLimit: 16Mi
+    - name: nginx-cache
+      emptyDir:
+        sizeLimit: 32Mi
+    - name: nginx-run
+      emptyDir:
+        sizeLimit: 8Mi</code></pre>
+    Manifest sačuvati kao <code>pod-lab/web-check-pod.yaml</code>. Slike su navedene sa eksplicitnim tagovima radi ponovljivosti laboratorije. U produkciji se preporučuje interna provera slike, skeniranje ranjivosti i upotreba odobrenog digest-a.
+  </li>
+  <li>
+    <strong>Validacija manifesta pre kreiranja objekta.</strong>
+    Lokalna sintaksna greška ili odbijanje od admission kontrolera treba da budu otkriveni pre stvarne promene. Serverski dry-run šalje zahtev API serveru i uključuje proveru šeme, prijemnih kontrola i bezbednosnih pravila, ali ne čuva objekat.
+    <pre><code class="language-bash">kubectl apply --dry-run=server -f pod-lab/web-check-pod.yaml
+kubectl diff -f pod-lab/web-check-pod.yaml</code></pre>
+    <strong>Validacija:</strong> dry-run treba da prikaže da bi Pod bio kreiran, bez poruke o zabrani Pod Security pravila. Pošto objekat još ne postoji, <code>kubectl diff</code> može prikazati ceo planirani objekat i završiti izlaznim kodom 1 zato što postoji razlika; to nije greška implementacije. Izlazni kod veći od 1 zahteva analizu.
+  </li>
+  <li>
+    <strong>Kreiranje Pod-a i praćenje raspoređivanja.</strong>
+    Manifest se primenjuje deklarativno, a zatim se čeka uslov <code>Ready</code>. Čekanje sa ograničenjem sprečava neodređeno blokiranje administratorske sesije.
+    <pre><code class="language-bash">kubectl apply -f pod-lab/web-check-pod.yaml
+kubectl get pod web-check -n pod-lab -o wide
+kubectl wait --for=condition=Ready pod/web-check -n pod-lab --timeout=120s</code></pre>
+    <strong>Validacija:</strong> Pod treba da pređe iz <code>Pending</code> u <code>Running</code>, kolona <code>READY</code> treba da bude <code>1/1</code>, a komanda <code>wait</code> treba da potvrdi ispunjen uslov. Ako istekne 120 sekundi, ne ponavljati naslepo komandu, već preći na opis Pod-a i događaje.
+  </li>
+  <li>
+    <strong>Provera init kontejnera, stanja i događaja.</strong>
+    Detaljan opis pokazuje izabrani čvor, IP adresu, uslove, stanje kontejnera, broj restartovanja i hronološke događaje. JSONPath izdvajanje potvrđuje da se init kontejner završio uspešno.
+    <pre><code class="language-bash">kubectl describe pod web-check -n pod-lab
+kubectl get pod web-check -n pod-lab \
+  -o jsonpath='{.status.initContainerStatuses[0].state.terminated.exitCode}{"\n"}'
+kubectl get pod web-check -n pod-lab \
+  -o jsonpath='{.status.containerStatuses[0].ready}{" "}{.status.containerStatuses[0].restartCount}{"\n"}'
+kubectl get events -n pod-lab --field-selector involvedObject.name=web-check \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+    <strong>Validacija:</strong> izlazni kod init kontejnera mora biti <code>0</code>, stanje glavnog kontejnera <code>true</code>, a broj restartovanja <code>0</code>. Događaji treba da pokažu uspešno raspoređivanje, preuzimanje ili pronalaženje slika, kreiranje i pokretanje oba kontejnera. Poruke <code>FailedScheduling</code>, <code>FailedMount</code> ili <code>BackOff</code> zahtevaju reakciju.
+  </li>
+  <li>
+    <strong>Provera logova oba kontejnera.</strong>
+    Log init kontejnera je važan kada Pod ostane u fazi inicijalizacije, dok log glavnog kontejnera pokazuje greške aplikacije i pristupne zahteve. Kubernetes standardno preuzima izlaz procesa sa standardnog izlaza i standardnog toka grešaka preko container runtime-a.
+    <pre><code class="language-bash">kubectl logs web-check -n pod-lab -c prepare-content
+kubectl logs web-check -n pod-lab -c web --tail=50
+kubectl logs web-check -n pod-lab -c web --timestamps --since=10m</code></pre>
+    <strong>Validacija:</strong> init kontejner u ovom primeru ne mora dati izlaz jer samo upisuje datoteku. Nginx log ne treba da sadrži fatalnu grešku pri pokretanju. Nakon funkcionalnog testa treba da se pojavi HTTP pristup. Ako je kontejner prethodno restartovan, prethodni izlaz proverava se komandom <code>kubectl logs web-check -n pod-lab -c web --previous</code>.
+  </li>
+  <li>
+    <strong>Završna funkcionalna provera preko kontrolisanog port-forward tunela.</strong>
+    Pod još nema Service, pa se za administrativnu proveru koristi privremeni tunel od lokalnog porta 18080 do porta 8080 u Pod-u. Port-forward nije produkcioni način objavljivanja servisa.
+    <pre><code class="language-bash">kubectl port-forward -n pod-lab pod/web-check 18080:8080</code></pre>
+    U drugom terminalu izvršiti:
+    <pre><code class="language-bash">curl --fail --silent --show-error http://127.0.0.1:18080/
+kubectl logs web-check -n pod-lab -c web --tail=10</code></pre>
+    <strong>Validacija:</strong> curl mora vratiti tačno <code>Pod web-check radi ispravno.</code> i završiti izlaznim kodom 0. U nginx logu treba da postoji uspešan zahtev sa HTTP statusom 200. Port-forward se završava kombinacijom <code>Ctrl+C</code> u prvom terminalu.
+  </li>
+  <li>
+    <strong>Negativni bezbednosni test.</strong>
+    Cilj je potvrditi da glavni proces ne radi kao root i da korenski sistem datoteka nije upisiv. Test se obavlja samo u ovom namenskom Pod-u.
+    <pre><code class="language-bash">kubectl exec -n pod-lab web-check -c web -- id
+kubectl exec -n pod-lab web-check -c web -- sh -c 'touch /root/forbidden-test'</code></pre>
+    <strong>Validacija:</strong> komanda <code>id</code> treba da prikaže UID i GID 101, a pokušaj upisa pod <code>/root</code> mora biti odbijen porukom o read-only sistemu datoteka ili nedovoljnoj dozvoli. Uspešan upis predstavlja neusaglašenost manifesta, slike ili runtime ponašanja i zahteva prekid prihvatanja rešenja.
+  </li>
+  <li>
+    <strong>Dijagnostički negativni test bez izmene aplikacije.</strong>
+    Traži se nepostojeća putanja da bi se proverilo razlikovanje infrastrukturnog problema od očekivanog aplikacionog HTTP odgovora.
+    <pre><code class="language-bash">kubectl port-forward -n pod-lab pod/web-check 18080:8080</code></pre>
+    U drugom terminalu:
+    <pre><code class="language-bash">curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  http://127.0.0.1:18080/ne-postoji
+kubectl get pod web-check -n pod-lab
+kubectl logs web-check -n pod-lab -c web --tail=10</code></pre>
+    <strong>Validacija:</strong> očekuje se HTTP status <code>404</code>, dok Pod mora ostati <code>Running</code> i <code>Ready</code>. Ovaj rezultat pokazuje da su mrežna putanja i web proces funkcionalni, ali traženi resurs ne postoji. Status 404 nije isto što i neuspešan port-forward, timeout ili odbijena konekcija.
+  </li>
+  <li>
+    <strong>Dokumentovanje konačnog stanja.</strong>
+    Pre cleanup-a čuvaju se deklaracija i sažeti operativni dokazi. Ne treba arhivirati ceo Pod status kao budući manifest, ali je koristan kao evidencija testa i pomoć pri analizi.
+    <pre><code class="language-bash">kubectl get pod web-check -n pod-lab -o yaml &gt; pod-lab/web-check-observed.yaml
+kubectl describe pod web-check -n pod-lab &gt; pod-lab/web-check-describe.txt
+kubectl get events -n pod-lab --sort-by=.metadata.creationTimestamp \
+  &gt; pod-lab/web-check-events.txt
+kubectl logs web-check -n pod-lab -c web --timestamps \
+  &gt; pod-lab/web-check-web.log</code></pre>
+    <strong>Validacija:</strong> četiri datoteke treba da postoje i da ne budu prazne, osim što log može biti mali ako nije bilo mnogo zahteva.
+    <pre><code class="language-bash">ls -lh pod-lab/
+grep -E 'Ready|Started|Scheduled' pod-lab/web-check-describe.txt</code></pre>
+    Evidenciju povezati sa zahtevom za promenu, laboratorijskim zapisnikom ili repozitorijumom infrastrukture, uz datum, kontekst klastera, izvršioca, rezultat i sva odstupanja.
+  </li>
+  <li>
+    <strong>Cleanup i povratak na početno stanje.</strong>
+    Brisanje namespace-a uklanja sve objekte u njemu i zato je destruktivno. Pre komande treba potvrditi da namespace sadrži isključivo resurse ovog praktikuma.
+    <pre><code class="language-bash">kubectl get all -n pod-lab
+kubectl delete -f pod-lab/web-check-pod.yaml
+kubectl wait --for=delete pod/web-check -n pod-lab --timeout=60s
+kubectl delete namespace pod-lab</code></pre>
+    <strong>Validacija:</strong> Pod treba uredno da nestane, a namespace nakon završetka brisanja više ne sme biti pronađen.
+    <pre><code class="language-bash">kubectl get namespace pod-lab</code></pre>
+    Očekuje se poruka <code>NotFound</code>. Lokalni direktorijum se ne briše automatski jer predstavlja dokumentaciju testa. Njegovo uklanjanje obavlja se tek nakon arhiviranja potrebnih dokaza.
+  </li>
+</ol>
+
+<h3>Razlikovanje tipičnih problema</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prva provera</th>
+      <th>Verovatna oblast problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pod dugo ostaje <code>Pending</code></td>
+      <td><code>kubectl describe pod</code> i događaji</td>
+      <td>Nedovoljni resursi, taint, affinity, volumen ili scheduler</td>
+    </tr>
+    <tr>
+      <td><code>ImagePullBackOff</code></td>
+      <td>Naziv slike, događaji i pristup registru</td>
+      <td>Pogrešan tag, autentikacija, DNS, TLS ili mreža registra</td>
+    </tr>
+    <tr>
+      <td><code>CrashLoopBackOff</code></td>
+      <td>Aktuelni i <code>--previous</code> log, izlazni kod</td>
+      <td>Greška aplikacije, konfiguracija, dozvole ili neuspešna liveness provera</td>
+    </tr>
+    <tr>
+      <td>Pod je <code>Running</code>, ali nije <code>Ready</code></td>
+      <td>Readiness probe, događaji i aplikacioni log</td>
+      <td>Aplikacija još nije spremna ili zavisnost nije dostupna</td>
+    </tr>
+    <tr>
+      <td><code>OOMKilled</code></td>
+      <td>Poslednje stanje kontejnera i memorijske metrike</td>
+      <td>Prenizak limit, nagli skok ili curenje memorije</td>
+    </tr>
+    <tr>
+      <td>Port-forward radi, ali HTTP vraća 404</td>
+      <td>Putanja zahteva i web log</td>
+      <td>Mreža radi; problem je aplikacioni sadržaj ili ruta</td>
+    </tr>
+    <tr>
+      <td>Admission odbija Pod</td>
+      <td>Celokupna poruka API servera</td>
+      <td>Pod Security, politika slike, kvota ili druga admission kontrola</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje spremnosti i restartovanja.</strong> Posle implementacije, promene slike, konfiguracije ili čvora proveravaju se <code>kubectl get pods -o wide</code>, uslovi Pod-a i <code>restartCount</code>. Svaki neočekivani restart, produženo stanje <code>NotReady</code> ili rast restartovanja zahteva pregled događaja, prethodnog loga i razloga poslednjeg završetka. U produkciji se ove vrednosti prate metrikama i alarmima. Dokumentuju se vreme, Pod UID, čvor, izlazni kod i uzrok. Uspešna praksa meri se vremenom otkrivanja i udelom incidenata kod kojih je uzrok utvrđen iz sačuvanih podataka.</li>
+  <li><strong>Kontrola zahteva i limita.</strong> Nakon testiranja opterećenja, promene verzije aplikacije i periodično prema ciklusu kapaciteta analiziraju se CPU, memorija, throttling, OOM događaji i stvarna radna opterećenja. Reakciju zahtevaju ponavljani OOM prekidi, dugotrajna potrošnja blizu limita, ozbiljan CPU throttling ili veliki raskorak između zahteva i realne potrošnje. Prva reakcija je potvrda da problem potiče od aplikacije, limita ili čvora, a ne automatsko povećanje vrednosti. Odluke i pre/posle metrike čuvaju se uz manifest i zahtev za promenu.</li>
+  <li><strong>Provera bezbednosnog položaja.</strong> Svaka nova aplikacija i svaka promena slike proveravaju se serverskim dry-run postupkom, Pod Security upozorenjima, politikama registra i skenerom slika. Privilegovani režim, root identitet, host namespace, hostPath i dodatne capabilities zahtevaju eksplicitno obrazloženje i bezbednosno odobrenje. Prva reakcija je odbijanje implementacije dok se ne utvrdi najmanji potreban skup privilegija. Uspeh se meri procentom workload-a usaglašenih sa odabranim profilom i brojem vremenski ograničenih izuzetaka.</li>
+  <li><strong>Standardizacija logova.</strong> Aplikacije treba da pišu operativne logove na standardni izlaz i standardni tok grešaka, dok se trajno zadržavanje obezbeđuje klasterskim sistemom za prikupljanje logova. <code>kubectl logs</code> nije arhiva i lokalni log može nestati gubitkom Pod-a ili čvora. Nakon incidenta proveravaju se aktuelni i prethodni kontejnerski log, aplikacioni korelacioni identifikator i centralni zapis. Uspeh se meri mogućnošću rekonstrukcije događaja u definisanom periodu zadržavanja.</li>
+  <li><strong>Upravljanje direktnim Pod-ovima.</strong> Periodično se inventarišu Pod-ovi bez vlasničke reference pomoću strukturisanog API izlaza ili alata za upravljanje klasterom. Svaki dugotrajni samostalni Pod u produkciji zahteva proveru poslovnog vlasnika i razloga zbog kog nije pod kontrolerom. Prva reakcija je plan migracije na odgovarajući Deployment, StatefulSet, DaemonSet ili Job. Rezultat se meri smanjenjem broja nedokumentovanih samostalnih Pod-ova.</li>
+  <li><strong>Čuvanje deklarativne konfiguracije.</strong> Backup pojedinačnog Pod-a nije primarna strategija oporavka aplikacije. Čuvaju se izvorni manifesti, Helm ili Kustomize konfiguracija, politike, podaci o verziji slike i povezani objekti u kontrolisanom repozitorijumu. Za stateful aplikacije zasebno se čuvaju podaci trajnih volumena i spoljašnjih baza prema njihovoj tehnologiji. Integritet se proverava revizijom, potpisima ili hash vrednostima, a probni restore mora dokazati da se workload može ponovo kreirati u izolovanom okruženju i proći funkcionalne testove. Sam YAML eksport živog Pod-a bez zavisnosti i podataka nije potpun backup.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Potvrđen je očekivani kubectl kontekst i najmanje jedan radni čvor ima status <code>Ready</code>.</li>
+  <li>Serverski dry-run prihvata manifest bez greške šeme, admission politike ili Pod Security pravila.</li>
+  <li>Pod ima odgovarajuće labele, kontrolisan izvor slike i dokumentovanu namenu.</li>
+  <li>Za svaki kontejner definisani su merljivi CPU i memorijski zahtevi i limiti.</li>
+  <li>Proces radi kao korisnik bez privilegija, eskalacija je zabranjena, capabilities su ograničene i primenjen je <code>RuntimeDefault</code> seccomp profil.</li>
+  <li>Startup, readiness i liveness provere mere različite i tehnički opravdane uslove.</li>
+  <li>Init kontejneri završavaju izlaznim kodom 0, glavni kontejneri su <code>Ready</code>, a neočekivani restartovi ne postoje.</li>
+  <li><code>kubectl describe</code>, događaji i aktuelni ili prethodni logovi ne pokazuju neuspešno raspoređivanje, montiranje, preuzimanje slike ili pokretanje.</li>
+  <li>Funkcionalni zahtev vraća očekivani sadržaj i HTTP status, a negativni test daje unapred definisan neuspeh.</li>
+  <li>Manifest, rezultat provere, verzije slika, izvršilac i odstupanja evidentirani su u kontrolisanom repozitorijumu ili sistemu promena.</li>
+  <li>Za dugotrajnu produkcionu aplikaciju izabran je odgovarajući workload kontroler umesto samostalnog Pod-a.</li>
+  <li>Cleanup je proveren komandom za čitanje API resursa, bez prinudnog brisanja osim kada postoji dokumentovana incidentna potreba.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da je Pod granica zajedničkog izvršavanja, a ne trajni server niti stabilan mrežni identitet. Treba da ume da poveže kontejnerska stanja, Pod faze, uslove spremnosti, događaje, logove, resurse, bezbednosni kontekst i ponašanje kubelet-a u jednu dijagnostičku sliku. Status <code>Running</code> nije dovoljan dokaz ispravnosti, restart nije uvek oporavak, a uspešno kreiran API objekat nije isto što i funkcionalna aplikacija.
+</p>
+<p>
+  Praktična administratorska veština obuhvata bezbedno sastavljanje i validaciju manifesta, proveru ovlašćenja, praćenje inicijalizacije, tumačenje zdravstvenih provera, kontrolu resursa, pregled aktuelnih i prethodnih logova, izvođenje pozitivnih i negativnih testova i uredno uklanjanje laboratorijskog objekta. Promena mora biti proverena pre primene, merena nakon primene i dokumentovana tako da drugi administrator može rekonstruisati nameru, postupak i rezultat.
+</p>
+<p>
+  Granica Pod tehnologije postaje vidljiva kada je potrebna raspoloživost, skaliranje, kontrolisani rollout, stabilan identitet, završivi posao ili rad na svakom čvoru. Tada odgovornost prelazi na odgovarajući workload kontroler i povezane objekte. Zahtevi za privilegovanim režimom, host pristupom, prinudnim brisanjem, izuzecima od bezbednosnih politika ili nekontrolisanim povećanjem resursa predstavljaju razlog za bezbednosnu, aplikacionu ili infrastrukturnu eskalaciju. Administrator nije odgovoran samo da Pod „pokrene”, već da obezbedi proverljivo, ograničeno, ponovljivo i operativno opravdano izvršavanje.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za Pod objekte, Pod i kontejnerski životni ciklus, init i nativne sidecar kontejnere, zdravstvene probe, upravljanje CPU i memorijskim resursima, bezbednosni kontekst, Pod Security Standards i Pod Security Admission; zvanična Kubernetes API referenca za core/v1 Pod resurs; zvanične kubectl reference za apply, get, describe, logs, exec, wait, port-forward, auth can-i i delete; zvanične smernice za konfiguraciju, bezbednost, dijagnostiku i uredno gašenje kontejnerskih workload-a.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes 
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-15-namespace-labels-annotations.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-17-replicaset-deployment.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,620 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-19-service-discovery.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Service – stabilan pristup aplikacijama unutar klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes Service obezbeđuje stabilnu mrežnu adresu za Pod-ove, omogućava load balancing i pouzdanu komunikaciju između aplikacija unutar i van Kubernetes klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes Service, ClusterIP, NodePort, LoadBalancer, ExternalName, kube-proxy, load balancing, servis u Kubernetes-u, mreža, Pod komunikacija, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-19-service-discovery.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Service – stabilan pristup aplikacijama unutar klastera">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes Service kao mehanizam koji omogućava stabilan pristup Pod-ovima, balansiranje saobraćaja i pouzdanu komunikaciju između aplikacija.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-19-service-discovery.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-19-service.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Service – stabilan pristup aplikacijama unutar klastera">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-19-service.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-19-service.png"
+           alt="Service – stabilan pristup aplikacijama unutar klastera">
+
+    </a>
+     <div class="page-subtitle">
+IV. Osnovni workload objekti i kontrolne petlje
+</div>
+   <div class="page-subtitle">
+19. Service i EndpointSlice – stabilan identitet, otkrivanje backend-a i tok saobraćaja
+</div>
+<p>
+  Podovi u Kubernetes klasteru nisu trajne mrežne tačke. Njihove IP adrese mogu da se promene nakon ponovnog kreiranja, skaliranja, premeštanja na drugi worker čvor ili zamene tokom rollout procesa. Aplikacija koja bi direktno koristila IP adrese pojedinačnih Podova morala bi neprekidno da prati te promene, što bi povezivanje servisa učinilo nepouzdanim i operativno teško održivim. Kubernetes objekat <strong>Service</strong> rešava taj problem tako što grupi odgovarajućih Podova dodeljuje stabilno ime, virtuelnu IP adresu i jedan ili više mrežnih portova.
+</p>
+<p>
+  Service ne pokreće kontejnere i ne kontroliše njihov životni ciklus. Njegova uloga je da pronađe dostupne backend krajnje tačke i da saobraćaj usmeri ka njima. Deployment upravlja verzijama i brojem Podova, dok Service predstavlja stabilnu pristupnu tačku koja ostaje ista tokom skaliranja, zamene Podova i većine aplikativnih rollout operacija. Zbog toga je pravilno povezivanje Deployment, Service, EndpointSlice, DNS i mrežnog sloja jedna od osnovnih administratorskih veština u Kubernetes okruženju.
+</p>
+<h3>Zašto aplikacijama nije dovoljan direktan pristup Podovima</h3>
+<p>
+  Svaki Pod u uobičajenom Kubernetes mrežnom modelu dobija sopstvenu IP adresu. Međutim, Pod je potrošni izvršni objekat. Kada Deployment zameni Pod, novi Pod dobija novi identitet i najčešće novu adresu. Čak i kada aplikacija trenutno ima samo jednu repliku, direktno upisivanje njene Pod IP adrese u konfiguraciju klijenta stvara skrivenu zavisnost od objekta koji nije projektovan kao stalna mrežna tačka.
+</p>
+<p>
+  Service odvaja identitet aplikacije od identiteta pojedinačnih instanci. Klijent koristi DNS ime kao što je <code>web-portal</code> ili potpuno kvalifikovano ime <code>web-portal.it-tutorijali.svc.cluster.local</code>, dok Kubernetes u pozadini održava skup Podova koji trenutno mogu da obrade zahtev. Kada se replika ukloni ili nova postane spremna, menja se lista krajnjih tačaka, ali se ime i Service IP adresa ne menjaju.
+</p>
+<p>
+  Ova apstrakcija nije samo pogodnost. Ona omogućava kontrolisane rollout procese, horizontalno skaliranje, zamenu neispravnih instanci, raspodelu zahteva i odvajanje timova koji razvijaju klijentsku i serversku komponentu. Klijentska aplikacija treba da zna ugovoreni naziv i port servisa, a ne trenutnu topologiju Podova.
+</p>
+<h3>Kako Service pronalazi backend Podove</h3>
+<p>
+  Najčešći Service koristi polje <code>spec.selector</code>. Selektor se poredi sa labelama Podova, a kontrolna ravan na osnovu poklapanja održava objekte EndpointSlice. EndpointSlice sadrži mrežne adrese backend instanci, njihove portove, stanje spremnosti i druge podatke potrebne mrežnim komponentama. U savremenim Kubernetes verzijama EndpointSlice je standardni skalabilni mehanizam za predstavljanje krajnjih tačaka servisa; stariji objekat Endpoints više nije primarni model za velike skupove backend adresa.
+</p>
+<p>
+  Veza između Service objekta i Podova nije vlasnička veza. Service ne kreira Podove, ne popravlja ih i ne garantuje da izabrane aplikacije zaista slušaju na deklarisanom portu. On samo bira Podove čije labele odgovaraju selektoru. Zbog toga je pogrešan selektor jedna od najčešćih grešaka: Service postoji, DNS ime se razrešava i virtuelna IP adresa je dodeljena, ali EndpointSlice nema nijednu upotrebljivu adresu.
+</p>
+<pre><code class="language-yaml">spec:
+  selector:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/instance: production</code></pre>
+<p>
+  Oba uslova selektora moraju da odgovaraju labelama Poda. Selektor ne podržava sve izraze dostupne kod nekih drugih Kubernetes objekata; Service koristi mapu jednakosti. Administrator zato pre primene proverava stvarne labele komandom <code>kubectl get pods --show-labels</code> i ne pretpostavlja da se naziv Deployment objekta automatski podudara sa Service selektorom.
+</p>
+<h3>Service port, targetPort i imenovani portovi</h3>
+<p>
+  Polje <code>port</code> predstavlja port na kojem klijent pristupa Service objektu. Polje <code>targetPort</code> određuje port backend Poda na koji se zahtev prosleđuje. Te vrednosti mogu biti iste, ali to nije obavezno. Na primer, aplikacija može da sluša na portu 8080, dok Service klijentima izlaže port 80.
+</p>
+<pre><code class="language-yaml">ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http</code></pre>
+<p>
+  <code>targetPort</code> može biti broj ili naziv porta deklarisan u specifikaciji kontejnera. Imenovani portovi su korisni tokom promene verzije aplikacije. Jedna verzija Poda može port <code>http</code> mapirati na 8080, a druga na 8081, dok Service konfiguracija ostaje nepromenjena. Naziv mora biti dosledan u svim Podovima koje Service bira.
+</p>
+<p>
+  Service podržava TCP, UDP i SCTP, u skladu sa mogućnostima klastera i mrežnih komponenti. Jedan Service može imati više portova, ali svaki port tada mora imati jedinstveno ime. Service ne proverava aplikativni protokol. Deklaracija porta kao TCP ne potvrđuje da backend zaista pruža HTTP uslugu niti da će TLS rukovanje biti uspešno.
+</p>
+<h3>ClusterIP i virtuelna pristupna tačka</h3>
+<p>
+  Podrazumevani tip je <code>ClusterIP</code>. Kontrolna ravan Service objektu dodeljuje virtuelnu adresu iz opsega namenjenog servisima. Ta adresa obično nije vezana za fizički mrežni interfejs i ne predstavlja zaseban proces koji prihvata konekcije. Mrežni mehanizam na čvorovima presreće saobraćaj namenjen Service adresi i preusmerava ga ka jednoj od odgovarajućih krajnjih tačaka.
+</p>
+<p>
+  U standardnoj implementaciji tu funkciju obavlja <code>kube-proxy</code>, koji prati Service i EndpointSlice objekte i programira pravila na svakom čvoru. Linux klaster može koristiti iptables ili nftables režim, zavisno od verzije i konfiguracije. Nftables režim je stabilan od Kubernetes 1.33, zahteva Linux kernel 5.13 ili noviji i u velikim klasterima efikasnije obrađuje promene endpointa. IPVS je važan za razumevanje postojećih instalacija, ali je od Kubernetes 1.35 deprecated i za nove implementacije ne treba ga birati bez dokumentovanog razloga. Neke CNI implementacije koriste sopstveni eBPF ili drugi dataplane i mogu u potpunosti zameniti kube-proxy. Administrator zato ne sme automatski zaključiti da odsustvo kube-proxy Poda predstavlja kvar, već prvo mora proveriti referentnu arhitekturu klastera i podršku izabrane CNI implementacije.
+</p>
+<p>
+  Prelazak sa iptables na nftables nije samo zamena sintakse. Nftables podrazumevano ograničava NodePort na primarne adrese čvora, ne omogućava NodePort preko loopback adrese i ne dodaje automatski firewall accept pravila. Zato se pre migracije proveravaju <code>nodePortAddresses</code>, lokalni firewall, monitoring konekcija i kompatibilnost CNI dodatka; ručna promena proxy režima bez testa i plana povratka može prekinuti pristup većem broju servisa.
+</p>
+<p>
+  Virtuelna IP adresa je stabilna tokom životnog veka Service objekta, ali se ne sme tretirati kao trajni poslovni identifikator izvan klastera. Brisanje i ponovno kreiranje Service objekta može dodeliti drugu adresu. Aplikacije treba da koriste DNS ime, a statičko zadavanje <code>clusterIP</code> treba primenjivati samo kada postoji dokumentovana infrastrukturna potreba i kontrola kolizija unutar servisnog CIDR opsega.
+</p>
+<h3>Kubernetes DNS i otkrivanje servisa</h3>
+<p>
+  Klaster-aware DNS komponenta, najčešće CoreDNS, prati Kubernetes API i objavljuje zapise za Service objekte. Pod u istom namespace-u može Service <code>web-portal</code> pronaći kratkim imenom. Pod iz drugog namespace-a koristi najmanje <code>web-portal.it-tutorijali</code>, dok potpuno kvalifikovano ime tipično glasi <code>web-portal.it-tutorijali.svc.cluster.local</code>. Završni domen može biti drugačiji ako je klaster konfigurisan sa nestandardnim cluster domain parametrom.
+</p>
+<p>
+  Za običan ClusterIP Service DNS vraća njegovu virtuelnu adresu. DNS zato ne menja adresu pri svakom skaliranju aplikacije. Endpoint promene obrađuje mrežni dataplane. Ako DNS upit ne uspe, administrator razdvaja najmanje četiri mogućnosti: pogrešno ime ili namespace, problem u Pod DNS konfiguraciji, nedostupan CoreDNS Service ili problem samih CoreDNS Podova i njihovog pristupa API serveru.
+</p>
+<p>
+  DNS razrešavanje nije dokaz da aplikacija radi. Uspešan <code>nslookup</code> potvrđuje da ime postoji i da je DNS putanja funkcionalna. Tek povezivanje na Service port i validan aplikativni odgovor potvrđuju funkcionalnost celog lanca.
+</p>
+<p>
+  Za imenovane Service portove DNS može objaviti i SRV zapise. Uobičajeni Podovi koriste politiku <code>ClusterFirst</code>; Pod sa <code>hostNetwork: true</code> koji treba klastersko razrešavanje obično mora eksplicitno koristiti <code>ClusterFirstWithHostNet</code>. Pri dijagnostici se zato čitaju <code>/etc/resolv.conf</code>, <code>spec.dnsPolicy</code> i stvarni cluster domain, a ne pretpostavlja se da je svuda <code>cluster.local</code>.
+</p>
+<h3>Spremnost Poda i upravljanje krajnjim tačkama</h3>
+<p>
+  Readiness probe ima neposredan uticaj na Service saobraćaj. Pod koji postoji i ima status <code>Running</code> ne mora biti spreman da prima zahteve. Ako readiness provera nije uspešna, krajnja tačka se označava kao nespremna i uobičajeni Service saobraćaj se ne usmerava ka njoj. To omogućava da aplikacija završi inicijalizaciju, učita konfiguraciju ili uspostavi zavisnosti pre nego što postane deo aktivnog skupa.
+</p>
+<p>
+  Pogrešno podešena readiness provera može proizvesti dva suprotna problema. Previše blaga provera uključuje Pod koji još ne može pouzdano da obrađuje zahteve. Previše stroga ili pogrešna provera uklanja ispravne Podove i ostavlja Service bez dostupnih backend krajnjih tačaka. Administrator upoređuje stanje Podova, readiness događaje, EndpointSlice uslove i aplikativne logove, umesto da se oslanja samo na kolonu <code>STATUS</code>.
+</p>
+<h3>Tipovi Service objekata</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Tip</th>
+      <th>Namena</th>
+      <th>Administratorska napomena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ClusterIP</td>
+      <td>Pristup unutar klastera preko virtuelne IP adrese i DNS imena.</td>
+      <td>Podrazumevani i najbezbedniji izbor za interne aplikativne veze.</td>
+    </tr>
+    <tr>
+      <td>NodePort</td>
+      <td>Izlaže Service na portu svakog odgovarajućeg čvora.</td>
+      <td>Zahteva mrežnu i firewall kontrolu; retko je konačno enterprise rešenje za javni pristup.</td>
+    </tr>
+    <tr>
+      <td>LoadBalancer</td>
+      <td>Traži integraciju sa spoljnim ili internim load balancer sistemom.</td>
+      <td>Ponašanje, adresa, health check i trošak zavise od cloud ili on-prem implementacije.</td>
+    </tr>
+    <tr>
+      <td>ExternalName</td>
+      <td>Objavljuje DNS CNAME ka spoljašnjem imenu.</td>
+      <td>Nema selector, ClusterIP ni proxy prosleđivanje; aplikativni protokoli mogu biti osetljivi na razliku u imenu.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  <code>NodePort</code> gradi se iznad ClusterIP mehanizma i otvara port iz konfigurisanog NodePort opsega, podrazumevano najčešće 30000–32767. Klijent pristupa kombinaciji adrese čvora i dodeljenog porta. To može biti korisno kao infrastrukturni međusloj ili za ograničene laboratorijske scenarije, ali direktno izlaganje svih čvorova povećava napadnu površinu i zahteva precizna firewall pravila.
+</p>
+<p>
+  <code>LoadBalancer</code> ne kreira univerzalni load balancer samostalno. Potreban je cloud controller ili kompatibilna on-prem komponenta koja zna kako da obezbedi adresu i programira mrežnu infrastrukturu. Ako takva integracija ne postoji, Service može ostati sa statusom <code>EXTERNAL-IP pending</code>. To nije kvar aplikacije, već simptom da infrastrukturni kontroler nije instaliran, nema ovlašćenja ili ne može da zadovolji zahtev.
+</p>
+<p>
+  Service nije zamena za HTTP reverse proxy, Ingress ili Gateway API. ClusterIP i NodePort rade prvenstveno na transportnom sloju i ne obezbeđuju napredno rutiranje prema host imenu, URL putanji, HTTP zaglavlju ili težinskoj raspodeli verzija. Za takve zahteve potreban je odgovarajući gateway ili ingress kontroler.
+</p>
+<h3>Headless Service i servisi bez selektora</h3>
+<p>
+  Headless Service se definiše sa <code>clusterIP: None</code>. On nema virtuelnu ClusterIP adresu i kube-proxy za njega ne obezbeđuje standardno balansiranje. DNS može vratiti adrese pojedinačnih krajnjih tačaka, što omogućava klijentu da direktno otkrije članove skupa. Ovaj model je važan za StatefulSet, baze podataka, klasterisane aplikacije i protokole kod kojih klijent mora da zna identitet pojedinačnog člana.
+</p>
+<p>
+  Headless Service nije „brži ClusterIP” koji treba koristiti bez razloga. Klijent preuzima odgovornost za izbor i ponovno povezivanje sa krajnjim tačkama, a DNS keširanje može uticati na brzinu uočavanja promena. Za uobičajenu stateless web aplikaciju standardni ClusterIP je jednostavniji i operativno sigurniji.
+</p>
+<p>
+  Service može postojati i bez selektora. Administrator tada ručno ili putem drugog kontrolera održava EndpointSlice koji upućuje na odredište izvan skupa Podova. To je korisno za kontrolisanu migraciju spoljnog sistema ili predstavljanje postojeće interne usluge kroz Kubernetes DNS. Takvo rešenje zahteva strogu dokumentaciju, jer Kubernetes ne može automatski da proveri životni ciklus spoljnog odredišta niti da popravi zastarelu adresu.
+</p>
+<p>
+  Ručno održavan EndpointSlice mora imati labelu <code>kubernetes.io/service-name</code> jednaku imenu Service objekta i preporučenu labelu <code>endpointslice.kubernetes.io/managed-by</code> koja identifikuje vlasnika automatizacije. Endpoint adrese ne smeju biti loopback, link-local niti ClusterIP drugog Service objekta. API server iz bezbednosnih razloga ne dozvoljava <code>kubectl port-forward service/...</code> ka endpointima koji nisu mapirani na Podove, pa se taj postupak ne koristi kao test servisa bez selektora.
+</p>
+<h3>EndpointSlice kao operativni izvor istine</h3>
+<p>
+  Jedan Service može imati više EndpointSlice objekata. Kontroler podrazumevano kreira novi slice kada postojeći slice-ovi dostignu približno 100 endpointa i pojavi se sledeći endpoint; ta granica se može konfigurisati. Administrator zato ne sme proveriti samo prvi objekat niti iz broja slice-ova izvoditi broj backend instanci. Potrebno je objediniti sve objekte sa labelom <code>kubernetes.io/service-name</code> i analizirati <code>addressType</code>, portove, adrese, <code>conditions.ready</code>, <code>conditions.serving</code>, <code>conditions.terminating</code>, kao i <code>nodeName</code> i <code>zone</code> kada se istražuje topologija.
+</p>
+<p>
+  Legacy objekat Endpoints je od Kubernetes 1.33 deprecated. Ne podržava dual-stack niti novije podatke za usmeravanje, a preko 1000 endpointa njegov sadržaj se skraćuje i dobija anotaciju <code>endpoints.kubernetes.io/over-capacity: truncated</code>. Postojeći alati koji i dalje čitaju Endpoints moraju se evidentirati i migrirati na <code>discovery.k8s.io/v1</code> EndpointSlice API; u suprotnom monitoring ili eksterni load balancer može videti samo deo backend skupa iako Kubernetes dataplane koristi sve EndpointSlice objekte.
+</p>
+<h3>Raspodela saobraćaja, afinitet i saobraćajne politike</h3>
+<p>
+  Izraz „load balancing” kod Service objekta ne znači nužno ravnomernu raspodelu svakog HTTP zahteva. Raspodela zavisi od mrežnog dataplane-a, protokola, trajanja konekcije, connection tracking mehanizma i ponašanja klijenta. Dugotrajna TCP konekcija ostaje vezana za izabranu krajnju tačku, pa broj zahteva po Podu može biti nejednak čak i kada je broj konekcija prihvatljivo raspoređen.
+</p>
+<p>
+  <code>sessionAffinity: ClientIP</code> pokušava da zahteve sa iste klijentske IP adrese usmerava ka istom backendu u okviru podešenog vremenskog perioda. Ova opcija nije zamena za pravilno projektovano upravljanje sesijom. NAT, proxy slojevi i veliki broj korisnika iza iste adrese mogu izazvati neravnomernu raspodelu. Za pouzdane aplikacije poželjnije je čuvanje sesije u zajedničkom skladištu ili korišćenje tokena koji ne zavise od konkretne replike.
+</p>
+<p>
+  <code>internalTrafficPolicy: Local</code> ograničava interni Service saobraćaj na lokalne krajnje tačke čvora. To može smanjiti međučvornu komunikaciju i latenciju, ali će zahtev sa čvora bez lokalnog spremnog endpointa biti odbačen umesto prosleđen na drugi čvor. Opcija se zato koristi samo kada aplikativni model, raspored Podova i monitoring jasno podržavaju takvo ponašanje. Slična razmatranja važe za <code>externalTrafficPolicy</code> kod spoljnog saobraćaja.
+</p>
+<p>
+  Polje <code>trafficDistribution</code> daje smernicu za preferiranje topološki bližih endpointa, ali njegova raspoloživost i konkretne vrednosti zavise od Kubernetes verzije i feature gate-ova. Ono je preferencija, dok <code>internalTrafficPolicy: Local</code> predstavlja strogo ograničenje. Pre produkcione primene proveravaju se API šema konkretne verzije komandom <code>kubectl explain service.spec.trafficDistribution</code>, podrška dataplane-a, raspored replika po zonama i ponašanje pri gubitku cele zone.
+</p>
+<h3>Bezbednost i ograničenja Service objekta</h3>
+<p>
+  Service objavljuje putanju do aplikacije, ali sam po sebi nije firewall. Ako mrežna politika nije primenjena, drugi Podovi mogu imati pristup Service adresi ili direktnim Pod adresama, zavisno od mrežne arhitekture. NetworkPolicy se primenjuje na Pod saobraćaj i zahteva CNI implementaciju koja tu funkciju podržava. Kreiranje NetworkPolicy objekta u klasteru čiji CNI ne sprovodi politike može stvoriti lažan osećaj zaštite.
+</p>
+<p>
+  Service takođe ne obezbeđuje autentifikaciju, autorizaciju, TLS terminaciju, rate limiting niti validaciju sadržaja. Te funkcije pripadaju aplikaciji, service mesh-u, gateway sloju ili drugim kontrolama. Administrator mora da zna granicu odgovornosti: činjenica da je Service tipa ClusterIP smanjuje direktnu spoljnu izloženost, ali ne čini aplikaciju automatski bezbednom od drugih workload-a u klasteru.
+</p>
+<h3>Integrisani praktikum: interni Service za produkcioni web portal</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Interni portal za operativne timove pokreće se kao Deployment sa tri replike u namespace-u <code>it-tutorijali</code>. Portal treba da bude dostupan drugim aplikacijama unutar klastera preko stabilnog DNS imena, dok direktan spoljni pristup nije dozvoljen. Service će izlagati port 80 i prosleđivati zahteve na imenovani kontejnerski port 8080.
+</p>
+<p>
+  <strong>Cilj.</strong> Implementirati ClusterIP Service <code>web-portal</code>, potvrditi da bira samo spremne Podove, proveriti DNS i HTTP pristup, namerno izazvati grešku selektora, dijagnostikovati je i bezbedno vratiti ispravnu konfiguraciju.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Višečvorni vanilla Kubernetes klaster sa funkcionalnim CNI dodatkom, CoreDNS servisom, Storage nezavisnim workload-om i <code>kubectl</code> klijentom usklađenim sa podržanom verzijom API servera. Radni fajlovi čuvaju se u direktorijumu <code>~/vanilla-k8s/lesson-19</code>.
+</p>
+<p>
+  <strong>Potrebna prava.</strong> Korisnik mora imati pravo za čitanje namespace-a, Podova, Deployment, Service i EndpointSlice objekata, kao i kreiranje, izmenu i brisanje Deployment, Service i privremenog test Poda u namespace-u <code>it-tutorijali</code>. Čitanje CoreDNS i kube-proxy logova u <code>kube-system</code> namespace-u nije neophodno za redovnu implementaciju i treba ga dodeliti samo administratorima zaduženim za klastersku dijagnostiku.
+</p>
+<p>
+  <strong>Preduslovi.</strong> API server mora biti dostupan, svi planirani worker čvorovi moraju biti u stanju <code>Ready</code>, a CoreDNS Podovi moraju biti spremni. Primer koristi javnu kontejnersku sliku samo za edukativni scenario; u produkciji slika treba da bude skenirana, odobrena i preuzimana iz kontrolisanog internog registra.
+</p>
+<ol>
+  <li>
+    <strong>Priprema radnog direktorijuma i početna provera klastera.</strong>
+    Direktorijum se kreira pre svih manifest fajlova. Zatim se proveravaju aktivni kontekst, čvorovi i DNS komponenta kako se promena ne bi slučajno izvršila u pogrešnom klasteru.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s/lesson-19
+cd ~/vanilla-k8s/lesson-19
+
+kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+kubectl -n kube-system get pods -l k8s-app=kube-dns</code></pre> <strong>Validacija:</strong> očekuje se tačno identifikovan kontekst, uspešan odgovor API servera, stanje <code>Ready</code> za čvorove i najmanje jedan spreman DNS Pod. Svako odstupanje mora se rešiti pre aplikativne promene.
+
+  </li>
+  <li>
+    <strong>Kreiranje namespace manifesta.</strong>
+    Namespace odvaja objekte lekcije od drugih workload-a i omogućava precizniju RBAC i NetworkPolicy kontrolu.
+    <pre><code class="language-bash">cat &gt; 00-namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-tutorijali
+  labels:
+    app.kubernetes.io/part-of: it-tutorijali
+EOF
+
+kubectl apply -f 00-namespace.yaml</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubectl get namespace it-tutorijali
+kubectl auth can-i create services -n it-tutorijali
+kubectl auth can-i create deployments.apps -n it-tutorijali
+kubectl auth can-i create pods -n it-tutorijali</code></pre>
+Svi zahtevi potrebni za praktikum treba da vrate <code>yes</code>. Odgovor <code>no</code> zahteva eskalaciju vlasniku RBAC politike, a ne korišćenje privilegovanijeg naloga bez odobrenja.
+
+  </li>
+  <li>
+    <strong>Definisanje aplikativnog Deployment objekta.</strong>
+    Tri replike koriste dosledne labele. Readiness provera sprečava da Service usmerava saobraćaj ka instanci koja još ne odgovara na HTTP zahteve.
+    <pre><code class="language-bash">cat &gt; 10-web-portal-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-portal
+  namespace: it-tutorijali
+  labels:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/instance: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web-portal
+      app.kubernetes.io/instance: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web-portal
+        app.kubernetes.io/instance: production
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              cat &gt; /etc/nginx/conf.d/default.conf &lt;&lt;'NGINX'
+              server {
+                listen 8080;
+                location / {
+                  default_type text/plain;
+                  return 200 "web-portal ready\n";
+                }
+                location /healthz {
+                  default_type text/plain;
+                  return 200 "ok\n";
+                }
+              }
+              NGINX
+              exec nginx -g 'daemon off;'
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+EOF
+
+kubectl apply -f 10-web-portal-deployment.yaml
+kubectl -n it-tutorijali rollout status deployment/web-portal --timeout=120s</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubectl -n it-tutorijali get deployment web-portal
+kubectl -n it-tutorijali get pods \
+  -l app.kubernetes.io/name=web-portal \
+-o wide --show-labels</code></pre>
+Deployment treba da prikaže tri dostupne replike, a svaki Pod stanje <code>Running</code> i readiness <code>1/1</code>. Ako Pod nije spreman, proveravaju se događaji i logovi pre kreiranja Service objekta.
+
+  </li>
+  <li>
+    <strong>Kreiranje ClusterIP Service objekta.</strong>
+    Service bira samo produkcione instance portala. Klijentski port 80 mapira se na imenovani port <code>http</code>, koji u Podu predstavlja 8080.
+    <pre><code class="language-bash">cat &gt; 20-web-portal-service.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-portal
+  namespace: it-tutorijali
+  labels:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/instance: production
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/instance: production
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  sessionAffinity: None
+  internalTrafficPolicy: Cluster
+EOF
+
+kubectl apply -f 20-web-portal-service.yaml</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubectl -n it-tutorijali get service web-portal
+kubectl -n it-tutorijali describe service web-portal
+kubectl -n it-tutorijali get endpointslice \
+  -l kubernetes.io/service-name=web-portal -o wide</code></pre>
+Service mora imati tip <code>ClusterIP</code>, dodeljenu internu adresu i port <code>80/TCP</code>. EndpointSlice treba da sadrži tri adrese koje odgovaraju spremnim Podovima. Prazno polje krajnjih tačaka nije normalno stanje za ovaj scenario.
+
+  </li>
+  <li>
+    <strong>Provera DNS i aplikativnog pristupa iz privremenog klijenta.</strong>
+    Test se izvršava iz Poda zato što ClusterIP nije namenjen direktnom pristupu sa administratorske radne stanice izvan klasterske mreže.
+    <pre><code class="language-bash">kubectl -n it-tutorijali run service-client \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --command -- sleep 3600
+
+kubectl -n it-tutorijali wait \
+  --for=condition=Ready pod/service-client \
+  --timeout=60s
+
+kubectl -n it-tutorijali exec service-client -- \
+  nslookup web-portal
+
+kubectl -n it-tutorijali exec service-client -- \
+  wget -qO- http://web-portal/</code></pre> <strong>Očekivani rezultat:</strong> DNS upit vraća Service adresu, a HTTP zahtev tekst <code>web-portal ready</code>. Time su provereni Pod DNS, CoreDNS zapis, ClusterIP dataplane, EndpointSlice izbor, targetPort i aplikativni odgovor.
+
+  </li>
+  <li>
+    <strong>Provera pristupa iz drugog namespace-a.</strong>
+    Kratko ime bez namespace-a ima značenje u DNS pretraživačkom domenu klijentskog Poda. Zato klijent iz drugog namespace-a koristi kvalifikovano ime.
+    <pre><code class="language-bash">kubectl run cross-namespace-client \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --command -- sleep 3600
+
+kubectl wait \
+  --for=condition=Ready pod/cross-namespace-client \
+  --timeout=60s
+
+kubectl exec cross-namespace-client -- \
+  nslookup web-portal.it-tutorijali
+
+kubectl exec cross-namespace-client -- \
+  wget -qO- http://web-portal.it-tutorijali.svc.cluster.local/</code></pre> <strong>Validacija:</strong> oba testa treba da uspeju ako cluster domain ima podrazumevanu vrednost <code>cluster.local</code>. U klasteru sa drugim domenom koristi se stvarna vrednost iz konfiguracije kubeleta i CoreDNS-a.
+
+  </li>
+  <li>
+    <strong>Negativni test sa pogrešnim selektorom.</strong>
+    Test pokazuje razliku između postojećeg Service objekta i servisa koji zaista ima backend. Menja se samo selektor, a prethodni manifest ostaje sačuvan kao deklarativni izvor za rollback.
+    <pre><code class="language-bash">kubectl -n it-tutorijali patch service web-portal \
+  --type=merge \
+  -p '{"spec":{"selector":{"app.kubernetes.io/name":"web-portal","app.kubernetes.io/instance":"nonexistent"}}}'
+
+kubectl -n it-tutorijali get endpointslice \
+  -l kubernetes.io/service-name=web-portal -o wide
+
+kubectl -n it-tutorijali exec service-client -- \
+  wget -T 3 -qO- http://web-portal/</code></pre> <strong>Očekivani rezultat:</strong> DNS ime i Service ClusterIP i dalje postoje, ali EndpointSlice više nema spremne adrese, a HTTP test završava neuspehom ili istekom vremena. Ovo razlikuje grešku selektora od DNS problema.
+
+  </li>
+  <li>
+    <strong>Dijagnostika neuspešnog Service pristupa.</strong>
+    Provera se izvodi redosledom od deklaracije ka izvršenju: Service konfiguracija, selektor, Pod labele, EndpointSlice, readiness, port i aplikativni logovi.
+    <pre><code class="language-bash">kubectl -n it-tutorijali get service web-portal -o yaml
+kubectl -n it-tutorijali get pods \
+  -l app.kubernetes.io/name=web-portal \
+  --show-labels
+kubectl -n it-tutorijali get endpointslice \
+  -l kubernetes.io/service-name=web-portal -o yaml
+kubectl -n it-tutorijali describe pods \
+  -l app.kubernetes.io/name=web-portal
+kubectl -n it-tutorijali logs deployment/web-portal \
+  --all-pods=true --tail=50</code></pre>
+    <strong>Tumačenje:</strong> aplikativni Podovi su spremni i imaju očekivane labele, ali vrednost <code>app.kubernetes.io/instance</code> u Service selektoru glasi <code>nonexistent</code>. Prazan EndpointSlice je posledica tog nepoklapanja, a ne kvara kube-proxy ili CoreDNS-a.
+  </li>
+  <li>
+    <strong>Rollback na deklarativno odobreno stanje.</strong>
+    Ponovna primena verzionisanog manifesta sigurnija je od ručnog sastavljanja druge korektivne zakrpe, jer vraća ceo deklarisani Service opis.
+    <pre><code class="language-bash">kubectl apply -f 20-web-portal-service.yaml
+
+kubectl -n it-tutorijali get endpointslice \
+  -l kubernetes.io/service-name=web-portal -o wide
+
+kubectl -n it-tutorijali exec service-client -- \
+  wget -qO- http://web-portal/</code></pre> <strong>Validacija:</strong> EndpointSlice ponovo mora prikazati tri spremne adrese, a HTTP test odgovor <code>web-portal ready</code>. Vreme od ponovne primene do funkcionalnog oporavka beleži se u evidenciji testa.
+
+  </li>
+  <li>
+    <strong>Završna funkcionalna i konfiguraciona provera.</strong>
+    Završni pregled potvrđuje da Service koristi očekivani tip, selektor i port, da sve replike ostaju dostupne i da nema neočekivanih događaja.
+    <pre><code class="language-bash">kubectl -n it-tutorijali get deployment,service,pods,endpointslice -o wide
+kubectl -n it-tutorijali describe service web-portal
+kubectl -n it-tutorijali get events \
+  --sort-by=.metadata.creationTimestamp
+
+kubectl -n it-tutorijali exec service-client -- \
+  sh -c 'for i in 1 2 3 4 5; do wget -qO- http://web-portal/ || exit 1; done'</code></pre> <strong>Kriterijumi prihvatanja:</strong> Deployment ima <code>3/3</code> dostupne replike; Service je ClusterIP na portu 80; EndpointSlice sadrži tri spremne adrese; DNS razrešavanje uspeva; svih pet HTTP zahteva vraća očekivani sadržaj; nema događaja koji ukazuju na readiness, scheduling ili image pull grešku.
+
+  </li>
+  <li>
+    <strong>Cleanup laboratorijskog scenarija.</strong>
+    Brisanje namespace-a uklanja sve objekte u njemu i zato je destruktivna operacija. U produkciji se ne izvršava bez odobrene promene, potvrđenog obima i provere da namespace ne sadrži druge workload-e.
+    <pre><code class="language-bash">kubectl delete pod cross-namespace-client
+kubectl delete namespace it-tutorijali</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get namespace it-tutorijali
+kubectl get pod cross-namespace-client</code></pre>
+    Očekuje se odgovor <code>NotFound</code>. Bezbednija alternativa za deljeni namespace bila bi pojedinačno brisanje samo objekata kreiranih manifestima ove lekcije.
+  </li>
+</ol>
+<h3>Logovi i izvori podataka za troubleshooting</h3>
+<p>
+  Prvi izvor podataka nisu uvek logovi, već Kubernetes objekti i njihovi događaji. <code>kubectl describe service</code> prikazuje selektor, portove i sažete krajnje tačke, dok EndpointSlice daje precizniji prikaz adresa i readiness uslova. <code>kubectl describe pod</code> otkriva probe, restartovanja i događaje, a aplikativni log se čita komandom <code>kubectl logs</code>.
+</p>
+<p>
+  DNS problemi proveravaju se kroz CoreDNS Podove i njihove logove, najčešće u namespace-u <code>kube-system</code>. Logovi se mogu pročitati komandom <code>kubectl -n kube-system logs deployment/coredns</code>, ako distribucija koristi to ime i ako administrator ima odobreno pravo pristupa. Traže se greške pri komunikaciji sa API serverom, neuspešni upstream upiti, petlje prosleđivanja i problemi sa konfiguracijom.
+</p>
+<p>
+  Ako Service ima ispravne krajnje tačke, DNS radi, ali ClusterIP nije dostupan sa više čvorova, proverava se dataplane. U klasičnom klasteru to uključuje kube-proxy DaemonSet, njegovu konfiguraciju i logove. U eBPF ili drugoj kube-proxy-free arhitekturi koriste se alati i statusi konkretnog CNI proizvoda. Ručno menjanje iptables ili nftables pravila bez jasne dijagnostike nije prihvatljiv prvi korak, jer kontroler može prepisati izmene i dodatno otežati oporavak.
+</p>
+<h3>Tipične greške i način njihovog razlikovanja</h3>
+<p>
+  Incident se vodi kao niz proverljivih tvrdnji: najpre se utvrđuju simptom, obim i posledica, zatim neposredni tehnički uzrok, osnovni uzrok i poslednja promena. Privremeno zaobilazno rešenje sme da smanji uticaj, ali ne zamenjuje trajnu korektivnu meru, naknadnu validaciju i dokumentovanje dokaza.
+</p>
+<ul>
+  <li><strong>Pogrešan selector:</strong> Service i DNS zapis postoje, ali EndpointSlice nema spremne adrese. Upoređuju se <code>spec.selector</code> i Pod labele.</li>
+  <li><strong>Pogrešan targetPort:</strong> EndpointSlice sadrži Pod adrese, ali konekcija ka Service portu ne uspeva. Proveravaju se imenovani port, containerPort i stvarni port procesa u kontejneru.</li>
+  <li><strong>Pod nije spreman:</strong> Pod može biti <code>Running</code>, ali kolona READY nije potpuna. Proveravaju se readiness probe, događaji i aplikativni logovi.</li>
+  <li><strong>DNS problem:</strong> direktan pristup ClusterIP adresi može raditi, dok ime ne može da se razreši. Proveravaju se <code>/etc/resolv.conf</code> u test Podu, CoreDNS Service, Podovi i logovi.</li>
+  <li><strong>NetworkPolicy blokada:</strong> Service i EndpointSlice su ispravni, ali samo određeni izvori ne mogu da pristupe backend Podovima. Analiziraju se ingress i egress politike za obe strane komunikacije.</li>
+  <li><strong>Dataplane problem:</strong> isti Service radi sa jednog čvora, a ne radi sa drugog, ili više servisa pokazuje sličan kvar. Proveravaju se kube-proxy ili CNI agent na pogođenom čvoru.</li>
+  <li><strong>LoadBalancer ostaje pending:</strong> aplikacija može raditi preko ClusterIP, ali spoljna adresa nije obezbeđena. Proveravaju se cloud controller, on-prem load balancer integracija, kvote i događaji Service objekta.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola selektora i krajnjih tačaka.</strong> Nakon svake promene labela, Deployment šablona ili Service manifesta proveravaju se <code>kubectl describe service</code> i pripadajući EndpointSlice. Reakciju zahteva Service bez spremnih krajnjih tačaka duže od očekivanog rollout perioda. Prvi korak je poređenje selektora, Pod labela i readiness stanja. Rezultat se beleži u zapisu promene, a uspešnost se meri odsustvom prekida i brojem spremnih endpointa jednakim broju očekivanih dostupnih replika.</li>
+  <li><strong>Sintetička provera DNS i aplikativnog odgovora.</strong> Posle deploy-a i periodično iz kontrolisanog monitoring workload-a izvršavaju se DNS upit i zahtev ka ugovorenoj health ili readiness putanji. Reakciju zahteva neuspeh nekoliko uzastopnih provera ili porast latencije iznad internog SLO praga. Dokumentuju se vreme, namespace, Service ime, izvorni čvor i rezultat. Uspeh se meri raspoloživošću i vremenom odgovora u okviru definisanog SLO-a.</li>
+  <li><strong>Praćenje neuspešnih readiness provera.</strong> Posle rollout-a i pri svakom incidentu pregledaju se Pod statusi, događaji i aplikativne metrike. Pod koji je duže od inicijalizacionog perioda <code>Running</code>, ali nije spreman, zahteva proveru zavisnosti i logova. Ne povećava se naslepo timeout probe bez potvrde uzroka. Nalaz se beleži u incident ili change zapis, a uspešnost se meri stabilnim brojem spremnih replika bez cikličnog uključivanja i isključivanja endpointa.</li>
+  <li><strong>Kontrola izloženosti.</strong> Svaka promena tipa sa ClusterIP na NodePort ili LoadBalancer zahteva pregled firewall pravila, source opsega, TLS modela, autentifikacije i vlasništva nad javnom adresom. Reakciju zahteva nenajavljeno otvoren NodePort ili spoljna adresa bez odobrene namene. Prvi korak je ograničavanje pristupa ili vraćanje na ClusterIP kroz odobren rollback. Dokumentuju se mrežni tokovi i odobrenje vlasnika usluge.</li>
+  <li><strong>Praćenje CoreDNS i mrežnog dataplane-a.</strong> Tim zadužen za platformu prati raspoloživost DNS replika, DNS greške, kašnjenje upita, zdravlje kube-proxy ili CNI agenata i neusaglašena pravila na čvorovima. Reakciju zahteva više pogođenih servisa, kvar ograničen na jedan čvor ili nagli rast DNS grešaka. Prvo se određuje obim incidenta pre restartovanja komponenti. Uspeh se meri obnovljenim pristupom bez ručnih trajnih odstupanja od deklarisane konfiguracije.</li>
+  <li><strong>Deklarativno čuvanje Service manifesta.</strong> Service, Deployment, NetworkPolicy, Gateway i povezane konfiguracije čuvaju se u verzionisanom repozitorijumu, uz code review i istoriju promene. Backup pojedinačnog Service objekta nije dovoljan za oporavak aplikacije; čuva se celokupan deklarativni skup i, na nivou klastera, konzistentan backup etcd-a prema administratorskoj politici. Integritet se proverava validacijom manifesta i periodičnim restore testom u izolovanom okruženju. Upotrebljiv backup potvrđen je tek kada obnovljeni objekti formiraju očekivane EndpointSlice zapise i prolaze funkcionalni test.</li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Potvrđen je tačan kubeconfig kontekst i ciljni namespace pre promene.</li>
+  <li>Service selektor je upoređen sa stvarnim labelama Podova komandom <code>kubectl get pods --show-labels</code>.</li>
+  <li>Service ima očekivani tip, ClusterIP adresu, protokol, <code>port</code> i <code>targetPort</code>.</li>
+  <li>EndpointSlice sadrži očekivani broj spremnih backend adresa.</li>
+  <li>Readiness stanje svih planiranih replika je potvrđeno kao spremno.</li>
+  <li>DNS ime Service objekta uspešno se razrešava iz odgovarajućeg namespace-a.</li>
+  <li>Funkcionalni zahtev kroz Service vraća očekivani aplikativni odgovor.</li>
+  <li>Negativni test je razlikovao DNS, selector, readiness i port grešku.</li>
+  <li>NetworkPolicy i spoljašnja izloženost provereni su u skladu sa namenom servisa.</li>
+  <li>Rollback je izvediv ponovnom primenom odobrenog i verzionisanog manifesta.</li>
+  <li>Rezultati, vreme promene, testovi i eventualna odstupanja evidentirani su u change ili incident sistemu.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Kubernetes Service daje aplikaciji stabilan mrežni identitet u okruženju u kojem su Podovi namerno promenljivi. Administrator mora da razume da Service nije proces, firewall niti aplikativni gateway, već deklaracija koja povezuje selektor, EndpointSlice, DNS i mrežni dataplane. Pouzdana implementacija zahteva dosledne labele, tačno mapiranje portova, pravilne readiness provere i poznavanje načina na koji konkretni klaster realizuje virtuelne IP adrese.
+</p>
+<p>
+  Nakon ove lekcije administrator treba da ume da implementira interni ClusterIP Service, potvrdi njegove krajnje tačke, testira DNS i aplikativni odgovor, razlikuje prazan selector rezultat od DNS ili dataplane kvara i bezbedno vrati deklarisano stanje. Takođe mora da prepozna kada zahtevi prevazilaze granice Service objekta i zahtevaju NetworkPolicy, Ingress, Gateway API, service mesh, load balancer integraciju ili intervenciju platformskog mrežnog tima.
+</p>
+<p>
+  Produkciona odgovornost podrazumeva da se tip Service objekta i izloženost ne menjaju bez procene mrežnog i bezbednosnog uticaja, da se infrastrukturna pravila ne menjaju ručno bez dijagnostike i da se svaka promena dokumentuje i validira merljivim testovima. Eskalacija je potrebna kada je problem zajednički za više servisa, ograničen na određene čvorove, povezan sa CoreDNS, CNI, kube-proxy, cloud controllerom ili fizičkom mrežom, odnosno kada administrator nema ovlašćenje da menja klastersku infrastrukturu.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za Service i EndpointSlice objekte, virtuelne Service IP adrese, kube-proxy i mrežne proxy režime; zvanične Kubernetes API i kubectl reference; administrativni vodiči za DNS otkrivanje servisa, CoreDNS dijagnostiku, IPv4/IPv6 dual-stack rad, interne i spoljne saobraćajne politike, readiness upravljanje krajnjim tačkama i troubleshooting Service komunikacije; primarne specifikacije za Kubernetes mrežni i DNS model.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-18-daemonset-job-cronjob.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-20-configmap.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

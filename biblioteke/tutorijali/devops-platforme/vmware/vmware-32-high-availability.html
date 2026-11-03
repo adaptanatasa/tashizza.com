@@ -1,0 +1,3414 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-32-high-availability.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>High Availability – automatski oporavak VM-a nakon pada hosta | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMware High Availability (HA) i naučite kako klaster automatski pokreće virtuelne mašine na drugim ESXi hostovima nakon njihovog otkaza.">
+
+  <meta name="keywords"
+        content="VMware High Availability, VMware HA, High Availability, HA cluster, VMware cluster, ESXi cluster, automatski oporavak, restart virtuelne mašine, otkaz hosta, failover, vCenter, vSphere, dostupnost sistema, VMware administracija, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-32-high-availability.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="High Availability – automatski oporavak VM-a nakon pada hosta">
+
+  <meta property="og:description"
+        content="Saznajte kako VMware High Availability automatski pokreće virtuelne mašine na drugim hostovima nakon otkaza fizičkog servera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-32-high-availability.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-32-high-availability.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="High Availability – automatski oporavak VM-a nakon pada hosta">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+        Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-32-high-availability.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-32-high-availability.png"
+           alt="High Availability – automatski oporavak VM-a nakon pada hosta">
+
+    </a>
+
+   <div class="page-subtitle">
+     VII. Klasteri, dostupnost, performanse i bezbednosna osnova
+</div>
+
+<div class="page-subtitle">
+
+ 32. vSphere High Availability – detekcija otkaza i automatski restart VM-a
+
+</div>
+
+<p><strong>Šta predstavlja vSphere High Availability</strong></p>
+
+<p>vSphere High Availability (HA) predstavlja mehanizam za automatski oporavak virtuelnih mašina nakon otkaza ESXi hosta ili ozbiljnog poremećaja koji onemogućava dalji rad tog hosta. Za razliku od vMotion-a, koji omogućava plansku migraciju bez prekida rada, HA prihvata činjenicu da je do prekida već došlo i fokusira se na što brži povratak servisa.</p>
+
+<p>Administrator mora odmah razumeti jednu veoma važnu razliku:</p>
+
+<ul>
+<li>vMotion sprečava prekid rada.</li>
+<li>HA reaguje nakon što je prekid već nastao.</li>
+<li>Fault Tolerance pokušava da prekid uopšte ne postoji.</li>
+</ul>
+
+<p>Zbog toga HA nije tehnologija za "zero downtime". Kada host otkaže, virtuelna mašina prestaje sa radom zajedno sa njim. HA pronalazi drugi odgovarajući host i ponovo pokreće VM koristeći njegove fajlove koji se nalaze na zajedničkom storage-u ili vSAN-u.</p>
+
+<p>Za većinu enterprise okruženja upravo HA predstavlja osnovni sloj dostupnosti i gotovo svaki produkcioni klaster koristi ovu funkcionalnost.</p>
+
+<hr>
+
+<p><strong>Osnovni princip rada</strong></p>
+
+<p>Da bi HA mogao da funkcioniše moraju biti ispunjeni osnovni uslovi:</p>
+
+<ul>
+<li>više ESXi hostova u istom klasteru;</li>
+<li>zajednički pristup VM datotekama (vSAN, SAN ili NAS, odnosno drugi podržani datastore);</li>
+<li>vCenter Server za formiranje klastera, konfiguraciju, nadzor i izmene HA politike;</li>
+<li>ispravno podešena management mreža između hostova;</li>
+<li>dovoljno slobodnih CPU i RAM resursa za prihvat VM-ova nakon otkaza.</li>
+</ul>
+
+<p>vCenter Server je upravljački preduslov, ali nije u aktivnoj putanji svake HA odluke. Ako vCenter privremeno postane nedostupan nakon što je klaster pravilno konfigurisan, FDM agenti na ESXi hostovima nastavljaju da nadziru klaster i mogu izvršiti restart zaštićenih VM-ova. Za potpun administratorski pregled, promenu politike, zadatke i centralizovane događaje vCenter ipak mora biti oporavljen. Slično tome, HA ne zahteva jedan određeni storage proizvod, ali ciljnom hostu moraju biti dostupne VM konfiguracija i diskovi; VM čije se datoteke nalaze samo na lokalnom datastore-u neuspelog hosta ne može se restartovati na drugom hostu.</p>
+
+<p>Kada administrator uključi HA na klasteru, vCenter obezbeđuje i konfiguriše FDM (<em>Fault Domain Manager</em>) HA agente na hostovima. Svaki host postaje član HA klastera i učestvuje u distribuiranom nadzoru. Način pakovanja i isporuke FDM komponente zavisi od generacije proizvoda i modela životnog ciklusa, pa se stanje ne zaključuje samo po prisustvu određenog VIB-a: merodavni su HA status hosta, uspešan zadatak konfiguracije i <code>fdm.log</code>. U mešovitim ili upravo nadograđenim klasterima treba proveriti interoperabilnost i završiti podržani upgrade redosled pre izvođenja failover testa.</p>
+
+<hr>
+
+<p><strong>Glavne komponente HA sistema</strong></p>
+
+<table>
+<tr>
+<th>Komponenta</th>
+<th>Uloga</th>
+</tr>
+
+<tr>
+<td>vCenter Server</td>
+<td>Konfiguriše HA i distribuira podešavanja.</td>
+</tr>
+
+<tr>
+<td>FDM Agent</td>
+<td>Radi na svakom ESXi hostu i učestvuje u nadzoru i restartovanju VM-ova.</td>
+</tr>
+
+<tr>
+<td>Primary host</td>
+<td>Koordinira HA aktivnosti u klasteru.</td>
+</tr>
+
+<tr>
+<td>Secondary hostovi</td>
+<td>Šalju heartbeat poruke i izvršavaju zahteve leader hosta.</td>
+</tr>
+
+<tr>
+<td>Datastore Heartbeat</td>
+<td>Pomaže razlikovanju mrežne izolacije od stvarnog pada hosta.</td>
+</tr>
+</table>
+
+<p>Administrator ne određuje ručno primary host. FDM automatski bira primary u procesu izbora, a nakon njegovog otkaza preostali hostovi biraju novog. U starijoj dokumentaciji i logovima mogu se sresti termini <em>master</em> i <em>slave</em>; aktuelni termini su <em>primary</em> i <em>secondary</em>. Ovo nije isto što i istorijska AAM arhitektura iz veoma starih izdanja.</p>
+
+<hr>
+
+<p><strong>Kako izgleda tok rada prilikom otkaza hosta</strong></p>
+
+<ol>
+<li>Host redovno šalje heartbeat drugim hostovima.</li>
+<li>Leader primećuje da heartbeat više ne stiže.</li>
+<li>Pokreće se postupak utvrđivanja da li je host:
+<ul>
+<li>zaista pao,</li>
+<li>izolovan od mreže,</li>
+<li>ili postoji network partition.</li>
+</ul>
+</li>
+
+<li>Proveravaju se datastore heartbeat informacije.</li>
+
+<li>Ako se potvrdi da host više nije operativan, određuje se novi host za restart VM-ova.</li>
+
+<li>VM registracija se prebacuje na novi host.</li>
+
+<li>Virtuelne mašine se redom uključuju prema restart prioritetima.</li>
+
+<li>Nakon uspešnog podizanja operativni sistem nastavlja boot proces.</li>
+</ol>
+
+<p>Administrator treba da razume da HA nikada ne "nastavlja" izvršavanje VM-a. VM se pokreće iz početka kao nakon fizičkog nestanka struje.</p>
+
+<hr>
+
+<p><strong>Kako HA razlikuje različite vrste problema</strong></p>
+
+<p>Najveći izazov nije restart VM-a već pravilna procena da li host zaista više ne postoji.</p>
+
+<p>Postoje tri najčešće situacije.</p>
+
+<p><strong>1. Potpuni pad hosta</strong></p>
+
+<p>Host više ne odgovara.</p>
+
+<p>Primer:</p>
+
+<ul>
+<li>nestanak napajanja</li>
+<li>PSOD</li>
+<li>potpuni hardverski kvar</li>
+</ul>
+
+<p>HA pokreće restart VM-ova.</p>
+
+<p><strong>2. Network Isolation</strong></p>
+
+<p>Host radi, ali je izgubio management mrežu.</p>
+
+<p>Virtuelne mašine možda i dalje normalno izvršavaju aplikacije.</p>
+
+<p>Ovde HA mora veoma pažljivo odlučiti da li treba restartovati VM-ove ili ne, kako ne bi došlo do "split brain" situacije.</p>
+
+<p><strong>3. Network Partition</strong></p>
+
+<p>Deo hostova vidi jedne hostove, ali ne vidi druge.</p>
+
+<p>Klaster može biti podeljen na više grupa.</p>
+
+<p>Datastore heartbeat tada postaje veoma važan dodatni mehanizam za donošenje ispravne odluke.</p>
+
+<hr>
+
+<p><strong>Heartbeat mehanizmi</strong></p>
+
+<p>HA koristi dva nezavisna sistema nadzora.</p>
+
+<p><strong>Management Network Heartbeat</strong></p>
+
+<p>Predstavlja osnovni način komunikacije između hostova.</p>
+
+<p>Ako heartbeat nestane, još uvek nije dokazano da je host mrtav.</p>
+
+<p><strong>Datastore Heartbeat</strong></p>
+
+<p>Host periodično zapisuje informacije na zajednički datastore.</p>
+
+<p>Ako management mreža prestane da radi, ali datastore heartbeat i dalje postoji, HA zaključuje da host verovatno još radi i odlaže restart VM-ova dok ne utvrdi stvarno stanje. Time se značajno smanjuje mogućnost dvostrukog pokretanja iste virtuelne mašine.</p>
+
+<hr>
+
+<p><strong>Host Isolation Response</strong></p>
+
+<p>Kada host izgubi management mrežu, moguće je definisati njegovo ponašanje.</p>
+
+<table>
+<tr>
+<th>Opcija</th>
+<th>Opis</th>
+</tr>
+
+<tr>
+<td>Leave Powered On</td>
+<td>VM ostaje da radi.</td>
+</tr>
+
+<tr>
+<td>Power Off</td>
+<td>Host gasi VM kako bi drugi host mogao bezbedno da ga pokrene.</td>
+</tr>
+
+<tr>
+<td>Shutdown</td>
+<td>Ako VMware Tools radi, VM se prvo uredno gasi.</td>
+</tr>
+</table>
+
+<p>Izbor zavisi od projektovanog ponašanja infrastrukture i vrste aplikacija. U okruženjima sa stabilnom mrežom često se koristi "Leave Powered On", dok se u pojedinim SAN ili vSAN okruženjima bira drugačija politika kako bi se izbegle duple instance.</p>
+
+<hr>
+
+<p><strong>Admission Control</strong></p>
+
+<p>Jedna od najvažnijih HA funkcija jeste Admission Control.</p>
+
+<p>Njegov zadatak nije restart VM-ova.</p>
+
+<p>Njegov zadatak je da unapred spreči administratora da preoptereti klaster do mere u kojoj nakon otkaza hosta više neće postojati dovoljno resursa za oporavak.</p>
+
+<p>Na primer:</p>
+
+<ul>
+<li>četiri hosta;</li>
+<li>planiran gubitak jednog hosta;</li>
+<li>Admission Control rezerviše deo CPU i RAM kapaciteta.</li>
+</ul>
+
+<p>Ako administrator pokuša da uključi novu VM koja bi ugrozila garantovani failover kapacitet, HA će odbiti zahtev. U savremenim verzijama preporučeni pristup je politika zasnovana na procentu rezervisanih resursa klastera, dok stariji modeli sa slotovima postoje prvenstveno zbog kompatibilnosti sa ranijim implementacijama. Admission Control koristi rezervacije CPU i memorije VM-ova (ili podrazumevane minimalne vrednosti kada rezervacije nisu definisane), a ne njihovu ukupno dodeljenu konfiguraciju.</p>
+
+<hr>
+
+<p><strong>Restart Priority</strong></p>
+
+<p>Nakon velikog incidenta nije dovoljno da se VM-ovi pokrenu proizvoljnim redosledom.</p>
+
+<p>Administrator može definisati prioritete.</p>
+
+<ul>
+<li>Highest</li>
+<li>High</li>
+<li>Medium</li>
+<li>Low</li>
+</ul>
+
+<p>Tipičan enterprise redosled izgleda ovako:</p>
+
+<ol>
+<li>Active Directory</li>
+<li>DNS</li>
+<li>NTP</li>
+<li>Database serveri</li>
+<li>Application serveri</li>
+<li>Web serveri</li>
+<li>Pomoćni servisi</li>
+</ol>
+
+<p>Na taj način aplikacioni server neće pokušavati da se podigne pre baze podataka od koje zavisi.</p>
+
+<hr>
+
+<p><strong>VM Monitoring</strong></p>
+
+<p>HA može nadgledati ne samo host već i samu virtuelnu mašinu.</p>
+
+<p>Ako VMware Tools prestane da šalje heartbeat, HA može automatski restartovati VM.</p>
+
+<p>Važno je razumeti ograničenje.</p>
+
+<p>VM Monitoring ne proverava da li aplikacija radi.</p>
+
+<p>On proverava:</p>
+
+<ul>
+<li>status VMware Tools;</li>
+<li>heartbeat iz operativnog sistema;</li>
+<li>zaglavljivanje operativnog sistema.</li>
+</ul>
+
+<p>Ako IIS ili Oracle servis prestane da radi, ali operativni sistem normalno funkcioniše, VM Monitoring neće reagovati.</p>
+
+<hr>
+
+<p><strong>Application Monitoring</strong></p>
+
+<p>Napredniji nivo predstavlja Application Monitoring.</p>
+
+<p>VMware Tools može prosleđivati informacije o aplikacijama koje podržavaju ovu funkcionalnost.</p>
+
+<p>U praksi se danas za nadzor aplikacija mnogo češće koriste namenski sistemi kao što su Aria Operations, Prometheus, Zabbix, SCOM ili drugi enterprise alati, dok HA ostaje fokusiran na dostupnost infrastrukture.</p>
+
+<hr>
+
+<p><strong>Odnos HA sa drugim VMware funkcijama</strong></p>
+
+<table>
+<tr>
+<th>Tehnologija</th>
+<th>Odnos prema HA</th>
+</tr>
+
+<tr>
+<td>vMotion</td>
+<td>Planirana migracija bez prekida rada.</td>
+</tr>
+
+<tr>
+<td>DRS</td>
+<td>Nakon HA restarta može ponovo izbalansirati VM raspored.</td>
+</tr>
+
+<tr>
+<td>Storage vMotion</td>
+<td>Nije zamena za HA.</td>
+</tr>
+
+<tr>
+<td>Fault Tolerance</td>
+<td>Kod FT VM-ova primarna zaštita je FT, dok HA predstavlja dodatni sloj oporavka u određenim scenarijima.</td>
+</tr>
+
+<tr>
+<td>vSAN</td>
+<td>Obezbeđuje zajednički storage potreban za restart VM-ova.</td>
+</tr>
+</table>
+
+<hr>
+
+<p><strong>Projektovanje HA klastera</strong></p>
+
+<p>Prilikom projektovanja administrator treba da odgovori na nekoliko pitanja pre nego što uključi HA:</p>
+
+<ul>
+<li>Koliko hostova sme da otkaže?</li>
+<li>Koliki je očekivani RTO?</li>
+<li>Koliko slobodne memorije mora postojati?</li>
+<li>Da li se koristi DRS?</li>
+<li>Da li postoji više management mreža?</li>
+<li>Koliko heartbeat datastore-ova je dostupno?</li>
+<li>Da li postoje VM-ovi koji ne smeju biti restartovani automatski?</li>
+</ul>
+
+<p>Tek nakon odgovora na ova pitanja HA postaje deo dobro projektovane strategije dostupnosti, a ne samo uključena opcija u podešavanjima klastera.</p>
+
+<hr>
+
+<p><strong>Najčešće ESXi i CLI provere</strong></p>
+
+<p>Na ESXi hostu administrator često prvo proverava status HA agenta.</p>
+
+<pre><code class="language-bash">/etc/init.d/fdm status</code></pre>
+
+<p>Komanda se izvršava na ESXi Shell-u ili preko SSH-a. Ne menja konfiguraciju sistema već prikazuje da li je FDM servis aktivan. Očekivan rezultat je da je servis pokrenut. Ako nije, to može ukazivati na problem sa HA agentom ili konfiguracijom hosta.</p>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<p>Izvršava se na ESXi hostu i prikazuje stanje VMkernel mrežnih interfejsa. Koristi se za proveru management mreže preko koje HA razmenjuje heartbeat poruke. Komanda ne menja stanje sistema.</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>Prikazuje montirane datastore-ove i omogućava proveru da li su heartbeat datastore-i dostupni. Ako zajednički datastore nije vidljiv, HA može imati poteškoće pri razlikovanju izolacije od stvarnog otkaza hosta.</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>Prikazuje registrovane virtuelne mašine na konkretnom ESXi hostu. Korisna je tokom analize da li je VM registrovan pre ili posle HA restarta. Ne vrši nikakve izmene.</p>
+
+<pre><code class="language-powershell">Get-Cluster "Production" | Get-VMHost</code></pre>
+
+<p>PowerCLI komanda izvršava se sa administratorske radne stanice povezane na vCenter Server. Koristi se za proveru članova HA klastera i predstavlja bezbednu read-only operaciju.</p>
+
+<p><strong>Drugi deo – Praktikum, prvi deo</strong></p>
+
+<p>Ovaj praktikum pretvara osnovno poznavanje vSphere HA u operativno administratorsko znanje. Vežbe su organizovane tako da administrator najpre dokumentuje početno stanje, zatim pravilno uključi i proveri HA, definiše kapacitet za failover, postavi redosled oporavka servisa i izvrši kontrolisanu planiranu operaciju nad hostom.</p>
+
+<p>Prvi deo praktikuma ne izaziva nekontrolisani pad hosta. Simulacija stvarnog otkaza, mrežne izolacije, nedostatka resursa, problema sa heartbeat datastore-ovima, VM Monitoring-a i detaljna analiza HA failover logova obrađuju se u drugom delu praktikuma.</p>
+
+<p>Aktuelni vSphere HA koristi mrežne i datastore heartbeat mehanizme da bi razlikovao pad hosta od mrežne particije ili izolacije. Admission Control rezerviše kapacitet potreban za oporavak VM-ova, dok FDM logovi omogućavaju detaljnu analizu izbora HA uloga, stanja hostova i restartovanja virtuelnih mašina.</p>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Primer</th>
+      <th>Namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server</td>
+      <td>vcsa01.lab.local</td>
+      <td>Centralno upravljanje klasterom i HA konfiguracijom</td>
+    </tr>
+    <tr>
+      <td>Datacenter</td>
+      <td>DC-LAB</td>
+      <td>Inventarski kontejner</td>
+    </tr>
+    <tr>
+      <td>Klaster</td>
+      <td>CL-PROD-LAB</td>
+      <td>HA i DRS klaster</td>
+    </tr>
+    <tr>
+      <td>ESXi host 1</td>
+      <td>esx01.lab.local</td>
+      <td>Član klastera</td>
+    </tr>
+    <tr>
+      <td>ESXi host 2</td>
+      <td>esx02.lab.local</td>
+      <td>Član klastera</td>
+    </tr>
+    <tr>
+      <td>ESXi host 3</td>
+      <td>esx03.lab.local</td>
+      <td>Član klastera i dodatni failover kapacitet</td>
+    </tr>
+    <tr>
+      <td>Zajednički datastore</td>
+      <td>DS-SHARED-01</td>
+      <td>Smeštaj VM konfiguracije i virtuelnih diskova</td>
+    </tr>
+    <tr>
+      <td>Drugi zajednički datastore</td>
+      <td>DS-SHARED-02</td>
+      <td>Dodatni datastore i heartbeat kandidat</td>
+    </tr>
+    <tr>
+      <td>Management mreža</td>
+      <td>VLAN 10, 10.100.10.0/24</td>
+      <td>vCenter, host management i HA komunikacija</td>
+    </tr>
+    <tr>
+      <td>Test virtuelne mašine</td>
+      <td>vm-ad01, vm-db01, vm-app01, vm-web01</td>
+      <td>Provera prioriteta i zavisnosti pri oporavku</td>
+    </tr>
+    <tr>
+      <td>Administratorska stanica</td>
+      <td>admin01.lab.local</td>
+      <td>PowerCLI, SSH i pristup vSphere Client-u</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Za ozbiljniju laboratoriju preporučuju se najmanje tri ESXi hosta. Dva hosta su dovoljna za demonstraciju osnovnog HA restarta, ali slabije predstavljaju produkcioni dizajn jer održavanje jednog hosta ostavlja klaster bez dodatne tolerancije na kvar.</p>
+
+<p><strong>Opšti preduslovi</strong></p>
+
+<ul>
+  <li>Svi hostovi moraju biti povezani sa istim vCenter Serverom i dodati u isti klaster.</li>
+  <li>Hostovi moraju imati ispravnu management mrežnu povezanost, DNS rezoluciju i vremensku sinhronizaciju.</li>
+  <li>Virtuelne mašine korišćene za testiranje treba da budu smeštene na storage-u dostupnom svim potencijalnim odredišnim hostovima.</li>
+  <li>Port grupe na kojima rade test VM-ovi moraju postojati i biti pravilno konfigurisane na svim hostovima.</li>
+  <li>Na klasteru mora postojati dovoljno slobodnog CPU i memorijskog kapaciteta za restart test VM-ova.</li>
+  <li>Administratorski nalog mora imati odgovarajuće privilegije za konfiguraciju klastera i pregled hostova, VM-ova, događaja i alarma.</li>
+  <li>PowerCLI stanica treba da koristi aktuelni podržani VMware PowerCLI modul.</li>
+  <li>SSH pristup hostovima uključuje se samo kada je potreban i nakon vežbe se ponovo isključuje.</li>
+</ul>
+
+<p><strong>Važna verzijska i licencna napomena</strong></p>
+
+<p>Tačan raspored opcija u vSphere Client-u može se razlikovati između vSphere 7, vSphere 8 i vSphere 9 okruženja. U novijem klijentu HA podešavanja se uglavnom nalaze na nivou klastera, u sekciji <strong>Configure &gt; vSphere Availability</strong>, dok se u pojedinim verzijama koristi naziv <strong>vSphere HA</strong>. Dostupnost funkcija, pravo korišćenja i način licenciranja zavise od konkretne Broadcom pretplate, entitlement-a i izdanja proizvoda. Pre produkcione implementacije treba proveriti ugovorno pravo korišćenja za tačnu verziju i paket, a ne oslanjati se na istorijske tabele VMware licenci.</p>
+
+<hr>
+
+<p><strong>Vežba 1 – Snimanje početnog stanja i provera preduslova za HA</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator pre promene konfiguracije dokaže da klaster zaista ispunjava mrežne, storage, resursne i inventarske preduslove za HA. U produkciji se HA ne uključuje metodom pokušaja i greške. Najpre se dokumentuje postojeće stanje i identifikuju zavisnosti koje bi mogle sprečiti restart virtuelnih mašina.</p>
+
+<p><strong>Početno stanje</strong></p>
+
+<ul>
+  <li>Klaster postoji, ali HA još nije uključen ili njegovo stanje nije potvrđeno.</li>
+  <li>Sva tri hosta su povezana sa vCenter Serverom.</li>
+  <li>Test VM-ovi mogu biti raspoređeni na različitim hostovima.</li>
+  <li>Najmanje jedan zajednički datastore vidljiv je sa svih hostova.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ova vežba je read-only i ne treba da menja stanje klastera. Nemoj tokom inventarisanja popravljati više problema odjednom. Svako odstupanje prvo zabeleži, odredi njegov uticaj, a zatim uvedi korekciju kao kontrolisanu promenu.</p>
+
+<p><strong>Korak 1 – Provera stanja hostova u vSphere Client-u</strong></p>
+
+<ol>
+  <li>Prijavi se u vSphere Client.</li>
+  <li>Otvori <strong>Hosts and Clusters</strong>.</li>
+  <li>Izaberi <strong>DC-LAB &gt; CL-PROD-LAB</strong>.</li>
+  <li>Otvori karticu <strong>Hosts</strong>.</li>
+  <li>Proveri da li su svi hostovi u stanju <strong>Connected</strong>.</li>
+  <li>Proveri da nijedan host nije u stanju <strong>Not Responding</strong>, <strong>Disconnected</strong> ili neočekivano u maintenance režimu.</li>
+  <li>Za svaki host proveri <strong>Summary</strong>, aktivne alarme i stanje fizičkog hardvera.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Svi hostovi su povezani, bez kritičnih alarma koji utiču na management mrežu, storage, memoriju, CPU ili vCenter komunikaciju.</p>
+
+<p><strong>Korak 2 – Provera hostova pomoću PowerCLI-ja</strong></p>
+
+<p>Na administratorskoj stanici pokreni PowerShell ili PowerShell Core i poveži se sa vCenter Serverom:</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa01.lab.local</code></pre>
+
+<p>Komanda uspostavlja PowerCLI sesiju prema vCenter Serveru. Menja samo stanje lokalne PowerCLI sesije i ne menja konfiguraciju vSphere okruženja. Produkcioni rizik je nizak, ali administratorske akreditive ne treba unositi u nezaštićene skripte niti čuvati kao običan tekst.</p>
+
+<p>Prikaži osnovno stanje hostova:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VMHost |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  NumCpu,
+                  MemoryTotalGB,
+                  MemoryUsageGB,
+                  Version,
+                  Build</code></pre>
+
+<p>Ova read-only komanda prikazuje hostove koji pripadaju klasteru, njihovo stanje, resurse i verzije. Očekuje se da su svi hostovi u stanju <strong>Connected</strong> i <strong>PoweredOn</strong>.</p>
+
+<p>Proveri da li je neki host u maintenance režimu:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VMHost |
+    Select-Object Name, ConnectionState,
+        @{Name="MaintenanceMode";Expression={$_.ExtensionData.Runtime.InMaintenanceMode}}</code></pre>
+
+<p>Rezultat <code>False</code> znači da host nije u maintenance režimu. Tokom planiranog održavanja rezultat može legitimno biti <code>True</code>, ali takav host ne treba računati kao dostupan HA kapacitet.</p>
+
+<p><strong>Korak 3 – Provera management VMkernel interfejsa</strong></p>
+
+<p>U vSphere Client-u za svaki host otvori:</p>
+
+<p><strong>Host &gt; Configure &gt; Networking &gt; VMkernel adapters</strong></p>
+
+<p>Proveri:</p>
+
+<ul>
+  <li>koji VMkernel adapter ima uključenu uslugu <strong>Management</strong>;</li>
+  <li>IP adresu i subnet masku;</li>
+  <li>port grupu i VLAN;</li>
+  <li>uplink redundansu;</li>
+  <li>MTU vrednost;</li>
+  <li>da li je adapter aktivan.</li>
+</ul>
+
+<p>Na ESXi Shell-u ili preko SSH-a izvrši:</p>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<p>Komanda je read-only. Prikazuje VMkernel interfejse, njihovo administrativno i operativno stanje, MTU i povezanu port grupu. Za management VMkernel očekuju se <code>Enabled: true</code> i <code>Portset</code> koji odgovara standardnom ili distribuiranom switch-u.</p>
+
+<p>Zatim proveri IP konfiguraciju:</p>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<p>Administrator proverava da li svaki management VMkernel ima očekivanu adresu, masku i gateway konfiguraciju. Komanda ne menja stanje sistema.</p>
+
+<p>Proveri VMkernel servise:</p>
+
+<pre><code class="language-bash">esxcli network ip interface tag get -i vmk0</code></pre>
+
+<p>Parametar <code>-i vmk0</code> određuje interfejs koji se proverava. Očekivani rezultat za management VMkernel sadrži oznaku <code>Management</code>. Ako se management servis nalazi na drugom interfejsu, zameni <code>vmk0</code> odgovarajućim nazivom.</p>
+
+<p><strong>Korak 4 – Provera management mrežne dostupnosti</strong></p>
+
+<p>Sa svakog hosta proveri komunikaciju prema management adresama ostalih hostova:</p>
+
+<pre><code class="language-bash">vmkping -I vmk0 10.100.10.12
+vmkping -I vmk0 10.100.10.13</code></pre>
+
+<p>Komanda se izvršava na ESXi hostu i šalje ICMP zahtev preko izabranog VMkernel interfejsa. Ne menja stanje sistema. Očekuju se odgovori bez gubitka paketa.</p>
+
+<p>Ako management mreža koristi jumbo frame veličinu, test mora koristiti odgovarajuću veličinu paketa i zabranu fragmentacije:</p>
+
+<pre><code class="language-bash">vmkping -I vmk0 -d -s 8972 10.100.10.12</code></pre>
+
+<p>Ovaj test ima smisla samo ako je čitava putanja projektovana za MTU 9000. Neuspeh ne treba automatski tumačiti kao HA kvar ako management mreža koristi MTU 1500. Veličina testa mora odgovarati stvarnoj mrežnoj konfiguraciji.</p>
+
+<p><strong>Korak 5 – Provera DNS-a i vremena</strong></p>
+
+<p>Proveri hostname hosta:</p>
+
+<pre><code class="language-bash">esxcli system hostname get</code></pre>
+
+<p>Proveri DNS konfiguraciju:</p>
+
+<pre><code class="language-bash">esxcli network ip dns server list
+esxcli network ip dns search list</code></pre>
+
+<p>Proveri da li se ostali hostovi i vCenter pravilno razrešavaju:</p>
+
+<pre><code class="language-bash">nslookup esx02.lab.local
+nslookup vcsa01.lab.local</code></pre>
+
+<p>Proveri vreme i NTP stanje:</p>
+
+<pre><code class="language-bash">esxcli system time get
+/etc/init.d/ntpd status
+ntpq -p</code></pre>
+
+<p>Komande su read-only. Neusklađeno vreme može otežati tumačenje događaja i logova, izazvati probleme sa sertifikatima i otežati korelaciju HA incidenta između vCenter-a i više hostova.</p>
+
+<p><strong>Korak 6 – Provera zajedničkog storage-a</strong></p>
+
+<p>U vSphere Client-u izaberi klaster, zatim otvori:</p>
+
+<p><strong>Monitor &gt; Datastores</strong></p>
+
+<p>Proveri da li svaki zajednički datastore ima očekivanu konektivnost. Zatim izaberi datastore i proveri karticu <strong>Hosts</strong>. Svi hostovi koji mogu prihvatiti HA restart moraju imati pristup VM datotekama.</p>
+
+<p>Na svakom ESXi hostu izvrši:</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>Komanda prikazuje montirane filesystem-e, datastore nazive, UUID vrednosti, tip i kapacitet. Očekuje se da se zajednički VMFS, NFS ili vSAN datastore pojavljuje na svim hostovima.</p>
+
+<p>Za VMFS datastore proveri uređaje i putanje:</p>
+
+<pre><code class="language-bash">esxcli storage core device list
+esxcli storage core path list</code></pre>
+
+<p>Komande ne menjaju stanje. Administrator traži neočekivane <code>dead</code>, <code>off</code> ili nedostupne putanje, ali tumačenje zavisi od storage dizajna i multipathing politike.</p>
+
+<p>Za NFS datastore koristi:</p>
+
+<pre><code class="language-bash">esxcli storage nfs list
+esxcli storage nfs41 list</code></pre>
+
+<p>Prva komanda prikazuje NFS 3 datastore-ove, a druga NFS 4.1 datastore-ove. Očekuju se ispravni mount point, udaljeni server i status dostupnosti.</p>
+
+<p><strong>Korak 7 – Provera mrežne dostupnosti VM port grupa</strong></p>
+
+<p>HA može uspešno pokrenuti VM na drugom hostu, ali aplikacija neće biti dostupna ako odredišni host nema odgovarajuću port grupu, VLAN ili uplink.</p>
+
+<p>Za standardne switch-eve na svakom hostu proveri:</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network vswitch standard portgroup list</code></pre>
+
+<p>Za distribuirani switch većina inventarskih provera praktičnije se obavlja kroz vCenter i PowerCLI. Prikaži mreže test VM-ova:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VM |
+    Get-NetworkAdapter |
+    Select-Object Parent, Name, NetworkName, ConnectionState</code></pre>
+
+<p>Očekuje se da su adapteri povezani sa validnim port grupama i da te port grupe imaju konzistentnu dostupnost na svim hostovima.</p>
+
+<p><strong>Korak 8 – Provera položaja VM konfiguracionih fajlova</strong></p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VM |
+    Select-Object Name, PowerState,
+        @{Name="Host";Expression={$_.VMHost.Name}},
+        @{Name="Datastore";Expression={($_ | Get-Datastore | Select-Object -ExpandProperty Name) -join ", "}}</code></pre>
+
+<p>Komanda ne menja stanje. Administrator treba da identifikuje VM-ove čiji su fajlovi na lokalnom datastore-u jednog hosta. Takav VM se u klasičnom shared-storage HA scenariju ne može jednostavno restartovati na drugom hostu jer drugi host nema pristup njegovim fajlovima.</p>
+
+<p><strong>Korak 9 – Provera resursnog kapaciteta</strong></p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VMHost |
+    Select-Object Name,
+        @{Name="CPU_Total_GHz";Expression={[math]::Round($_.CpuTotalMhz / 1000, 2)}},
+        @{Name="CPU_Used_GHz";Expression={[math]::Round($_.CpuUsageMhz / 1000, 2)}},
+        @{Name="Memory_Total_GB";Expression={[math]::Round($_.MemoryTotalGB, 2)}},
+        @{Name="Memory_Used_GB";Expression={[math]::Round($_.MemoryUsageGB, 2)}},
+        @{Name="Memory_Free_GB";Expression={[math]::Round($_.MemoryTotalGB - $_.MemoryUsageGB, 2)}}</code></pre>
+
+<p>Ovaj pregled nije zamena za Admission Control izračunavanje. On daje operativnu sliku trenutnog opterećenja. HA odluke se ne smeju zasnivati samo na prosečnoj upotrebi, jer se nakon otkaza čitavo opterećenje jednog hosta premešta na preostale hostove.</p>
+
+<p><strong>Provera uspeha vežbe</strong></p>
+
+<p>Vežba je uspešna kada postoji dokumentovana tabela sa najmanje sledećim stavkama:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Provera</th>
+      <th>Očekivano stanje</th>
+      <th>Rezultat</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Hostovi</td>
+      <td>Svi Connected i PoweredOn</td>
+      <td>Upisati nalaz</td>
+    </tr>
+    <tr>
+      <td>Management mreža</td>
+      <td>Međusobna VMkernel dostupnost</td>
+      <td>Upisati nalaz</td>
+    </tr>
+    <tr>
+      <td>DNS i NTP</td>
+      <td>Ispravna rezolucija i usklađeno vreme</td>
+      <td>Upisati nalaz</td>
+    </tr>
+    <tr>
+      <td>Zajednički datastore</td>
+      <td>Vidljiv sa svih hostova</td>
+      <td>Upisati nalaz</td>
+    </tr>
+    <tr>
+      <td>VM mreže</td>
+      <td>Port grupe dostupne na svim hostovima</td>
+      <td>Upisati nalaz</td>
+    </tr>
+    <tr>
+      <td>Kapacitet</td>
+      <td>Dovoljan za planirani broj otkaza</td>
+      <td>Upisati nalaz</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<ul>
+  <li>Ako je host <strong>Disconnected</strong>, prvo rešavaj vCenter komunikaciju, management mrežu, DNS i agente. Ne uključuj HA preko već neispravnog klastera.</li>
+  <li>Ako datastore nije vidljiv sa jednog hosta, proveri storage mrežu, zoning, LUN masking, NFS dozvole, VMkernel binding i multipathing pre HA konfiguracije.</li>
+  <li>Ako port grupa ne postoji na svim hostovima, standardizuj mrežnu konfiguraciju pre testiranja failover-a.</li>
+  <li>Ako nema dovoljno resursa, smanji opterećenje, dodaj kapacitet ili promeni realno očekivanje tolerancije na kvar. Isključivanje Admission Control-a ne stvara resurse.</li>
+  <li>Ako hostovi koriste različite verzije ili build-ove, proveri interoperabilnost i stanje životnog ciklusa klastera pre testiranja.</li>
+</ul>
+
+<p><strong>Vraćanje u početno stanje</strong></p>
+
+<p>Nisu izvršene konfiguracione promene. Ako je SSH uključen samo radi provere, isključi ga kroz:</p>
+
+<p><strong>Host &gt; Configure &gt; System &gt; Services &gt; SSH &gt; Stop</strong></p>
+
+<hr>
+
+<p><strong>Vežba 2 – Uključivanje vSphere HA i validacija FDM agenata</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je uključivanje HA na postojećem klasteru, praćenje procesa konfiguracije hostova i potvrda da je svaki host uspešno ušao u operativno HA stanje.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Vežba 1 završena bez nerešenih kritičnih odstupanja.</li>
+  <li>Svi hostovi su povezani i van maintenance režima.</li>
+  <li>vCenter ima stabilnu komunikaciju sa svim hostovima.</li>
+  <li>Administratorski nalog ima pravo izmene klastera.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Uključivanje HA menja konfiguraciju klastera i pokreće konfiguraciju HA komponenti na svim hostovima. Operacija je normalno bez prekida rada VM-ova, ali je ne treba započinjati tokom aktivnog incidenta, vCenter nadogradnje, prekida management mreže ili storage problema.</p>
+
+<p><strong>Korak 1 – Snimanje postojeće konfiguracije klastera</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$cluster |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel,
+                  HARestartPriority,
+                  HAIsolationResponse,
+                  DrsEnabled,
+                  DrsAutomationLevel |
+    Format-List</code></pre>
+
+<p>Komanda je read-only i predstavlja osnovni pre-change zapis. Rezultat sačuvaj u change dokumentaciju.</p>
+
+<p>Konfiguraciju možeš izvesti u tekstualni fajl:</p>
+
+<pre><code class="language-powershell">$cluster |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel,
+                  HARestartPriority,
+                  HAIsolationResponse,
+                  DrsEnabled,
+                  DrsAutomationLevel |
+    Out-File -FilePath ".\CL-PROD-LAB-before-HA.txt"</code></pre>
+
+<p><strong>Korak 2 – Uključivanje HA kroz vSphere Client</strong></p>
+
+<ol>
+  <li>Otvori <strong>Hosts and Clusters</strong>.</li>
+  <li>Izaberi <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure</strong>.</li>
+  <li>U sekciji <strong>Services</strong> ili <strong>vSphere Availability</strong> otvori HA podešavanja.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Uključi <strong>vSphere HA</strong>.</li>
+  <li>Ostavi <strong>Host Monitoring</strong> uključen.</li>
+  <li>Za sada ostavi podrazumevanu Failure Response konfiguraciju, osim ako laboratorijski plan zahteva drugačije.</li>
+  <li>Uključi Admission Control, ali njegovu konkretnu politiku podesi u sledećoj vežbi.</li>
+  <li>Sačuvaj promene.</li>
+</ol>
+
+<p>vCenter nakon potvrde pokreće zadatke konfiguracije HA na hostovima. Tokom ovog procesa mogu se privremeno pojaviti stanja kao što su <strong>Initializing</strong>, <strong>Configuring</strong> ili upozorenja dok se klaster ne stabilizuje.</p>
+
+<p><strong>Korak 3 – Uključivanje HA pomoću PowerCLI-ja</strong></p>
+
+<p>Alternativni postupak je:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Set-Cluster -HAEnabled $true -Confirm:$false</code></pre>
+
+<p><code>Set-Cluster</code> menja stanje klastera. Parametar <code>-HAEnabled $true</code> uključuje HA, a <code>-Confirm:$false</code> uklanja interaktivnu potvrdu. U produkcionoj skripti ovaj poslednji parametar koristi se samo kada postoje pre-change validacija, logging i kontrola grešaka. Zvanična PowerCLI referenca potvrđuje da <code>Set-Cluster</code> menja HA konfiguraciju klastera i da određene HA opcije mogu automatski uključiti HA.</p>
+
+<p>Bezbedniji administrativni obrazac je:</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+if (-not $cluster.HAEnabled) {
+    $cluster | Set-Cluster -HAEnabled $true -Confirm:$true
+}
+else {
+    Write-Host "vSphere HA je već uključen na klasteru."
+}</code></pre>
+
+<p>Skripta prvo proverava trenutno stanje i izbegava nepotrebnu promenu.</p>
+
+<p><strong>Korak 4 – Praćenje zadataka i događaja</strong></p>
+
+<p>U vSphere Client-u otvori:</p>
+
+<p><strong>CL-PROD-LAB &gt; Monitor &gt; Tasks and Events</strong></p>
+
+<p>Traži zadatke i događaje povezane sa:</p>
+
+<ul>
+  <li>reconfiguring cluster;</li>
+  <li>configuring vSphere HA;</li>
+  <li>installing ili configuring HA agent;</li>
+  <li>host joining HA cluster;</li>
+  <li>HA agent state changes;</li>
+  <li>heartbeat datastore selection.</li>
+</ul>
+
+<p>PowerCLI pregled poslednjih događaja:</p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity (Get-Cluster -Name "CL-PROD-LAB") -MaxSamples 200 |
+    Where-Object {
+        $_.FullFormattedMessage -match "HA|High Availability|FDM"
+    } |
+    Select-Object CreatedTime, UserName, FullFormattedMessage |
+    Sort-Object CreatedTime</code></pre>
+
+<p>Komanda je read-only. Tekst događaja zavisi od verzije i lokalizacije vCenter-a, pa filter ne mora pronaći svaku HA poruku. Za preciznu forenziku koristi se tip događaja i vCenter logovi, a ne samo pretraga teksta.</p>
+
+<p><strong>Korak 5 – Provera HA stanja klastera</strong></p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel,
+                  HARestartPriority,
+                  HAIsolationResponse |
+    Format-List</code></pre>
+
+<p>Očekuje se <code>HAEnabled : True</code>. Ostale vrednosti zavise od verzije i izabrane politike.</p>
+
+<p>Za detaljniji pogled na vSphere API konfiguraciju:</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$cluster.ExtensionData.Configuration.DasConfig |
+    Format-List *</code></pre>
+
+<p><code>DasConfig</code> sadrži HA konfiguraciju koju PowerCLI objekat ne prikazuje uvek kroz jednostavne osobine. Komanda je read-only. Administrator treba da bude oprezan pri korišćenju <code>ExtensionData</code> za izmene jer pogrešno sastavljen API spec može promeniti više opcija nego što je planirano.</p>
+
+<p><strong>Korak 6 – Provera FDM servisa na hostovima</strong></p>
+
+<p>Na svakom ESXi hostu izvrši:</p>
+
+<pre><code class="language-bash">/etc/init.d/fdm status</code></pre>
+
+<p>Komanda proverava status Fault Domain Manager servisa. Očekuje se da je FDM pokrenut. Komanda ne menja stanje sistema.</p>
+
+<p>U zavisnosti od verzije i načina prikaza logova, HA log se najčešće pregleda kroz simboličku putanju <code>/var/log/fdm.log</code>, koja može upućivati na aktivni runtime log u <code>/var/run/log</code>. Broadcom dokumentacija i KB članci koriste FDM log kao glavni izvor za analizu HA aktivnosti.</p>
+
+<pre><code class="language-bash">tail -n 100 /var/log/fdm.log</code></pre>
+
+<p>Komanda prikazuje poslednjih sto redova bez izmene loga. Traži poruke o:</p>
+
+<ul>
+  <li>inicijalizaciji FDM-a;</li>
+  <li>ulasku hosta u HA klaster;</li>
+  <li>primary ili secondary ulozi;</li>
+  <li>SSL komunikaciji;</li>
+  <li>management adresama;</li>
+  <li>heartbeat datastore-ovima;</li>
+  <li>zaštićenim VM-ovima.</li>
+</ul>
+
+<p>Praktičan filter:</p>
+
+<pre><code class="language-bash">grep -Ei "primary|secondary|master|slave|heartbeat|state|error|warning" /var/log/fdm.log |
+    tail -n 100</code></pre>
+
+<p>U novijoj dokumentaciji preferiraju se termini <strong>primary</strong> i <strong>secondary</strong>, ali stariji logovi, KB članci i pojedine verzije još mogu sadržati istorijske termine <strong>master</strong> i <strong>slave</strong>. Administrator mora prepoznati oba skupa termina tokom analize mešovitih ili nadograđivanih okruženja.</p>
+
+<p><strong>Korak 7 – Provera HA uloga hostova</strong></p>
+
+<p>Na svakom hostu filtriraj FDM log:</p>
+
+<pre><code class="language-bash">grep -Ei "I am primary|I am secondary|master|slave" /var/log/fdm.log |
+    tail -n 30</code></pre>
+
+<p>U normalnom stabilnom klasteru jedan host ima koordinacionu primary ulogu, dok su ostali secondary članovi. Tačna formulacija poruke zavisi od verzije FDM-a. Ne pokušavaj ručno da nametneš ulogu određenom hostu. Izbor koordinacionog hosta je interni HA proces.</p>
+
+<p><strong>Korak 8 – Provera HA zaštite virtuelnih mašina</strong></p>
+
+<p>U vSphere Client-u izaberi klaster i otvori HA monitoring prikaz. Naziv kartice zavisi od verzije, ali se traže:</p>
+
+<ul>
+  <li>HA host status;</li>
+  <li>protected VM status;</li>
+  <li>configuration issues;</li>
+  <li>admission control stanje;</li>
+  <li>heartbeat datastore informacije.</li>
+</ul>
+
+<p>VM koja je uključena i nalazi se na odgovarajućem shared storage-u treba da bude zaštićena. Zaštita znači da je HA evidentira i da ima potrebne informacije za pokušaj restarta; ne znači da je uspešan restart apsolutno garantovan bez dostupnih resursa, storage-a i mreže.</p>
+
+<p><strong>Moguće greške</strong></p>
+
+<p><strong>Greška: HA agent unreachable</strong></p>
+
+<ol>
+  <li>Potvrdi da li je problem na jednom ili više hostova.</li>
+  <li>Proveri management mrežu i DNS.</li>
+  <li>Proveri FDM servis.</li>
+  <li>Pregledaj <code>/var/log/fdm.log</code>.</li>
+  <li>Pregledaj <code>/var/log/hostd.log</code>, <code>/var/log/vpxa.log</code> i <code>/var/log/vmkernel.log</code>.</li>
+  <li>Proveri sertifikate i vreme.</li>
+  <li>Tek nakon potvrde uzroka koristi <strong>Reconfigure for vSphere HA</strong>.</li>
+</ol>
+
+<p><strong>Greška: FDM agent ne može da se instalira ili konfiguriše</strong></p>
+
+<p>U vSphere 7.x i 8.x okruženjima FDM paket se tipično distribuira hostu kada se HA uključi. Problem može biti povezan sa komunikacijom, image stanjem, prostorom, VIB instalacijom, sertifikatom ili nekompatibilnom naprednom opcijom. Aktuelni Broadcom KB opisuje slučajeve u kojima <code>vmware-fdm</code> ne može pravilno da se instalira ili agent ostaje nedostupan.</p>
+
+<p>Proveri instalirane pakete:</p>
+
+<pre><code class="language-bash">esxcli software vib list | grep -i fdm</code></pre>
+
+<p>Komanda je read-only. Nemoj ručno uklanjati ili instalirati FDM VIB bez tačnog postupka za konkretnu verziju i bez podrške proizvođača. Standardna korektivna akcija je rešavanje osnovnog uzroka i zatim kontrolisana HA rekonfiguracija.</p>
+
+<p><strong>Bezbedna rekonfiguracija jednog hosta</strong></p>
+
+<p>U vSphere Client-u:</p>
+
+<ol>
+  <li>Izaberi pogođeni host.</li>
+  <li>Desni klik.</li>
+  <li>Izaberi <strong>Reconfigure for vSphere HA</strong>.</li>
+  <li>Prati zadatak i događaje.</li>
+  <li>Potvrdi da je FDM ponovo operativan.</li>
+</ol>
+
+<p>Ne koristi istovremeno rekonfiguraciju svih hostova ako problem nije jasno određen. Time se može ukloniti zdrava HA zaštita tokom incidenta i otežati analiza prvobitnog uzroka.</p>
+
+<p><strong>Provera uspeha vežbe</strong></p>
+
+<ul>
+  <li>HA je uključen na klasteru.</li>
+  <li>Host Monitoring je uključen.</li>
+  <li>Svi hostovi imaju operativan FDM servis.</li>
+  <li>Klaster nema aktivne HA configuration issue poruke.</li>
+  <li>Jedan host ima primary, a ostali secondary HA uloge.</li>
+  <li>Test VM-ovi su prikazani kao zaštićeni.</li>
+</ul>
+
+<p><strong>Vraćanje u početno stanje</strong></p>
+
+<p>Ako laboratorijski plan zahteva potpuno vraćanje na stanje bez HA:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Set-Cluster -HAEnabled $false -Confirm:$true</code></pre>
+
+<p>Ovo je konfiguraciona promena koja uklanja HA zaštitu klastera. U produkciji se ne izvodi bez odobrene promene, procene rizika i alternativnog mehanizma zaštite. Za nastavak ovog praktikuma HA mora ostati uključen.</p>
+
+<hr>
+
+<p><strong>Vežba 3 – Projektovanje i konfiguracija Admission Control politike</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator definiše koliko kapaciteta klaster mora ostati dostupno za restart VM-ova nakon otkaza hosta i da razume razliku između rezervisanog failover kapaciteta i trenutne slobodne memorije.</p>
+
+<p>Admission Control ne sprečava fizički kvar i ne stvara dodatne resurse. On ograničava operacije uključivanja VM-ova kada bi takva operacija prekršila definisanu raspoloživost. Broadcom dokumentacija opisuje njegovu svrhu kao obezbeđivanje dovoljnog kapaciteta za oporavak VM-ova nakon otkaza hosta.</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>Klaster ima tri približno jednaka hosta i mora tolerisati potpuni gubitak jednog hosta. U pojednostavljenom homogenom klasteru to odgovara rezervisanju približno 33% CPU i 33% memorijskog kapaciteta. U realnom klasteru sa hostovima različite veličine procenat se ne sme izračunavati samo kao <code>100 / broj hostova</code>; treba ga zasnovati na kapacitetu najvećeg hosta čiji se gubitak mora tolerisati.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Promena Admission Control politike može odmah uticati na mogućnost uključivanja novih ili postojećih VM-ova. Previše stroga politika može blokirati legitimne operacije, dok previše slaba politika može ostaviti klaster bez dovoljnog failover kapaciteta.</p>
+
+<p><strong>Korak 1 – Izračunavanje osnovnog kapaciteta</strong></p>
+
+<p>Prikupi kapacitet svakog hosta:</p>
+
+<pre><code class="language-powershell">$hosts = Get-Cluster -Name "CL-PROD-LAB" | Get-VMHost
+
+$hosts |
+    Select-Object Name,
+        @{Name="CPU_Total_GHz";Expression={[math]::Round($_.CpuTotalMhz / 1000, 2)}},
+        @{Name="Memory_Total_GB";Expression={[math]::Round($_.MemoryTotalGB, 2)}} |
+    Format-Table -AutoSize</code></pre>
+
+<p>Izračunaj ukupan kapacitet:</p>
+
+<pre><code class="language-powershell">$totalCpuMhz = ($hosts | Measure-Object -Property CpuTotalMhz -Sum).Sum
+$totalMemoryGB = ($hosts | Measure-Object -Property MemoryTotalGB -Sum).Sum
+
+[PSCustomObject]@{
+    Cluster          = "CL-PROD-LAB"
+    TotalCPU_GHz     = [math]::Round($totalCpuMhz / 1000, 2)
+    TotalMemory_GB   = [math]::Round($totalMemoryGB, 2)
+    NumberOfHosts    = $hosts.Count
+}</code></pre>
+
+<p>Odredi udeo najvećeg hosta:</p>
+
+<pre><code class="language-powershell">$largestCpuHost = $hosts |
+    Sort-Object CpuTotalMhz -Descending |
+    Select-Object -First 1
+
+$largestMemoryHost = $hosts |
+    Sort-Object MemoryTotalGB -Descending |
+    Select-Object -First 1
+
+$cpuFailoverPercent =
+    [math]::Ceiling(($largestCpuHost.CpuTotalMhz / $totalCpuMhz) * 100)
+
+$memoryFailoverPercent =
+    [math]::Ceiling(($largestMemoryHost.MemoryTotalGB / $totalMemoryGB) * 100)
+
+[PSCustomObject]@{
+    CPUFailoverPercent    = $cpuFailoverPercent
+    MemoryFailoverPercent = $memoryFailoverPercent
+}</code></pre>
+
+<p>Rezultat predstavlja početnu matematičku procenu. U produkciji se dodatno proveravaju:</p>
+
+<ul>
+  <li>CPU i memorijske rezervacije VM-ova;</li>
+  <li>overhead virtuelnih mašina;</li>
+  <li>neravnomerna veličina hostova;</li>
+  <li>resource pool rezervacije;</li>
+  <li>VM-host affinity i anti-affinity pravila;</li>
+  <li>GPU, vTPM, passthrough i drugi posebni uređaji;</li>
+  <li>network i storage dostupnost;</li>
+  <li>planirano održavanje uz istovremeni kvar drugog hosta.</li>
+</ul>
+
+<p><strong>Korak 2 – Konfiguracija Admission Control-a u vSphere Client-u</strong></p>
+
+<ol>
+  <li>Izaberi <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure &gt; vSphere Availability</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Otvori sekciju <strong>Admission Control</strong>.</li>
+  <li>Uključi Admission Control.</li>
+  <li>Izaberi odgovarajuću politiku, najčešće procentualnu rezervaciju klasterskih resursa.</li>
+  <li>Za homogen laboratorijski klaster od tri hosta postavi približno 33% CPU i 33% memorije ili koristi vrednosti dobijene proračunom najvećeg hosta.</li>
+  <li>Pregledaj izračunati failover kapacitet prikazan u klijentu.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p>Nazivi politika mogu se razlikovati po verziji. Mogu se pojaviti pristupi kao što su:</p>
+
+<ul>
+  <li>Cluster resource percentage;</li>
+  <li>Dedicated failover hosts;</li>
+  <li>Slot policy;</li>
+  <li>Disabled admission control.</li>
+</ul>
+
+<p>Za većinu modernih opštih klastera procentualna politika je razumljivija i prilagodljivija od istorijskog slot modela. Dedicated failover host može biti opravdan u specifičnim projektima, ali tada rezervisani host normalno ne doprinosi redovnom izvršavanju opterećenja, što smanjuje efikasnost iskorišćenja kapaciteta.</p>
+
+<p><strong>Korak 3 – Provera konfiguracije pomoću PowerCLI-ja</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$cluster |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel |
+    Format-List
+
+$cluster.ExtensionData.Configuration.DasConfig |
+    Format-List *</code></pre>
+
+<p>Prva komanda prikazuje opšte HA osobine. Druga daje detaljniji API prikaz politike. Polja se mogu razlikovati između verzija, pa skripte koje parsiraju ove vrednosti treba testirati nakon nadogradnje vCenter-a.</p>
+
+<p><strong>Korak 4 – Provera current failover capacity prikaza</strong></p>
+
+<p>U vSphere Client-u otvori HA status klastera i proveri:</p>
+
+<ul>
+  <li>Current Failover Capacity;</li>
+  <li>Configured Failover Capacity;</li>
+  <li>CPU failover rezervu;</li>
+  <li>Memory failover rezervu;</li>
+  <li>eventualne Admission Control poruke;</li>
+  <li>da li klaster trenutno zadovoljava politiku.</li>
+</ul>
+
+<p>Administrator ne treba da proverava samo da li je opcija uključena. Mora potvrditi da klaster zaista ispunjava politiku sa trenutnim brojem dostupnih hostova.</p>
+
+<p><strong>Korak 5 – Bezbedna simulacija narušavanja kapaciteta</strong></p>
+
+<p>Nemoj fizički isključivati host. U laboratoriji možeš izabrati jednu ugašenu test VM i privremeno povećavati njenu memorijsku rezervaciju ili pokušati da uključiš dodatne test VM-ove dok Admission Control ne odbije operaciju.</p>
+
+<p>Pre promene zabeleži konfiguraciju test VM-a:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-load-test01" |
+    Get-VMResourceConfiguration |
+    Format-List *</code></pre>
+
+<p>Primer postavljanja laboratorijske memorijske rezervacije:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-load-test01" |
+    Get-VMResourceConfiguration |
+    Set-VMResourceConfiguration -MemReservationGB 8</code></pre>
+
+<p>Ovo menja resursnu konfiguraciju VM-a i može uticati na Admission Control i mogućnost uključivanja VM-a. Izvodi se isključivo na test VM-u. Vrednost mora biti prilagođena veličini laboratorije; ne treba koristiti 8 GB ako lab nema odgovarajući kapacitet.</p>
+
+<p>Pokušaj uključivanja:</p>
+
+<pre><code class="language-powershell">Start-VM -VM "vm-load-test01" -Confirm:$true</code></pre>
+
+<p>Ako bi uključivanje prekršilo HA failover politiku, vCenter treba da odbije operaciju odgovarajućom Admission Control porukom. Tačna poruka zavisi od verzije i konfiguracije.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>Klaster prikazuje definisanu failover rezervu.</li>
+  <li>Normalne operacije koje ne ugrožavaju rezervu uspevaju.</li>
+  <li>Operacija koja bi prekršila politiku može biti blokirana.</li>
+  <li>Postojeći VM-ovi ne moraju automatski biti ugašeni samo zato što je politika trenutno narušena.</li>
+</ul>
+
+<p><strong>Važno tumačenje</strong></p>
+
+<p>Admission Control nije load balancer. Klaster može zadovoljiti Admission Control politiku, a ipak biti pod velikim realnim opterećenjem. Obrnuto, klaster može imati dosta trenutno neiskorišćene memorije, ali zbog rezervacija, affinity pravila ili specijalnog hardvera ipak ne biti sposoban da smesti određeni VM.</p>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<p><strong>Problem: VM ne može da se uključi zbog Admission Control-a</strong></p>
+
+<ol>
+  <li>Potvrdi tekst greške i pogođeni VM.</li>
+  <li>Proveri da li je jedan host u maintenance ili disconnected stanju.</li>
+  <li>Proveri recentne promene VM rezervacija.</li>
+  <li>Proveri resource pool rezervacije.</li>
+  <li>Proveri HA failover procenat.</li>
+  <li>Proveri affinity i anti-affinity pravila.</li>
+  <li>Proveri da li VM zahteva uređaj koji nije dostupan na svim hostovima.</li>
+  <li>Ne isključuj Admission Control kao prvu reakciju.</li>
+  <li>Oslobodi kapacitet, ispravi rezervaciju ili odobreno promeni politiku.</li>
+  <li>Ponovi operaciju i dokumentuj rezultat.</li>
+</ol>
+
+<p><strong>Problem: Current Failover Capacity je nula</strong></p>
+
+<p>Mogući uzroci:</p>
+
+<ul>
+  <li>klaster je preopterećen;</li>
+  <li>jedan ili više hostova nisu dostupni;</li>
+  <li>rezervacije VM-ova su previsoke;</li>
+  <li>politika je stroža od realnog kapaciteta;</li>
+  <li>klaster ima premalo hostova;</li>
+  <li>postoji neravnoteža CPU i memorijskog kapaciteta;</li>
+  <li>HA još nije završio rekonfiguraciju.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Vrati memorijsku rezervaciju test VM-a na prethodnu vrednost. Ako je prethodno bila nula:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-load-test01" |
+    Get-VMResourceConfiguration |
+    Set-VMResourceConfiguration -MemReservationGB 0</code></pre>
+
+<p>Proveri:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-load-test01" |
+    Get-VMResourceConfiguration |
+    Select-Object VM, MemReservationGB</code></pre>
+
+<hr>
+
+<p><strong>Vežba 4 – Definisanje VM restart prioriteta i zavisnosti servisa</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da se nakon otkaza hosta infrastruktura ne podiže slučajnim poslovnim redosledom. Administrator definiše prioritet oporavka i, gde verzija i konfiguracija to podržavaju, uslove i zavisnosti između grupa VM-ova.</p>
+
+<p><strong>Poslovni scenario</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>VM</th>
+      <th>Uloga</th>
+      <th>Prioritet</th>
+      <th>Zavisnost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vm-ad01</td>
+      <td>Active Directory i DNS</td>
+      <td>Highest</td>
+      <td>Nema infrastrukturnu VM zavisnost</td>
+    </tr>
+    <tr>
+      <td>vm-db01</td>
+      <td>Baza podataka</td>
+      <td>High</td>
+      <td>Zavisi od DNS-a i autentikacije</td>
+    </tr>
+    <tr>
+      <td>vm-app01</td>
+      <td>Aplikacioni servis</td>
+      <td>Medium</td>
+      <td>Zavisi od baze</td>
+    </tr>
+    <tr>
+      <td>vm-web01</td>
+      <td>Web front-end</td>
+      <td>Low ili Medium</td>
+      <td>Zavisi od aplikacionog servisa</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Upozorenje o dizajnu</strong></p>
+
+<p>Restart Priority određuje red prvenstva kojim HA pokušava da pokrene VM-ove, ali sam prioritet ne dokazuje da je aplikacija unutar prethodne VM spremna. Uslov „VM je uključena” nije isto što i „baza prihvata konekcije”. Za aplikacionu spremnost potrebni su odgovarajući dependency uslovi, VMware Tools stanje, application monitoring ili spoljna automatizacija.</p>
+
+<p><strong>Korak 1 – Dokumentovanje postojećih override pravila</strong></p>
+
+<p>U vSphere Client-u izaberi:</p>
+
+<p><strong>CL-PROD-LAB &gt; Configure &gt; VM Overrides</strong></p>
+
+<p>Zabeleži postojeće override unose, naročito:</p>
+
+<ul>
+  <li>VM Restart Priority;</li>
+  <li>Host Isolation Response;</li>
+  <li>VM Monitoring;</li>
+  <li>VM Component Protection;</li>
+  <li>dodatna kašnjenja i dependency uslove, ako postoje.</li>
+</ul>
+
+<p><strong>Korak 2 – Postavljanje podrazumevane politike klastera</strong></p>
+
+<ol>
+  <li>Otvori <strong>CL-PROD-LAB &gt; Configure &gt; vSphere Availability</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Otvori <strong>Failures and Responses</strong>.</li>
+  <li>Za host failure response izaberi restart VM-ova.</li>
+  <li>Postavi razuman podrazumevani restart priority, na primer <strong>Medium</strong>.</li>
+  <li>Sačuvaj konfiguraciju.</li>
+</ol>
+
+<p>Podrazumevana politika treba da pokrije većinu VM-ova. Override se koristi samo za VM-ove sa dokazanim posebnim poslovnim zahtevom. Ako svaka VM ima override, konfiguracija postaje teško održiva i sklona zastarevanju.</p>
+
+<p><strong>Korak 3 – Kreiranje VM override-a</strong></p>
+
+<ol>
+  <li>Otvori <strong>Configure &gt; VM Overrides</strong>.</li>
+  <li>Klikni <strong>Add</strong>.</li>
+  <li>Izaberi <strong>vm-ad01</strong>.</li>
+  <li>Uključi override za <strong>VM Restart Priority</strong>.</li>
+  <li>Postavi <strong>Highest</strong>.</li>
+  <li>Sačuvaj pravilo.</li>
+  <li>Ponovi postupak za <strong>vm-db01</strong> sa prioritetom <strong>High</strong>.</li>
+  <li>Za <strong>vm-app01</strong> koristi <strong>Medium</strong>.</li>
+  <li>Za <strong>vm-web01</strong> koristi <strong>Low</strong> ili <strong>Medium</strong>, prema laboratorijskom planu.</li>
+</ol>
+
+<p><strong>Korak 4 – Kreiranje VM grupa</strong></p>
+
+<p>Ako verzija i konfiguracija klastera omogućavaju VM/Host Groups i pravila zavisnosti, napravi logičke VM grupe:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Grupa</th>
+      <th>Članovi</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>GRP-INFRA</td>
+      <td>vm-ad01</td>
+    </tr>
+    <tr>
+      <td>GRP-DATABASE</td>
+      <td>vm-db01</td>
+    </tr>
+    <tr>
+      <td>GRP-APPLICATION</td>
+      <td>vm-app01</td>
+    </tr>
+    <tr>
+      <td>GRP-WEB</td>
+      <td>vm-web01</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>GUI putanja je tipično:</p>
+
+<p><strong>CL-PROD-LAB &gt; Configure &gt; VM/Host Groups</strong></p>
+
+<p>Zatim, u sekciji za VM/Host pravila, definiši odgovarajuće dependency pravilo kada je dostupno i podržano. Tačna terminologija i mogućnosti zavise od verzije vSphere-a i DRS/HA konfiguracije.</p>
+
+<p><strong>Korak 5 – Definisanje uslova nastavka</strong></p>
+
+<p>U novijim HA konfiguracijama mogu se koristiti uslovi koji određuju kada se prelazi na sledeću prioritetnu grupu, na primer:</p>
+
+<ul>
+  <li>resources allocated;</li>
+  <li>VM powered on;</li>
+  <li>guest heartbeat detected;</li>
+  <li>app heartbeat detected;</li>
+  <li>određeno dodatno kašnjenje.</li>
+</ul>
+
+<p>Za laboratoriju sa instaliranim i ispravnim VMware Tools može se koristiti guest heartbeat kao jači signal od samog power-on stanja. Ipak, ni guest heartbeat ne garantuje da je konkretna poslovna aplikacija spremna.</p>
+
+<p><strong>Korak 6 – Provera VMware Tools stanja</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-ad01","vm-db01","vm-app01","vm-web01" |
+    Select-Object Name, PowerState,
+        @{Name="ToolsStatus";Expression={$_.ExtensionData.Guest.ToolsStatus}},
+        @{Name="ToolsRunningStatus";Expression={$_.ExtensionData.Guest.ToolsRunningStatus}} |
+    Format-Table -AutoSize</code></pre>
+
+<p>Komanda je read-only. Za guest heartbeat uslove očekuje se da VMware Tools radi. Ako Tools nije instaliran ili nije pokrenut, HA ne može koristiti taj signal na očekivan način.</p>
+
+<p><strong>Korak 7 – Provera poslovne spremnosti</strong></p>
+
+<p>Za svaku servisnu komponentu definiši nezavisan test:</p>
+
+<ul>
+  <li>DNS: uspešna rezolucija kontrolnog imena;</li>
+  <li>Active Directory: uspešna autentikacija ili LDAP/Kerberos test;</li>
+  <li>baza: uspešna konekcija i jednostavan read-only upit;</li>
+  <li>aplikacioni servis: health endpoint ili kontrolni zahtev;</li>
+  <li>web: HTTP ili HTTPS odgovor očekivanog statusa.</li>
+</ul>
+
+<p>Primer sa administratorske Linux stanice:</p>
+
+<pre><code class="language-bash">nslookup app.lab.local
+curl -k -I https://app.lab.local/health</code></pre>
+
+<p>Primer sa PowerShell stanice:</p>
+
+<pre><code class="language-powershell">Resolve-DnsName app.lab.local
+Test-NetConnection app.lab.local -Port 443
+Invoke-WebRequest -Uri "https://app.lab.local/health" -UseBasicParsing</code></pre>
+
+<p>Ovi testovi ne menjaju vSphere konfiguraciju. Mogu, međutim, generisati aplikacione i mrežne log zapise.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>Infrastrukturne VM imaju viši restart prioritet.</li>
+  <li>Baza se ne tretira isto kao pomoćni web server.</li>
+  <li>Postoje dokumentovane zavisnosti između servisnih slojeva.</li>
+  <li>Za svaki sloj postoji operativan readiness test.</li>
+  <li>Override pravila se koriste samo tamo gde su opravdana.</li>
+</ul>
+
+<p><strong>Tipične greške</strong></p>
+
+<ul>
+  <li>Sve VM postavljene su na Highest, čime se prioritet praktično obesmišljava.</li>
+  <li>Prioritet je definisan prema nazivu servera, a ne prema poslovnoj zavisnosti.</li>
+  <li>Administrator pretpostavlja da power-on znači spremnu aplikaciju.</li>
+  <li>Dependency pravilo čeka guest heartbeat, ali VMware Tools ne radi.</li>
+  <li>Dodatno kašnjenje je prekratko za bazu ili predugo za kritičan servis.</li>
+  <li>Stara VM ostaje u grupi nakon promene aplikacione arhitekture.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Ako treba ukloniti test override:</p>
+
+<ol>
+  <li>Otvori <strong>Configure &gt; VM Overrides</strong>.</li>
+  <li>Izaberi test pravilo.</li>
+  <li>Klikni <strong>Remove</strong>.</li>
+  <li>Potvrdi da VM ponovo nasleđuje klastersku politiku.</li>
+</ol>
+
+<hr>
+
+<p><strong>Vežba 5 – Planirano održavanje hosta bez oslanjanja na HA restart</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je razumevanje razlike između planirane administrativne operacije i neplaniranog HA failover-a. Kod planskog održavanja VM-ovi se premeštaju vMotion-om, a host se uvodi u maintenance režim. HA nije zamena za pravilno pražnjenje hosta.</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>Host <strong>esx03.lab.local</strong> treba pripremiti za firmware ili ESXi održavanje. Klaster mora ostati HA zaštićen u meri u kojoj preostali kapacitet to omogućava.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Pre ulaska hosta u maintenance režim proveri da li preostali hostovi imaju dovoljno resursa. U klasteru sa samo dva hosta, održavanje jednog hosta znači da HA nema drugi host na koji bi restartovao VM u slučaju kvara preostalog hosta.</p>
+
+<p><strong>Korak 1 – Pre-check</strong></p>
+
+<pre><code class="language-powershell">$hostToMaintain = Get-VMHost -Name "esx03.lab.local"
+
+$hostToMaintain |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  CpuUsageMhz,
+                  CpuTotalMhz,
+                  MemoryUsageGB,
+                  MemoryTotalGB |
+    Format-List
+
+$hostToMaintain |
+    Get-VM |
+    Select-Object Name, PowerState |
+    Format-Table -AutoSize</code></pre>
+
+<p>Komande su read-only. Zabeleži koje VM trenutno rade na hostu.</p>
+
+<p>Proveri klastersko HA stanje:</p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel |
+    Format-List</code></pre>
+
+<p><strong>Korak 2 – Provera migracione kompatibilnosti</strong></p>
+
+<p>U vSphere Client-u pokreni migracioni pre-check za kritične VM-ove. Proveri:</p>
+
+<ul>
+  <li>CPU kompatibilnost i EVC;</li>
+  <li>dostupnost port grupa;</li>
+  <li>storage dostupnost;</li>
+  <li>povezane ISO fajlove i lokalne uređaje;</li>
+  <li>passthrough uređaje;</li>
+  <li>VM-host pravila;</li>
+  <li>dostupnost resursa na odredišnom hostu.</li>
+</ul>
+
+<p><strong>Korak 3 – Ručna migracija, ako DRS nije potpuno automatizovan</strong></p>
+
+<p>GUI putanja:</p>
+
+<ol>
+  <li>Izaberi VM na esx03.</li>
+  <li>Desni klik i izaberi <strong>Migrate</strong>.</li>
+  <li>Izaberi <strong>Change compute resource only</strong>.</li>
+  <li>Izaberi odgovarajući host.</li>
+  <li>Pregledaj compatibility rezultate.</li>
+  <li>Završi migraciju.</li>
+</ol>
+
+<p>PowerCLI primer:</p>
+
+<pre><code class="language-powershell">Move-VM -VM "vm-app01" -Destination "esx01.lab.local" -Confirm:$true</code></pre>
+
+<p><code>Move-VM</code> menja mesto izvršavanja VM-a. Kada su ispunjeni uslovi za vMotion, VM ostaje uključena. Pre izvršavanja proveri kompatibilnost i ne koristi automatsku petlju za sve VM-ove bez obrade grešaka.</p>
+
+<p><strong>Korak 4 – Uvođenje hosta u maintenance režim</strong></p>
+
+<p>U vSphere Client-u:</p>
+
+<ol>
+  <li>Izaberi <strong>esx03.lab.local</strong>.</li>
+  <li>Desni klik.</li>
+  <li>Izaberi <strong>Maintenance Mode &gt; Enter Maintenance Mode</strong>.</li>
+  <li>Ako DRS predloži ili pokrene migracije, prati zadatke.</li>
+  <li>Sačekaj da host uđe u maintenance režim.</li>
+</ol>
+
+<p>PowerCLI:</p>
+
+<pre><code class="language-powershell">Set-VMHost -VMHost "esx03.lab.local" -State Maintenance -Confirm:$true</code></pre>
+
+<p>Komanda menja stanje hosta. Može pokrenuti migracije ili ostati blokirana ako VM-ovi ne mogu da se evakuišu. Nemoj koristiti <code>-Confirm:$false</code> u prvoj laboratorijskoj ili produkcionoj primeni.</p>
+
+<p><strong>Korak 5 – Provera posledica po HA kapacitet</strong></p>
+
+<p>Nakon ulaska hosta u maintenance režim proveri:</p>
+
+<ul>
+  <li>da li Admission Control politika još može biti zadovoljena;</li>
+  <li>koliko hostova je ostalo dostupno;</li>
+  <li>da li postoje HA configuration issue upozorenja;</li>
+  <li>da li su sve VM uspešno migrirane;</li>
+  <li>da li su VM i aplikacije i dalje dostupne.</li>
+</ul>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VMHost |
+    Select-Object Name,
+                  ConnectionState,
+        @{Name="MaintenanceMode";Expression={$_.ExtensionData.Runtime.InMaintenanceMode}},
+                  MemoryUsageGB,
+                  MemoryTotalGB |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Korak 6 – Izlazak iz maintenance režima</strong></p>
+
+<pre><code class="language-powershell">Set-VMHost -VMHost "esx03.lab.local" -State Connected -Confirm:$true</code></pre>
+
+<p>Komanda vraća host iz maintenance režima u operativno stanje. Nakon toga sačekaj da vCenter i HA potvrde da je host ponovo punopravni član klastera.</p>
+
+<p>Proveri FDM:</p>
+
+<pre><code class="language-bash">/etc/init.d/fdm status
+tail -n 100 /var/log/fdm.log</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>VM-ovi su planski migrirani bez HA restarta.</li>
+  <li>Host je bezbedno ušao u maintenance režim.</li>
+  <li>Administrator je video uticaj održavanja na failover kapacitet.</li>
+  <li>Host se nakon održavanja vratio u operativno HA stanje.</li>
+  <li>Nije izazvan nekontrolisani prekid VM-ova.</li>
+</ul>
+
+<p><strong>Ključna administratorska pouka</strong></p>
+
+<p>HA nije alat za redovno pražnjenje hosta. Ako administrator tokom planiranog održavanja jednostavno ugasi host i očekuje da HA restartuje VM-ove, izazvao je nepotreban prekid servisa, nekontrolisan guest OS boot i mogući aplikacioni recovery. Ispravan postupak je vMotion, maintenance režim, održavanje, validacija hosta i povratak u klaster.</p>
+
+<hr>
+
+<p><strong>Kontrolna tačka nakon prvog dela praktikuma</strong></p>
+
+<p>Pre nastavka na simulacije kvarova administrator treba da potvrdi sledeće:</p>
+
+<ul>
+  <li>preduslovi za HA su dokumentovani i provereni;</li>
+  <li>management komunikacija između hostova radi;</li>
+  <li>zajednički datastore-i dostupni su svim relevantnim hostovima;</li>
+  <li>VM mreže su konzistentne na svim hostovima;</li>
+  <li>HA je uključen i FDM je operativan;</li>
+  <li>test VM-ovi su HA zaštićeni;</li>
+  <li>Admission Control politika odgovara planiranoj toleranciji na kvar;</li>
+  <li>restart prioriteti odražavaju poslovne zavisnosti;</li>
+  <li>postoje testovi kojima se razlikuju VM power-on i stvarna aplikaciona spremnost;</li>
+  <li>planirano održavanje se izvodi migracijom i maintenance režimom, a ne izazivanjem HA restarta.</li>
+</ul>
+
+<p>Tek kada su ove tačke potvrđene, laboratorija je spremna za kontrolisanu simulaciju pada hosta, analizu HA događaja, proveru restart redosleda, host isolation scenarije, pogrešno izabrane heartbeat datastore-ove, VM Monitoring i sistematski oporavak nakon neuspelog failover-a.</p>
+
+<p><strong>Drugi deo – Praktikum, drugi deo</strong></p>
+
+<p>Ovaj deo praktikuma nastavlja rad nakon završene provere preduslova, uključivanja HA, konfiguracije Admission Control politike, definisanja restart prioriteta i izvođenja planskog održavanja hosta. Fokus se sada premešta na kontrolisane simulacije kvarova, razumevanje odluka koje donosi FDM, analizu događaja i logova, bezbedan oporavak i dokumentovanje incidenta.</p>
+
+<p>Svi postupci koji prekidaju management komunikaciju, gase host, zaustavljaju VM ili menjaju storage dostupnost izvode se isključivo u izolovanoj laboratoriji. U produkciji se ne simuliraju nestanak napajanja, PSOD, prekid storage putanja ili mrežna izolacija bez formalno odobrenog testa, potvrđenog poslovnog uticaja, verifikovanog backup-a i unapred pripremljenog plana povratka.</p>
+
+<p><strong>Priprema merenja pre simulacije kvara</strong></p>
+
+<p>Pre svakog testa treba definisati vreme početka, očekivani rezultat i metrike koje će biti prikupljene. Bez toga administrator može videti da se VM ponovo uključila, ali neće znati koliko je trajao oporavak, zbog čega je HA doneo određenu odluku i da li je aplikacija zaista postala dostupna.</p>
+
+<p>Za test VM <strong>vm-app01</strong> zabeleži:</p>
+
+<ul>
+  <li>početni ESXi host;</li>
+  <li>vreme poslednjeg uspešnog aplikacionog odgovora;</li>
+  <li>vreme prestanka dostupnosti;</li>
+  <li>vreme HA detekcije kvara;</li>
+  <li>vreme početka power-on operacije na drugom hostu;</li>
+  <li>vreme kada VMware Tools ponovo počne da radi;</li>
+  <li>vreme kada aplikacija ponovo odgovori;</li>
+  <li>ukupni infrastrukturni i aplikacioni RTO.</li>
+</ul>
+
+<p>Na PowerCLI stanici pronađi trenutni položaj test VM-a:</p>
+
+<pre><code class="language-powershell">$testVM = Get-VM -Name "vm-app01"
+
+$testVM |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+        @{Name="ToolsStatus";Expression={$_.ExtensionData.Guest.ToolsStatus}},
+        @{Name="ToolsRunningStatus";Expression={$_.ExtensionData.Guest.ToolsRunningStatus}} |
+    Format-List</code></pre>
+
+<p>Komanda je read-only. Očekuje se da je VM uključena, da VMware Tools radi i da je poznat host na kojem se VM trenutno izvršava.</p>
+
+<p>Sa Linux kontrolne stanice pokreni kontinuirani mrežni test:</p>
+
+<pre><code class="language-bash">ping vm-app01.lab.local</code></pre>
+
+<p>Za preciznije vremensko obeležavanje može se koristiti:</p>
+
+<pre><code class="language-bash">while true; do
+    date '+%Y-%m-%d %H:%M:%S'
+    ping -c 1 -W 1 vm-app01.lab.local
+    sleep 1
+done | tee ha-vm-app01-ping.log</code></pre>
+
+<p>Ova petlja ne menja vSphere stanje. Ona jednom u sekundi proverava mrežnu dostupnost i zapisuje rezultat u lokalni fajl. ICMP odgovor ne dokazuje da aplikacija radi, pa paralelno treba izvršavati aplikacioni health test.</p>
+
+<pre><code class="language-bash">while true; do
+    printf '%s ' "$(date '+%Y-%m-%d %H:%M:%S')"
+    curl -k -s -o /dev/null \
+        -w 'HTTP=%{http_code} TIME=%{time_total}\n' \
+        https://vm-app01.lab.local/health
+    sleep 2
+done | tee ha-vm-app01-health.log</code></pre>
+
+<p>URL treba prilagoditi stvarnoj aplikaciji. Za bazu podataka, DNS, Active Directory ili drugi servis koristi se odgovarajući read-only test, a ne HTTP zahtev.</p>
+
+<p>Na PowerShell stanici sličan test može biti:</p>
+
+<pre><code class="language-powershell">while ($true) {
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+    try {
+        $response = Invoke-WebRequest `
+            -Uri "https://vm-app01.lab.local/health" `
+            -TimeoutSec 3 `
+            -UseBasicParsing
+
+        "$timestamp HTTP=$($response.StatusCode)"
+    }
+    catch {
+        "$timestamp ERROR=$($_.Exception.Message)"
+    }
+
+    Start-Sleep -Seconds 2
+}</code></pre>
+
+<hr>
+
+<p><strong>Vežba 6 – Kontrolisana simulacija potpunog pada ESXi hosta</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator posmatra kompletan HA failover tok: nestanak host heartbeat-a, proglašenje hosta neispravnim, izbor odredišnog hosta, registraciju i uključivanje VM-a, aktiviranje restart prioriteta i povratak aplikacije.</p>
+
+<p><strong>Laboratorijski scenario</strong></p>
+
+<ul>
+  <li>vm-ad01 radi na esx01;</li>
+  <li>vm-db01 i vm-app01 rade na esx02;</li>
+  <li>vm-web01 radi na esx03;</li>
+  <li>sve VM koriste zajednički datastore;</li>
+  <li>Admission Control je konfigurisan za gubitak jednog hosta;</li>
+  <li>esx02 je izabran kao host čiji se kvar simulira;</li>
+  <li>esx01 i esx03 imaju dovoljno resursa za restart pogođenih VM-ova.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Naglo isključivanje hosta predstavlja destruktivan test i izvodi se isključivo u laboratoriji. Ne koristi produkcioni host, produkcione VM-ove, produkcioni storage niti aplikacije sa stvarnim podacima. Pre testa potvrdi da je vCenter Server smešten izvan hosta koji se gasi ili da njegov gubitak neće onemogućiti posmatranje i upravljanje laboratorijom.</p>
+
+<p>Bezbednija alternativa za prvi test jeste uredno zaustavljanje ESXi hosta bez prethodnog ulaska u maintenance režim. To i dalje izaziva prekid VM-ova i HA restart, ali smanjuje rizik od hardverskih ili storage posledica u odnosu na fizičko uklanjanje napajanja.</p>
+
+<p><strong>Korak 1 – Potvrda položaja VM-ova</strong></p>
+
+<pre><code class="language-powershell">Get-VMHost -Name "esx02.lab.local" |
+    Get-VM |
+    Select-Object Name, PowerState,
+        @{Name="Datastores";Expression={
+            ($_ | Get-Datastore | Select-Object -ExpandProperty Name) -join ", "
+        }} |
+    Format-Table -AutoSize</code></pre>
+
+<p>Proveri da na hostu nema vCenter Server Appliance-a, storage kontrolera ili druge komponente potrebne za sprovođenje testa.</p>
+
+<p><strong>Korak 2 – Potvrda HA stanja neposredno pre testa</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$cluster |
+    Select-Object Name,
+                  HAEnabled,
+                  HAAdmissionControlEnabled,
+                  HAFailoverLevel |
+    Format-List
+
+$cluster |
+    Get-VMHost |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+        @{Name="MaintenanceMode";Expression={
+            $_.ExtensionData.Runtime.InMaintenanceMode
+        }} |
+    Format-Table -AutoSize</code></pre>
+
+<p>Svi hostovi treba da budu povezani, uključeni i van maintenance režima.</p>
+
+<p><strong>Korak 3 – Beleženje početnog vremena</strong></p>
+
+<pre><code class="language-powershell">$testStart = Get-Date
+$testStart | Out-File ".\HA-host-failure-test.txt"
+
+Get-VMHost -Name "esx02.lab.local" |
+    Get-VM |
+    Select-Object Name, PowerState, VMHost |
+    Format-Table -AutoSize |
+    Out-File ".\HA-host-failure-test.txt" -Append</code></pre>
+
+<p><strong>Korak 4 – Simulacija kvara</strong></p>
+
+<p>U laboratoriji koristi jedan od sledećih pristupa:</p>
+
+<ul>
+  <li>upravljanje napajanjem kroz udaljeni hardverski kontroler, kao što su iLO, iDRAC ili XClarity;</li>
+  <li>uredna komanda za gašenje ESXi hosta bez prethodnog maintenance režima;</li>
+  <li>gašenje nested ESXi virtuelne mašine ako je laboratorija izgrađena kao nested vSphere okruženje.</li>
+</ul>
+
+<p>Za nested ESXi laboratoriju najbezbednije je isključiti nested ESXi VM iz spoljnog vSphere ili Workstation/Fusion sloja. Nemoj iz unutrašnjeg vCenter-a pokušavati da ugasiš host koji ga istovremeno izvršava.</p>
+
+<p>Na samom test ESXi hostu može se koristiti:</p>
+
+<pre><code class="language-bash">esxcli system shutdown poweroff \
+    -d 10 \
+    -r "LAB ONLY - vSphere HA host failure test"</code></pre>
+
+<p>Komanda zakazuje gašenje hosta za deset sekundi. Parametar <code>-d</code> određuje odlaganje, a <code>-r</code> razlog. Komanda menja stanje sistema i prekida sve VM-ove koji rade na hostu. Izvodi se isključivo u laboratoriji i tek nakon potvrde da je izabran pravi host.</p>
+
+<p>Pre izvršavanja obavezno proveri identitet hosta:</p>
+
+<pre><code class="language-bash">hostname
+esxcli system hostname get</code></pre>
+
+<p><strong>Korak 5 – Posmatranje vSphere Client-a</strong></p>
+
+<p>U vSphere Client-u istovremeno prati:</p>
+
+<ul>
+  <li><strong>CL-PROD-LAB &gt; Monitor &gt; Tasks and Events</strong>;</li>
+  <li><strong>CL-PROD-LAB &gt; Monitor &gt; vSphere HA</strong> ili odgovarajući HA status prikaz;</li>
+  <li>stanje hosta esx02;</li>
+  <li>stanje VM-ova koje su radile na esx02;</li>
+  <li>alarme na nivou klastera, hosta i VM-a;</li>
+  <li>Admission Control stanje nakon gubitka hosta.</li>
+</ul>
+
+<p>Očekivani redosled je:</p>
+
+<ol>
+  <li>esx02 prestaje da šalje management heartbeat;</li>
+  <li>FDM proverava mrežne i datastore heartbeat informacije;</li>
+  <li>host prelazi u stanje Not Responding;</li>
+  <li>HA proglašava host neuspelim;</li>
+  <li>pogođene VM postaju kandidati za failover;</li>
+  <li>HA bira kompatibilne hostove sa raspoloživim resursima;</li>
+  <li>VM-ovi se uključuju prema restart prioritetu i zavisnostima;</li>
+  <li>guest operativni sistemi prolaze kroz normalan boot i aplikacioni recovery;</li>
+  <li>monitoring potvrđuje povratak infrastrukturnih i poslovnih servisa.</li>
+</ol>
+
+<p>Datastore heartbeating pomaže HA sistemu da razlikuje host koji je stvarno prestao da radi od hosta koji je samo izgubio management mrežnu komunikaciju. Kada sekundarni host prestane i sa mrežnim i sa datastore heartbeat-om, HA ga može smatrati neuspelim i pokrenuti njegove VM-ove na drugim hostovima.</p>
+
+<p><strong>Korak 6 – Praćenje PowerCLI događaja</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+Get-VIEvent -Entity $cluster -Start $testStart |
+    Where-Object {
+        $_.FullFormattedMessage -match
+        "HA|High Availability|failover|restarted|host|not responding"
+    } |
+    Select-Object CreatedTime,
+                  ObjectName,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime |
+    Format-Table -Wrap</code></pre>
+
+<p>Komanda je read-only. Tekstualni filter zavisi od jezika i verzije vCenter Servera, pa izostanak rezultata ne znači da nije bilo HA događaja. Događaje treba uporediti sa zadacima, alarmima i FDM logovima.</p>
+
+<p>Prikaži novi položaj VM-ova:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-db01","vm-app01" |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+        @{Name="ToolsRunningStatus";Expression={
+            $_.ExtensionData.Guest.ToolsRunningStatus
+        }} |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Korak 7 – Provera restart redosleda</strong></p>
+
+<p>Uporedi vreme power-on događaja za infrastrukturnu, baznu, aplikacionu i web VM:</p>
+
+<pre><code class="language-powershell">$vms = Get-VM -Name "vm-ad01","vm-db01","vm-app01","vm-web01"
+
+Get-VIEvent -Entity $vms -Start $testStart |
+    Where-Object {
+        $_.FullFormattedMessage -match "powered on|restarted|HA"
+    } |
+    Select-Object CreatedTime,
+                  ObjectName,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime |
+    Format-Table -Wrap</code></pre>
+
+<p>Očekuje se da VM sa višim prioritetom imaju prednost, ali realno vreme završetka boot procesa zavisi od operativnog sistema, storage performansi, dostupnih resursa i aplikacionih recovery procedura.</p>
+
+<p><strong>Korak 8 – Provera aplikacionog oporavka</strong></p>
+
+<p>Nemoj zaustaviti test kada VM dobije stanje Powered On. Proveri:</p>
+
+<ul>
+  <li>VMware Tools heartbeat;</li>
+  <li>IP dostupnost;</li>
+  <li>DNS rezoluciju;</li>
+  <li>servisne portove;</li>
+  <li>aplikacioni health endpoint;</li>
+  <li>integritet baze i aplikacionih redova;</li>
+  <li>eventualni guest OS filesystem recovery;</li>
+  <li>aplikacione logove.</li>
+</ul>
+
+<p>Primer:</p>
+
+<pre><code class="language-powershell">Resolve-DnsName vm-app01.lab.local
+Test-NetConnection vm-app01.lab.local -Port 443
+Invoke-WebRequest `
+    -Uri "https://vm-app01.lab.local/health" `
+    -TimeoutSec 10 `
+    -UseBasicParsing</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>esx02 postaje Not Responding;</li>
+  <li>VM-ovi sa zajedničkog datastore-a automatski se pokreću na esx01 ili esx03;</li>
+  <li>restart prioriteti utiču na redosled pokušaja oporavka;</li>
+  <li>aplikacija ponovo postaje dostupna nakon guest i aplikacionog recovery-ja;</li>
+  <li>Admission Control prikazuje smanjenu ili iscrpljenu failover rezervu;</li>
+  <li>u događajima i FDM logovima postoji jasan trag HA odluke.</li>
+</ul>
+
+<p><strong>Mogući neuspeh: VM nije restartovana</strong></p>
+
+<p>Proveri sledećim redosledom:</p>
+
+<ol>
+  <li>Da li je VM bila uključena i HA zaštićena pre incidenta?</li>
+  <li>Da li se njeni konfiguracioni fajlovi nalaze na storage-u dostupnom preostalim hostovima?</li>
+  <li>Da li odredišni hostovi imaju kompatibilan CPU, VM hardware i potrebne uređaje?</li>
+  <li>Da li postoji dovoljna memorija?</li>
+  <li>Da li DRS ili VM-host pravilo zabranjuje pokretanje na dostupnim hostovima?</li>
+  <li>Da li VM koristi lokalni ISO, passthrough uređaj, SR-IOV, vGPU ili drugi poseban resurs?</li>
+  <li>Da li je registracija VM-a ostala zaključana na neuspelom hostu?</li>
+  <li>Da li je storage u APD ili PDL stanju?</li>
+  <li>Koju grešku prikazuje power-on zadatak?</li>
+  <li>Šta prikazuju FDM i hostd logovi odredišnog hosta?</li>
+</ol>
+
+<p><strong>Korak 9 – Povratak hosta</strong></p>
+
+<p>Ponovo uključi esx02 i sačekaj da se ESXi potpuno podigne. Nemoj odmah migrirati VM-ove nazad.</p>
+
+<p>Proveri:</p>
+
+<pre><code class="language-powershell">Get-VMHost -Name "esx02.lab.local" |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build |
+    Format-List</code></pre>
+
+<p>Na hostu proveri:</p>
+
+<pre><code class="language-bash">/etc/init.d/fdm status
+esxcli network ip interface list
+esxcli storage filesystem list
+tail -n 100 /var/log/fdm.log</code></pre>
+
+<p>Potvrdi da je host:</p>
+
+<ul>
+  <li>Connected;</li>
+  <li>van maintenance režima;</li>
+  <li>ponovo član HA klastera;</li>
+  <li>povezan sa svim potrebnim datastore-ovima;</li>
+  <li>povezan sa svim potrebnim mrežama;</li>
+  <li>bez aktivnih hardverskih alarma.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Ako je DRS potpuno automatizovan, može kasnije sam uravnotežiti VM-ove. U suprotnom ih vrati kontrolisanim vMotion migracijama. Nemoj migrirati sve VM-ove istovremeno odmah nakon povratka hosta; najpre potvrdi stabilnost hosta i HA agenta.</p>
+
+<hr>
+
+<p><strong>Vežba 7 – Host isolation i izbor odgovarajuće isolation response politike</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je razlikovanje potpunog pada hosta od situacije u kojoj ESXi i VM-ovi još rade, ali je host izgubio HA management komunikaciju sa ostatkom klastera.</p>
+
+<p><strong>Važna razlika</strong></p>
+
+<p>Host isolation nije isto što i stanje Disconnected u vCenter inventaru. Host može izgubiti vezu sa vCenter Serverom, a ipak normalno komunicirati sa drugim HA agentima. Obrnuto, može izgubiti HA management mrežnu komunikaciju i proglasiti se izolovanim dok njegovi VM-ovi još rade.</p>
+
+<p>Broadcom opisuje host network isolation kao stanje u kojem host i dalje radi, ali više ne može da kontaktira HA primary host preko management mreže. FDM zatim proverava election saobraćaj i isolation adrese pre nego što proglasi izolaciju.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ovo je rizičan laboratorijski test. Pogrešnim isključivanjem management uplink-a može se izgubiti pristup hostu i otežati vraćanje. Testiraj ga samo ako imaš:</p>
+
+<ul>
+  <li>fizički ili out-of-band pristup hostu;</li>
+  <li>pristup DCUI konzoli;</li>
+  <li>dokumentovan VLAN i uplink raspored;</li>
+  <li>jasno određen interfejs koji se prekida;</li>
+  <li>alternativni način ponovnog uključivanja uplink-a;</li>
+  <li>potvrdu da se ne prekida istovremeno storage ili VM produkcioni saobraćaj.</li>
+</ul>
+
+<p>U nested laboratoriji izolacija se bezbednije simulira promenom port grupe ili uklanjanjem virtualnog NIC-a management mreže nested ESXi hosta iz spoljnog hipervizora.</p>
+
+<p><strong>Korak 1 – Dokumentovanje isolation response podešavanja</strong></p>
+
+<p>U vSphere Client-u otvori:</p>
+
+<p><strong>CL-PROD-LAB &gt; Configure &gt; vSphere Availability &gt; Edit &gt; Failures and Responses</strong></p>
+
+<p>Zabeleži:</p>
+
+<ul>
+  <li>Host Isolation Response;</li>
+  <li>default response;</li>
+  <li>VM overrides;</li>
+  <li>isolation address napredne opcije, ako postoje;</li>
+  <li>da li management mreža ima jedan ili više redundantnih putanja.</li>
+</ul>
+
+<p>Moguće isolation response opcije zavise od verzije, ali uobičajeno uključuju:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Odgovor</th>
+      <th>Ponašanje</th>
+      <th>Glavni rizik</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Leave Powered On</td>
+      <td>VM ostaje da radi na izolovanom hostu</td>
+      <td>Aplikacija može biti nedostupna ako je izgubljena i VM mreža; HA je neće automatski restartovati drugde samo zbog izolacije</td>
+    </tr>
+    <tr>
+      <td>Power Off and Restart</td>
+      <td>Izolovani host isključuje VM kako bi HA mogao da je pokrene drugde</td>
+      <td>Naglo gašenje gosta i prekid servisa; zahteva dostupnost shared storage-a i drugih hostova</td>
+    </tr>
+    <tr>
+      <td>Shut Down and Restart</td>
+      <td>Pokušava uredno guest gašenje preko VMware Tools, zatim restart drugde</td>
+      <td>Može kasniti ili preći na tvrđe gašenje ako guest ne reaguje; zavisi od VMware Tools-a</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Aktuelna vSphere dokumentacija omogućava definisanje posebnog odgovora na host isolation kada je HA uključen. Izbor nije univerzalan i mora biti povezan sa mrežnim i storage dizajnom konkretnog klastera.</p>
+
+<p><strong>Korak 2 – Provera isolation adrese</strong></p>
+
+<p>Podrazumevana isolation adresa je tipično gateway management mreže. Ako ta adresa ne odgovara stvarnom redundantnom dizajnu, mogu se definisati dodatne adrese kroz napredne HA opcije.</p>
+
+<p>Primer naziva naprednih opcija:</p>
+
+<pre><code class="language-none">das.isolationAddress0
+das.isolationAddress1
+das.usedefaultisolationaddress</code></pre>
+
+<p>Nemoj dodavati proizvoljne javne IP adrese. Isolation adresa treba da bude stabilna, pouzdano dostupna iz management mreže i nezavisna koliko je praktično moguće od istog failure domain-a koji pokušavamo da detektujemo.</p>
+
+<p>Na ESXi hostu proveri dostupnost gateway-a:</p>
+
+<pre><code class="language-bash">esxcli network ip route ipv4 list
+vmkping -I vmk0 10.100.10.1</code></pre>
+
+<p><strong>Korak 3 – Izbor test politike</strong></p>
+
+<p>Za prvi izolacioni test koristi <strong>Leave Powered On</strong>. Time se smanjuje rizik da test izazove nepotrebno guest gašenje. Cilj prve iteracije je dokazivanje detekcije izolacije, ne automatski restart.</p>
+
+<p>Za kasniji test <strong>Power Off and Restart</strong> koristi isključivo nekritičnu test VM koja nema stvarne podatke.</p>
+
+<p><strong>Korak 4 – Pokretanje praćenja</strong></p>
+
+<p>Na VM-u pokreni:</p>
+
+<pre><code class="language-bash">ping vm-app01.lab.local</code></pre>
+
+<p>Na drugom hostu prati FDM log:</p>
+
+<pre><code class="language-bash">tail -f /var/log/fdm.log</code></pre>
+
+<p>Na hostu koji će biti izolovan, ako imaš konzolni pristup, prati isti log:</p>
+
+<pre><code class="language-bash">tail -f /var/log/fdm.log</code></pre>
+
+<p><strong>Korak 5 – Simulacija management izolacije</strong></p>
+
+<p>Bezbedan pristup u nested laboratoriji:</p>
+
+<ol>
+  <li>Identifikuj virtuelni NIC nested ESXi hosta koji pripada isključivo management mreži.</li>
+  <li>Potvrdi da storage i VM mreže koriste druge virtuelne NIC-ove.</li>
+  <li>U spoljnom hipervizoru privremeno isključi taj NIC ili promeni njegovu port grupu u izolovanu laboratorijsku mrežu.</li>
+  <li>Zabeleži tačno vreme promene.</li>
+  <li>Posmatraj FDM događaje i stanje test VM-a.</li>
+</ol>
+
+<p>Na fizičkom ESXi hostu ne preporučuje se nasumično izvođenje:</p>
+
+<pre><code class="language-bash">esxcli network nic down -n vmnicX</code></pre>
+
+<p>Ova komanda može odseći administratorski pristup i pogoditi više vrsta saobraćaja. Koristi se samo kada je uplink potpuno dokumentovan, postoji out-of-band pristup i potvrđeno je da ne pripada storage-u ili produkcionim VM mrežama.</p>
+
+<p><strong>Očekivani rezultat za Leave Powered On</strong></p>
+
+<ul>
+  <li>host gubi HA komunikaciju sa ostatkom klastera;</li>
+  <li>host proverava isolation adresu;</li>
+  <li>FDM evidentira network partition ili isolation stanje;</li>
+  <li>VM ostaje uključena na izolovanom hostu;</li>
+  <li>HA ne pokreće drugu instancu iste VM dok izolovani host zadržava njeno izvršavanje i storage lock;</li>
+  <li>vCenter može prikazati host kao Not Responding.</li>
+</ul>
+
+<p><strong>Očekivani rezultat za Power Off and Restart</strong></p>
+
+<ul>
+  <li>izolovani host utvrđuje da je izolovan;</li>
+  <li>primenjuje definisanu isolation response politiku;</li>
+  <li>test VM se isključuje na izolovanom hostu;</li>
+  <li>storage lock se oslobađa;</li>
+  <li>HA može pokrenuti VM na hostu u drugoj mrežnoj particiji;</li>
+  <li>aplikacija prolazi kroz guest i aplikacioni recovery.</li>
+</ul>
+
+<p><strong>Korak 6 – Vraćanje mreže</strong></p>
+
+<p>Ponovo poveži management NIC sa originalnom port grupom ili vrati fizički uplink. Potvrdi:</p>
+
+<pre><code class="language-bash">vmkping -I vmk0 10.100.10.1
+vmkping -I vmk0 10.100.10.11
+/etc/init.d/fdm status</code></pre>
+
+<p>U vSphere Client-u sačekaj da host postane Connected i da se HA stanje stabilizuje.</p>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<p><strong>Host nije proglasio izolaciju</strong></p>
+
+<ul>
+  <li>Možda i dalje postoji druga management putanja.</li>
+  <li>Host možda vidi HA primary preko drugog VMkernel interfejsa.</li>
+  <li>Isolation adresa je i dalje dostupna.</li>
+  <li>Prekinut je pogrešan uplink.</li>
+  <li>Došlo je do network partition stanja, ali ne i potpune izolacije hosta.</li>
+</ul>
+
+<p><strong>VM je ostala uključena iako je očekivan restart</strong></p>
+
+<ul>
+  <li>Proveri stvarnu isolation response vrednost.</li>
+  <li>Proveri VM override.</li>
+  <li>Proveri da li je host zaista proglasio izolaciju.</li>
+  <li>Proveri da li je datastore ostao dostupan.</li>
+  <li>Pregledaj FDM log na izolovanom hostu.</li>
+</ul>
+
+<p><strong>VM je isključena, ali nije restartovana drugde</strong></p>
+
+<ul>
+  <li>nema dovoljno resursa;</li>
+  <li>shared storage nije dostupan drugim hostovima;</li>
+  <li>mrežna port grupa ne postoji;</li>
+  <li>VM-host pravilo ograničava smeštaj;</li>
+  <li>VM ima nepodržan ili lokalno vezan uređaj;</li>
+  <li>HA primary nije mogao da potvrdi oslobađanje VM lock-a.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ul>
+  <li>vrati originalnu management mrežnu povezanost;</li>
+  <li>ukloni privremene isolation adrese koje nisu deo ciljnog dizajna;</li>
+  <li>vrati originalnu isolation response politiku;</li>
+  <li>ukloni test VM override;</li>
+  <li>potvrdi da su svi hostovi Connected;</li>
+  <li>potvrdi da FDM radi na svim hostovima;</li>
+  <li>potvrdi da nema duplih ili orphaned VM registracija.</li>
+</ul>
+
+<hr>
+
+<p><strong>Vežba 8 – Datastore heartbeat izbor i pogrešna heartbeat konfiguracija</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator identifikuje koje datastore-ove HA koristi za heartbeating, razume zbog čega se biraju različiti storage failure domain-i i prepozna problem kada je heartbeat datastore uklonjen, nedostupan ili nije zajednički svim hostovima.</p>
+
+<p>vSphere HA koristi datastore heartbeat kada management mreža nije dovoljna da utvrdi da li je host pao ili je samo mrežno odvojen. vCenter može automatski izabrati datastore-ove, administrator može dozvoliti izbor samo sa određene liste ili eksplicitno odrediti listu kandidata.</p>
+
+<p><strong>Važna projektantska napomena</strong></p>
+
+<p>Dva heartbeat datastore-a na istom storage kontroleru, istom fabric-u, istom NFS serveru ili istom udaljenom site linku ne predstavljaju nužno stvarnu redundansu. Logički različiti datastore-i mogu pripadati istom fizičkom failure domain-u.</p>
+
+<p><strong>Korak 1 – Pregled trenutnog izbora</strong></p>
+
+<p>U vSphere Client-u otvori:</p>
+
+<p><strong>CL-PROD-LAB &gt; Monitor &gt; vSphere HA &gt; Heartbeat</strong></p>
+
+<p>Naziv prikaza zavisi od verzije. Zabeleži:</p>
+
+<ul>
+  <li>izabrane heartbeat datastore-ove;</li>
+  <li>hostove koji ih koriste;</li>
+  <li>da li postoje configuration issue upozorenja;</li>
+  <li>da li su datastore-i zajednički svim hostovima;</li>
+  <li>kojem storage sistemu i failure domain-u pripadaju.</li>
+</ul>
+
+<p><strong>Korak 2 – Provera HA direktorijuma na datastore-u</strong></p>
+
+<p>Na ESXi hostu pronađi datastore mount putanju:</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>Zatim proveri skrivene HA direktorijume:</p>
+
+<pre><code class="language-bash">find /vmfs/volumes -maxdepth 2 \
+    -type d \
+    -name ".vSphere-HA" \
+    2&gt;/dev/null</code></pre>
+
+<p>Komanda je read-only. Ne briši niti ručno menjaj sadržaj <code>.vSphere-HA</code> direktorijuma. Njime upravlja HA sistem.</p>
+
+<p>Pregled strukture bez izmene:</p>
+
+<pre><code class="language-bash">ls -la /vmfs/volumes/DS-SHARED-01/.vSphere-HA</code></pre>
+
+<p>Ako datastore nije izabran za heartbeating, direktorijum možda neće postojati ili neće imati očekivani sadržaj.</p>
+
+<p><strong>Korak 3 – Konfiguracija izbora heartbeat datastore-a</strong></p>
+
+<p>U vSphere Client-u:</p>
+
+<ol>
+  <li>Izaberi klaster.</li>
+  <li>Otvori <strong>Configure &gt; vSphere Availability</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Otvori <strong>Heartbeat Datastores</strong>.</li>
+  <li>Pregledaj dostupne režime izbora.</li>
+  <li>Za standardnu konfiguraciju dozvoli vCenter-u automatski izbor.</li>
+  <li>Za ciljanu laboratoriju izaberi DS-SHARED-01 i DS-SHARED-02.</li>
+  <li>Sačuvaj promenu.</li>
+  <li>Prati HA reconfiguration zadatke.</li>
+</ol>
+
+<p><strong>Korak 4 – Kontrolisana pogrešna konfiguracija</strong></p>
+
+<p>Ne prekidaj storage pristup aktivnom datastore-u. Bezbedniji test je:</p>
+
+<ol>
+  <li>Izaberi heartbeat datastore koji više ne treba da se koristi ili laboratorijski datastore bez produkcionih VM-ova.</li>
+  <li>Pre promene potvrdi da nije jedini datastore potreban za test VM-ove.</li>
+  <li>U heartbeat listi privremeno odaberi samo jedan datastore.</li>
+  <li>Sačuvaj promenu.</li>
+  <li>Posmatraj configuration issue poruku o nedovoljnom broju heartbeat datastore-ova.</li>
+  <li>Ne uklanjaj datastore dok na njemu postoje VM-ovi ili aktivni fajlovi.</li>
+</ol>
+
+<p>Broadcom KB navodi da vSphere HA u podržanim vSphere 6.0 i novijim okruženjima očekuje najmanje dva shared datastore-a dostupna hostovima radi redundantnog datastore heartbeat-a. Upozorenje o samo jednom heartbeat datastore-u ukazuje na nedostatak storage redundanse za ovaj mehanizam, iako HA može i dalje raditi uz smanjenu sposobnost razlikovanja određenih failure scenarija.</p>
+
+<p><strong>Korak 5 – Analiza alarma</strong></p>
+
+<p>Traži poruke slične sledećim:</p>
+
+<ul>
+  <li>insufficient heartbeat datastores;</li>
+  <li>number of heartbeat datastores is one;</li>
+  <li>heartbeat datastore is inaccessible;</li>
+  <li>vSphere HA agent cannot access datastore;</li>
+  <li>HA configuration issue.</li>
+</ul>
+
+<p>Pregledaj događaje:</p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity (Get-Cluster -Name "CL-PROD-LAB") -MaxSamples 300 |
+    Where-Object {
+        $_.FullFormattedMessage -match
+        "heartbeat datastore|heartbeat|datastore"
+    } |
+    Select-Object CreatedTime,
+                  ObjectName,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime |
+    Format-Table -Wrap</code></pre>
+
+<p><strong>Korak 6 – Analiza problema sa zastarelim heartbeat datastore-om</strong></p>
+
+<p>Ako je datastore ranije uklonjen ili više nije dostupan svim hostovima, HA može nastaviti da prijavljuje problem dok se izbor ne osveži. Broadcom navodi da je čest uzrok upravo prethodno korišćen heartbeat datastore koji je povučen iz upotrebe ili više nije dostupan svim hostovima.</p>
+
+<p>Sistematičan postupak:</p>
+
+<ol>
+  <li>Potvrdi koji host prijavljuje problem.</li>
+  <li>Proveri da li je datastore vidljiv tom hostu.</li>
+  <li>Proveri da li je datastore vidljiv ostalim hostovima.</li>
+  <li>Proveri storage path, NFS mount ili vSAN stanje.</li>
+  <li>Proveri da li je datastore i dalje na eksplicitnoj heartbeat listi.</li>
+  <li>Izaberi validne zajedničke datastore-ove.</li>
+  <li>Sačuvaj konfiguraciju.</li>
+  <li>Po potrebi izvrši <strong>Reconfigure for vSphere HA</strong> samo na pogođenom hostu.</li>
+  <li>Potvrdi nestanak alarma.</li>
+</ol>
+
+<p><strong>Posebna napomena za vSAN i više lokacija</strong></p>
+
+<p>U vSAN stretched ili drugim multisite dizajnima ne treba proizvoljno postavljati udaljeni eksterni datastore kao heartbeat cilj. Tokom planiranog prekida inter-site linka HA može pogrešno protumačiti gubitak udaljenog heartbeat datastore-a u kombinaciji sa mrežnim događajem. Broadcom je 2026. posebno dokumentovao potrebu da se heartbeat datastore bira u skladu sa vSAN i site failure domain dizajnom.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>administrator zna koje datastore-ove HA koristi;</li>
+  <li>najmanje dva odgovarajuća zajednička datastore-a dostupna su hostovima kada infrastruktura to omogućava;</li>
+  <li>heartbeat datastore-i ne zavise od potpuno istog failure domain-a;</li>
+  <li>pogrešna konfiguracija izaziva jasan HA configuration issue;</li>
+  <li>vraćanjem validnog izbora alarm nestaje nakon rekonfiguracije.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ul>
+  <li>vrati automatski izbor ili originalnu validnu listu;</li>
+  <li>potvrdi DS-SHARED-01 i DS-SHARED-02 dostupnost;</li>
+  <li>sačekaj završetak HA reconfiguration zadatka;</li>
+  <li>potvrdi da nema heartbeat datastore alarma;</li>
+  <li>ne briši ručno <code>.vSphere-HA</code> direktorijume.</li>
+</ul>
+
+<hr>
+
+<p><strong>Vežba 9 – VM Monitoring i oporavak zaglavljenog guest operativnog sistema</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je testiranje razlike između host failure zaštite i VM Monitoring funkcije. Host može biti potpuno zdrav, dok guest operativni sistem unutar jedne VM više ne šalje VMware Tools heartbeat ili ne pokazuje I/O aktivnost.</p>
+
+<p><strong>Šta VM Monitoring proverava</strong></p>
+
+<p>VM Monitoring posmatra VMware Tools heartbeat i dodatne signale aktivnosti kako bi smanjio mogućnost lažnog restarta neaktivne, ali zdrave VM. Ne proverava automatski poslovnu funkcionalnost aplikacije. Ako web servis, baza ili aplikacioni proces stane, a guest OS i VMware Tools rade, običan VM Monitoring možda neće reagovati.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>VMware Tools ili open-vm-tools pravilno radi u test VM-u;</li>
+  <li>test VM nema stvarne poslovne podatke;</li>
+  <li>postoji pristup guest konzoli;</li>
+  <li>definisan je rollback;</li>
+  <li>HA je stabilan;</li>
+  <li>test VM je smeštena na shared storage-u.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Namerno zamrzavanje guest OS-a, kernel panic ili zaustavljanje ključnih guest procesa može dovesti do gubitka podataka. U ovoj vežbi ne izaziva se kernel panic niti korupcija filesystem-a. Koristi se kontrolisan prekid VMware Tools heartbeat-a i posmatra se da li dodatni I/O signali sprečavaju lažni restart.</p>
+
+<p><strong>Korak 1 – Provera Tools stanja</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-monitor-test01" |
+    Select-Object Name,
+                  PowerState,
+        @{Name="ToolsStatus";Expression={
+            $_.ExtensionData.Guest.ToolsStatus
+        }},
+        @{Name="ToolsRunningStatus";Expression={
+            $_.ExtensionData.Guest.ToolsRunningStatus
+        }} |
+    Format-List</code></pre>
+
+<p><strong>Korak 2 – Uključivanje VM Monitoring-a</strong></p>
+
+<p>U vSphere Client-u:</p>
+
+<ol>
+  <li>Izaberi <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure &gt; vSphere Availability</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Otvori <strong>VM Monitoring</strong>.</li>
+  <li>Izaberi <strong>VM Monitoring Only</strong>.</li>
+  <li>Za laboratoriju izaberi umerenu ili visoku osetljivost, ali zabeleži tačne timeout vrednosti koje prikazuje klijent.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p>Bezbednije je da klasterski default ostane konzervativan, a da se za test VM napravi override.</p>
+
+<p><strong>Korak 3 – Kreiranje VM override-a</strong></p>
+
+<ol>
+  <li>Otvori <strong>Configure &gt; VM Overrides</strong>.</li>
+  <li>Dodaj <strong>vm-monitor-test01</strong>.</li>
+  <li>Uključi VM Monitoring override.</li>
+  <li>Postavi testnu osetljivost.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p><strong>Korak 4 – Kontrolisano zaustavljanje VMware Tools-a</strong></p>
+
+<p>U Linux guest-u:</p>
+
+<pre><code class="language-bash">sudo systemctl status vmtoolsd
+sudo systemctl stop vmtoolsd</code></pre>
+
+<p>U nekim distribucijama servis može imati naziv:</p>
+
+<pre><code class="language-bash">sudo systemctl status open-vm-tools
+sudo systemctl stop open-vm-tools</code></pre>
+
+<p>Na Windows guest-u kroz administratorski PowerShell:</p>
+
+<pre><code class="language-powershell">Get-Service -Name VMTools
+Stop-Service -Name VMTools</code></pre>
+
+<p>Ovo menja stanje guest OS-a, ali ne menja ESXi konfiguraciju. Izvodi se isključivo na test VM-u. Zabeleži vreme zaustavljanja.</p>
+
+<p><strong>Korak 5 – Posmatranje ponašanja</strong></p>
+
+<p>Prati VM događaje:</p>
+
+<pre><code class="language-powershell">$start = Get-Date
+
+Get-VIEvent -Entity (Get-VM -Name "vm-monitor-test01") `
+    -Start $start `
+    -MaxSamples 200 |
+    Select-Object CreatedTime,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime</code></pre>
+
+<p>Pošto je komanda pokrenuta odmah, možda neće prikazati kasnije događaje. Ponovi je nakon isteka monitoring intervala.</p>
+
+<p>Prati FDM log:</p>
+
+<pre><code class="language-bash">grep -Ei "vm monitoring|heartbeat|reset|restart|vm-monitor-test01" \
+    /var/log/fdm.log |
+    tail -n 100</code></pre>
+
+<p><strong>Mogući rezultat 1 – VM nije restartovana</strong></p>
+
+<p>To ne mora značiti da VM Monitoring ne radi. Ako guest i dalje generiše dovoljno storage ili mrežne aktivnosti, HA može zaključiti da VM nije potpuno zaglavljena. VM Monitoring namerno kombinuje heartbeat i aktivnost kako bi ograničio lažne pozitivne rezultate.</p>
+
+<p><strong>Mogući rezultat 2 – VM je restartovana</strong></p>
+
+<p>HA evidentira izostanak heartbeat-a i aktivnosti, resetuje ili restartuje VM i pokreće je na odgovarajućem hostu. Nakon toga proveri guest boot, filesystem i aplikaciju.</p>
+
+<p><strong>Korak 6 – Vraćanje VMware Tools-a</strong></p>
+
+<p>Linux:</p>
+
+<pre><code class="language-bash">sudo systemctl start vmtoolsd
+sudo systemctl status vmtoolsd</code></pre>
+
+<p>Ili:</p>
+
+<pre><code class="language-bash">sudo systemctl start open-vm-tools
+sudo systemctl status open-vm-tools</code></pre>
+
+<p>Windows:</p>
+
+<pre><code class="language-powershell">Start-Service -Name VMTools
+Get-Service -Name VMTools</code></pre>
+
+<p>Potvrdi iz PowerCLI-ja:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-monitor-test01" |
+    Select-Object Name,
+        @{Name="ToolsRunningStatus";Expression={
+            $_.ExtensionData.Guest.ToolsRunningStatus
+        }}</code></pre>
+
+<p><strong>Tipične greške</strong></p>
+
+<ul>
+  <li>VM Monitoring uključen je za sve VM bez prethodne procene aplikacija.</li>
+  <li>Timeout je previše agresivan za VM koja legitimno ima duge periode bez aktivnosti.</li>
+  <li>VMware Tools je zastareo ili nestabilan, pa izaziva lažne incidente.</li>
+  <li>Administrator očekuje da VM Monitoring detektuje pad pojedinačne aplikacije.</li>
+  <li>VM se više puta restartuje, a osnovni guest problem ostaje nerešen.</li>
+  <li>Nije definisan maksimalan broj restarta i period resetovanja brojača.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ul>
+  <li>pokreni VMware Tools;</li>
+  <li>vrati originalnu klastersku VM Monitoring politiku;</li>
+  <li>ukloni test override;</li>
+  <li>potvrdi da je test VM stabilna;</li>
+  <li>pregledaj guest logove zbog posledica restarta;</li>
+  <li>potvrdi aplikacionu dostupnost.</li>
+</ul>
+
+<hr>
+
+<p><strong>Vežba 10 – VM Component Protection: APD i PDL analiza bez destruktivnog prekida storage-a</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je razumevanje reakcije HA sistema na gubitak datastore pristupa. U ovoj vežbi ne prekida se aktivni storage. Administrator analizira konfiguraciju, događaje i logove, a zatim priprema runbook za APD i PDL incident.</p>
+
+<p>VM Component Protection, odnosno VMCP, omogućava vSphere HA da reaguje na datastore accessibility failure koji pogađa aktivnu VM. Funkcija razlikuje permanentni gubitak uređaja od privremenog ili neodređenog gubitka svih putanja.</p>
+
+<p><strong>Osnovna razlika</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Stanje</th>
+      <th>Značenje</th>
+      <th>Administratorska interpretacija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PDL</td>
+      <td>Permanent Device Loss</td>
+      <td>Storage sistem je eksplicitno prijavio da uređaj više nije dostupan hostu i da se pristup neće vratiti običnim retry postupkom</td>
+    </tr>
+    <tr>
+      <td>APD</td>
+      <td>All Paths Down</td>
+      <td>Sve putanje su izgubljene, ali host nema konačnu informaciju da je uređaj trajno uklonjen</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ne simuliraj APD ili PDL prekidanjem storage mreže, uklanjanjem LUN-a, promenom zoning-a, brisanjem NFS export-a ili isključivanjem storage kontrolera u okruženju koje sadrži važne VM-ove. Takav test može izazvati VM stun, I/O greške, filesystem oštećenje i gubitak podataka.</p>
+
+<p><strong>Korak 1 – Pregled VMCP konfiguracije</strong></p>
+
+<p>U vSphere Client-u:</p>
+
+<ol>
+  <li>Izaberi klaster.</li>
+  <li>Otvori <strong>Configure &gt; vSphere Availability</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Otvori <strong>Failures and Responses</strong>.</li>
+  <li>Pronađi <strong>Datastore with PDL</strong> i <strong>Datastore with APD</strong>.</li>
+  <li>Zabeleži trenutno ponašanje i eventualna kašnjenja.</li>
+</ol>
+
+<p><strong>Korak 2 – Dokumentovanje storage putanja</strong></p>
+
+<pre><code class="language-bash">esxcli storage core device list
+esxcli storage core path list</code></pre>
+
+<p>Za pregled samo problematičnih stanja:</p>
+
+<pre><code class="language-bash">esxcli storage core path list |
+    grep -Ei "Device:|State: dead|State: off|State: standby"</code></pre>
+
+<p>Filter je pomoćni i ne zamenjuje kompletan pregled. Putanja u standby stanju može biti legitimna u zavisnosti od storage arhitekture i SATP/PSP politike.</p>
+
+<p><strong>Korak 3 – Provera logova za APD i PDL obrasce</strong></p>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|All Paths Down|Permanent Device Loss|NMP|ScsiDeviceIO" \
+    /var/log/vmkernel.log |
+    tail -n 200</code></pre>
+
+<p>Za USB, lokalne uređaje ili stare događaje mogu postojati poruke koje nisu povezane sa aktivnim datastore incidentom. Nalaz se mora povezati sa vremenom incidenta, NAA identifikatorom i pogođenim datastore-om.</p>
+
+<p>Proveri FDM reakciju:</p>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|VMCP|datastore|restart" \
+    /var/log/fdm.log |
+    tail -n 200</code></pre>
+
+<p><strong>Korak 4 – Runbook za stvarni APD incident</strong></p>
+
+<ol>
+  <li>Potvrdi da li je problem na jednom hostu, više hostova ili celom klasteru.</li>
+  <li>Identifikuj pogođeni datastore i uređaj.</li>
+  <li>Proveri storage kontroler, fabric, switch portove i VMkernel storage mrežu.</li>
+  <li>Ne pokušavaj nasumične rescan operacije na svim hostovima istovremeno.</li>
+  <li>Proveri da li storage tim vidi LUN ili NFS export.</li>
+  <li>Utvrdi da li je gubitak privremen ili permanentan.</li>
+  <li>Pregledaj VMCP događaje i HA odluke.</li>
+  <li>Ako postoji zdrav host sa pristupom datastore-u, potvrdi da li je VM kandidat za restart.</li>
+  <li>Nakon povratka putanja potvrdi filesystem i aplikacioni integritet.</li>
+  <li>Dokumentuj trajanje APD-a i ponašanje svake pogođene VM.</li>
+</ol>
+
+<p><strong>Korak 5 – Runbook za stvarni PDL incident</strong></p>
+
+<ol>
+  <li>Potvrdi da storage sistem eksplicitno prijavljuje trajni gubitak uređaja.</li>
+  <li>Utvrdi da li je LUN namerno uklonjen ili je došlo do greške u maskiranju ili prezentaciji.</li>
+  <li>Ne pokušavaj vratiti uređaj samo sa ESXi strane ako je storage sistem povukao prezentaciju.</li>
+  <li>Proveri VMCP response i pogođene VM-ove.</li>
+  <li>Koordiniraj sa storage timom i vlasnikom aplikacije.</li>
+  <li>Nakon oporavka potvrdi da hostovi vide konzistentan uređaj i datastore.</li>
+  <li>Proveri multipathing i datastore pristup sa svih hostova.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Administrator ume da razlikuje APD od PDL, pronađe relevantan uređaj u logovima, poveže VMCP response sa poslovnim rizikom i izbegne destruktivnu laboratorijsku simulaciju bez odgovarajuće izolovane storage infrastrukture.</p>
+
+<hr>
+
+<p><strong>Vežba 11 – Neuspešan HA restart zbog nedostatka resursa ili nekompatibilnosti</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je analiza scenarija u kojem HA pravilno detektuje pad hosta, ali ne uspeva da uključi određenu VM. Ovaj scenario dokazuje da HA zaštita nije isto što i garantovani restart bez odgovarajućeg dizajna.</p>
+
+<p><strong>Bezbedna laboratorijska simulacija</strong></p>
+
+<p>Umesto stvarnog iscrpljivanja celog klastera, koristi ugašenu test VM i privremeno joj dodeli resursni zahtev ili ograničenje koje preostali hostovi ne mogu zadovoljiti.</p>
+
+<p>Moguće laboratorijske varijante:</p>
+
+<ul>
+  <li>prevelika memorijska rezervacija;</li>
+  <li>obavezno VM-host affinity pravilo ka jednom hostu;</li>
+  <li>povezan lokalni ISO sa hosta;</li>
+  <li>port grupa koja postoji samo na jednom hostu;</li>
+  <li>virtualni uređaj koji nije podržan na drugim hostovima;</li>
+  <li>nekompatibilna CPU konfiguracija bez odgovarajućeg EVC-a.</li>
+</ul>
+
+<p><strong>Scenario A – Prevelika memorijska rezervacija</strong></p>
+
+<p>Zabeleži postojeću rezervaciju:</p>
+
+<pre><code class="language-powershell">$vmConfig = Get-VM -Name "vm-ha-fail-test01" |
+    Get-VMResourceConfiguration
+
+$vmConfig |
+    Select-Object VM,
+                  MemReservationGB,
+                  CpuReservationMhz |
+    Format-List</code></pre>
+
+<p>Na test VM-u postavi laboratorijsku rezervaciju koja je veća od slobodnog kapaciteta pojedinačnih odredišnih hostova, ali manja od ukupno dodeljene memorije VM-a:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-ha-fail-test01" |
+    Get-VMResourceConfiguration |
+    Set-VMResourceConfiguration -MemReservationGB 12</code></pre>
+
+<p>Vrednost prilagodi laboratoriji. Komanda menja VM resource konfiguraciju i može blokirati power-on. Ne primenjuj je na produkcionu VM.</p>
+
+<p>Pokušaj uključivanja:</p>
+
+<pre><code class="language-powershell">Start-VM -VM "vm-ha-fail-test01" -Confirm:$true</code></pre>
+
+<p>Očekivana je greška koja ukazuje na nedovoljne resurse ili narušavanje Admission Control politike.</p>
+
+<p><strong>Scenario B – Obavezno VM-host pravilo</strong></p>
+
+<p>Pregledaj postojeća pravila:</p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster "CL-PROD-LAB" |
+    Select-Object Name, Enabled, Type |
+    Format-Table -AutoSize</code></pre>
+
+<p>Broadcom PowerCLI dokumentacija navodi da <code>Get-DrsRule</code> vraća affinity i anti-affinity pravila, dok se VM-host affinity pravila moraju ciljano zatražiti odgovarajućim parametrima.</p>
+
+<p>Kroz vSphere Client napravi laboratorijsko obavezno pravilo koje <strong>vm-ha-fail-test01</strong> vezuje samo za <strong>esx02</strong>. Zatim ugasi ili uvedi esx02 u maintenance režim i pokušaj uključivanja test VM-a.</p>
+
+<p><strong>Upozorenje</strong></p>
+
+<p>Pravilo tipa <strong>Must run on hosts in group</strong> može sprečiti HA restart. Pravilo tipa <strong>Should run</strong> daje HA i DRS sistemu veću slobodu tokom incidenta. Izbor mora odgovarati stvarnom zahtevu, posebno kod licencnih, bezbednosnih ili hardverskih ograničenja.</p>
+
+<p><strong>Analiza neuspelog power-on zadatka</strong></p>
+
+<p>U vSphere Client-u otvori VM i proveri:</p>
+
+<p><strong>Monitor &gt; Tasks and Events</strong></p>
+
+<p>PowerCLI:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-ha-fail-test01"
+
+Get-VIEvent -Entity $vm -MaxSamples 200 |
+    Select-Object CreatedTime,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime -Descending |
+    Format-Table -Wrap</code></pre>
+
+<p>Na hostu koji je pokušao power-on pregledaj:</p>
+
+<pre><code class="language-bash">grep -Ei "vm-ha-fail-test01|Insufficient|admission|resource|power on|failed" \
+    /var/log/hostd.log |
+    tail -n 200</code></pre>
+
+<p>U FDM logu:</p>
+
+<pre><code class="language-bash">grep -Ei "vm-ha-fail-test01|failover|restart|placement|resource|failed" \
+    /var/log/fdm.log |
+    tail -n 200</code></pre>
+
+<p><strong>Sistematično otklanjanje</strong></p>
+
+<ol>
+  <li>Potvrdi tačnu power-on grešku.</li>
+  <li>Utvrdi da li je problem kapacitet, kompatibilnost, pravilo ili zavisna infrastruktura.</li>
+  <li>Proveri koliko hostova je stvarno dostupno.</li>
+  <li>Proveri Admission Control i rezervacije.</li>
+  <li>Proveri DRS i VM-host pravila.</li>
+  <li>Proveri mrežu i storage.</li>
+  <li>Proveri posebne uređaje VM-a.</li>
+  <li>Promeni samo potvrđeni uzrok.</li>
+  <li>Ponovi power-on.</li>
+  <li>Potvrdi guest i aplikacionu dostupnost.</li>
+</ol>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Vrati rezervaciju:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-ha-fail-test01" |
+    Get-VMResourceConfiguration |
+    Set-VMResourceConfiguration -MemReservationGB 0</code></pre>
+
+<p>Ukloni laboratorijsko obavezno VM-host pravilo i proveri da VM ponovo može da se pokrene na više hostova.</p>
+
+<hr>
+
+<p><strong>Vežba 12 – Detaljna analiza HA logova i rekonstrukcija incidenta</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je rekonstrukcija HA incidenta na osnovu više izvora, umesto oslanjanja na jednu poruku u vSphere Client-u.</p>
+
+<p><strong>Pravilo analize</strong></p>
+
+<p>Jedan log retko daje potpun odgovor. Administrator koreliše:</p>
+
+<ul>
+  <li>vCenter događaje;</li>
+  <li>FDM logove svih relevantnih hostova;</li>
+  <li>hostd i vpxa logove;</li>
+  <li>vmkernel log;</li>
+  <li>VM log;</li>
+  <li>mrežne i storage alarme;</li>
+  <li>guest OS i aplikacione logove;</li>
+  <li>vreme na svim komponentama.</li>
+</ul>
+
+<p><strong>1. FDM log</strong></p>
+
+<p><strong>Lokacija:</strong></p>
+
+<pre><code class="language-none">/var/log/fdm.log</code></pre>
+
+<p>Na nekim ESXi izdanjima putanja je simbolička veza ka aktivnom runtime logu. FDM zapisuje HA članstvo, primary/secondary uloge, heartbeat događaje, izolaciju, particije, protected VM stanje, failover odluke i restart pokušaje.</p>
+
+<p>Korisni filteri:</p>
+
+<pre><code class="language-bash">grep -Ei "primary|secondary|master|slave|isolation|partition" \
+    /var/log/fdm.log |
+    tail -n 200</code></pre>
+
+<pre><code class="language-bash">grep -Ei "failover|restart|power on|protected|unprotected|placement" \
+    /var/log/fdm.log |
+    tail -n 200</code></pre>
+
+<pre><code class="language-bash">grep -Ei "heartbeat|datastore|APD|PDL|VMCP" \
+    /var/log/fdm.log |
+    tail -n 200</code></pre>
+
+<p><strong>Tumačenje:</strong> administrator traži redosled događaja, ne samo reč <code>error</code>. Poruka o izboru novog primary hosta može biti očekivana posledica pada prethodnog primary hosta, a ne novi kvar.</p>
+
+<p><strong>2. hostd log</strong></p>
+
+<p><strong>Lokacija:</strong></p>
+
+<pre><code class="language-none">/var/log/hostd.log</code></pre>
+
+<p>hostd upravlja lokalnim host operacijama i VM lifecycle zadacima. U njemu se traže power-on greške, registracija VM-a, resource problemi, pristup VMX fajlu i lokalni zadaci.</p>
+
+<pre><code class="language-bash">grep -Ei "vm-app01|power on|register|resource|insufficient|failed" \
+    /var/log/hostd.log |
+    tail -n 200</code></pre>
+
+<p><strong>Tumačenje:</strong> FDM može odlučiti da VM treba restartovati, ali hostd može zabeležiti razlog zbog kojeg konkretni power-on nije uspeo.</p>
+
+<p><strong>3. vpxa log</strong></p>
+
+<p><strong>Lokacija:</strong></p>
+
+<pre><code class="language-none">/var/log/vpxa.log</code></pre>
+
+<p>vpxa je vCenter agent na hostu. U logu se traže problemi komunikacije između ESXi hosta i vCenter Servera, zadaci i promene stanja hosta.</p>
+
+<pre><code class="language-bash">grep -Ei "disconnect|connection|heartbeat|error|failed" \
+    /var/log/vpxa.log |
+    tail -n 200</code></pre>
+
+<p><strong>Tumačenje:</strong> vpxa problem može objasniti zašto je host u vCenter-u Not Responding, ali sam po sebi ne dokazuje da je HA management mreža potpuno prekinuta.</p>
+
+<p><strong>4. vmkernel log</strong></p>
+
+<p><strong>Lokacija:</strong></p>
+
+<pre><code class="language-none">/var/log/vmkernel.log</code></pre>
+
+<p>U njemu se traže fizički NIC događaji, storage putanje, APD/PDL, NMP, SCSI greške, driver problemi i kernel-level događaji.</p>
+
+<pre><code class="language-bash">grep -Ei "Link.*down|vmnic|APD|PDL|NMP|SCSI|All Paths Down" \
+    /var/log/vmkernel.log |
+    tail -n 300</code></pre>
+
+<p><strong>Tumačenje:</strong> ako je HA incident počeo neposredno nakon poruke da je management uplink pao, mrežna promena je verovatniji uzrok od problema sa FDM agentom.</p>
+
+<p><strong>5. VM log</strong></p>
+
+<p><strong>Lokacija:</strong></p>
+
+<pre><code class="language-none">/vmfs/volumes/NAZIV_DATASTORE-a/PUTANJA_VM-a/vmware.log</code></pre>
+
+<p>Pronađi VMX putanju pomoću PowerCLI-ja:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-app01" |
+    Select-Object Name,
+        @{Name="VMXPath";Expression={
+            $_.ExtensionData.Config.Files.VmPathName
+        }}</code></pre>
+
+<p>Na ESXi hostu filtriraj:</p>
+
+<pre><code class="language-bash">grep -Ei "power|reset|panic|question|error|failed" \
+    /vmfs/volumes/DS-SHARED-01/vm-app01/vmware.log |
+    tail -n 200</code></pre>
+
+<p><strong>Tumačenje:</strong> VM log može pokazati prethodni nagli prekid, novi power-on, virtual hardware problem ili pitanje koje blokira automatsko pokretanje.</p>
+
+<p><strong>6. vCenter Server logovi</strong></p>
+
+<p>Za detaljniju analizu na vCenter Server Appliance-u relevantni su logovi servisa koji upravljaju inventarom, zadacima, događajima i klasterom, posebno:</p>
+
+<pre><code class="language-none">/var/log/vmware/vpxd/vpxd.log</code></pre>
+
+<p>Primer:</p>
+
+<pre><code class="language-bash">grep -Ei "HA|FDM|failover|esx02|vm-app01" \
+    /var/log/vmware/vpxd/vpxd.log |
+    tail -n 300</code></pre>
+
+<p>Pristup VCSA shell-u treba biti ograničen, evidentiran i korišćen samo kada vSphere Client i standardni support bundle podaci nisu dovoljni.</p>
+
+<p><strong>7. Sistemski support bundle</strong></p>
+
+<p>Za složen incident prikuplja se support bundle pre nego što rotacija logova ukloni ključne podatke. Na ESXi hostu može se koristiti:</p>
+
+<pre><code class="language-bash">vm-support</code></pre>
+
+<p>Komanda prikuplja veliki broj dijagnostičkih podataka i može privremeno povećati CPU, storage i I/O opterećenje. U produkciji se pokreće kontrolisano, posebno tokom aktivnog incidenta.</p>
+
+<p><strong>Rekonstrukcija vremenske linije</strong></p>
+
+<p>Napravi tabelu:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vreme</th>
+      <th>Izvor</th>
+      <th>Događaj</th>
+      <th>Tumačenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10:00:00</td>
+      <td>vmkernel.log</td>
+      <td>Management uplink down</td>
+      <td>Početak mrežnog incidenta</td>
+    </tr>
+    <tr>
+      <td>10:00:15</td>
+      <td>fdm.log</td>
+      <td>Host heartbeat izgubljen</td>
+      <td>HA započinje procenu stanja</td>
+    </tr>
+    <tr>
+      <td>10:00:18</td>
+      <td>fdm.log</td>
+      <td>Host proglašen neuspelim</td>
+      <td>Pokrenut failover</td>
+    </tr>
+    <tr>
+      <td>10:00:24</td>
+      <td>hostd.log</td>
+      <td>Power-on vm-app01</td>
+      <td>Odredišni host započeo restart</td>
+    </tr>
+    <tr>
+      <td>10:01:05</td>
+      <td>PowerCLI</td>
+      <td>VMware Tools running</td>
+      <td>Guest OS se podigao</td>
+    </tr>
+    <tr>
+      <td>10:01:42</td>
+      <td>Health monitoring</td>
+      <td>HTTP 200</td>
+      <td>Aplikacija ponovo dostupna</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Administratorsko tumačenje</strong></p>
+
+<p>U ovom primeru infrastrukturni oporavak trajao je približno 65 sekundi, dok je aplikacioni RTO iznosio približno 102 sekunde. Poslovni RTO treba meriti do povratka upotrebljive aplikacije, a ne do trenutka kada je VM dobila stanje Powered On.</p>
+
+<hr>
+
+<p><strong>Vežba 13 – Bezbedan oporavak nakon neuspelog HA incidenta</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je vraćanje klastera u stabilno i dokazano operativno stanje nakon incidenta, bez ishitrenog uključivanja VM-ova, uklanjanja alarma ili vraćanja opterećenja na host koji još nije validiran.</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>Host esx02 vratio se nakon kvara. Većina VM-ova restartovana je na drugim hostovima, ali vm-app01 nije uspešno pokrenuta zbog nedostatka memorije, dok vm-db01 radi, ali aplikacioni monitoring prijavljuje recovery baze.</p>
+
+<p><strong>Postupak oporavka</strong></p>
+
+<p><strong>1. Potvrda simptoma</strong></p>
+
+<ul>
+  <li>koji hostovi su dostupni;</li>
+  <li>koje VM rade;</li>
+  <li>koje VM nisu pokrenute;</li>
+  <li>koje aplikacije nisu dostupne;</li>
+  <li>da li postoji storage ili mrežni incident koji još traje.</li>
+</ul>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VMHost |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  MemoryUsageGB,
+                  MemoryTotalGB |
+    Format-Table -AutoSize
+
+Get-Cluster -Name "CL-PROD-LAB" |
+    Get-VM |
+    Select-Object Name,
+                  PowerState,
+                  VMHost |
+    Sort-Object PowerState, Name |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>2. Određivanje obima</strong></p>
+
+<p>Ne pretpostavljaj da sve greške imaju isti uzrok. Jedna VM može biti blokirana affinity pravilom, druga nedostatkom memorije, a treća nedostupnom port grupom.</p>
+
+<p><strong>3. Provera nedavnih promena</strong></p>
+
+<ul>
+  <li>mrežna promena;</li>
+  <li>storage maintenance;</li>
+  <li>firmware ili driver nadogradnja;</li>
+  <li>promena HA politike;</li>
+  <li>promena VM rezervacija;</li>
+  <li>promena DRS pravila;</li>
+  <li>dodavanje posebnog VM uređaja.</li>
+</ul>
+
+<p><strong>4. Provera zavisnosti</strong></p>
+
+<ul>
+  <li>shared storage;</li>
+  <li>port grupe i VLAN-ovi;</li>
+  <li>DNS i NTP;</li>
+  <li>slobodan CPU i RAM;</li>
+  <li>VM-host pravila;</li>
+  <li>licencni ili hardverski zahtevi aplikacije;</li>
+  <li>redosled servisa.</li>
+</ul>
+
+<p><strong>5. Analiza zadatka neuspelog pokretanja</strong></p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity (Get-VM -Name "vm-app01") -MaxSamples 100 |
+    Select-Object CreatedTime,
+                  FullFormattedMessage |
+    Sort-Object CreatedTime -Descending |
+    Format-Table -Wrap</code></pre>
+
+<p><strong>6. Korektivna akcija</strong></p>
+
+<p>Ako je potvrđen nedostatak memorije:</p>
+
+<ul>
+  <li>isključi nepotrebne laboratorijske VM-ove;</li>
+  <li>ukloni pogrešno visoku test rezervaciju;</li>
+  <li>sačekaj povratak validiranog hosta;</li>
+  <li>ne isključuj Admission Control samo da bi power-on prošao;</li>
+  <li>ne menjaj više resursnih politika istovremeno.</li>
+</ul>
+
+<p><strong>7. Kontrolisano pokretanje</strong></p>
+
+<pre><code class="language-powershell">Start-VM -VM "vm-app01" -Confirm:$true</code></pre>
+
+<p><strong>8. Validacija VM-a</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "vm-app01" |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+        @{Name="ToolsRunningStatus";Expression={
+            $_.ExtensionData.Guest.ToolsRunningStatus
+        }} |
+    Format-List</code></pre>
+
+<p><strong>9. Validacija aplikacije</strong></p>
+
+<pre><code class="language-powershell">Test-NetConnection vm-app01.lab.local -Port 443
+
+Invoke-WebRequest `
+    -Uri "https://vm-app01.lab.local/health" `
+    -TimeoutSec 10 `
+    -UseBasicParsing</code></pre>
+
+<p><strong>10. Povratak klastera u normalno stanje</strong></p>
+
+<ul>
+  <li>svi hostovi Connected;</li>
+  <li>FDM aktivan na svim hostovima;</li>
+  <li>heartbeat datastore-i dostupni;</li>
+  <li>Admission Control politika zadovoljena;</li>
+  <li>nema orphaned ili inaccessible VM-ova;</li>
+  <li>DRS pravila su validna;</li>
+  <li>aplikacioni servisi su potvrđeni;</li>
+  <li>privremene laboratorijske promene su uklonjene.</li>
+</ul>
+
+<p><strong>11. Dokumentovanje incidenta</strong></p>
+
+<p>Incident zapis treba da sadrži:</p>
+
+<ul>
+  <li>datum i vreme;</li>
+  <li>pogođene hostove i VM-ove;</li>
+  <li>korisnički i poslovni uticaj;</li>
+  <li>infrastrukturni i aplikacioni RTO;</li>
+  <li>HA odluke i restart rezultate;</li>
+  <li>potvrđeni tehnički uzrok;</li>
+  <li>korektivne akcije;</li>
+  <li>privremene mere;</li>
+  <li>trajna poboljšanja;</li>
+  <li>vlasnike narednih zadataka;</li>
+  <li>rok za ponovno testiranje.</li>
+</ul>
+
+<hr>
+
+<p><strong>Sistematičan troubleshooting vSphere HA problema</strong></p>
+
+<p><strong>1. Potvrdi simptom</strong></p>
+
+<p>Utvrdi da li je problem:</p>
+
+<ul>
+  <li>HA configuration error;</li>
+  <li>host Not Responding;</li>
+  <li>FDM agent unreachable;</li>
+  <li>host isolation;</li>
+  <li>network partition;</li>
+  <li>nedostupan heartbeat datastore;</li>
+  <li>neuspešan VM restart;</li>
+  <li>ponovljeni VM Monitoring reset;</li>
+  <li>APD ili PDL događaj;</li>
+  <li>narušen Admission Control kapacitet.</li>
+</ul>
+
+<p><strong>2. Odredi obim problema</strong></p>
+
+<ul>
+  <li>jedan VM;</li>
+  <li>jedan host;</li>
+  <li>jedan datastore;</li>
+  <li>jedna mrežna particija;</li>
+  <li>ceo klaster;</li>
+  <li>više klastera povezanih sa istim vCenter-om;</li>
+  <li>cela storage ili management infrastruktura.</li>
+</ul>
+
+<p><strong>3. Proveri nedavne promene</strong></p>
+
+<p>Posebno proveri promene izvršene neposredno pre incidenta:</p>
+
+<ul>
+  <li>ESXi ili vCenter patch;</li>
+  <li>promena fizičkog switch-a;</li>
+  <li>VLAN promena;</li>
+  <li>promena DNS-a ili NTP-a;</li>
+  <li>storage zoning ili masking;</li>
+  <li>promena HA advanced options;</li>
+  <li>promena sertifikata;</li>
+  <li>promena DRS i affinity pravila;</li>
+  <li>promena Admission Control-a.</li>
+</ul>
+
+<p><strong>4. Proveri zavisnosti</strong></p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+esxcli network ip route ipv4 list
+esxcli storage filesystem list
+/etc/init.d/fdm status</code></pre>
+
+<p><strong>5. Pregledaj događaje i alarme</strong></p>
+
+<p>Broadcom navodi da HA problemi mogu biti posledica disconnected hosta, nedostupnog heartbeat datastore-a, pada primary hosta, network partition-a, host isolation-a, blokirane komunikacije ili opšte configuration greške.</p>
+
+<p><strong>6. Analiziraj relevantne logove</strong></p>
+
+<ul>
+  <li><code>/var/log/fdm.log</code> – HA odluke i stanje;</li>
+  <li><code>/var/log/hostd.log</code> – lokalni VM i host zadaci;</li>
+  <li><code>/var/log/vpxa.log</code> – vCenter agent komunikacija;</li>
+  <li><code>/var/log/vmkernel.log</code> – mreža, storage i kernel događaji;</li>
+  <li><code>vmware.log</code> – životni ciklus konkretne VM;</li>
+  <li><code>/var/log/vmware/vpxd/vpxd.log</code> – vCenter zadaci i događaji.</li>
+</ul>
+
+<p><strong>7. Potvrdi uzrok</strong></p>
+
+<p>Nemoj zaključiti da je FDM uzrok samo zato što je HA alarm vidljiv. FDM često prijavljuje posledicu kvara management mreže, storage-a, sertifikata, vremena ili host agenata.</p>
+
+<p><strong>8. Primeni najmanju bezbednu korekciju</strong></p>
+
+<ul>
+  <li>vrati mrežnu dostupnost;</li>
+  <li>vrati shared datastore pristup;</li>
+  <li>ispravi DNS ili vreme;</li>
+  <li>ukloni pogrešnu VM rezervaciju;</li>
+  <li>ispravi pravilo koje blokira placement;</li>
+  <li>rekonfiguriši HA samo na pogođenom hostu;</li>
+  <li>restartuj management agent samo kada je potvrđeno da je problem u agentu.</li>
+</ul>
+
+<p><strong>9. Validiraj oporavak</strong></p>
+
+<ul>
+  <li>FDM radi;</li>
+  <li>host je Connected;</li>
+  <li>VM je HA protected;</li>
+  <li>datastore heartbeat je zdrav;</li>
+  <li>Admission Control politika je zadovoljena;</li>
+  <li>VM i aplikacija rade;</li>
+  <li>alarm se ne vraća.</li>
+</ul>
+
+<p><strong>10. Dokumentuj incident</strong></p>
+
+<p>Zabeleži tehnički uzrok, poslovni uticaj, vreme detekcije, vreme oporavka, uspešnost HA postupka i potrebna poboljšanja dizajna.</p>
+
+<hr>
+
+<p><strong>Administratorske prakse</strong></p>
+
+<p><strong>1. Projektuj HA prema failure domain-ima, a ne samo prema broju hostova</strong></p>
+
+<p>Tri hosta ne znače automatski toleranciju na jedan kvar ako svi koriste isti fizički switch, jedan storage kontroler, jedan PDU ili jednu management mrežnu putanju. Dokumentuj compute, mrežne, storage, rack, naponske i site failure domain-e.</p>
+
+<p><strong>2. Ne troši failover kapacitet kao redovan slobodan kapacitet</strong></p>
+
+<p>Kapacitet koji Admission Control čuva za kvar nije „neiskorišćen prostor” namenjen novim VM-ovima. Prati:</p>
+
+<ul>
+  <li>configured i current failover capacity;</li>
+  <li>memorijske rezervacije;</li>
+  <li>najveći host u klasteru;</li>
+  <li>peak CPU i RAM potrošnju;</li>
+  <li>kapacitet tokom maintenance režima jednog hosta;</li>
+  <li>mogućnost istovremenog održavanja i dodatnog kvara.</li>
+</ul>
+
+<p><strong>3. Obezbedi redundantnu management mrežu</strong></p>
+
+<p>Management VMkernel treba da ima redundantne fizičke uplink-ove, fizičke switch putanje i pravilno testiran NIC teaming. Redundansa na jednom vSwitch-u nije stvarna ako oba uplink-a završavaju na istom fizičkom switch-u ili istom line card-u.</p>
+
+<p><strong>4. Biraj isolation response prema stvarnom dizajnu</strong></p>
+
+<p>Ne kopiraj istu politiku na svaki klaster. Razmotri:</p>
+
+<ul>
+  <li>da li izolovani host zadržava VM mrežu;</li>
+  <li>da li zadržava storage pristup;</li>
+  <li>rizik od dugog rada nedostupne VM;</li>
+  <li>rizik od naglog guest gašenja;</li>
+  <li>ponašanje stateful aplikacija;</li>
+  <li>mogućnost split-brain-a na aplikacionom nivou.</li>
+</ul>
+
+<p><strong>5. Koristi najmanje dva odgovarajuća heartbeat datastore-a kada arhitektura to omogućava</strong></p>
+
+<p>Prati broj, dostupnost i fizički failure domain heartbeat datastore-ova. Ne uklanjaj datastore iz upotrebe dok ne proveriš da li ga HA još koristi.</p>
+
+<p><strong>6. Standardizuj port grupe, VLAN-ove i uplink politike</strong></p>
+
+<p>HA restart može uspeti na compute nivou, a VM ipak ostati mrežno nedostupna. Automatski proveravaj da potrebne port grupe postoje na svim hostovima i da imaju konzistentan VLAN, MTU i uplink dizajn.</p>
+
+<p><strong>7. Razdvoji restart prioritet od aplikacione spremnosti</strong></p>
+
+<p>Definiši redosled VM-ova prema zavisnostima, ali za svaki servis dodaj pravi readiness test. Powered On i guest heartbeat nisu dokaz da baza prihvata konekcije ili da aplikacija završava poslovne transakcije.</p>
+
+<p><strong>8. Oprezno koristi VM Monitoring</strong></p>
+
+<p>Prati:</p>
+
+<ul>
+  <li>VMware Tools stabilnost;</li>
+  <li>broj automatskih resetovanja;</li>
+  <li>VM sa legitimno niskom aktivnošću;</li>
+  <li>guest OS probleme koji se ponavljaju;</li>
+  <li>aplikacije kojima je potreban zaseban monitoring.</li>
+</ul>
+
+<p>Višestruki automatski restart iste VM nije uspešan oporavak, već znak nerešenog uzroka.</p>
+
+<p><strong>9. Ne koristi obavezna affinity pravila bez dokumentovanog razloga</strong></p>
+
+<p>Svako <strong>Must run</strong> pravilo smanjuje placement mogućnosti tokom incidenta. Dokumentuj vlasnika, razlog, datum pregleda i posledice po HA.</p>
+
+<p><strong>10. Održavaj VMware Tools i guest operativne sisteme</strong></p>
+
+<p>VMware Tools utiče na guest heartbeat, uredno gašenje i vidljivost guest stanja. Njegovo stanje treba uključiti u redovan compliance i patch proces.</p>
+
+<p><strong>11. Testiraj HA periodično, ali kontrolisano</strong></p>
+
+<p>Najmanje periodično proveri:</p>
+
+<ul>
+  <li>gubitak jednog hosta;</li>
+  <li>restart prioritet;</li>
+  <li>aplikacioni RTO;</li>
+  <li>kapacitet tokom maintenance režima;</li>
+  <li>heartbeat datastore redundansu;</li>
+  <li>VM sa posebnim uređajima ili pravilima;</li>
+  <li>kontakt i escalation proceduru.</li>
+</ul>
+
+<p>Test treba da ima odobren plan, vlasnika, vreme, očekivani rezultat, rollback i završni izveštaj.</p>
+
+<p><strong>12. Prati konkretne HA indikatore</strong></p>
+
+<p>Monitoring treba da obuhvati:</p>
+
+<ul>
+  <li>HA agent state po hostu;</li>
+  <li>broj unprotected VM-ova;</li>
+  <li>HA configuration issues;</li>
+  <li>current failover capacity;</li>
+  <li>host isolation i partition događaje;</li>
+  <li>heartbeat datastore upozorenja;</li>
+  <li>neuspešne HA restart pokušaje;</li>
+  <li>VM Monitoring reset događaje;</li>
+  <li>APD i PDL događaje;</li>
+  <li>host Not Responding stanje.</li>
+</ul>
+
+<p><strong>13. Uključi HA promene u formalnu kontrolu promena</strong></p>
+
+<p>Promene koje zahtevaju odobrenje uključuju:</p>
+
+<ul>
+  <li>Admission Control politiku;</li>
+  <li>isolation response;</li>
+  <li>heartbeat datastore listu;</li>
+  <li>HA advanced options;</li>
+  <li>VM Monitoring osetljivost;</li>
+  <li>restart prioritete;</li>
+  <li>VM-host pravila;</li>
+  <li>uključivanje ili isključivanje Host Monitoring-a.</li>
+</ul>
+
+<p><strong>14. Ne isključuj Host Monitoring tokom incidenta bez jasnog razloga</strong></p>
+
+<p>Isključivanje Host Monitoring-a uklanja automatsku reakciju na host kvar. Tokom planskog mrežnog održavanja možda postoji opravdan razlog, ali promena mora biti vremenski ograničena, evidentirana i vraćena odmah nakon održavanja.</p>
+
+<p><strong>15. Ne restartuj sve management agente rutinski</strong></p>
+
+<p>Masovni restart hostd, vpxa ili FDM agenata može ukloniti simptome, izgubiti korisno stanje i otežati root cause analizu. Najpre prikupi logove i potvrdi komponentu koja je neispravna.</p>
+
+<p><strong>16. HA nije backup</strong></p>
+
+<p>HA restartuje istu VM iz istih datoteka. Ne štiti od:</p>
+
+<ul>
+  <li>brisanja VM-a;</li>
+  <li>korupcije guest filesystem-a;</li>
+  <li>ransomware-a;</li>
+  <li>aplikacione greške;</li>
+  <li>pogrešne konfiguracije;</li>
+  <li>gubitka celog storage sistema ili lokacije.</li>
+</ul>
+
+<p>Potrebni su nezavisan backup, testiran restore i politika čuvanja kopija izvan primarnog failure domain-a.</p>
+
+<p><strong>17. HA nije disaster recovery</strong></p>
+
+<p>HA uglavnom rešava kvar unutar jednog vSphere klastera. Gubitak cele lokacije zahteva DR dizajn, replikaciju, sekundarnu lokaciju, mrežni plan, DNS ili globalni load balancing, redosled oporavka i redovno testiran runbook.</p>
+
+<p><strong>18. Dokumentuj posebne VM-ove</strong></p>
+
+<p>Posebno evidentiraj VM-ove koje koriste:</p>
+
+<ul>
+  <li>vGPU;</li>
+  <li>PCI passthrough;</li>
+  <li>SR-IOV;</li>
+  <li>lokalne uređaje;</li>
+  <li>raw device mapping;</li>
+  <li>fizičke USB uređaje;</li>
+  <li>licencno vezivanje za host;</li>
+  <li>obavezna affinity pravila;</li>
+  <li>nepodržane guest ili virtual hardware verzije.</li>
+</ul>
+
+<p>Za njih HA restart može imati dodatna ograničenja.</p>
+
+<p><strong>19. Čuvaj vremensku sinhronizaciju</strong></p>
+
+<p>ESXi hostovi, vCenter, storage, mrežna oprema, guest sistemi i monitoring treba da koriste pouzdano vreme. Bez toga je rekonstrukcija incidenta znatno teža.</p>
+
+<p><strong>20. Posle svakog incidenta proveri novu N+1 sposobnost</strong></p>
+
+<p>Nakon HA failover-a klaster je često privremeno bez prvobitne redundanse. Dok se neuspešni host ne vrati i ne validira, novi kvar može premašiti raspoloživ kapacitet. To stanje treba prikazati kao operativni rizik, a ne kao potpuno završen incident.</p>
+
+<hr>
+
+<p><strong>Zaključak</strong></p>
+
+<p>vSphere High Availability nije samo opcija koja se uključuje na klasteru. To je distribuirani sistem za detekciju kvara, donošenje odluke i ponovno pokretanje virtuelnih mašina, čiji rezultat zavisi od pravilno projektovane management mreže, dostupnog shared storage-a, dovoljnog kapaciteta, kompatibilnih hostova i tačno definisanih pravila.</p>
+
+<p>Administrator nakon ove lekcije treba da ume da razlikuje planirano održavanje od neplaniranog failover-a, potpuni pad hosta od mrežne izolacije i partition-a, kao i običan host failure od APD, PDL i guest OS problema. Mora razumeti da stanje Powered On nije isto što i dostupan poslovni servis i da se pravi RTO meri do povratka aplikacije, a ne do pokretanja VMX procesa.</p>
+
+<p>Pravilno upravljanje HA klasterom zahteva proveru FDM agenata, HA zaštite VM-ova, Admission Control kapaciteta, restart prioriteta, heartbeat datastore-a, isolation response politike i ograničenja koja stvaraju VM-host pravila ili posebni virtuelni uređaji. Kada restart ne uspe, administrator ne treba nasumično da isključuje Admission Control, uklanja pravila ili restartuje sve agente, već da na osnovu događaja, alarma i logova potvrdi tačan uzrok i primeni najmanju bezbednu korektivnu akciju.</p>
+
+<p>Najvažnija operativna pouka jeste da HA smanjuje trajanje prekida, ali ne uklanja potrebu za redundantnom infrastrukturom, monitoringom, backup-om, disaster recovery planom i redovnim testiranjem. Dobro projektovan HA klaster ne dokazuje svoju vrednost time što je opcija uključena, već time što tokom stvarnog incidenta predvidivo detektuje kvar, pokrene odgovarajuće VM-ove, poštuje poslovne zavisnosti i ostavi administratoru dovoljno jasne dokaze da može pouzdano objasniti šta se dogodilo.</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Availability, ESXi i vCenter Server administrativna dokumentacija; Configuration Maximums; Broadcom Knowledge Base reference za vSphere HA, FDM, Admission Control, host isolation, network partition, datastore heartbeating, VM Monitoring, VM Component Protection (APD/PDL), HA događaje i lokacije logova; Broadcom VCF PowerCLI referenca
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-31-vmotion.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-33-drs.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

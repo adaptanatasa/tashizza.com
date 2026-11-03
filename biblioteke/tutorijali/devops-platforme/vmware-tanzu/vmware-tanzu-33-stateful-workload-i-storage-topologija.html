@@ -1,0 +1,960 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-33-stateful-workload-i-storage-topologija.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Stateful workload i storage topologija – dostupnost, zone, pristup i ograničenja | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Stateful workload i storage topologija – dostupnost, zone, režimi pristupa i ograničenja trajnih podataka u VKS klasterima.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, stateful workload, storage topologija, VKS, dostupnost, zone, access modes, Persistent Volume, trajni podaci, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-33-stateful-workload-i-storage-topologija.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Stateful workload i storage topologija – dostupnost, zone, pristup i ograničenja">
+
+  <meta property="og:description"
+        content="Trideset treća lekcija VMware &amp; Tanzu tutorijala – dostupnost, zone, pristup i ograničenja stateful workload-a i storage topologije.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-33-stateful-workload-i-storage-topologija.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-33-stateful-workload-i-storage-topologija.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Stateful workload i storage topologija – dostupnost, zone, pristup i ograničenja">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-33-stateful-workload-i-storage-topologija.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-33-stateful-workload-i-storage-topologija.png"
+           alt="Stateful workload i storage topologija – dostupnost, zone, pristup i ograničenja">
+
+    </a>
+<div class="page-subtitle">
+  VIII. Storage, trajni podaci i zaštita stateful workload-a
+</div>
+
+<div class="page-subtitle">
+  33. Stateful workload i storage topologija – dostupnost, zone, pristup i ograničenja
+</div>
+
+<p>
+  Prethodne dve lekcije objasnile su kako zahtev za trajnim prostorom prolazi od
+  <code>PersistentVolumeClaim</code> objekta, preko vSphere CSI sloja, do CNS volumena i kako
+  <code>StorageClass</code> predstavlja deklarativni izbor vSphere Storage Policy-ja. Ova lekcija
+  dodaje presudnu produkcionu dimenziju: <strong>gde</strong> Pod može da se izvršava, <strong>odakle</strong>
+  njegov volumen može da se priključi i šta se događa kada čvor, datastore, vSphere klaster ili
+  čitava zona postanu nedostupni. Stateful workload nije visoko dostupan samo zato što ima više
+  replika, niti je podatak zaštićen samo zato što se nalazi na pouzdanom datastore-u.
+</p>
+
+<p>
+  U ovoj lekciji naziv <strong>VKS</strong> označava vSphere Kubernetes Service klaster. U dokumentaciji
+  starijih izdanja isti sloj može biti nazvan Tanzu Kubernetes Grid Service ili TKG Service. Nazivi
+  objekata, ponuđene StorageClass klase i detalji zonalne implementacije zavise od verzije vSphere/VCF
+  platforme, izdanja VKS klastera, CSI drajvera, tipa datastore-a i dodeljenih politika. Zato se primeri
+  ne primenjuju naslepo: stvarne nazive klasa, topology ključeve i podržane mogućnosti administrator
+  najpre očitava iz sopstvenog klastera i proverava u matrici interoperabilnosti za konkretno izdanje.
+</p>
+
+<h3>1. Šta stateful workload čini drugačijim</h3>
+
+<p>
+  Stateless aplikacija može da izgubi Pod i dobije novu instancu na drugom čvoru bez prenosa lokalnog
+  stanja. Stateful aplikacija vezuje identitet procesa za trajne podatke, redosled pokretanja, članstvo
+  u klasteru, mrežni identitet ili quorum. Kubernetes <code>StatefulSet</code> obezbeđuje stabilan ordinalni
+  identitet Pod-ova, stabilno imenovanje i po pravilu poseban PVC za svaku repliku preko
+  <code>volumeClaimTemplates</code>. On, međutim, ne pretvara samostalno bazu u distribuiranu bazu, ne
+  replicira sadržaj između PVC-ova i ne garantuje oporavak od gubitka zone.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Šta obezbeđuje</th>
+      <th>Šta ne obezbeđuje sam</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>StatefulSet</td>
+      <td>Stabilan identitet replike, uređeno kreiranje/gašenje i PVC po replici</td>
+      <td>Replikaciju podataka, backup, quorum i aplikacionu konzistentnost</td>
+    </tr>
+    <tr>
+      <td>Kubernetes scheduler</td>
+      <td>Izbor prihvatljivog čvora prema resursima, pravilima raspoređivanja i topology ograničenjima volumena</td>
+      <td>Promenu fizičke dostupnosti datastore-a ili automatsku migraciju podataka u drugu zonu</td>
+    </tr>
+    <tr>
+      <td>vSphere CSI/CNS</td>
+      <td>Provisioning, attach/mount tok, topology informacije i lifecycle volumena</td>
+      <td>Aplikacionu semantiku, logičku replikaciju baze i strategiju oporavka</td>
+    </tr>
+    <tr>
+      <td>vSphere Storage Policy i datastore</td>
+      <td>Postavljanje i karakteristike fizičkog skladištenja, prema mogućnostima platforme</td>
+      <td>Kubernetes replike, Pod anti-affinity i ispravnu raspodelu članova aplikacije</td>
+    </tr>
+    <tr>
+      <td>Aplikacija/operator</td>
+      <td>Quorum, sinhronu ili asinhronu replikaciju, failover i konzistentnost</td>
+      <td>Infrastrukturnu dostupnost bez pravilno projektovanog compute i storage sloja</td>
+    </tr>
+    <tr>
+      <td>Backup i restore</td>
+      <td>Oporavak od brisanja, korupcije, ransomware-a i katastrofe, u okviru dokazanih RPO/RTO ciljeva</td>
+      <td>Neprekidan rad tokom svakog kvara</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Administratorska odluka zato mora da poveže najmanje četiri ravni: topologiju compute resursa,
+  topologiju storage pristupa, mehanizam aplikacione replikacije i plan zaštite podataka. Ako je bilo
+  koja od njih zasnovana na pogrešnoj pretpostavci, „tri replike” mogu fizički završiti u istom domenu
+  kvara ili ostati bez volumena kada se Pod premesti.
+</p>
+
+<h3>2. Tri značenja dostupnosti</h3>
+
+<p>
+  U produkcionom dizajnu treba eksplicitno razlikovati dostupnost workload-a, dostupnost volumena i
+  zaštitu sadržaja. Prva govori da li aplikacioni proces može da se pokrene; druga da li odgovarajući
+  čvor može da pristupi tačno određenom volumenu; treća da li se ispravna verzija podataka može vratiti
+  posle logičkog ili fizičkog gubitka. Visoko dostupan datastore može smanjiti rizik od hardverskog
+  kvara, ali nije zamena za backup. Backup, zauzvrat, ne garantuje nizak RTO ako klaster nema mesto na
+  kojem može ponovo da pokrene workload.
+</p>
+
+<ul>
+  <li><strong>HA procesa:</strong> kontroler može da rekreira Pod, ali samo ako postoji prihvatljiv čvor.</li>
+  <li><strong>HA podataka:</strong> volumen ili aplikaciona replika ostaju dostupni uprkos definisanom kvaru.</li>
+  <li><strong>DR:</strong> workload i podaci mogu da se obnove u drugom failure domain-u uz merljiv RPO i RTO.</li>
+  <li><strong>Integritet:</strong> aplikacija potvrđuje da su podaci konzistentni, a ne samo da je filesystem montiran.</li>
+</ul>
+
+<h3>3. Failure domain, region i zona: nazivi nisu dovoljni</h3>
+
+<p>
+  <em>Failure domain</em> je skup komponenti koje mogu istovremeno otkazati zbog zajedničkog uzroka:
+  napajanja, mreže, rack-a, vSphere klastera, storage fabric-a, datastore-a ili lokacije. Kubernetes
+  standardno koristi labele <code>topology.kubernetes.io/region</code> i
+  <code>topology.kubernetes.io/zone</code>, dok CSI drajver može oglašavati i sopstvene topology ključeve.
+  Vrednost „zone-a” ima operativni smisao samo kada zaista odgovara izolovanom failure domain-u i kada
+  je mapiranje dosledno od vSphere infrastrukture do Kubernetes Node objekta.
+</p>
+
+<p>
+  Kod three-zone Supervisor implementacije vSphere zona se mapira na vSphere klaster, a zonalni
+  datastore je dostupan hostovima unutar odgovarajuće zone. Zonalna Storage Policy mora biti topology-aware.
+  Shared storage koji je vidljiv iz više zona ima drugačije osobine i rizike od zonalnog storage-a.
+  vSAN stretched cluster nije isto što i three-zone Supervisor: stretched cluster tipično pruža jedan
+  compute/storage domen rastegnut preko lokacija sa sopstvenim pravilima witness-a i dostupnosti, dok
+  three-zone model eksplicitno raspoređuje Supervisor i workload resurse kroz tri vSphere zone. Te
+  arhitekture se ne smeju poistovetiti u runbook-u niti u proceni kvara.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam</th>
+      <th>Dokaz koji administrator traži</th>
+      <th>Tipična pogrešna pretpostavka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Kubernetes zona</td>
+      <td>Node labele i CSI topology ključevi</td>
+      <td>Da naziv labele automatski dokazuje fizičku izolaciju</td>
+    </tr>
+    <tr>
+      <td>vSphere zona</td>
+      <td>Mapiranje zone na vSphere klaster, hostove, mrežu i storage</td>
+      <td>Da je svaki klaster automatski nezavisan failure domain</td>
+    </tr>
+    <tr>
+      <td>Zonalni datastore</td>
+      <td>Host connectivity i policy compliance unutar konkretne zone</td>
+      <td>Da mu čvor iz druge zone može pristupiti</td>
+    </tr>
+    <tr>
+      <td>Shared datastore</td>
+      <td>Dokazana vidljivost iz svih potrebnih zona i nezavisnost putanja</td>
+      <td>Da zajednička vidljivost znači i uklanjanje svih zajedničkih tačaka kvara</td>
+    </tr>
+    <tr>
+      <td>Aplikaciona zona</td>
+      <td>Raspored članova, quorum pravila i mesto svake replike podataka</td>
+      <td>Da Pod anti-affinity automatski znači i storage anti-affinity</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4. Kako scheduler i CSI usklađuju Pod i volumen</h3>
+
+<p>
+  Kod topology-aware dinamičkog provisioninga scheduler ne posmatra samo slobodan CPU i memoriju. On
+  mora da pronađe čvor koji ispunjava node affinity, taints/tolerations, Pod affinity/anti-affinity i
+  topology uslove storage-a. CSI provisioner zatim dobija topology zahtev i bira kompatibilan datastore.
+  Kreirani PV dobija ograničenje dostupnosti, najčešće izraženo kroz <code>spec.nodeAffinity</code>. Pod
+  koji koristi taj PV može biti zakazan samo na čvor čija se topology labela poklapa sa tim ograničenjem.
+</p>
+
+<ol>
+  <li>Korisnik kreira Pod/StatefulSet i PVC koji zahteva određenu StorageClass.</li>
+  <li>Scheduler procenjuje compute uslove i, kod odloženog vezivanja, bira odgovarajući topology segment.</li>
+  <li>CSI provisioner zahteva kreiranje volumena na datastore-u kompatibilnom sa politikom i segmentom.</li>
+  <li>PV i PVC se vezuju; PV beleži CSI identitet volumena i, kada je primenljivo, node affinity.</li>
+  <li>Kada Pod stigne na čvor, CSI attach tok priključuje block volumen VM-u, a node komponenta ga formatira/montira.</li>
+  <li>Pri rescheduling-u isti volumen može pratiti Pod samo do čvora koji ima podržanu storage dostupnost i zadovoljava topology uslov.</li>
+</ol>
+
+<p>
+  <code>volumeBindingMode: WaitForFirstConsumer</code> odlaže binding/provisioning dok ne postoji Pod
+  potrošač. Tako izbor lokacije volumena može da uzme u obzir zahteve Pod-a. Nasuprot tome,
+  <code>Immediate</code> može kreirati volumen pre nego što scheduler zna gde Pod može da radi, što u
+  topology-constrained okruženju može proizvesti trajno <code>Pending</code> stanje. Ako platforma
+  generiše StorageClass klase, administrator ih ne menja niti rekreira bez zvanično podržane procedure;
+  najpre očitava njihovu stvarnu definiciju.
+</p>
+
+<pre><code class="language-bash"># Read-only; izvršava se sa nalogom koji može da čita storage i node objekte.
+kubectl get storageclass
+kubectl get storageclass &lt;STORAGE_CLASS&gt; -o yaml
+kubectl get nodes -L topology.kubernetes.io/region,topology.kubernetes.io/zone
+kubectl get csidrivers
+kubectl get csinodes -o yaml</code></pre>
+
+<p>
+  U izlazu se proveravaju <code>provisioner</code>, <code>volumeBindingMode</code>,
+  <code>allowedTopologies</code>, <code>reclaimPolicy</code> i mogućnost proširenja. Na Node i CSINode
+  objektima proveravaju se stvarni topology ključevi. Naziv provisioner-a i način izlaganja
+  StorageClass klase razlikuju se između Supervisor-a, VKS klastera i samostalno instaliranog vSphere
+  CSI drajvera; primer iz tuđeg klastera nije dokaz za lokalno okruženje.
+</p>
+
+<aside class="callout warning">
+  <strong>Važno:</strong> uz <code>WaitForFirstConsumer</code> ne postavljajte direktno
+  <code>spec.nodeName</code> u Pod-u. Time se zaobilazi scheduler i PVC može ostati u stanju
+  <code>Pending</code>. Kada je vezivanje za čvor zaista potrebno, koristite podržani
+  <code>nodeSelector</code> ili node affinity i proverite storage posledice.
+</aside>
+
+<h3>5. Režimi pristupa nisu isto što i zaštita od konkurentnog upisa</h3>
+
+<p>
+  PVC navodi zahtevani <em>access mode</em>, a backend i CSI drajver određuju šta je stvarno podržano.
+  Režimi opisuju način montiranja sa stanovišta čvorova; oni nisu univerzalni mehanizam za zaključavanje
+  baze. Posebno, <code>ReadWriteOnce</code> znači read-write montiranje sa jednog čvora, ali više Pod-ova
+  na tom istom čvoru može koristiti isti volumen. Ako CSI drajver i verzija klastera podržavaju
+  <code>ReadWriteOncePod</code>, taj režim ograničava read-write pristup na jedan Pod u celom klasteru.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Režim</th>
+      <th>Značenje</th>
+      <th>Administratorska napomena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ReadWriteOnce</code> (RWO)</td>
+      <td>Read-write sa jednog čvora</td>
+      <td>Nije garancija „jedan Pod”; tipičan izbor za block volumen jedne StatefulSet replike</td>
+    </tr>
+    <tr>
+      <td><code>ReadOnlyMany</code> (ROX)</td>
+      <td>Read-only sa više čvorova</td>
+      <td>Podrška zavisi od volumena, protokola i CSI drajvera</td>
+    </tr>
+    <tr>
+      <td><code>ReadWriteMany</code> (RWX)</td>
+      <td>Read-write sa više čvorova</td>
+      <td>Obično zahteva file volume/uslugu koja ga podržava; ne pretpostavljati za block volume</td>
+    </tr>
+    <tr>
+      <td><code>ReadWriteOncePod</code> (RWOP)</td>
+      <td>Read-write za jedan Pod u klasteru</td>
+      <td>Samo CSI; proveriti podršku lokalnog drajvera i izdanja pre produkcione upotrebe</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  <code>volumeMode: Filesystem</code> znači da kubelet montira filesystem, dok
+  <code>volumeMode: Block</code> izlaže raw block uređaj aplikaciji. Raw block nije automatski brži niti
+  bezbedniji; zahteva aplikaciju koja ga pravilno koristi i složeniji operativni postupak. Izbor access
+  mode-a, filesystem-a i mount opcija mora biti potvrđen u matrici podrške za konkretan CSI drajver,
+  storage backend i guest OS image.
+</p>
+
+<h3>6. StatefulSet, raspodela replika i granice zaštite</h3>
+
+<p>
+  Za svaku StatefulSet repliku <code>volumeClaimTemplates</code> kreira zaseban PVC čiji lifecycle po
+  pravilu nadživljava Pod. Brisanje ili skaliranje StatefulSet-a ne treba tretirati kao brisanje
+  podataka. Aktuelni Kubernetes podržava politiku zadržavanja PVC-ova StatefulSet-a kroz
+  <code>persistentVolumeClaimRetentionPolicy</code>, ali ponašanje zavisi od verzije i konfiguracije;
+  pre upotrebe proverava se lokalni API i vendor podrška. PV-ov <code>reclaimPolicy</code> je zasebna
+  kontrola i određuje šta se događa sa storage resursom nakon oslobađanja PVC/PV veze.
+</p>
+
+<p>
+  Za distribuiranu bazu koriste se Pod anti-affinity ili topology spread constraints kako članovi ne bi
+  završili na istom čvoru ili u istoj zoni. <code>requiredDuringSchedulingIgnoredDuringExecution</code>
+  daje čvrstu granicu, ali može ostaviti Pod u <code>Pending</code> stanju kada nema dovoljnog broja zona.
+  <code>preferredDuringSchedulingIgnoredDuringExecution</code> poboljšava raspodelu, ali je ne garantuje.
+  <code>whenUnsatisfiable: DoNotSchedule</code> štiti topologiju po cenu dostupnosti pri nedovoljnom
+  kapacitetu; <code>ScheduleAnyway</code> daje prednost pokretanju, ali može koncentrisati replike.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Odluka</th>
+      <th>Dobit</th>
+      <th>Cena/rizik</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Jedan RWO PVC po replici</td>
+      <td>Izolacija I/O i identiteta podataka</td>
+      <td>Aplikacija mora replicirati sadržaj između članova</td>
+    </tr>
+    <tr>
+      <td>Čvrst zone spread</td>
+      <td>Dokazana raspodela replika kroz zone</td>
+      <td>Manji scheduling prostor; potreban kapacitet u svakoj zoni</td>
+    </tr>
+    <tr>
+      <td>Zonalni volumen</td>
+      <td>Predvidljivo locality ponašanje i izolacija storage domena</td>
+      <td>Pod sa tim PV-om ne može raditi u zoni bez pristupa volumenu</td>
+    </tr>
+    <tr>
+      <td>Shared storage kroz zone</td>
+      <td>Širi skup čvorova za ponovni attach, kada je podržano</td>
+      <td>Moguća zajednička tačka kvara; proveriti latenciju i fabric zavisnosti</td>
+    </tr>
+    <tr>
+      <td>Strogi PDB</td>
+      <td>Kontrola dobrovoljnih prekida</td>
+      <td>Može blokirati drain; PDB ne štiti od iznenadnog kvara čvora ili zone</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>7. Referentni manifest za topology-aware stateful aplikaciju</h3>
+
+<p>
+  Sledeći laboratorijski manifest demonstrira tri replike, zaseban RWO PVC i raspodelu po zonama. Pre
+  primene zamenjuju se <code>&lt;STORAGE_CLASS&gt;</code> i image referenca odobrenim vrednostima. Primer
+  koristi jednostavan HTTP server samo za proveru trajnosti fajla; nije obrazac konfiguracije baze.
+  Čvrst <code>DoNotSchedule</code> namerno zahteva najmanje tri odgovarajuće zone za tri replike.
+</p>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: stateful-topology-lab
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: stateful-topology-lab
+spec:
+  clusterIP: None
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+  namespace: stateful-topology-lab
+spec:
+  serviceName: web
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: web
+      containers:
+        - name: web
+          image: &lt;ODOBRENA_HTTP_IMAGE&gt;
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: &lt;STORAGE_CLASS&gt;
+        resources:
+          requests:
+            storage: 2Gi</code></pre>
+
+<p>
+  Produkciona aplikacija dodaje security context, resursne zahteve i limite, proverene probe, NetworkPolicy,
+  PodDisruptionBudget, tajne preko odobrenog mehanizma i aplikaciona pravila quorum-a. Image se vezuje za
+  nepromenljivi digest. Security i availability kontrole ne treba mehanički kopirati: UID/GID, filesystem
+  dozvole i dozvoljeni disruption zavise od aplikacije.
+</p>
+
+<h3>8. Projektovanje: od poslovnog zahteva do proverljive topologije</h3>
+
+<ol>
+  <li><strong>Definišite SLO, RPO i RTO:</strong> koji kvar mora biti tolerisan i koliko podataka sme biti izgubljeno.</li>
+  <li><strong>Popišite failure domain-e:</strong> host, rack, mrežni par, vSphere klaster, datastore, zona i lokacija.</li>
+  <li><strong>Mapirajte puteve:</strong> Pod → Node VM → ESXi host → storage putanja → datastore → politika.</li>
+  <li><strong>Odaberite model podataka:</strong> jedan writer, aplikaciona replikacija, shared filesystem ili operator.</li>
+  <li><strong>Odredite placement:</strong> broj replika, quorum, anti-affinity/spread, taints i rezervni kapacitet.</li>
+  <li><strong>Odaberite StorageClass:</strong> topology, dostupnost, performanse, enkripcija, reclaim i expansion osobine.</li>
+  <li><strong>Projektujte zaštitu:</strong> snapshot/backup nije isto što i replika; odredite konzistentnost i restore test.</li>
+  <li><strong>Dokažite ponašanje:</strong> kontrolisano testirajte gubitak Pod-a, drain čvora, gubitak zone i restore.</li>
+</ol>
+
+<p>
+  Jedna od najvažnijih provera je <em>negative capacity test</em>: šta će se dogoditi ako jedna zona nije
+  dostupna, a preostale nemaju dovoljno CPU-a, memorije ili kompatibilnog storage kapaciteta? HA plan
+  bez rezervnog kapaciteta je samo dijagram. Isto važi za politiku koja je kompatibilna sa datastore-om,
+  ali datastore nije dostupan hostovima na kojima scheduler sme da pokrene Pod.
+</p>
+
+<h3>9. Praktikum – dokaz topologije, trajnosti i kontrolisanog rescheduling-a</h3>
+
+<h4>9.1. Cilj, topologija i preduslovi</h4>
+
+<p>
+  Cilj vežbe je da administrator dokaže vezu između zone Node-a, zone Pod-a, PV node affinity-ja i
+  fizičkog CNS volumena, a zatim da bez gubitka laboratorijskog podatka proveri rescheduling posle
+  brisanja Pod-a. Vežba se izvodi u namenskom VKS laboratorijskom klasteru sa najmanje tri zone ili se
+  broj replika i spread pravilo prilagođavaju stvarno dostupnoj topologiji. Za produkciju je potreban
+  odobren change, proveren backup i aplikacioni postupak; nasumično brisanje Pod-ova nije test plana oporavka.
+</p>
+
+<ul>
+  <li><strong>Nalozi:</strong> Kubernetes nalog sa pravima nad namenskim namespace-om i read-only pristupom Node, StorageClass, PV, CSINode i event objektima; vSphere nalog sa read-only CNS/storage uvidom.</li>
+  <li><strong>Alati:</strong> <code>kubectl</code> verzijski kompatibilan sa API serverom i vSphere Client.</li>
+  <li><strong>Početno stanje:</strong> CSI komponente zdrave, StorageClass dostupna namespace-u, kvota najmanje 6 GiB, tri spremna worker Node-a i odobrena image referenca.</li>
+  <li><strong>Rizik:</strong> nizak u namenskom namespace-u; state-changing koraci su <code>apply</code>, upis podatka, brisanje laboratorijskog Pod-a i završno uklanjanje resursa.</li>
+</ul>
+
+<h4>9.2. Faza A – read-only inventar i pre-check</h4>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i get nodes
+kubectl auth can-i get persistentvolumes
+kubectl auth can-i create statefulsets.apps -n stateful-topology-lab
+
+kubectl get nodes -o wide
+kubectl get nodes -L topology.kubernetes.io/region,topology.kubernetes.io/zone
+kubectl get storageclass
+kubectl get csidriver
+kubectl get csinode
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 30</code></pre>
+
+<p>
+  Očekuje se da svaki ciljani worker Node ima zone labelu, da izabrana StorageClass postoji i da CSI
+  objekti ne ukazuju na nedostupan drajver. Ako zone labele nedostaju ili svi Node-ovi imaju istu vrednost,
+  vežba se zaustavlja: manifest sa tri obavezne zone ne dokazuje multi-zone raspodelu. U vSphere Client-u
+  administrator paralelno proverava mapiranje worker VM-ova na vSphere klastere/zone, datastore
+  connectivity i usklađenost Storage Policy-ja. Kubernetes labela i vSphere inventar moraju opisivati
+  istu realnost.
+</p>
+
+<h4>9.3. Faza B – primena i dokaz provisioning toka</h4>
+
+<p>
+  Sačuvajte prilagođeni manifest kao <code>stateful-topology-lab.yaml</code>. Sledeće komande menjaju stanje
+  samo u namenskom namespace-u. Server-side dry-run najpre proverava API validaciju, ali ne dokazuje da
+  storage provisioning može uspešno da se završi.
+</p>
+
+<pre><code class="language-bash">kubectl apply --server-side --dry-run=server -f stateful-topology-lab.yaml
+kubectl apply -f stateful-topology-lab.yaml
+
+kubectl get pods,pvc -n stateful-topology-lab -w</code></pre>
+
+<p>
+  Prekinite praćenje sa <code>Ctrl+C</code> kada su tri Pod-a <code>Running/Ready</code> i tri PVC-a
+  <code>Bound</code>. Ako StorageClass koristi <code>WaitForFirstConsumer</code>, kratko <code>Pending</code>
+  stanje PVC-a pre izbora Pod lokacije može biti očekivano. Dugotrajno stanje zahteva čitanje događaja,
+  ne ponovno nasumično kreiranje resursa.
+</p>
+
+<pre><code class="language-bash">kubectl get pod -n stateful-topology-lab -o wide
+kubectl get pod -n stateful-topology-lab \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,READY:.status.containerStatuses[0].ready'
+
+kubectl get pvc -n stateful-topology-lab
+kubectl get pv
+kubectl describe statefulset web -n stateful-topology-lab
+kubectl get events -n stateful-topology-lab --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  Za svaki Pod zabeležite Node i zonu, zatim ime njegovog PVC-a i vezanog PV-a. Sledeći primer koristi
+  shell petlju i <code>jsonpath</code>; samo čita stanje.
+</p>
+
+<pre><code class="language-bash">for pod in web-0 web-1 web-2; do
+  node=$(kubectl get pod "$pod" -n stateful-topology-lab -o jsonpath='{.spec.nodeName}')
+  zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+  printf '%s  node=%s  zone=%s\n' "$pod" "$node" "$zone"
+done
+
+for pvc in $(kubectl get pvc -n stateful-topology-lab -o name); do
+  pv=$(kubectl get "$pvc" -n stateful-topology-lab -o jsonpath='{.spec.volumeName}')
+  echo "PVC=${pvc#*/} PV=$pv"
+  kubectl get pv "$pv" -o jsonpath='{.spec.csi.volumeHandle}{"\n"}'
+  kubectl get pv "$pv" -o jsonpath='{.spec.nodeAffinity}{"\n"}'
+done</code></pre>
+
+<p>
+  <code>volumeHandle</code> je veza ka CNS objektu i ne treba ga menjati. U vSphere Client-u, u prikazu
+  Container Volumes/CNS, pronađite svaki identifikator i potvrdite datastore, storage policy, health i
+  vezu sa Kubernetes PV/PVC objektima. GUI naziv i putanja se razlikuju po vSphere/VCF izdanju; koristi
+  se zvanični CNS prikaz konkretnog proizvoda, a ne pretraga VM diskova kao jedini dokaz.
+</p>
+
+<h4>9.4. Faza C – upis jedinstvenog podatka i provera trajnosti</h4>
+
+<pre><code class="language-bash">kubectl exec -n stateful-topology-lab web-0 -- sh -c \
+  'printf "stateful-proof-%s\n" "$(date -u +%Y%m%dT%H%M%SZ)" &gt; /usr/share/nginx/html/index.html'
+
+kubectl exec -n stateful-topology-lab web-0 -- \
+  cat /usr/share/nginx/html/index.html</code></pre>
+
+<p>
+  Sačuvajte prikazanu vrednost kao dokaz. Komanda menja sadržaj samo laboratorijskog volumena replike
+  <code>web-0</code>. Sada zabeležite Node, zonu, PVC i PV pre simulacije:
+</p>
+
+<pre><code class="language-bash">kubectl get pod web-0 -n stateful-topology-lab -o wide
+kubectl get pvc data-web-0 -n stateful-topology-lab -o wide
+kubectl describe pvc data-web-0 -n stateful-topology-lab</code></pre>
+
+<h4>9.5. Faza D – bezbedna simulacija gubitka Pod-a</h4>
+
+<p>
+  Brisanje samo jednog laboratorijskog Pod-a je bezbednija simulacija od gašenja hosta ili zone. StatefulSet
+  će kreirati <code>web-0</code> sa istim identitetom i istim PVC-om. Ovo nije potpuna proba zone failure-a,
+  ali proverava osnovni detach/attach/mount tok i trajnost podataka.
+</p>
+
+<pre><code class="language-bash"># State-changing, ali ograničeno na jedan laboratorijski Pod.
+kubectl delete pod web-0 -n stateful-topology-lab
+
+kubectl get pod web-0 -n stateful-topology-lab -w</code></pre>
+
+<p>
+  Kada Pod ponovo postane Ready, prekinite praćenje i proverite dokaz. Novi Pod može završiti na drugom
+  Node-u samo ako taj Node zadovoljava PV topology i ostala scheduling pravila.
+</p>
+
+<pre><code class="language-bash">kubectl get pod web-0 -n stateful-topology-lab -o wide
+kubectl exec -n stateful-topology-lab web-0 -- \
+  cat /usr/share/nginx/html/index.html
+kubectl get events -n stateful-topology-lab --sort-by=.metadata.creationTimestamp | tail -n 40</code></pre>
+
+<p>
+  Kriterijum uspeha je isti sadržaj fajla, isti PVC/PV i Pod u zoni kompatibilnoj sa PV node affinity-jem.
+  Činjenica da je Pod ponovo <code>Running</code> bez provere sadržaja nije dovoljan dokaz.
+</p>
+
+<h4>9.6. Opciono – kontrolisani drain jednog worker Node-a</h4>
+
+<aside class="callout warning">
+  <strong>Laboratorijski i rizičan korak:</strong> drain može premestiti više workload-a, aktivirati PDB
+  ograničenja i otkriti nedostatak kapaciteta. Izvodi se samo na namenskom worker Node-u, posle provere
+  svih Pod-ova na njemu. Ne koristite <code>--force</code>, <code>--disable-eviction</code> ili brisanje
+  lokalnih podataka kao prečicu u produkciji.
+</aside>
+
+<pre><code class="language-bash"># Read-only pre-check.
+kubectl get pods -A --field-selector spec.nodeName=&lt;LAB_NODE&gt; -o wide
+kubectl get pdb -A
+
+# State-changing: samo uz odobren laboratorijski scenario.
+kubectl cordon &lt;LAB_NODE&gt;
+kubectl drain &lt;LAB_NODE&gt; --ignore-daemonsets --timeout=10m
+
+# Posmatranje i validacija.
+kubectl get pods,pvc -n stateful-topology-lab -o wide
+kubectl get events -n stateful-topology-lab --sort-by=.metadata.creationTimestamp | tail -n 50
+
+# Rollback administrativnog stanja Node-a.
+kubectl uncordon &lt;LAB_NODE&gt;</code></pre>
+
+<p>
+  Ako drain blokira PDB ili Pod ostane <code>Pending</code>, to je nalaz, ne dozvola da se zaštita zaobiđe.
+  Proveravaju se raspoloživi Node-ovi, zone, taints, spread/affinity pravila i dostupnost PV-a. Posle
+  <code>uncordon</code> proverava se da je Node <code>Ready</code> i ponavlja provera podatka.
+</p>
+
+<h3>10. Troubleshooting: od simptoma do osnovnog uzroka</h3>
+
+<p>
+  Dijagnostika počinje očuvanjem dokaza: tačan početak incidenta, poslednja promena, zahvaćeni namespace,
+  Pod/PVC/PV/Node, događaji i CNS stanje. Najpre se izvode read-only provere. Brisanje PVC-a, PV-a,
+  VolumeAttachment objekta ili CNS volumena radi „odglavljivanja” nije dijagnostika i može izazvati
+  gubitak podataka ili nekonzistentno stanje između Kubernetes-a i vSphere-a.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatan neposredni uzrok</th>
+      <th>Dokaz</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PVC dugo <code>Pending</code></td>
+      <td>Nema potrošača uz WFFC, nema kompatibilnog datastore-a/kapaciteta, politika nije dostupna ili topology konflikt</td>
+      <td>PVC/Pod events, StorageClass, Node/CSINode topology, vSphere policy compliance i kapacitet</td>
+      <td>Ispraviti zahtev ili obezbediti podržan kapacitet; ne menjati bound objekte naslepo</td>
+    </tr>
+    <tr>
+      <td>Pod <code>Pending</code> sa volume node affinity konfliktom</td>
+      <td>PV je dostupan u zoni bez prihvatljivog Node-a</td>
+      <td>Pod events, PV <code>nodeAffinity</code>, Node labele, taints i affinity/spread</td>
+      <td>Vratiti/obezbediti kapacitet u odgovarajućoj zoni ili sprovesti podržanu migraciju/restore proceduru</td>
+    </tr>
+    <tr>
+      <td><code>FailedAttachVolume</code></td>
+      <td>Stari attach nije oslobođen, VM/host/storage nedostupan ili CSI/vCenter komunikacija ne radi</td>
+      <td>Events, VolumeAttachment, CSI controller logovi, CNS task/events, VM/host stanje</td>
+      <td>Otkloniti infrastrukturni uzrok i sačekati reconciliation; ručno odvajanje samo po vendor runbook-u</td>
+    </tr>
+    <tr>
+      <td><code>FailedMount</code></td>
+      <td>Uređaj je priključen, ali mount, filesystem, dozvole ili node CSI komponenta ne uspevaju</td>
+      <td>Pod events, node-plugin logovi, kubelet logovi i OS događaji</td>
+      <td>Ispraviti podržanu mount/filesystem ili permission konfiguraciju; ne formatirati postojeći volumen</td>
+    </tr>
+    <tr>
+      <td>Tri replike rade, ali u jednoj zoni</td>
+      <td>Spread je samo preferred, zone labele su pogrešne ili selector ne obuhvata Pod-ove</td>
+      <td>Pod→Node→zone mapa i efektivni StatefulSet manifest</td>
+      <td>Ispraviti labele/selector i planski redistribuirati replike uz quorum zaštitu</td>
+    </tr>
+    <tr>
+      <td>Pod radi, aplikacija prijavljuje korupciju</td>
+      <td>Aplikacioni ili filesystem problem; storage dostupnost nije dokaz konzistentnosti</td>
+      <td>Aplikacioni logovi, checksum/DB provere, storage health, vreme incidenta</td>
+      <td>Zaustaviti štetne upise, primeniti aplikacioni recovery i validiran backup</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>10.1. Minimalni skup dokaza</h4>
+
+<pre><code class="language-bash"># Sve komande u ovom bloku su read-only.
+kubectl get pod &lt;POD&gt; -n &lt;NAMESPACE&gt; -o yaml
+kubectl describe pod &lt;POD&gt; -n &lt;NAMESPACE&gt;
+kubectl get pvc &lt;PVC&gt; -n &lt;NAMESPACE&gt; -o yaml
+kubectl describe pvc &lt;PVC&gt; -n &lt;NAMESPACE&gt;
+kubectl get pv &lt;PV&gt; -o yaml
+kubectl describe pv &lt;PV&gt;
+kubectl get volumeattachment
+kubectl get node &lt;NODE&gt; --show-labels
+kubectl get events -n &lt;NAMESPACE&gt; --sort-by=.metadata.creationTimestamp
+kubectl get events -A --field-selector type=Warning \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  Event-i imaju ograničeno vreme zadržavanja, pa se prikupljaju rano. <code>kubectl logs</code> za CSI
+  komponente zahteva poznavanje njihovog stvarnog namespace-a i naziva u konkretnom izdanju. Ne
+  pretpostavljajte da su uvek u <code>kube-system</code>; prvo ih pronađite read-only pretragom:
+</p>
+
+<pre><code class="language-bash">kubectl get pods -A -o wide | grep -Ei 'csi|vsphere'
+kubectl get deployment,daemonset -A | grep -Ei 'csi|vsphere'
+
+# Nakon identifikovanja objekta i kontejnera:
+kubectl logs -n &lt;CSI_NAMESPACE&gt; &lt;CSI_POD&gt; -c &lt;CONTAINER&gt; \
+  --since=30m --timestamps
+kubectl logs -n &lt;CSI_NAMESPACE&gt; &lt;CSI_POD&gt; -c &lt;CONTAINER&gt; \
+  --previous --since=30m --timestamps</code></pre>
+
+<p>
+  Controller/provisioner logovi se koriste za provisioning i attach tok, node-plugin i kubelet za
+  mount problem, a vCenter/CNS taskovi i događaji za backend operaciju, policy compliance i datastore
+  dostupnost. Korelacija se radi po vremenu, PVC/PV nazivu, <code>volumeHandle</code> identifikatoru,
+  Node VM-u i vCenter task-u. Pristup sistemskim namespace-ovima i logovima treba da bude read-only i
+  vremenski ograničen prema RBAC pravilima organizacije.
+</p>
+
+<h4>10.2. Dijagnostičko stablo za Pending Pod/PVC</h4>
+
+<ol>
+  <li>Utvrditi da li je prvi nastao <code>Pending</code> PVC ili scheduling neuspeh Pod-a.</li>
+  <li>Pročitati event poruku doslovno; razlikovati provisioning, affinity, capacity, attach i mount fazu.</li>
+  <li>Potvrditi StorageClass i <code>volumeBindingMode</code>; kod WFFC mora postojati Pod potrošač.</li>
+  <li>Uporediti Pod scheduling uslove sa Node labelama, taints i raspoloživim resursima.</li>
+  <li>Za bound PV proveriti <code>nodeAffinity</code> i uporediti je sa zonom kandidata.</li>
+  <li>U vSphere-u proveriti da li je politika kompatibilna, datastore dostupan i kapacitet dovoljan.</li>
+  <li>Tek posle potvrđenog uzroka menjati manifest, kapacitet ili infrastrukturno stanje.</li>
+  <li>Validirati Pod readiness, sadržaj podataka, CSI događaje i CNS health; dokumentovati osnovni uzrok.</li>
+</ol>
+
+<h3>11. Incident: gubitak zone ili storage pristupa</h3>
+
+<p>
+  Pri stvarnom gubitku zone prvo se štiti integritet podataka i potvrđuje obim. Ne pokreće se paralelno
+  više recovery postupaka koji mogu napraviti dva writer-a. Incident commander utvrđuje koje su
+  aplikacione replike žive, da li postoji quorum, gde se nalaze njihovi PVC-ovi i da li je storage
+  samo privremeno nedostupan ili izgubljen. Privremeno zaobilazno rešenje može biti preusmeravanje
+  saobraćaja na zdrave replike; trajna mera može zahtevati povrat zone, podržanu storage replikaciju,
+  restore ili ponovno formiranje člana baze.
+</p>
+
+<ol>
+  <li><strong>Simptom i obim:</strong> zabeležiti pogođene aplikacije, zone, Node-ove, datastore-ove i vreme.</li>
+  <li><strong>Stabilizacija:</strong> sprečiti split-brain i dodatne promene; potvrditi aplikacioni quorum.</li>
+  <li><strong>Dokazi:</strong> sačuvati events, alarme, CSI/CNS logove, storage health i poslednje promene.</li>
+  <li><strong>Hipoteza:</strong> razlikovati compute gubitak, mrežnu izolaciju, storage path problem i gubitak podataka.</li>
+  <li><strong>Korekcija:</strong> primeniti vendor-odobren failover/recovery postupak sa jasno određenim writer-om.</li>
+  <li><strong>Validacija:</strong> proveriti aplikacionu konzistentnost, replike, PV/CNS stanje i korisnički SLO.</li>
+  <li><strong>Post-incident:</strong> izmeriti stvarni RPO/RTO, otkloniti zajedničke tačke kvara i ažurirati runbook.</li>
+</ol>
+
+<p>
+  Ako je PV zonalno ograničen, uklanjanje node affinity-ja iz PV manifesta ne čini podatak fizički
+  dostupnim drugoj zoni. Ručna izmena može samo ukloniti zaštitni signal scheduler-u i dovesti Pod na
+  čvor koji volumen ne može bezbedno koristiti. Migracija ili oporavak volumena mora biti podržana
+  storage/CSI procedura, uz zaštitu aplikacione konzistentnosti.
+</p>
+
+<h3>12. Rollback i povratak laboratorije u početno stanje</h3>
+
+<p>
+  Najpre sačuvajte dokaze koje vežba zahteva. Brisanje manifestom uklanja StatefulSet, Service i
+  namespace deklarisan u fajlu; brisanje namespace-a zatim uklanja preostale namespaced objekte. Ishod
+  za fizičke volumene zavisi od StatefulSet PVC retention ponašanja i PV/StorageClass reclaim politike.
+  Zato se pre čišćenja izričito popisuju PVC, PV i <code>reclaimPolicy</code>.
+</p>
+
+<pre><code class="language-bash"># Read-only pre-check pre brisanja.
+kubectl get pvc -n stateful-topology-lab
+kubectl get pv -o custom-columns='NAME:.metadata.name,CLAIM:.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,STATUS:.status.phase'
+
+# State-changing i destruktivno za laboratorijske objekte.
+kubectl delete -f stateful-topology-lab.yaml
+kubectl get pvc -n stateful-topology-lab
+
+# Izvršiti samo ako je potvrđeno da više nema potrebnih podataka.
+kubectl delete namespace stateful-topology-lab
+
+# Završna read-only kontrola.
+kubectl get namespace stateful-topology-lab
+kubectl get pv</code></pre>
+
+<p>
+  Kod <code>Delete</code> reclaim politike oslobađanje PV-a može pokrenuti brisanje backend volumena. Kod
+  <code>Retain</code> ostaje potreba za dokumentovanim ručnim lifecycle postupkom. Ne brišite CNS disk
+  direktno dok Kubernetes objekti još referenciraju volumen. Kriterijum završetka je uklonjen namenski
+  namespace, odsustvo neželjenih orphan volumena i potvrda u CNS prikazu da su zadržani samo namerno
+  sačuvani resursi.
+</p>
+
+<h3>13. Administratorske prakse</h3>
+
+<ul>
+  <li>Dokumentujte stvarno mapiranje region/zone labela na vSphere klastere, hostove, mrežu i datastore-ove.</li>
+  <li>Za svaki stateful servis vodite matricu: replika → Pod → Node → zona → PVC → PV → CNS volumen → datastore → politika.</li>
+  <li>Koristite odloženo vezivanje kada ga podržava zvanično ponuđena topology-aware StorageClass; ne menjajte platformom upravljane klase ad hoc.</li>
+  <li>Ne tumačite RWO kao zabranu pristupa iz više Pod-ova na istom Node-u i ne zahtevajte RWX bez potvrđene potrebe.</li>
+  <li>Projektujte aplikacioni quorum zajedno sa topology spread pravilima i rezervnim kapacitetom.</li>
+  <li>Postavite kvote i capacity alarme tako da neuspeh provisioninga ne bude prvi signal iscrpljenosti prostora.</li>
+  <li>Pre drain-a proverite PDB, lokalne/ephemeral podatke, CSI stanje, topology alternative i aplikacionu proceduru.</li>
+  <li>Ne menjajte ručno PV node affinity, finalizer ili VolumeAttachment bez potvrđenog vendor runbook-a.</li>
+  <li>Snapshot, repliku i backup tretirajte kao različite kontrole; periodično dokazujte restore i aplikacionu konzistentnost.</li>
+  <li>Posle upgrade-a vSphere/VCF, VKS ili CSI sloja ponovite topology i failover test prema podržanoj matrici verzija.</li>
+</ul>
+
+<h3>14. Završna kontrolna tačka</h3>
+
+<p>Nakon ove lekcije administrator treba da može dokazivo da:</p>
+
+<ul>
+  <li>objasni razliku između dostupnosti Pod-a, dostupnosti volumena i oporavljivosti podataka;</li>
+  <li>razlikuje Kubernetes zonu, vSphere zonu, zonalni datastore i shared storage failure domain;</li>
+  <li>objasni tok topology-aware provisioninga i posledice režima <code>Immediate</code> i <code>WaitForFirstConsumer</code>;</li>
+  <li>tačno protumači RWO, ROX, RWX i RWOP bez pretpostavljanja nepodržanih mogućnosti;</li>
+  <li>mapira StatefulSet repliku do njenog PVC-a, PV-a, CNS volumena, datastore-a i zone;</li>
+  <li>projektuje spread/anti-affinity pravila u skladu sa quorum-om i raspoloživim kapacitetom;</li>
+  <li>izvede bezbedan test rekreiranja Pod-a i potvrdi trajnost sadržaja, ne samo status objekta;</li>
+  <li>razdvoji provisioning, scheduling, attach i mount kvar na osnovu događaja, logova i CNS dokaza;</li>
+  <li>prepozna rizične ručne intervencije i izabere podržan recovery ili rollback postupak;</li>
+  <li>dokumentuje nalaz, stvarni failure domain i posledice po SLO, RPO i RTO.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Storage topologija je ugovor između scheduler-a, CSI drajvera, vSphere infrastrukture i same
+  aplikacije. Dobar dizajn ne pita samo „da li postoji PV”, već gde taj PV može da se koristi, koji kvar
+  mora da preživi, ko replicira sadržaj, koliko rezervnog kapaciteta postoji i kako će oporavak biti
+  dokazan. StatefulSet daje stabilan identitet i PVC po replici; topology-aware provisioning usklađuje
+  lokaciju Pod-a i volumena; Storage Policy određuje karakteristike backend-a. Tek aplikaciona
+  replikacija, pravilna raspodela, operativna disciplina i testiran backup/restore zajedno daju
+  odgovornu zaštitu trajnih podataka.
+</p>
+
+<p>
+  Administrator zato ne uklanja scheduler ili CSI zaštitne mehanizme da bi „naterao” Pod da krene.
+  On prikuplja dokaze, potvrđuje fizičku topologiju, čuva jednog autoritativnog writer-a, primenjuje
+  podržanu korekciju i validira integritet podataka. Time je postavljena osnova za narednu lekciju, u
+  kojoj se dostupnost dopunjuje postupcima Volume Snapshot-a, backup-a i restore-a.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom VMware dokumentacija za vSphere Supervisor, vSphere Kubernetes Service,
+    three-zone arhitekturu, CNS i vSphere Container Storage Plug-in; Kubernetes dokumentacija za
+    StatefulSet, PersistentVolume, StorageClass, storage capacity, scheduling i topology-aware
+    provisioning; zvanične administrativne, troubleshooting, release-note i interoperabilne reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-32-storage-class-i-vsphere-storage-policy.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-34-volume-snapshot-backup-i-restore.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

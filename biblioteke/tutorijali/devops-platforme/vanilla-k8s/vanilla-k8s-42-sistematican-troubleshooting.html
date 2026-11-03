@@ -1,0 +1,574 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-42-sistematican-troubleshooting.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Troubleshooting – najčešći problemi sa podovima, servisima i deployment-ima | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako da dijagnostikujete i rešavate najčešće probleme u Kubernetes klasteru korišćenjem kubectl alata, događaja, logova i sistematskog troubleshooting pristupa.">
+
+  <meta name="keywords"
+        content="Kubernetes troubleshooting, kubectl describe, kubectl logs, kubectl events, CrashLoopBackOff, Pending Pod, ImagePullBackOff, deployment troubleshooting, debugging Kubernetes, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-42-sistematican-troubleshooting.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Troubleshooting – najčešći problemi sa podovima, servisima i deployment-ima">
+
+  <meta property="og:description"
+        content="Savladajte sistematsku dijagnostiku Kubernetes problema kroz analizu statusa objekata, događaja, logova i najčešćih grešaka koje se javljaju u produkcionim klasterima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-42-sistematican-troubleshooting.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-38-troubleshooting.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Troubleshooting – najčešći problemi sa podovima, servisima i deployment-ima">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-38-troubleshooting.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-38-troubleshooting.png"
+           alt="Troubleshooting – najčešći problemi sa podovima, servisima i deployment-ima">
+
+    </a>
+
+ 
+   <div class="page-subtitle">
+  IX. Dostupnost, skaliranje i observability
+</div>
+  <div class="page-subtitle">
+42. Sistematičan troubleshooting – simptom, obim, dokaz, uzrok, korekcija i validacija
+</div>
+
+<p>
+Troubleshooting u Kubernetes okruženju nije nasumično izvršavanje komandi dok problem ne nestane, već kontrolisan proces prikupljanja dokaza, sužavanja uzroka i potvrđivanja da je intervencija otklonila kvar bez stvaranja novih posledica. Administrator mora da razlikuje simptom koji vidi korisnik, stanje Kubernetes objekata, ponašanje aplikacije unutar kontejnera i stanje infrastrukture na kojoj klaster radi. Pod koji nije u stanju <code>Running</code> ne mora nužno biti jedini uzrok prekida, kao što ni svi podovi u stanju <code>Running</code> ne znače da aplikacija zaista prihvata i ispravno obrađuje zahteve.
+</p>
+<p>
+Najvažniji princip dijagnostike jeste kretanje od spoljnog simptoma ka unutrašnjem uzroku. Najpre se potvrđuje šta ne radi i koliki je uticaj, zatim se proveravaju Deployment, ReplicaSet, podovi, Service, EndpointSlice objekti, DNS, mrežna dostupnost, aplikacioni logovi i, tek kada dokazi to opravdaju, komponente noda ili samog klastera. Promena konfiguracije pre prikupljanja početnog stanja može ukloniti tragove potrebne za analizu i otežati utvrđivanje osnovnog uzroka.
+</p>
+
+<h3>Administratorski model za sistematsku dijagnostiku</h3>
+<p>
+Operativni tok ove lekcije može se sažeti kao <strong>simptom → obim → dokaz → hipoteza → neposredni uzrok → osnovni uzrok → korekcija → validacija → prevencija</strong>. Simptom je ono što korisnik ili monitoring opaža; posledica je uticaj na uslugu; neposredni uzrok je tehnički događaj koji je kvar proizveo; osnovni uzrok objašnjava zašto je taj događaj uopšte bio moguć. Na primer, neposredni uzrok nedostupnosti može biti Service bez spremnih endpointa, dok osnovni uzrok može biti neusklađena promena labela koju CI provera nije otkrila. Privremeno zaobilazno rešenje vraća uslugu, trajna korektivna mera uklanja uzrok, a preventivna mera smanjuje verovatnoću ponavljanja.
+</p>
+<table>
+<thead><tr><th>Korak</th><th>Administratorsko pitanje</th><th>Dokaz da se može dalje</th></tr></thead>
+<tbody>
+<tr><td>Simptom i posledica</td><td>Šta tačno ne radi i kakav je korisnički ili poslovni uticaj?</td><td>Ponovljiv test, alarm ili zahtev sa vremenom i očekivanim rezultatom.</td></tr>
+<tr><td>Obim</td><td>Jedna replika, workload, namespace, node, zona ili ceo klaster?</td><td>Poređenje zdravih i pogođenih instanci po istoj osi.</td></tr>
+<tr><td>Dokazi</td><td>Šta su promena, događaji, metrike, logovi i audit trag zabeležili u istom vremenskom prozoru?</td><td>Sačuvano početno stanje i vremenska linija bez izmene sistema.</td></tr>
+<tr><td>Hipoteza i uzrok</td><td>Koji nalaz bi hipotezu potvrdio, a koji opovrgao?</td><td>Uzrok je reprodukovan ili potvrđen sa najmanje jednim nezavisnim dokazom.</td></tr>
+<tr><td>Korekcija</td><td>Koja najmanja reverzibilna promena vraća željeno stanje?</td><td>Odobren plan, procenjen blast radius i poznat rollback.</td></tr>
+<tr><td>Validacija</td><td>Da li je nestao korisnički simptom i da li je sistem stabilan?</td><td>Funkcionalni test, stanje kontrolera, metrike i odsustvo novih upozorenja.</td></tr>
+</tbody>
+</table>
+<p>
+Kubernetes problem treba posmatrati kroz nekoliko povezanih slojeva. Na sloju deklarisanog stanja nalaze se manifesti i objekti poslati API serveru. Na sloju kontrolera proverava se da li Deployment i ReplicaSet uspevaju da približe stvarno stanje željenom. Na sloju poda proveravaju se raspoređivanje, inicijalizacija, povlačenje slike, pokretanje procesa, probe i restartovanja. Na servisnom sloju proveravaju se selektori, portovi i registrovani backend endpointi. Ispod toga nalaze se DNS, mrežni dodatak, kube-proxy ili druga implementacija servisnog prosleđivanja, runtime kontejnera, kubelet, operativni sistem noda i fizička ili virtuelna infrastruktura.
+</p>
+<p>
+Prvi zadatak administratora nije da odmah pronađe konačni uzrok, već da precizno odredi granicu kvara. Potrebno je utvrditi da li problem pogađa jedan pod, sve replike jednog Deployment-a, jedan namespace, jedan node, određenu zonu ili čitav klaster. Problem koji prati samo jedan pod češće ukazuje na lokalno stanje kontejnera, volumena ili noda. Problem koji prati novu verziju na svim podovima češće ukazuje na image, konfiguraciju ili probe. Problem koji pogađa više nepovezanih aplikacija na istom nodu zahteva proveru noda, runtime-a, mreže i resursa.
+</p>
+<p>
+Početni pregled treba da bude vremenski ograničen i nedestruktivan. Administrator beleži vreme početka incidenta, prijavljeni simptom, pogođene korisnike, poslednju poznatu ispravnu verziju, nedavne promene i rezultate prvih komandi. Posebno se proverava da li je neposredno pre problema izvršen rollout, izmena ConfigMap ili Secret objekta, promena Service selektora, NetworkPolicy pravila, resursnih ograničenja, storage konfiguracije ili klasterske komponente.
+</p>
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get namespace
+kubectl get deployment,replicaset,pod,service,endpointslice -n prod-web -o wide
+kubectl get events -n prod-web --sort-by=.metadata.creationTimestamp
+kubectl rollout status deployment/web-frontend -n prod-web --timeout=30s</code></pre>
+<p>
+Komande potvrđuju da administrator radi u očekivanom kontekstu, da API server odgovara i da su ključni objekti vidljivi. Korišćenje pogrešnog konteksta ili namespace-a može proizvesti pogrešan zaključak, ali i dovesti do promene na pogrešnom klasteru. U produkciji je dobra praksa da naziv konteksta, klastera i namespace-a bude deo zapisa incidenta ili change tiketa.
+</p>
+<p>
+Ove komande su <strong>read-only</strong>, osim što pristup logovima, objektima i događajima ostavlja trag u audit sistemu ako je audit konfigurisan. Izlaze treba vremenski uskladiti: lokalni sat radne stanice, čvorovi i sistemi za logove moraju koristiti pouzdan izvor vremena. Bez zajedničke vremenske osnove lako se obrne redosled uzroka i posledice. Kubernetes događaji su pomoćni, agregirani zapisi ograničenog zadržavanja; nisu kompletan istorijski dnevnik niti zamena za audit log, metrike i centralizovane logove obrađene u prethodnim lekcijama.
+</p>
+
+<h3>Problemi sa podovima i stanjima kontejnera</h3>
+<p>
+Kolona <code>STATUS</code> u izlazu komande <code>kubectl get pods</code> predstavlja sažeti prikaz i nije isto što i faza poda iz API objekta. Detaljno stanje mora se proveriti komandom <code>kubectl describe pod</code> i strukturiranim YAML ili JSON prikazom. Posebno su važni <code>PodScheduled</code>, <code>Initialized</code>, <code>ContainersReady</code> i <code>Ready</code> uslovi, kao i <code>state</code> i <code>lastState</code> svakog kontejnera.
+</p>
+<p>
+Pod u stanju <code>Pending</code> još nije potpuno pokrenut. Uzrok može biti nemogućnost raspoređivanja zbog nedostatka CPU-a ili memorije, nepodudaranja node selector-a ili affinity pravila, taint-a bez odgovarajućeg toleration-a, nedostupnog PersistentVolume-a ili ograničenja kvote. U odeljku <code>Events</code> komande <code>kubectl describe pod</code> scheduler obično navodi konkretne razloge. Dodavanje većih kapaciteta ili menjanje zahteva bez čitanja tih razloga predstavlja nagađanje, a ne dijagnostiku.
+</p>
+<pre><code class="language-bash">kubectl get pod -n prod-web -o wide
+kubectl describe pod web-frontend-POGODJENI_POD -n prod-web
+kubectl get pod web-frontend-POGODJENI_POD -n prod-web -o yaml</code></pre>
+<p>
+Stanja <code>ErrImagePull</code> i <code>ImagePullBackOff</code> ukazuju na neuspešno preuzimanje image-a i naknadno odlaganje novih pokušaja. Razlozi uključuju nepostojeći repository ili tag, nedostupni registry, problem sa DNS-om ili TLS-om, ograničenje broja zahteva i neispravan ili nedostupan <code>imagePullSecret</code>. Administrator proverava potpuno ime image-a u pod template-u, događaje poda, postojanje Secret objekta i pravo ServiceAccount-a da ga koristi. Tajni podaci iz Secret objekta ne iznose se u incident tiket niti prikazuju kroz deljene terminalske sesije.
+</p>
+<p>
+<code>CrashLoopBackOff</code> znači da se proces u kontejneru pokreće, završava ili biva prekinut, a kubelet primenjuje rastući period čekanja pre novog pokušaja. To nije osnovni uzrok, već mehanizam zaštite od neprekidnog brzog restartovanja. Administrator proverava trenutne logove, logove prethodne instance kontejnera, završni kod, signal, razlog prekida i događaje. Opcija <code>--previous</code> je naročito važna kada se trenutna instanca tek pokrenula i još nema relevantne poruke.
+</p>
+<pre><code class="language-bash">kubectl logs pod/web-frontend-POGODJENI_POD -n prod-web -c web --tail=200 --timestamps
+kubectl logs pod/web-frontend-POGODJENI_POD -n prod-web -c web --previous --tail=200 --timestamps
+kubectl get pod web-frontend-POGODJENI_POD -n prod-web \
+  -o jsonpath='{range .status.containerStatuses[*]}{.name}{" state="}{.state}{" lastState="}{.lastState}{" restarts="}{.restartCount}{"\n"}{end}'</code></pre>
+<p>
+Izlazni kod <code>1</code> obično označava aplikacionu grešku, ali njegovo precizno značenje zavisi od procesa. Kod <code>137</code> često znači da je proces dobio signal <code>SIGKILL</code>; čest uzrok je prekoračenje memorijskog limita i stanje <code>OOMKilled</code>, ali zaključak mora biti potvrđen poljem razloga i događajima. Kod <code>143</code> odgovara završetku signalom <code>SIGTERM</code> i može biti očekivan tokom kontrolisanog gašenja, rollout-a ili brisanja poda. Sam kod bez vremenskog i operativnog konteksta nije dovoljan dokaz.
+</p>
+<p>
+Kontejner može biti pokrenut, a pod ipak ne biti spreman za saobraćaj. Neuspešna readiness proba uklanja pod iz skupa spremnih endpointa, ali ga po pravilu ne restartuje. Neuspešna liveness proba može dovesti do restartovanja kontejnera, dok startup proba štiti sporije aplikacije od prerane liveness provere. Administrator proverava putanju, port, protokol, početno kašnjenje, period, timeout i prag neuspeha. Probe moraju proveravati realnu sposobnost aplikacije za određenu svrhu, a ne samo postojanje procesa.
+</p>
+<p>
+Za image bez shell-a ili dijagnostičkih alata ne treba menjati produkcijski image samo radi istrage. Kada RBAC pravila i bezbednosne politike dozvoljavaju, <code>kubectl debug</code> može dodati privremeni ephemeral container sa alatima. Takva sesija ima bezbednosni značaj jer može omogućiti pristup mrežnom i procesnom prostoru poda; zato se koristi samo uz odobrenje i dokumentuje u incidentu.
+</p>
+<pre><code class="language-bash">kubectl debug -n prod-web -it pod/web-frontend-POGODJENI_POD \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --target=web -- /bin/sh</code></pre>
+
+<h3>Problemi sa Service objektima i mrežnom putanjom</h3>
+<p>
+Service ne pokreće aplikaciju i ne popravlja neispravne podove. On definiše stabilnu virtuelnu adresu i skup portova, dok EndpointSlice objekti povezuju Service sa odgovarajućim backend adresama. Najčešća greška je nepodudaranje Service selektora i labela podova. U tom slučaju Service postoji i DNS ime se može uspešno razrešiti, ali nema endpoint koji može da primi zahtev.
+</p>
+<pre><code class="language-bash">kubectl get service web-frontend -n prod-web -o yaml
+kubectl get pod -n prod-web --show-labels
+kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-frontend -o wide</code></pre>
+<p>
+Administrator poredi svaki par ključa i vrednosti iz <code>spec.selector</code> Service objekta sa labelama podova. Zatim proverava da li EndpointSlice sadrži očekivane adrese i da li su endpointi označeni kao spremni. Ručno uređivanje EndpointSlice objekta kojim upravlja kontroler nije trajno rešenje; kontroler će ga ponovo uskladiti sa podovima i Service selektorom.
+</p>
+<p>
+Druga česta greška je pogrešan odnos između <code>port</code> i <code>targetPort</code>. <code>port</code> je port na kojem se Service izlaže klijentima, dok <code>targetPort</code> označava port aplikacije u podu. Kada je <code>targetPort</code> simboličko ime, ono mora odgovarati imenu porta u specifikaciji kontejnera. Pod može biti spreman, EndpointSlice može sadržati njegovu adresu, a zahtev ipak može biti odbijen zato što aplikacija ne sluša na očekivanom portu ili sluša samo na loopback adresi.
+</p>
+<p>
+Dijagnostika treba da odvoji četiri pitanja: da li DNS vraća Service adresu, da li je Service dostupan, da li je direktna IP adresa poda dostupna i da li aplikacija odgovara lokalno unutar samog poda. Privremeni dijagnostički pod treba pokrenuti u istom namespace-u i, kada je relevantno, sa istim ServiceAccount-om i pod sličnim NetworkPolicy pravilima kao stvarni klijent.
+</p>
+<pre><code class="language-bash">kubectl run netcheck -n prod-web --rm -it --restart=Never \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --command -- /bin/sh</code></pre>
+<p>
+U interaktivnoj sesiji mogu se izvršiti <code>nslookup web-frontend</code>, zahtev prema <code>http://web-frontend:80/healthz</code> i zahtev direktno prema IP adresi poda. Ako DNS ne radi, proveravaju se <code>/etc/resolv.conf</code> u podu, DNS politika poda, Service i podovi CoreDNS-a, njihovi logovi i eventualna NetworkPolicy pravila. Ako Service ne radi, ali direktan pristup podu radi, fokus prelazi na selektor, EndpointSlice, portove i servisnu mrežu. Ako ne radi ni direktna adresa poda, proveravaju se aplikacioni port, readiness stanje, NetworkPolicy i CNI.
+</p>
+<p>
+<code>kubectl port-forward</code> je koristan kao izolacioni test jer omogućava pristup konkretnom podu ili Service objektu kroz kanal do API servera. Uspešan port-forward prema podu potvrđuje da aplikacija sluša na zadatom portu, ali ne potvrđuje ispravnost klasterskog DNS-a, Service prosleđivanja, Ingress-a ili putanje kojom pristupaju korisnici. Zato nije dovoljan kao završna produkciona validacija.
+</p>
+
+<h3>Problemi sa Deployment objektima i rollout-om</h3>
+<p>
+Deployment upravlja ReplicaSet objektima i postepenom zamenom podova. Kada rollout ostane nezavršen, administrator proverava željeni, ažurirani, dostupni i nedostupni broj replika, Deployment uslove, novi ReplicaSet i događaje njegovih podova. Problem često nije u samom Deployment kontroleru, već u novom pod template-u: nepostojeći image, neispravna konfiguracija, neuspešna proba, nedovoljni resursi ili zabrana admission politike.
+</p>
+<pre><code class="language-bash">kubectl describe deployment web-frontend -n prod-web
+kubectl get replicaset -n prod-web -l app=web-frontend
+kubectl rollout history deployment/web-frontend -n prod-web
+kubectl rollout status deployment/web-frontend -n prod-web --timeout=60s</code></pre>
+<p>
+Stanje <code>ProgressDeadlineExceeded</code> znači da Deployment nije ostvario napredak unutar konfigurisanog roka. Povećavanje <code>progressDeadlineSeconds</code> može biti opravdano za dokazano sporo pokretanje, ali ne rešava nepostojeći image ili neispravnu readiness probu. Pre izmene administrator mora da utvrdi da li je rok realno prekratak ili samo prikriva kvar.
+</p>
+<p>
+Rollback komandom <code>kubectl rollout undo</code> vraća pod template na prethodnu reviziju, ali ne vraća automatski sve spoljne zavisnosti. Posebno se moraju razmotriti migracije baze podataka, promenjene Secret ili ConfigMap vrednosti, izmene persistentnih podataka, eksterni API ugovori i ručno promenjeni objekti. Rollback je bezbedan tek kada je potvrđeno da je prethodna aplikaciona verzija kompatibilna sa trenutnim stanjem podataka i okruženja.
+</p>
+<p>
+Nije preporučljivo nasumično brisati podove u nadi da će problem nestati. Kontroler će napraviti zamenu sa istim neispravnim template-om, dok se mogu izgubiti prethodni logovi sa noda i vremenski tragovi. Brisanje pojedinačnog poda ima smisla kada je dokazano da je problem vezan za lokalno prolazno stanje instance ili noda, a ne za deklarisanu konfiguraciju. Pre toga treba sačuvati <code>describe</code>, događaje, trenutne i prethodne logove i relevantne metrike.
+</p>
+
+<h3>Kada istragu proširiti na node i kontrolnu ravan</h3>
+<p>
+Istraga prelazi sa workload-a na node kada više nepovezanih podova na istom nodu pokazuje slične simptome, node ima uslov <code>Ready=False</code> ili <code>Unknown</code>, rastu evikcije ili se pojavljuju <code>MemoryPressure</code>, <code>DiskPressure</code>, <code>PIDPressure</code> i runtime greške. Prvi koraci ostaju nedestruktivni: pregled uslova, događaja, alociranih resursa i poređenje sa zdravim nodom. <code>kubectl top</code> zahteva Metrics API i prikazuje trenutnu potrošnju, ne istorijski uzrok; zato se povezuje sa monitoring sistemom.
+</p>
+<pre><code class="language-bash">kubectl get nodes -o wide
+kubectl describe node POGODJENI_NODE
+kubectl get events --all-namespaces --field-selector involvedObject.kind=Node \
+  --sort-by=.metadata.creationTimestamp
+kubectl top node POGODJENI_NODE
+kubectl get pods --all-namespaces --field-selector spec.nodeName=POGODJENI_NODE -o wide</code></pre>
+<p>
+Na nodu zasnovanom na systemd-u ovlašćeni administrator zatim može čitati <code>journalctl -u kubelet</code> i log odgovarajućeg runtime servisa, na primer <code>journalctl -u containerd</code>. <code>kubectl debug node/IME</code> kreira privilegovan dijagnostički pod u host namespace-ovima i tipično montira koreni filesystem noda pod <code>/host</code>; zato nije rutinska komanda, zahteva posebno odobrenje, minimalno trajanje sesije i naknadno brisanje debug poda. Cordon sprečava novo raspoređivanje, ali ne eviktuje postojeće podove; drain menja stanje i može poremetiti workload, pa se pre njega proveravaju PDB, DaemonSet podovi, lokalni podaci i kapacitet drugih nodova.
+</p>
+<pre><code class="language-bash"># Read-only provera
+kubectl get node POGODJENI_NODE
+
+# State-changing: izvršiti samo po odobrenom incidentnom postupku
+kubectl cordon POGODJENI_NODE
+
+# Rollback za cordon ako izolacija nije potrebna
+kubectl uncordon POGODJENI_NODE</code></pre>
+<p>
+Na kontrolnu ravan prelazi se kada API zahtevi kasne ili ne uspevaju, scheduler ili kontroleri ne reaguju u više namespace-ova, više nodova istovremeno gubi status ili etcd pokazuje probleme sa quorum-om i latencijom. U kubeadm klasteru control-plane komponente su najčešće static podovi čiji se logovi čitaju kroz runtime ili <code>kubectl logs</code> dok API radi; na managed Kubernetes usluzi pristup komponentama može biti ograničen i istraga se vodi kroz provajderske health događaje i support kanal. Restartovanje API servera, scheduler-a, controller manager-a ili etcd člana nije dijagnostički prvi korak. Pre takve intervencije moraju biti poznati HA topologija, quorum, vlasništvo komponente, backup stanje i odobren recovery postupak.
+</p>
+
+<h3>Integrisani praktikum: dijagnostika neuspešnog puštanja web aplikacije</h3>
+<p>
+<strong>Poslovni i tehnički kontekst.</strong> Produkciona aplikacija <code>web-frontend</code> u namespace-u <code>prod-web</code> treba da bude dostupna drugim servisima preko adrese <code>http://web-frontend.prod-web.svc.cluster.local</code>. Nakon promene manifesta korisnici dobijaju grešku dostupnosti. Tim je prijavio da su objekti uspešno primenjeni, ali nije potvrđeno da li je problem u podovima, Service objektu ili rollout-u.
+</p>
+<p>
+<strong>Cilj.</strong> Administrator treba da postavi kontrolisano test okruženje sa tri tipična kvara, utvrdi uzrok na osnovu događaja, statusa i logova, bezbedno ispravi konfiguraciju i potvrdi dostupnost aplikacije kroz Service.
+</p>
+<p>
+<strong>Referentno okruženje i preduslovi.</strong> Koristi se funkcionalan Vanilla Kubernetes klaster, konfigurisan <code>kubectl</code>, namespace <code>prod-web</code>, pristup javnom registry-ju <code>registry.k8s.io</code> i mrežni dodatak koji podržava komunikaciju između podova. Radna stanica ima direktorijum <code>~/vanilla-k8s/lab42</code>. Primer koristi image <code>registry.k8s.io/e2e-test-images/agnhost:2.53</code>.
+</p>
+<p>
+<strong>Potrebna prava.</strong> Za laboratoriju su potrebna prava <code>get</code>, <code>list</code>, <code>watch</code>, <code>create</code>, <code>patch</code>, <code>update</code> i <code>delete</code> nad Deployment, ReplicaSet, Pod i Service objektima u namespace-u <code>prod-web</code>, kao i pravo <code>get</code> nad pod logovima. EndpointSlice se u ovoj vežbi samo čita; ne treba dodeljivati pravo izmene objekata kojima upravlja kontroler. Privilegije na nivou klastera nisu potrebne. U strogo kontrolisanom okruženju pristup podovima preko <code>exec</code> i kreiranje ephemeral container-a odobravaju se zasebno.
+</p>
+<ol>
+<li>
+<strong>Potvrdite kontekst i pripremite radni direktorijum.</strong>
+Pre bilo kakve promene proverava se klaster nad kojim će komande biti izvršene. Direktorijum služi za manifest i snimke početnog stanja.
+<pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i create deployments.apps -n prod-web
+kubectl auth can-i get pods/log -n prod-web
+mkdir -p ~/vanilla-k8s/lab42
+cd ~/vanilla-k8s/lab42
+kubectl create namespace prod-web --dry-run=client -o yaml | kubectl apply -f -</code></pre>
+<strong>Validacija:</strong> obe RBAC provere treba da vrate <code>yes</code>, a namespace mora biti u stanju <code>Active</code>.
+<pre><code class="language-bash">kubectl get namespace prod-web</code></pre>
+</li>
+<li>
+<strong>Kreirajte namerno neispravan Deployment i Service.</strong>
+Manifest sadrži tri realna problema: nepostojeći image tag, Service selektor koji ne odgovara podovima i <code>targetPort</code> koji ne odgovara portu aplikacije.
+<pre><code class="language-bash">cat &gt; lab42-broken.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-frontend
+  namespace: prod-web
+  labels:
+    app: web-frontend
+spec:
+  replicas: 2
+  progressDeadlineSeconds: 120
+  selector:
+    matchLabels:
+      app: web-frontend
+  template:
+    metadata:
+      labels:
+        app: web-frontend
+        tier: frontend
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:nepostojeci-tag
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-frontend
+  namespace: prod-web
+spec:
+  selector:
+    app: web-frontend-v2
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8081
+EOF
+kubectl apply -f lab42-broken.yaml</code></pre>
+<strong>Validacija:</strong> API server treba da prihvati manifest, ali to ne znači da je aplikacija funkcionalna. Deployment neće imati dostupne replike.
+<pre><code class="language-bash">kubectl get deployment,pod,service -n prod-web -o wide
+kubectl rollout status deployment/web-frontend -n prod-web --timeout=20s || true</code></pre>
+</li>
+<li>
+<strong>Sačuvajte početno stanje i identifikujte prvi kvar.</strong>
+Najpre se prikupljaju podaci bez menjanja objekata. Izlaz se čuva u radnom direktorijumu radi poređenja i dokumentovanja.
+<pre><code class="language-bash">kubectl get deployment,replicaset,pod,service,endpointslice \
+  -n prod-web -o wide | tee 01-pocetno-stanje.txt
+kubectl describe deployment web-frontend -n prod-web \
+  | tee 02-deployment-describe.txt
+kubectl get events -n prod-web --sort-by=.metadata.creationTimestamp \
+  | tee 03-events.txt
+POD=$(kubectl get pod -n prod-web -l app=web-frontend \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl describe pod "$POD" -n prod-web | tee 04-pod-describe.txt</code></pre>
+<strong>Očekivani rezultat:</strong> pod prikazuje <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>, a događaji navode da manifest sa zadatim tagom nije moguće preuzeti. Pošto kontejner nije pokrenut, aplikacioni logovi još ne postoje ili su prazni.
+</li>
+<li>
+<strong>Ispravite image i pratite oporavak podova.</strong>
+Koristi se deklarativna izmena lokalnog manifesta, čime Git ili drugi sistem kontrole verzija može kasnije evidentirati stvarnu promenu. Nakon izmene ponovo se primenjuje isti fajl.
+<pre><code class="language-bash">sed -i \
+  's#agnhost:nepostojeci-tag#agnhost:2.53#' \
+  lab42-broken.yaml
+kubectl apply -f lab42-broken.yaml
+kubectl rollout status deployment/web-frontend -n prod-web --timeout=120s</code></pre>
+<strong>Validacija:</strong> oba poda treba da budu <code>Running</code> i <code>READY 1/1</code>. Restart count treba da bude nula.
+<pre><code class="language-bash">kubectl get pod -n prod-web -l app=web-frontend -o wide
+kubectl get deployment web-frontend -n prod-web \
+  -o jsonpath='desired={.spec.replicas} ready={.status.readyReplicas} available={.status.availableReplicas}{"\n"}'</code></pre>
+</li>
+<li>
+<strong>Proverite Service i EndpointSlice objekte.</strong>
+Iako su podovi sada spremni, Service selektor i dalje traži labelu <code>app=web-frontend-v2</code>. Zbog toga EndpointSlice nema backend adrese.
+<pre><code class="language-bash">kubectl get service web-frontend -n prod-web -o yaml
+kubectl get pod -n prod-web --show-labels
+kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-frontend -o yaml</code></pre>
+<strong>Validacija:</strong> uporedite <code>spec.selector</code> Service objekta sa pod labelama. Lista endpoint adresa treba da bude prazna, što potvrđuje kvar pre izvođenja mrežnog testa.
+</li>
+<li>
+<strong>Izvršite negativni test iz klijentskog poda.</strong>
+Dijagnostički pod šalje HTTP zahtev prema Service DNS imenu. Test potvrđuje stvarni simptom koji vidi drugi workload, a ne samo izgled Kubernetes objekata.
+<pre><code class="language-bash">kubectl run netcheck -n prod-web --restart=Never \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --command -- sleep 3600
+kubectl wait -n prod-web --for=condition=Ready pod/netcheck --timeout=60s
+kubectl exec -n prod-web netcheck -- \
+  /agnhost connect web-frontend:80 --timeout=3s --protocol=http || true</code></pre>
+<strong>Očekivani rezultat:</strong> zahtev treba da bude neuspešan jer Service nema odgovarajuće backend endpointe. Ovaj neuspeh je očekivan negativni test i ne treba ga prikazati kao završnu validaciju.
+</li>
+<li>
+<strong>Ispravite Service selektor.</strong>
+Selektor se menja na <code>app=web-frontend</code>, što odgovara podovima koje kreira Deployment.
+<pre><code class="language-bash">sed -i \
+  's/app: web-frontend-v2/app: web-frontend/' \
+  lab42-broken.yaml
+kubectl apply -f lab42-broken.yaml
+kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-frontend -o wide</code></pre>
+<strong>Validacija:</strong> EndpointSlice sada treba da sadrži dve IP adrese spremnih podova. Time je potvrđeno da selektor radi, ali još nije potvrđeno da Service prosleđuje na pravi port.
+</li>
+<li>
+<strong>Razlikujte servisni problem od problema aplikacije.</strong>
+Ponovljeni zahtev prema Service objektu i dalje je neuspešan zato što <code>targetPort</code> pokazuje na port <code>8081</code>, dok aplikacija sluša na <code>8080</code>. Direktan zahtev prema IP adresi poda i portu 8080 treba da uspe.
+<pre><code class="language-bash">kubectl exec -n prod-web netcheck -- \
+  /agnhost connect web-frontend:80 --timeout=3s --protocol=http || true
+POD_IP=$(kubectl get pod -n prod-web -l app=web-frontend \
+  -o jsonpath='{.items[0].status.podIP}')
+kubectl exec -n prod-web netcheck -- \
+  /agnhost connect "${POD_IP}:8080" --timeout=3s --protocol=http</code></pre>
+<strong>Tumačenje:</strong> uspešan direktan pristup podu dokazuje da aplikacija i pod mreža rade. Neuspeh preko Service-a sužava problem na servisnu konfiguraciju ili servisno prosleđivanje. Pregled manifesta već pokazuje pogrešan <code>targetPort</code>.
+</li>
+<li>
+<strong>Ispravite target port i izvršite završnu funkcionalnu proveru.</strong>
+Najstabilnije je koristiti imenovani port <code>http</code>, jer Service tada prati ime porta definisano u pod template-u.
+<pre><code class="language-bash">sed -i \
+  's/targetPort: 8081/targetPort: http/' \
+  lab42-broken.yaml
+kubectl apply -f lab42-broken.yaml
+kubectl get service web-frontend -n prod-web -o yaml
+kubectl exec -n prod-web netcheck -- \
+  /agnhost connect web-frontend:80 --timeout=5s --protocol=http</code></pre>
+<strong>Validacija:</strong> zahtev mora uspešno da uspostavi vezu i dobije HTTP odgovor. Proveru ponovite više puta kako bi saobraćaj mogao da bude prosleđen različitim replikama.
+<pre><code class="language-bash">for i in 1 2 3 4 5; do
+  kubectl exec -n prod-web netcheck -- \
+    /agnhost connect web-frontend:80 --timeout=5s --protocol=http
+done</code></pre>
+</li>
+<li>
+<strong>Proverite rollout, događaje i logove nakon intervencije.</strong>
+Završna provera mora obuhvatiti kontroler, podove, servisne endpointe, aplikacione logove i nove warning događaje.
+<pre><code class="language-bash">kubectl rollout status deployment/web-frontend -n prod-web --timeout=60s
+kubectl get deployment,replicaset,pod,service,endpointslice \
+  -n prod-web -o wide | tee 05-zavrsno-stanje.txt
+kubectl logs deployment/web-frontend -n prod-web \
+  --all-pods=true --tail=100 --timestamps | tee 06-aplikacioni-logovi.txt
+kubectl events -n prod-web --types=Warning \
+  | tee 07-zavrsni-warning-dogadjaji.txt</code></pre>
+<strong>Očekivani rezultat:</strong> Deployment ima dve dostupne replike, podovi su spremni bez novih restartovanja, EndpointSlice ima dve adrese, funkcionalni zahtev prolazi, a nakon ispravke ne pojavljuju se novi warning događaji povezani sa povlačenjem image-a ili readiness proverama.
+</li>
+<li>
+<strong>Dokumentujte promenu i pripremite rollback.</strong>
+Ispravni manifest se čuva kao odobrena verzija. Za produkciju bi bio prosleđen kroz standardni Git i CI/CD postupak, a ne ostavljen samo na administratorskoj stanici.
+<pre><code class="language-bash">cp lab42-broken.yaml lab42-fixed.yaml
+kubectl diff -f lab42-fixed.yaml || true
+kubectl rollout history deployment/web-frontend -n prod-web
+kubectl get deployment web-frontend -n prod-web -o yaml \
+  &gt; 08-deployment-final.yaml
+kubectl get service web-frontend -n prod-web -o yaml \
+  &gt; 09-service-final.yaml</code></pre>
+<strong>Rollback:</strong> ako bi nova revizija aplikacije bila neispravna, Deployment se može vratiti na prethodnu reviziju tek nakon provere kompatibilnosti konfiguracije i podataka.
+<pre><code class="language-bash">kubectl rollout history deployment/web-frontend -n prod-web
+kubectl rollout undo deployment/web-frontend -n prod-web --to-revision=PRETHODNA_REVIZIJA
+kubectl rollout status deployment/web-frontend -n prod-web --timeout=120s</code></pre>
+</li>
+<li>
+<strong>Očistite laboratorijsko okruženje.</strong>
+Brisanje se izvršava samo kada objekti nisu potrebni za dalju analizu.
+<p><strong>Upozorenje:</strong> sledeća komanda briše ceo namespace <code>prod-web</code> i sve namespaced objekte u njemu. U produkciji se ne koristi kao troubleshooting postupak. Bezbednija alternativa je brisanje samo objekata kreiranih manifestom i dijagnostičkog poda.</p>
+<pre><code class="language-bash">kubectl delete pod netcheck -n prod-web --ignore-not-found
+kubectl delete -f lab42-fixed.yaml --ignore-not-found</code></pre>
+<strong>Validacija:</strong> laboratorijski Deployment i Service više ne postoje, dok namespace ostaje dostupan za naredne vežbe.
+<pre><code class="language-bash">kubectl get deployment,service,pod -n prod-web</code></pre>
+</li>
+</ol>
+<p>
+<strong>Merljivi kriterijumi prihvatanja.</strong> Rešenje je prihvaćeno kada Deployment ima <code>2/2</code> dostupne replike najmanje pet minuta, svi aplikacioni podovi imaju uslov <code>Ready=True</code>, restart count ostaje nula, EndpointSlice sadrži dve spremne adrese, pet uzastopnih zahteva kroz Service završava se uspešno i nakon korekcije nema novih warning događaja povezanih sa image-om, probama ili servisnim endpointima.
+</p>
+
+<h3>Relevantni logovi i izvori dokaza</h3>
+<p>
+Aplikacioni logovi se standardno čitaju preko <code>kubectl logs</code>. Kubernetes ih dobija iz izlaza kontejnera kojim upravlja runtime na nodu. Opcija <code>--previous</code> prikazuje log prethodne instance kontejnera kada je došlo do restartovanja, dok <code>-c</code> bira kontejner u podu sa više kontejnera. Za duže incidente koristi se centralizovana platforma za logove, jer lokalni pod i node logovi nisu trajna arhiva.
+</p>
+<ul>
+<li><strong>Pod događaji:</strong> prikazuju odluke scheduler-a, neuspeh mountovanja, povlačenja image-a, probe i sandbox probleme. Čitaju se komandama <code>kubectl describe pod</code> i <code>kubectl events --for pod/IME</code>. Događaji imaju ograničeno zadržavanje i nisu zamena za trajni audit sistem.</li>
+<li><strong>Deployment i ReplicaSet stanje:</strong> pokazuje neusaglašen broj replika, neuspešan napredak i aktivne revizije. Proverava se komandama <code>kubectl describe deployment</code>, <code>kubectl get replicaset</code> i <code>kubectl rollout history</code>.</li>
+<li><strong>Kubelet log:</strong> na systemd nodovima obično se čita komandom <code>journalctl -u kubelet</code>. Koristi se kada više podova na istom nodu ima problem sa lifecycle operacijama, volume mount-om, probama ili runtime komunikacijom. Zahteva administratorski pristup nodu i ulazak u ovaj sloj treba dokumentovati.</li>
+<li><strong>Container runtime log:</strong> proverava se kroz odgovarajuću systemd jedinicu, na primer <code>containerd</code>, kada kubelet prijavljuje problem sa kreiranjem sandbox-a, image filesystem-om ili runtime API-jem.</li>
+<li><strong>CoreDNS log:</strong> čita se iz CoreDNS podova u namespace-u <code>kube-system</code> kada DNS upiti iz podova ne uspevaju. Pre toga se potvrđuje da problem nije ograničen na pogrešno ime Service-a ili konfiguraciju pojedinačnog poda.</li>
+<li><strong>Control plane logovi:</strong> API server, scheduler i controller manager proveravaju se tek kada simptomi zahvataju više namespace-ova ili kada odgovarajući kontroler ne reaguje. Lokacija zavisi od načina instalacije; kod kubeadm klastera komponente su često static podovi, dok ih managed platforma može izložiti samo kroz servis provajdera.</li>
+</ul>
+
+<h3>Tipične greške u troubleshooting postupku</h3>
+<p>
+Najčešća proceduralna greška je menjanje više parametara odjednom. Ako se istovremeno zamene image, probe, Service selektor i resursni limiti, aplikacija može proraditi, ali osnovni uzrok ostaje nepoznat i promena se teško validira. Bolje je postaviti hipotezu, prikupiti dokaz, promeniti najmanji potreban element i ponoviti isti test.
+</p>
+<p>
+Druga greška je poistovećivanje korelacije i uzroka. Pod može biti na opterećenom nodu, ali stvarni uzrok može biti neispravan endpoint spoljne baze. Istovremeno, poruka <code>connection refused</code> ne znači automatski mrežni kvar; ona često potvrđuje da je mrežna putanja stigla do ciljne adrese, ali na portu nema procesa koji prihvata vezu. Timeout češće ukazuje na filtriranje, nedostupnu putanju ili aplikaciju koja ne odgovara, ali i taj zaključak mora biti potvrđen dodatnim testovima.
+</p>
+<p>
+Treća greška je korišćenje privilegovanih debug podova kao prvog koraka. Host network, host PID, mount host filesystem-a i privilegovani kontejneri mogu otkriti poverljive podatke i zaobići izolaciju. Njihova upotreba opravdana je samo kada standardni namespaced alati nisu dovoljni, kada postoji odobrenje i kada su sve aktivnosti auditovane.
+</p>
+<p>
+Četvrta greška je fokusiranje samo na trenutno stanje. Kubernetes je dinamičan sistem: pod koji je sada spreman možda je prethodno više puta restartovan, rollout može biti završen nakon privremenog problema, a događaj može nestati zbog ograničenog perioda zadržavanja. Zato se analiziraju restart count, <code>lastState</code>, prethodni logovi, istorijske metrike i vreme poslednjih promena.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+<li><strong>Standardizovana početna snimka incidenta.</strong> Pri svakoj prijavi čuvaju se kontekst, vreme, <code>kubectl get</code> prikaz, <code>describe</code>, događaji, rollout status i relevantni logovi. Reakciju zahteva svako odstupanje od željenog broja dostupnih replika, novi warning događaj ili rast restart count-a. Prva reakcija je ograničavanje obima incidenta bez destruktivnih promena. Izlazi se čuvaju uz incident tiket. Uspeh se meri time da svaki incident ima dokazivo početno i završno stanje.</li>
+<li><strong>Praćenje neuspešnih podova.</strong> Kontinuirani monitoring treba da upozori na <code>Pending</code> podove, <code>CrashLoopBackOff</code>, <code>ImagePullBackOff</code>, neuspešne probe i restartovanja. Prag se određuje prema aplikaciji, ali svako neplanirano ponovljeno restartovanje produkcionog poda zahteva analizu. Prva reakcija je pregled događaja, prethodnih logova i termination razloga. Dokumentuju se pod, node, revizija, image digest i osnovni uzrok. Uspešnost se meri smanjenjem vremena do identifikacije uzroka i ponavljanja istog incidenta.</li>
+<li><strong>Kontrola rollout-a.</strong> Posle svake promene izvršavaju se <code>kubectl rollout status</code>, provera dostupnih replika i funkcionalni test preko stvarne korisničke putanje. Reakciju zahtevaju prekoračenje roka, nedostupna replika, neuspešna proba ili rast grešaka i latencije. Prva reakcija je zaustavljanje daljeg puštanja ili aktiviranje unapred odobrenog rollback plana. U change zapisu se beleže revizija, image digest, rezultati provera i odluka. Uspeh se meri procentom rollout-a završenih bez neplaniranog prekida i vremenom bezbednog oporavka.</li>
+<li><strong>Provera Service endpointa.</strong> Nakon izmene labela, selektora, portova ili readiness proba proveravaju se Service i EndpointSlice objekti. Nula spremnih endpointa za servis koji treba da bude aktivan zahteva neposrednu reakciju. Prvo se porede Service selektori, pod labele i readiness stanje. Dokumentuju se očekivani i stvarni endpointi. Uspeh se meri automatskim testom koji potvrđuje DNS rezoluciju i HTTP ili TCP dostupnost.</li>
+<li><strong>Praćenje resursnog pritiska.</strong> CPU, memorija, filesystem i broj podova na nodu prate se kontinuirano. <code>OOMKilled</code>, memory pressure, disk pressure, česta evikcija ili dugotrajno zasićenje zahteva reakciju. Najpre se utvrđuje da li je problem u aplikacionom zahtevu, limitu ili kapacitetu noda. Dokumentuju se istorijske metrike, limiti, zahtevi i odluka o skaliranju ili optimizaciji. Uspeh se meri odsustvom ponovljenih evikcija i održavanjem definisane rezerve kapaciteta.</li>
+<li><strong>Čuvanje dijagnostičkih podataka.</strong> Centralizovani aplikacioni i infrastrukturni logovi čuvaju se prema internim pravilima zadržavanja, klasifikaciji podataka i regulatornim zahtevima. Integritet se proverava kontrolom pristupa, nepromenljivošću ili potpisivanjem arhive i probnim pretraživanjem poznatog događaja. Najmanje kvartalno treba izvesti test pronalaženja kompletnog toka jednog kontrolisanog incidenta. Uspešan rezultat je mogućnost povezivanja zahteva, poda, noda, revizije i vremena događaja bez pristupa aktivnom podu.</li>
+<li><strong>Backup konfiguracije i proba oporavka.</strong> Čuvaju se deklarativni manifesti u sistemu kontrole verzija, konfiguracija platforme i, prema planu oporavka, podaci etcd-a i aplikacionih skladišta. Backup se radi prema RPO zahtevu, čuva izvan istog failure domena i štiti enkripcijom i ograničenim pristupom. Integritet se proverava checksum vrednostima i alatom kojim je backup napravljen. Probni restore se izvodi u izolovanom okruženju najmanje kvartalno ili posle značajne promene verzije. Backup je upotrebljiv tek kada obnovljeni API objekti i aplikacioni podaci prođu dokumentovane funkcionalne testove.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+<li>☐ Komandom <code>kubectl config current-context</code> potvrđen je tačan klaster, a namespace je eksplicitno naveden u svim komandama.</li>
+<li>☐ Sačuvani su početni <code>get</code>, <code>describe</code>, događaji, rollout status i relevantni logovi pre izmene.</li>
+<li>☐ Za svaki neispravan pod provereni su uslovi, događaji, stanje i prethodno stanje kontejnera, restart count i termination razlog.</li>
+<li>☐ Za Service su upoređeni selektori sa pod labelama, a EndpointSlice sadrži očekivane spremne adrese.</li>
+<li>☐ Potvrđeno je da <code>port</code>, <code>targetPort</code> i stvarni aplikacioni port odgovaraju jedni drugima.</li>
+<li>☐ DNS, pristup Service-u i direktan pristup podu testirani su iz reprezentativnog klijentskog poda.</li>
+<li>☐ Deployment ima očekivani broj ažuriranih, spremnih i dostupnih replika, a rollout je završen bez prekoračenja roka.</li>
+<li>☐ Posle intervencije nema novih warning događaja, neplaniranih restartovanja ni rasta aplikacionih grešaka.</li>
+<li>☐ Funkcionalni test je izvršen kroz istu mrežnu putanju koju koristi stvarna aplikacija ili korisnik.</li>
+<li>☐ Promena, dokazi, rezultat, rollback uslovi i osnovni uzrok evidentirani su u incident ili change sistemu.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<p>
+Lekcija je savladana kada administrator može bez nagađanja da reprodukuje korisnički simptom, odredi blast radius, napravi vremenski usklađenu početnu snimku, formuliše proverljivu hipotezu i razlikuje simptom, posledicu, neposredni uzrok i osnovni uzrok. Mora umeti da dijagnostikuje <code>Pending</code>, image pull, crash loop, probe, rollout, Service/EndpointSlice, DNS i port probleme; da prepozna trenutak za prelazak na node ili kontrolnu ravan; da označi svaku komandu kao read-only ili state-changing; i da predloži najmanju reverzibilnu korekciju sa rollback-om.
+</p>
+<p>
+Praktični kriterijum je dokaziv oporavak: željeni i stvarni broj replika su usklađeni, svi potrebni endpointi su spremni, test kroz stvarnu korisničku putanju prolazi, greške i latencija su se vratile u prihvatljiv opseg, nema novih warning događaja ni neplaniranih restartovanja tokom definisanog perioda posmatranja, a incident zapis sadrži vremensku liniju, dokaze, promenu, validaciju, osnovni uzrok i preventivnu meru.
+</p>
+
+<h3>Zaključak</h3>
+<p>
+Administrator nakon ove lekcije treba da razume da troubleshooting Kubernetes aplikacije zahteva povezivanje deklarisanog stanja, rada kontrolera, lifecycle-a podova, servisnih endpointa, DNS-a, mreže i aplikacionih logova. Treba da ume da odredi obim problema, prikupi početne dokaze, razlikuje <code>Pending</code>, probleme sa image-om, crash loop, neuspešne probe, Service bez endpointa, pogrešan port i zaustavljen rollout.
+</p>
+<p>
+Praktična veština nije samo izvršavanje komandi <code>get</code>, <code>describe</code>, <code>logs</code>, <code>events</code>, <code>exec</code>, <code>debug</code> i <code>rollout</code>, već izbor komande koja proverava konkretnu hipotezu. Bezbedna promena menja najmanji potreban element, ima unapred definisan kriterijum uspeha i ostavlja trag koji omogućava audit i naknadnu analizu.
+</p>
+<p>
+Produkcioni rizici uključuju gubitak dokaza usled nasumičnog brisanja podova, povećanje uticaja incidenta pogrešnim rollout-om, izlaganje tajnih podataka kroz debug sesije i pokušaj rollback-a aplikacije koja više nije kompatibilna sa podacima. Granica administratorske odgovornosti podrazumeva poštovanje RBAC pravila, change procesa, vlasništva aplikacionog tima i plana oporavka. Problem se eskalira kada dokazi ukazuju na grešku aplikacionog koda, nekompatibilnu migraciju podataka, kvar shared storage-a, CNI ili control plane komponente, bezbednosni incident ili potrebu za privilegijama koje operator nema.
+</p>
+<p>
+Uspešan troubleshooting završava se tek kada je usluga funkcionalno potvrđena, sistem stabilan, novi simptomi nisu uvedeni, osnovni uzrok je dokumentovan i postoji mera koja smanjuje verovatnoću ponavljanja. Privremeno vraćanje dostupnosti bez razumevanja uzroka predstavlja oporavak servisa, ali ne i završen incident.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za troubleshooting aplikacija, servisa, nodova i klastera; API i arhitektonske reference za Pod, Deployment, Service i EndpointSlice objekte; kubectl CLI reference za događaje, logove, rollout i debug; vodiči za DNS, probe, sistemske logove, observability, kubeadm i bezbedno otklanjanje kvarova
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-41-logovi-dogadjaji-audit.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-43-inventar-verzije-kompatibilnost.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

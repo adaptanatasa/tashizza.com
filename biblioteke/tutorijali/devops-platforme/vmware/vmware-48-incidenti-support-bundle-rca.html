@@ -1,0 +1,544 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-48-incidenti-support-bundle-rca.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Upravljanje incidentima, support bundle i RCA – od trijaže do trajne korektivne mere | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upravljanje VMware incidentima od trijaže i očuvanja dokaza do support bundle-a, eskalacije, root cause analize i trajne korektivne mere.">
+
+  <meta name="keywords"
+        content="VMware incidenti, support bundle, RCA, root cause analysis, trijaža, eskalacija, korektivna mera, vSphere troubleshooting, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-48-incidenti-support-bundle-rca.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Upravljanje incidentima, support bundle i RCA – od trijaže do trajne korektivne mere">
+
+  <meta property="og:description"
+        content="Upravljanje VMware incidentima od trijaže i očuvanja dokaza do support bundle-a, eskalacije, root cause analize i trajne korektivne mere.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-48-incidenti-support-bundle-rca.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-48-incidenti-support-bundle-rca.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Upravljanje incidentima, support bundle i RCA – od trijaže do trajne korektivne mere">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-48-incidenti-support-bundle-rca.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-48-incidenti-support-bundle-rca.png"
+           alt="Upravljanje incidentima, support bundle i RCA – od trijaže do trajne korektivne mere">
+
+    </a>
+
+  <div class="page-subtitle">
+  XII. Disaster recovery i upravljanje incidentima
+</div>
+
+<div class="page-subtitle">
+  48. Upravljanje incidentima, support bundle i RCA – od trijaže do trajne korektivne mere
+</div>
+
+<p>
+  Prethodna lekcija završila se testiranim planom oporavka. Ova lekcija obrađuje trenutak u kojem monitoring, korisnik ili administrator prijavi da usluga više ne ispunjava očekivani nivo: kako ograničiti štetu, sačuvati dokaze, vratiti poslovnu funkciju, pravilno eskalirati problem i dokazati da se isti osnovni uzrok neće ponoviti. Incident nije isto što i problem, promena ili disaster recovery događaj. Incident je neplanirani prekid ili degradacija usluge; problem je uzrok jednog ili više incidenata; promena je kontrolisana intervencija; disaster recovery aktivira se kada lokalni oporavak ne može da ispuni dogovoreni RTO i RPO.
+</p>
+
+<div class="note">
+  <strong>Administratorsko pravilo:</strong> najpre stabilizuj uslugu i sačuvaj prolazne dokaze, zatim menjaj stanje. Brz restart može ukloniti simptom, ali istovremeno uništiti trag potreban za utvrđivanje uzroka. Svaka intervencija mora imati vlasnika, vreme, razlog, očekivani efekat, rizik i rezultat validacije.
+</div>
+
+<h3>1. Ishodi učenja i operativni okvir</h3>
+
+<p>Nakon ove lekcije administrator treba da ume da:</p>
+
+<ul>
+  <li>razdvoji simptom, obim, poslovnu posledicu, neposredni tehnički uzrok i osnovni uzrok;</li>
+  <li>odredi prioritet incidenta prema uticaju i hitnosti, a ne prema glasnoći prijave;</li>
+  <li>uspostavi vremensku osu iz događaja, alarma, metrika, logova, audit traga i evidencije promena;</li>
+  <li>prikupi ESXi i vCenter support bundle bez nepotrebnog opterećenja ili gubitka podataka;</li>
+  <li>vodi komunikaciju, eskalaciju i tehnički handoff sa proverljivim podacima;</li>
+  <li>primeni privremeno zaobilazno rešenje, validira oporavak i kontroliše povratak promene;</li>
+  <li>izradi RCA zasnovan na dokazima i pretvori nalaz u merljivu korektivnu i preventivnu akciju.</li>
+</ul>
+
+<h3>2. Životni ciklus incidenta: od signala do zatvaranja</h3>
+
+<table>
+  <thead>
+    <tr><th>Faza</th><th>Ključno pitanje</th><th>Minimalni dokaz izlaska iz faze</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Detekcija i prijava</td><td>Šta je primećeno, kada i iz kog izvora?</td><td>Incident ID, tačno vreme sa vremenskom zonom, izvor signala i pogođena usluga.</td></tr>
+    <tr><td>Trijaža</td><td>Koliki su uticaj, hitnost i rizik širenja?</td><td>Prioritet, obim, vlasnik incidenta i sledeće vreme ažuriranja.</td></tr>
+    <tr><td>Ograničavanje štete</td><td>Kako sprečiti dalje posledice bez uništavanja dokaza?</td><td>Zabeležena mera izolacije, rizik, odobrenje i provereni efekat.</td></tr>
+    <tr><td>Dijagnostika</td><td>Koja hipoteza najbolje objašnjava vremenski povezane dokaze?</td><td>Timeline, upoređeni izvori i potvrđena ili odbačena hipoteza.</td></tr>
+    <tr><td>Oporavak</td><td>Kako vratiti uslugu sa najmanjim dodatnim rizikom?</td><td>Izvršena korekcija, tehnička i poslovna validacija, monitoring bez regresije.</td></tr>
+    <tr><td>Zatvaranje</td><td>Da li je usluga stabilna i evidencija potpuna?</td><td>Dogovoreni period stabilnosti, saglasnost vlasnika usluge i poznate preostale opasnosti.</td></tr>
+    <tr><td>RCA i poboljšanje</td><td>Zašto su uzrok i zaštitne kontrole omogućili incident?</td><td>Dokazani uzrok, akcije sa vlasnicima i rokovima, verifikacija delotvornosti.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  U većem incidentu odvojene su uloge incident commander-a, tehničkih vodilaca za compute, mrežu, storage, backup i aplikaciju, zapisničara i osobe zadužene za komunikaciju. U manjem okruženju jedna osoba može nositi više uloga, ali ne sme nestati razdvajanje odgovornosti: ko odlučuje, ko izvršava i ko beleži. Incident commander upravlja prioritetima i rizikom; ne mora lično da izvršava svaku komandu.
+</p>
+
+<h3>3. Trijaža: simptom, obim, uticaj i prioritet</h3>
+
+<p>
+  Prva prijava je često opis korisničkog iskustva, a ne dijagnoza. „VMware ne radi” može značiti nedostupan vSphere Client, prekid vCenter upravljačke ravni uz VM-ove koji i dalje rade, izolovan ESXi host, storage zastoj, mrežni gubitak ili problem same aplikacije. Zato početni zapis mora da odgovori na pitanja: šta je pogođeno, šta nije, od kada, da li je kvar stalan ili povremen, šta se promenilo neposredno pre toga i postoji li rizik po integritet ili poverljivost podataka.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Prioritet</th><th>Primer kriterijuma</th><th>Operativni odgovor</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>P1 / kritičan</td><td>Širok prekid kritične usluge, gubitak podataka ili aktivan bezbednosni rizik; nema prihvatljivog workaround-a.</td><td>Stalna koordinacija, hitna eskalacija, česta statusna ažuriranja i odluka o DR-u prema runbook-u.</td></tr>
+    <tr><td>P2 / visok</td><td>Značajna degradacija ili gubitak redundanse sa ozbiljnim poslovnim uticajem.</td><td>Prioritetan rad stručnog tima, kontrolisani workaround i vremenski ograničeno praćenje rizika.</td></tr>
+    <tr><td>P3 / srednji</td><td>Ograničen uticaj, postoji stabilan workaround, nema neposredne opasnosti po podatke.</td><td>Planirana dijagnostika i korekcija u dogovorenom roku.</td></tr>
+    <tr><td>P4 / nizak</td><td>Informativan zahtev, kozmetička greška ili problem bez poslovnog prekida.</td><td>Redovan backlog i standardni change proces.</td></tr>
+  </tbody>
+</table>
+
+<div class="warning">
+  <strong>Prioritet nije statičan.</strong> Incident se podiže ili spušta kada se promene uticaj, broj pogođenih objekata, dostupnost workaround-a ili rizik. Bezbednosni indikator zahteva uključivanje security incident procesa; sumnja na korupciju ili gubitak podataka zahteva očuvanje backup-a, replika i snapshot dokaza prema politici organizacije.
+</div>
+
+<h3>4. Zlatni zapis incidenta i vremenska korelacija</h3>
+
+<p>
+  Pouzdan zapis incidenta predstavlja zajedničku istinu tima. Mora sadržati identifikator, servis i vlasnika, okruženje i verzije, pogođene objekte, početak i način detekcije, uticaj, prioritet, poslednju poznatu dobru tačku, nedavne promene, aktivne hipoteze, prikupljene dokaze, sve izvršene akcije i rezultate, odluke i odobrenja, status komunikacije, vreme oporavka i preostali rizik. Lozinke, tokene i privatne ključeve ne upisivati u tiket.
+</p>
+
+<pre><code class="language-none">Incident: INC-2026-0048
+Vremenska zona: UTC
+Početak simptoma: 2026-07-14T08:17:00Z
+Detekcija: alarm + prijava aplikativnog tima
+Uticaj: 18 VM-ova sa povišenom storage latencijom; nema potvrđenog gubitka podataka
+Nije pogođeno: drugi datastore i management mreža
+Poslednja poznata dobra tačka: 2026-07-14T08:10:00Z
+Poslednja promena: CHG-2026-0312, storage zoning, završeno 08:05Z
+Hipoteza H1: degradirana ili nestabilna storage putanja
+Dokazi: vCenter events, vmkernel.log, storage telemetry, support bundle
+Sledeće ažuriranje: 09:00Z
+Vlasnik incidenta: I. Prezime</code></pre>
+
+<p>
+  Svi sistemi moraju imati ispravno vreme i dokumentovan NTP izvor. Korelacija bez iste vremenske osnove stvara lažan redosled događaja. Čuvaju se apsolutno vreme i vremenska zona, a ne samo „pre deset minuta”. Posebno se beleže trenutak simptoma, alarm, početak i kraj svake intervencije, povratak tehničkih metrika i potvrda korisnika.
+</p>
+
+<h3>5. Dokazi pre intervencije: od najmanje invazivnih provera</h3>
+
+<ol>
+  <li><strong>Potvrdi signal:</strong> ponovi bezbednu proveru iz drugog izvora; razlikuj nedostupan UI od nedostupne usluge.</li>
+  <li><strong>Odredi obim:</strong> jedan VM, host, klaster, datastore, VLAN, vCenter servis ili više lokacija.</li>
+  <li><strong>Proveri zavisnosti:</strong> DNS, NTP, identitet, sertifikate, fizičku mrežu, storage fabric, backup i aplikativnu bazu.</li>
+  <li><strong>Pregledaj promene:</strong> taskove, evente, audit trag, lifecycle operacije, automatizaciju i promene izvan VMware domena.</li>
+  <li><strong>Sačuvaj prolazne podatke:</strong> trenutne alarme, performansne metrike, stanje putanja, servisni status, memorijske ili crash artefakte kada su relevantni.</li>
+  <li><strong>Formuliši hipotezu:</strong> navedi dokaz koji bi je potvrdio i dokaz koji bi je opovrgao.</li>
+  <li><strong>Tek tada menjaj stanje:</strong> jedna kontrolisana promena po koraku, sa validacijom i rollback kriterijumom.</li>
+</ol>
+
+<p>
+  Read-only provere u vSphere Client-u obuhvataju <code>Monitor &gt; Issues and Alarms</code>, <code>Tasks and Events</code>, performansne grafikone i health prikaze. Na ESXi Shell-u sledeće komande čitaju stanje; izvršavaju se samo kada je Shell/SSH dozvoljen politikom, sa odgovarajućim privilegijama i uz audit zapisa:
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: identitet/verzija, vreme, filesystem i osnovni storage/mrežni pregled
+vmware -vl
+date
+esxcli system time get
+esxcli system ntp get
+vdf -h
+esxcli storage core path list
+esxcli network nic list
+esxcli network ip interface list</code></pre>
+
+<p>
+  Izlaz se čuva uz incident. Komande nad velikim inventarom mogu dati obiman rezultat, ali ne menjaju stanje. Ako se i read-only komanda blokira, to je dokaz mogućeg problema sa storage-om, filesystem-om ili management servisom; ne ponavljati je agresivno.
+</p>
+
+<h3>6. Mapa vSphere logova i pravilno tumačenje</h3>
+
+<table>
+  <thead>
+    <tr><th>Komponenta i lokacija</th><th>Šta tražimo</th><th>Korelacija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>ESXi <code>/var/run/log/vmkernel.log</code></td><td>VMkernel, uređaji, storage putanje, APD/PDL, NMP, mrežni drajveri i sistemske greške.</td><td>Storage niz/switch, fizički NIC/HBA, performansne metrike i vreme događaja.</td></tr>
+    <tr><td><code>/var/run/log/hostd.log</code></td><td>Lokalno upravljanje hostom, VM operacije i greške zadataka.</td><td>vpxa, vCenter Tasks/Events i odgovarajući <code>vmware.log</code>.</td></tr>
+    <tr><td><code>/var/run/log/vpxa.log</code></td><td>Komunikacija ESXi agenta sa vCenter-om.</td><td><code>vpxd.log</code>, DNS/NTP, sertifikati i mrežna dostupnost.</td></tr>
+    <tr><td><code>/var/run/log/fdm.log</code></td><td>vSphere HA agent, izbor master-a, datastore heartbeat i zaštita VM-ova.</td><td>HA alarmi, mreža za management i stanje shared storage-a.</td></tr>
+    <tr><td><code>/var/run/log/vobd.log</code></td><td>VMkernel observations/VOB događaji koji često hrane alarme.</td><td><code>vmkernel.log</code> i vCenter Events.</td></tr>
+    <tr><td>VM direktorijum: <code>vmware.log</code></td><td>VMX proces, virtuelni hardver, guest interakcije i konkretna VM greška.</td><td>hostd, datastore i događaji nad istim VM-om.</td></tr>
+    <tr><td>vCSA <code>/var/log/vmware/vpxd/vpxd.log</code></td><td>vCenter servis, inventar, taskovi i komunikacija sa hostovima.</td><td>vpxa/hostd, SSO, baza, DNS i sertifikati.</td></tr>
+    <tr><td>vCSA <code>/var/log/vmware/vmon/vmon.log</code></td><td>Životni ciklus vCenter servisa i restart/failure događaji.</td><td><code>service-control --status --all</code>, appliance health i filesystem.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Na savremenom ESXi-u kanonske lokacije su pod <code>/var/run/log</code>; kompatibilne putanje pod <code>/var/log</code> mogu postojati. Na vCenter Server Appliance-u servisni logovi su pod <code>/var/log/vmware</code>. Windows vCenter je istorijski model: deprecated je u 6.7, a od vSphere 7.0 vCSA je jedina opcija. Rotirane i kompresovane datoteke moraju se uključiti kada incident prethodi aktivnom logu.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY na ESXi Shell-u: ograničen vremenski i tekstualni pregled
+tail -n 200 /var/run/log/vmkernel.log
+grep -Ei 'apd|pdl|nmp|timeout|error|failed' /var/run/log/vmkernel.log | tail -n 100
+tail -n 200 /var/run/log/hostd.log
+
+# READ-ONLY na vCSA Bash shell-u
+service-control --status --all
+df -h
+tail -n 200 /var/log/vmware/vpxd/vpxd.log</code></pre>
+
+<p>
+  Filter je početna navigacija, ne dokaz sam po sebi. Reč <code>error</code> može biti posledica, ponovljeni retry ili bezazlen raniji događaj. Tumačenje zahteva komponentu, timestamp, objekt, identifikator zadatka i susedne redove. Ne povećavati logging na verbose/trivia nivo u produkciji bez razloga: raste I/O i potrošnja prostora, može prikupiti osetljivije podatke i zahteva plan vraćanja prethodnog nivoa.
+</p>
+
+<h3>7. Support bundle: sadržaj, izbor obima i bezbednost</h3>
+
+<p>
+  Support bundle je vremenski snimak dijagnostičkih podataka: logova, konfiguracionih i statusnih informacija, a zavisno od izbora i proizvoda može uključiti performansne podatke, core dump ili širi skup osetljivih podataka. On nije backup i nije automatska RCA analiza. Njegova vrednost zavisi od pravilnog trenutka, obima i opisa incidenta.
+</p>
+
+<ul>
+  <li>Prikupljanje započeti što bliže incidentu, po mogućstvu pre restarta i pre rotacije logova.</li>
+  <li>Odabrati samo relevantne hostove i komponentne grupe, osim kada je obim nepoznat ili podrška zahteva kompletan paket.</li>
+  <li>Performansne podatke uključiti kada su potrebni i uskladiti trajanje/interval sa simptomom; širi zahvat traje duže i povećava paket.</li>
+  <li>Proveriti slobodan prostor na ciljnom filesystem-u ili datastore-u pre generisanja.</li>
+  <li>Arhivu čuvati uz strogu kontrolu pristupa, propisani retention i odobren kanal prenosa; ne slati javnim servisima.</li>
+  <li>Ne menjati sadržaj paketa namenjenog podršci. Zabeležiti naziv, veličinu i kontrolni zbir radi integriteta pri internom prenosu.</li>
+</ul>
+
+<h4>7.1. Prikupljanje kroz vSphere Client i VAMI</h4>
+
+<p>
+  Za ESXi host ili skup hostova u <code>Hosts and Clusters</code> izabrati objekat, zatim <code>Export System Logs</code>. Za objedinjeno prikupljanje mogu se izabrati relevantni hostovi, opcija uključivanja vCenter Server i vSphere UI Client logova, kao i performansni podaci kada su opravdani. Za vCenter-only paket dostupan je i VAMI na portu 5480, opcija <code>Actions &gt; Create Support Bundle</code>. Potrebna je odgovarajuća administrativna privilegija; za host dijagnostiku zvanična dokumentacija navodi <code>Global.Diagnostics</code>.
+</p>
+
+<h4>7.2. ESXi <code>vm-support</code></h4>
+
+<pre><code class="language-bash"># READ-ONLY u smislu konfiguracije, ali resursno intenzivno: generiše arhivu
+vm-support
+
+# Upis paketa na prethodno provereni shared VMFS datastore
+vm-support -w /vmfs/volumes/incident-staging
+
+# Prvo proveriti opcije baš na instaliranoj verziji
+vm-support -h</code></pre>
+
+<p>
+  Komanda se izvršava kao <code>root</code> preko DCUI/ESXi Shell-a ili privremeno omogućenog SSH-a. Ne menja konfiguraciju vSphere-a, ali troši CPU, memoriju, I/O i prostor, pa nije bez uticaja. Opcije se razlikuju između verzija; zbog toga je izlaz <code>vm-support -h</code> na konkretnom hostu merodavan. Opcija <code>-w</code> usmerava izlaz na proverenu lokaciju i smanjuje rizik punjenja lokalnog prostora. Streaming preko SSH-a postoji, ali nije primenljiv u lockdown mode-u i mora pratiti bezbednosnu politiku.
+</p>
+
+<h4>7.3. vCenter Server Appliance <code>vc-support</code></h4>
+
+<pre><code class="language-bash"># READ-ONLY provere prostora pre generisanja paketa
+df -h
+vc-support -h
+
+# GENERIŠE ARHIVU; cilj birati tek posle provere prostora
+vc-support -w /storage/core</code></pre>
+
+<p>
+  Komande se izvršavaju u Bash shell-u vCSA sa privilegovanim nalogom u skladu sa politikom. Podrazumevani paket može biti velik jer obuhvata servise i core dump podatke; za usko definisan problem zvanični KB opisuje komponentno ograničeno prikupljanje. Putanju iz primera ne kopirati mehanički: izabrati filesystem sa dovoljnim prostorom. Poznat problem u nekim vCenter 8.0 izdanjima ostavlja pakete u <code>/storage/log</code>; Broadcom navodi da je ispravljen u 8.0 Update 3 i novijim izdanjima. Čišćenje se radi tek posle potvrde preuzimanja, u skladu sa tačnim KB-om i change procedurom.
+</p>
+
+<h4>7.4. Integritet i evidencija paketa</h4>
+
+<pre><code class="language-bash"># Na bezbednoj Linux administratorskoj stanici, ne na opterećenom ESXi hostu
+sha256sum esx-host01-incident-INC-2026-0048.tgz
+ls -lh esx-host01-incident-INC-2026-0048.tgz</code></pre>
+
+<p>
+  Kontrolni zbir ne potvrđuje da je paket semantički potpun, ali dokazuje da se isti bajtovi koriste tokom internog prenosa i analize. Evidencija sadrži izvorni objekat, vreme generisanja, vremensku zonu, incident/SR broj, veličinu, hash, vlasnika, lokaciju i datum brisanja. Ako paket sadrži core dump, primenjuje se stroža klasifikacija; zvanična dokumentacija upozorava da vCenter core dump podaci nisu šifrovani.
+</p>
+
+<h3>8. Eskalacija Broadcom podršci i kvalitetan tehnički handoff</h3>
+
+<p>
+  Support Request treba otvoriti prema važećem entitlement-u i nivou ozbiljnosti. Severity ugovora nije zamena za interni prioritet, i mora verno opisivati stvarni produkcioni uticaj. Paket se prenosi samo metodom vezanom za SR koju navodi Broadcom Support Portal. Dobar handoff skraćuje vreme do korisne analize i sadrži:
+</p>
+
+<ul>
+  <li>jasan problem statement: očekivano naspram stvarnog ponašanja;</li>
+  <li>proizvod, build broj, topologiju, licencni/support okvir i pogođene objekte;</li>
+  <li>UTC timeline, poslovni uticaj, učestalost i reproduktivnost;</li>
+  <li>poslednju poznatu dobru tačku i sve relevantne promene;</li>
+  <li>tačne korake i rezultate već izvršenih provera, bez prećutkivanja restarta ili workaround-a;</li>
+  <li>nazive bundle-ova, vreme prikupljanja i objašnjenje šta se u njima očekuje;</li>
+  <li>konkretno pitanje i granicu odobrenih intervencija.</li>
+</ul>
+
+<div class="note">
+  <strong>Bezbedna saradnja:</strong> komandu dobijenu od podrške administrator mora razumeti, povezati sa konkretnim KB-om ili pisanim uputstvom, proceniti njen blast radius i obezbediti odobrenje/rollback. Prisustvo vendor inženjera ne ukida odgovornost vlasnika okruženja za promenu.
+</div>
+
+<h3>9. Oporavak usluge, workaround i kontrola promena</h3>
+
+<p>
+  Restore service i resolve root cause su različiti ciljevi. Privremeno preusmeravanje workload-a, izolovanje problematičnog hosta ili vraćanje poznate konfiguracije može ispuniti RTO, ali incident ostaje povezan sa problem record-om dok uzrok i trajna mera nisu rešeni. Emergency change mora imati makar minimalno odobrenje, tačan obim, pre-check, očekivani rezultat, stop-uslov, rollback i post-check.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Mera</th><th>Kada je razumna</th><th>Glavni rizik i validacija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Restart management servisa</td><td>Potvrđeno je da je upravljački servis problem, a data plane i zavisnosti su procenjeni.</td><td>Prekid upravljanja i gubitak prolaznih dokaza; proveriti reconnect, taskove, HA/vCenter stanje. Ne koristiti <code>services.sh restart</code> naslepo, posebno na hostovima sa vSAN/NSX zavisnostima.</td></tr>
+    <tr><td>Maintenance mode / evakuacija</td><td>Host je sumnjiv, a klaster ima potvrđen kapacitet i dostupne migracione zavisnosti.</td><td>Preopterećenje drugih hostova i uticaj na vSAN politiku; izvršiti capacity i accessibility pre-check.</td></tr>
+    <tr><td>Rollback poslednje promene</td><td>Vremenska i tehnička korelacija ukazuje na promenu i postoji testiran povratak.</td><td>Rollback može biti nova promena sa sopstvenim rizikom; validirati konfiguraciju i poslovnu uslugu.</td></tr>
+    <tr><td>DR failover</td><td>Lokalni oporavak ne može da ispuni RTO/RPO ili je lokacija nepouzdana.</td><td>Split-brain, redosled aplikacija i gubitak podataka; koristiti testirani plan iz lekcije 47.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Tehnička validacija proverava stanje hostova, vCenter servisa, datastore-a, mrežnih putanja, HA/DRS alarma i performansi. Poslovna validacija proverava aplikativnu transakciju, integritet podataka i korisnički tok. Incident se ne zatvara zato što je alarm postao zelen ako usluga još nije potvrđena.
+</p>
+
+<h3>10. RCA: od neposrednog uzroka do sistemskog objašnjenja</h3>
+
+<p>
+  Root Cause Analysis nije potraga za krivcem niti prepričavanje vremenske ose. Dobar RCA razlikuje: <strong>trigger</strong> koji je pokrenuo događaj, <strong>neposredni tehnički uzrok</strong> koji je proizveo simptom, <strong>osnovni uzrok</strong> zbog kojeg je sistem bio podložan kvaru i <strong>doprinoseće faktore</strong> koji su povećali uticaj ili usporili oporavak. Tvrdnja je prihvatljiva samo ako je podržana dokazom ili jasno označena kao ograničena hipoteza.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Element</th><th>Primer</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Simptom</td><td>VM-ovi na datastore-u imaju visoku latenciju i timeout aplikacije.</td></tr>
+    <tr><td>Neposredni uzrok</td><td>Više storage putanja prelazi u nestabilno stanje i I/O se ponavlja.</td></tr>
+    <tr><td>Trigger</td><td>Promena zoning-a neposredno pre početka događaja.</td></tr>
+    <tr><td>Osnovni uzrok</td><td>Promena je izvedena nad pogrešnim fabric objektom jer CMDB mapiranje i peer review nisu bili obavezna kontrola.</td></tr>
+    <tr><td>Doprinoseći faktor</td><td>Alarm nije razlikovao gubitak redundanse od potpune nedostupnosti; kontakt storage tima bio je zastareo.</td></tr>
+    <tr><td>Workaround</td><td>Vraćen prethodni zoning i workload stabilizovan.</td></tr>
+    <tr><td>Trajna mera</td><td>Automatska pre/post validacija svih putanja, obavezni peer review i korekcija CMDB veze.</td></tr>
+  </tbody>
+</table>
+
+<h4>10.1. Pet „zašto”, fault tree i granice zaključka</h4>
+
+<p>
+  Metoda „pet zašto” korisna je za linearne lance, ali ne sme nasilno proizvesti jedan uzrok u distribuiranom sistemu. Fault tree ili mapa uzročnosti bolji su kada se prepliću failure domeni: pogrešna promena, nedovoljna redundansa, neadekvatan alarm i spor handoff. RCA mora navesti koje podatke nije bilo moguće pribaviti i koliki je nivo sigurnosti zaključka. „Ljudska greška” nije dovoljan osnovni uzrok; potrebno je objasniti zašto je sistem dopustio da jedna očekiva ljudska omaška proizvede ozbiljan incident.
+</p>
+
+<h4>10.2. Korektivne i preventivne akcije (CAPA)</h4>
+
+<p>
+  Akcija mora biti SMART: konkretna, merljiva, dodeljena vlasniku, vremenski ograničena i proverljiva. „Povećati pažnju” nije korektivna mera. Dobre mere uklanjaju uzrok ili jačaju kontrolu: ispravka konfiguracije, podržani patch posle kompatibilnosne provere, automatizovani pre-check, bolji alarm, runbook, uklanjanje single point of failure-a ili test oporavka. Svaka akcija dobija kriterijum delotvornosti; na primer, game day mora dokazati da pogrešna promena biva blokirana ili otkrivena pre poslovnog uticaja.
+</p>
+
+<h3>11. Praktikum: incident od alarma do zatvorenog RCA</h3>
+
+<h4>Vežba 1 – Trijaža bez promene stanja</h4>
+
+<p><strong>Cilj i kontekst:</strong> u laboratoriji je jedan ESXi host prikazan kao disconnected/not responding, dok testni VM odgovara na aplikativni health check. Cilj je dokazati da prekid upravljačke ravni nije automatski prekid workload-a.</p>
+
+<p><strong>Topologija i preduslovi:</strong> vCSA, dva laboratorijska ESXi hosta, shared datastore i jedan nekritičan testni VM; sinhronizovan NTP; nalog sa read-only pristupom inventaru, događajima i performansama; poseban privilegovani nalog dostupan samo za kasniju odobrenu akciju. Ne izazivati stvarni storage ili mrežni prekid: instruktor može zadati istorijski događaj ili kontrolisano blokirati samo management putanju izvan produkcije.</p>
+
+<ol>
+  <li>Otvoriti incident, zapisati UTC vreme, izvor prijave, pogođeni host i testni VM.</li>
+  <li>Iz dve nezavisne tačke proveriti aplikativni health test i zabeležiti da li workload radi.</li>
+  <li>U vSphere Client-u prikupiti alarm, Tasks/Events i performansni grafikon za interval deset minuta pre i posle simptoma.</li>
+  <li>Proveriti da li su drugi hostovi, datastore i management mreža pogođeni; ne restartovati agente.</li>
+  <li>Pregledati poslednje promene i formulisati najmanje dve hipoteze: management mreža/DNS ili lokalni management agent.</li>
+  <li>Za svaku hipotezu navesti dokaz koji je potvrđuje i opovrgava. Odrediti prioritet prema poslovnom uticaju, uz rizik gubitka redundanse.</li>
+</ol>
+
+<p><strong>Očekivani rezultat i validacija:</strong> zapis jasno razlikuje vCenter prikaz, dostupnost ESXi management-a i rad VM-a; nema neodobrene promene stanja; timeline i sledeći bezbedan korak mogu da preuzmu drugi administratori.</p>
+
+<p><strong>Rollback:</strong> nije potreban jer je vežba read-only. Ako je korišćena laboratorijska mrežna simulacija, instruktor uklanja isključivo pravilo kojim je ona uvedena i proverava reconnect hosta.</p>
+
+<h4>Vežba 2 – Ciljano prikupljanje dokaza i support bundle-a</h4>
+
+<p><strong>Cilj:</strong> prikupiti dokazni paket za vremenski ograničen incident bez punjenja sistemskih particija i bez nepotrebnog izlaganja podataka.</p>
+
+<p><strong>Rizik:</strong> generisanje paketa troši resurse i prostor. Vežbu izvoditi samo na laboratorijskom hostu. Ne uključivati memorijske dump opcije ili suspenziju VM-a; takvi postupci su invazivni i izvršavaju se isključivo po specifičnom vendor uputstvu i odobrenju.</p>
+
+<ol>
+  <li>Proveriti verziju, trenutno vreme i slobodan prostor read-only komandama iz prethodnih odeljaka.</li>
+  <li>Napraviti staging direktorijum na laboratorijskom datastore-u samo ako je unapred odobren i ima dovoljno prostora.</li>
+  <li>Pokrenuti <code>vm-support -w /vmfs/volumes/incident-staging</code>. Ne prekidati proces osim ako ugrožava host; zabeležiti početak, kraj i prijavljenu putanju.</li>
+  <li>Preneti arhivu na zaštićenu administratorsku stanicu odobrenim kanalom; izračunati SHA-256 i zabeležiti veličinu.</li>
+  <li>Proveriti da arhiva može da se izlista bez greške, ali je ne menjati:</li>
+</ol>
+
+<pre><code class="language-bash"># Na administratorskoj Linux stanici
+gzip -t esx-host01-incident-INC-2026-0048.tgz
+tar -tzf esx-host01-incident-INC-2026-0048.tgz | head -n 30
+sha256sum esx-host01-incident-INC-2026-0048.tgz</code></pre>
+
+<p><strong>Moguće grane:</strong> ako GUI export timeout-uje, prikupljanje pokrenuti lokalno na relevantnom hostu; ako nema prostora, ne brisati nasumične fajlove, već promeniti odobrenu ciljnu lokaciju; ako nedostaju očekivani logovi, proveriti izabrane manifest/grupe, trenutak rotacije i zvanični KB za konkretan build.</p>
+
+<p><strong>Kriterijum završetka i rollback:</strong> paket ima evidenciju izvora, vremena, veličine i hash-a. Posle potvrđenog prenosa i isteka internog retention-a, laboratorijska kopija i staging direktorijum uklanjaju se kontrolisano; trajno čuvanje ostaje samo u odobrenom repozitorijumu.</p>
+
+<h4>Vežba 3 – Korelacija logova i testiranje hipoteze</h4>
+
+<p><strong>Cilj:</strong> povezati vCenter događaj, ESXi log i eksterni storage zapis bez zaključivanja na osnovu jedne poruke.</p>
+
+<ol>
+  <li>Definisati incidentni prozor, na primer od 08:05Z do 08:35Z, i normalizovati sve timestamp-ove na UTC.</li>
+  <li>U izdvojenoj kopiji paketa pronaći relevantne <code>vmkernel</code>, <code>hostd</code> i <code>vpxa</code> logove; sačuvati kontekst pre i posle pogotka.</li>
+  <li>Napraviti tabelu: vreme, izvor, objekat, događaj, tumačenje i stepen sigurnosti.</li>
+  <li>Uporediti sa storage telemetry-jem i change zapisom. Potvrditi da isti identifikator uređaja/putanje i vreme povezuju nalaze.</li>
+  <li>Dokumentovati alternativno objašnjenje i razlog zbog kojeg je odbačeno.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> hipoteza nije „u logu piše error”, već proverljiv uzročni iskaz. Ako dokazi nisu dovoljni, rezultat je „uzrok nije dokazan” sa preciznim spiskom podataka koji nedostaju.</p>
+
+<h4>Vežba 4 – Oporavak, komunikacija i trajna mera</h4>
+
+<p><strong>Cilj:</strong> izraditi emergency change i RCA za simulirani problem storage putanje, bez stvarnog prekida produkcije.</p>
+
+<ol>
+  <li>Definisati workaround, na primer povratak laboratorijske zoning promene, očekivani efekat, rizik, stop-uslov i rollback.</li>
+  <li>Pre izvršenja sačuvati stanje putanja; dobiti odobrenje instruktora/incident commander-a i zabeležiti vreme.</li>
+  <li>Izvršiti samo unapred pripremljen laboratorijski rollback iz domena storage tima. VMware administrator zatim read-only proverava stabilnost putanja, datastore dostupnost i latenciju.</li>
+  <li>Validirati testnu aplikativnu transakciju i pratiti najmanje jedan dogovoreni interval bez novih alarma.</li>
+  <li>Napisati statusnu poruku: uticaj, trenutno stanje, primenjena mera, rizik i vreme sledećeg ažuriranja.</li>
+  <li>Popuniti RCA: trigger, neposredni i osnovni uzrok, doprinoseći faktori, dokaz, workaround, trajne akcije, vlasnici, rokovi i kriterijum delotvornosti.</li>
+</ol>
+
+<p><strong>Kriterijum završetka:</strong> tehnička i poslovna validacija su uspešne, incident timeline je potpun, a najmanje jedna korektivna akcija uklanja uzrok i jedna detekciona akcija skraćuje budući MTTD. Vežba se vraća u dokumentovano početno stanje.</p>
+
+<h3>12. Administratorske prakse</h3>
+
+<ul>
+  <li>Održavaj runbook, matricu eskalacije, kontakte, support entitlement i testiran kanal za upload pre incidenta.</li>
+  <li>Centralizuj ESXi/vCenter logove i uskladi retention sa vremenom potrebnim za detekciju; lokalni rotirani log ne sme biti jedini dokaz.</li>
+  <li>Sinhronizuj vreme preko pouzdanih NTP izvora i nadgledaj odstupanje.</li>
+  <li>Za svaki kritičan servis dokumentuj vlasnika, zavisnosti, SLO, RTO/RPO, health test i kriterijum poslovnog oporavka.</li>
+  <li>Ne koristi root/Administrator nalog za rutinski pregled; dodeli najmanje privilegije, a privilegovane sesije audituj.</li>
+  <li>Ne restartuj, ne briši logove i ne menjaj nivo logovanja pre očuvanja dokaza i procene blast radius-a.</li>
+  <li>Odvoji restore service od RCA/problem procesa; workaround dobija rok i vlasnika da ne postane trajni dug.</li>
+  <li>RCA vodi bez okrivljavanja, ali sa jasnom odgovornošću za sprovođenje i proveru akcija.</li>
+  <li>Periodično sprovedi game day iz Dodatka 3 i meri MTTD, vreme do trijaže, MTTR, kvalitet handoff-a i procenat izvršenih RCA akcija.</li>
+</ul>
+
+<h3>13. Završna kontrolna tačka</h3>
+
+<p>Lekcija je savladana kada administrator može da dokaže da ume da:</p>
+
+<ul class="checklist">
+  <li>iz prve prijave izdvoji simptom, obim, uticaj, hitnost i preostali rizik;</li>
+  <li>napravi UTC timeline koji povezuje monitoring, događaje, promene, metrike i logove;</li>
+  <li>odabere tačan ESXi/vCSA log i objasni šta iz njega može, a šta ne može zaključiti;</li>
+  <li>bezbedno prikupi ciljani support bundle, proveri prostor, integritet i evidenciju prenosa;</li>
+  <li>razlikuje read-only proveru, resursno intenzivno prikupljanje i state-changing korekciju;</li>
+  <li>napiše vendor eskalaciju koju drugi inženjer može odmah da reprodukuje i nastavi;</li>
+  <li>definiše workaround, stop-uslov, rollback i tehničku i poslovnu validaciju;</li>
+  <li>izradi dokazni RCA sa osnovnim uzrokom, doprinosećim faktorima i merljivim CAPA akcijama;</li>
+  <li>zatvori incident tek posle potvrđene stabilnosti, kompletne evidencije i dogovorenog daljeg vlasništva.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Zreo VMware administrator ne meri kvalitet incident response-a brojem izdatih komandi, već sposobnošću da brzo ograniči posledice, očuva činjenice i donosi reverzibilne odluke zasnovane na dokazima. vCenter događaj, ESXi log, support bundle i vendor SR postaju vredni tek kada su smešteni u tačnu vremensku i poslovnu sliku. Oporavljena usluga završava hitnu fazu, ali tek RCA i proverena trajna mera zatvaraju krug učenja. Time se incident pretvara iz neplaniranog prekida u dokazano poboljšanje dostupnosti, bezbednosti, održavanja i sposobnosti oporavka cele platforme.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere dokumentacija za monitoring, događaje i troubleshooting; zvanični Knowledge Base članci za ESXi i vCenter logove, <code>vm-support</code>, <code>vc-support</code>, sadržaj i bezbedan prenos dijagnostičkih paketa; vSphere Client, VAMI i CLI administrativne reference; smernice za Broadcom Support Request i primarne prakse upravljanja incidentima i root cause analizom
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-47-disaster-recovery-replikacija.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-dodatak-1-laboratorijsko-okruzenje.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

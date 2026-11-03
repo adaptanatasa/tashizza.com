@@ -1,0 +1,751 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-19-migracija-vm.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Migracija VM-a – premeštanje virtuelnih mašina između hostova | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte migraciju VMware virtuelnih mašina između hostova, osnovne vrste migracije i uslove koji omogućavaju bezbedno premeštanje radnih opterećenja u virtuelnoj infrastrukturi.">
+
+  <meta name="keywords"
+        content="migracija VM-a, VMware migracija, virtuelna mašina, VM, premeštanje virtuelne mašine, ESXi host, vCenter, vSphere, vMotion, cold migration, datastore, klaster, VMware infrastruktura, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-19-migracija-vm.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Migracija VM-a – premeštanje virtuelnih mašina između hostova">
+
+  <meta property="og:description"
+        content="Upoznajte načine migracije VMware virtuelnih mašina i premeštanje radnih opterećenja između ESXi hostova i storage resursa.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-19-migracija-vm.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-19-migracija-vm.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Migracija VM-a – premeštanje virtuelnih mašina između hostova">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+    Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-19-migracija-vm.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-19-migracija-vm.png"
+           alt="Migracija VM-a – premeštanje virtuelnih mašina između hostova">
+
+    </a>
+
+  <div class="page-subtitle">
+  IV. Svakodnevna administracija i prvi troubleshooting
+</div>
+
+<div class="page-subtitle">
+  19. Migracija VM-a – premeštanje workload-a i provera kompatibilnosti
+</div>
+
+<p>
+Migracija virtuelne mašine je kontrolisana promena njenog mesta izvršavanja, mesta čuvanja ili oba resursa. Ona administratoru omogućava da isprazni ESXi host radi održavanja, ukloni storage sistem iz upotrebe, rasporedi opterećenje, zameni hardver i reorganizuje infrastrukturu bez ponovne izgradnje servera. Kada su ispunjeni uslovi za vSphere vMotion, uključena virtuelna mašina može promeniti host uz veoma kratak zastoj izvršavanja, koji aplikacija i korisnici najčešće ne primete. Ipak, migracija nije samo izbor stavke <em>Migrate</em>: to je promena koja istovremeno dodiruje compute, mrežu, storage, bezbednosne politike, licence i operativnu odgovornost.
+</p>
+
+<p>
+U prethodnim lekcijama uređivale smo životni ciklus VM-a, snapshot-e i standardne serverske slike. Ovde se fokus pomera sa jednog objekta na njegove infrastrukturne zavisnosti. Lekcija daje operativni pregled svih važnih vrsta migracije i priprema čitaoca za kasniju, dublju lekciju o vMotion mreži i mehanizmu žive migracije. Cilj nije samo da migracija bude prihvaćena u čarobnjaku, već da administrator unapred dokaže kompatibilnost, nadzire tok, potvrdi stanje servisa posle promene i ume bezbedno da reaguje ako operacija ne uspe.
+</p>
+
+<h3>Šta se migracijom zaista menja</h3>
+
+<p>
+Virtuelna mašina ima najmanje tri važne kategorije zavisnosti: compute resurs na kome se izvršava, datastore na kome su njene datoteke i virtuelnu mrežu preko koje komunicira. Migracija može menjati samo jednu od tih kategorija ili više njih. Inventarski folder, resource pool, DRS pravila, VM Storage Policy, enkripcioni ključevi, backup poslovi, monitoring i CMDB zapisi mogu ostati nepromenjeni, ali se pre svake migracije mora proveriti da li njihova pravila važe i na odredištu.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vrsta operacije</th>
+      <th>Stanje VM-a</th>
+      <th>Šta se menja</th>
+      <th>Tipična upotreba</th>
+      <th>Ključni uslov</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vSphere vMotion</td>
+      <td>Uključena</td>
+      <td>Host odnosno compute resource</td>
+      <td>Održavanje hosta, ručno ili DRS balansiranje</td>
+      <td>CPU, mrežna i VM kompatibilnost; odredište mora pristupati datotekama VM-a</td>
+    </tr>
+    <tr>
+      <td>Storage vMotion</td>
+      <td>Uključena</td>
+      <td>Datastore, format diska ili storage politika</td>
+      <td>Evakuacija datastore-a, promena klase storage-a, uklanjanje prostora uskog grla</td>
+      <td>Dovoljan kapacitet, podržano odredište i usklađena VM Storage Policy</td>
+    </tr>
+    <tr>
+      <td>Kombinovana hot migracija</td>
+      <td>Uključena</td>
+      <td>Compute i storage u jednoj operaciji; po potrebi mrežno mapiranje</td>
+      <td>Prelazak na host koji ne vidi izvorni datastore ili veća reorganizacija</td>
+      <td>I compute i storage provere moraju proći</td>
+    </tr>
+    <tr>
+      <td>Cold migration</td>
+      <td>Isključena</td>
+      <td>Host, datastore ili oba</td>
+      <td>Kada prekid rada postoji ili hot migracija nije podržana</td>
+      <td>Planirani zastoj i pouzdano odredište</td>
+    </tr>
+    <tr>
+      <td>Suspended migration</td>
+      <td>Suspendovana</td>
+      <td>Host i/ili storage, uz prenos suspendovanog stanja</td>
+      <td>Retki kontrolisani scenariji u kojima je suspendovanje prihvatljivo</td>
+      <td>CPU kompatibilnost za nastavak sačuvanog stanja</td>
+    </tr>
+    <tr>
+      <td>Cross vCenter vMotion</td>
+      <td>Uključena ili isključena, prema funkciji i licenci</td>
+      <td>vCenter domen upravljanja, compute, storage, mreža i često inventarski kontekst</td>
+      <td>Konsolidacija, migracija data centra ili prelazak između administrativnih domena</td>
+      <td>Podržane verzije, licence, povezivost, identiteti i mapiranje ciljnih resursa</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Izraz <strong>Enhanced vMotion</strong> se u starijim materijalima često koristio za istovremenu promenu hosta i datastore-a bez zajedničkog storage-a. U savremenom vSphere Client-u operativno precizniji naziv je <strong>Change both compute resource and storage</strong>. Taj izraz ne treba mešati sa <strong>Enhanced vMotion Compatibility (EVC)</strong>, koji je mehanizam CPU kompatibilnosti.
+</p>
+
+<h3>Kako radi živa migracija</h3>
+
+<p>
+Kod vMotion migracije izvorni host prvo uspostavlja vezu sa ciljnim hostom i proverava da li odredište može da izvršava VM. Dok VM i dalje radi, stranice njene memorije kopiraju se preko vMotion mreže. Stranice koje gost ponovo izmeni označavaju se kao „dirty” i prenose u narednim prolazima. Kada preostalo stanje postane dovoljno malo, VM se veoma kratko zaustavlja, prenose se poslednje memorijske stranice, stanje virtuelnih uređaja i CPU-a, a izvršavanje se nastavlja na ciljnom hostu. Mreža obaveštava fizičku i virtuelnu switching infrastrukturu o novom položaju virtuelnog NIC-a, tako da postojeće sesije mogu da se nastave.
+</p>
+
+<p>
+Ovaj <em>pre-copy</em> model objašnjava zašto uključena VM sa velikom količinom RAM-a i veoma visokom stopom menjanja memorije može dugo da se migrira ili da ne uspe da konvergira u očekivanom vremenu. Brzina nije određena samo veličinom RAM-a, već odnosom raspoloživog vMotion protoka i stope kojom workload menja memoriju. Storage vMotion, sa druge strane, prenosi VM home i virtuelne diskove dok I/O ostaje aktivan, prati blokove promenjene tokom kopiranja i u završnoj fazi prebacuje VM na nove datoteke. Kombinovana migracija mora koordinisati oba toka.
+</p>
+
+<h3>Preduslovi i kompatibilnost pre migracije</h3>
+
+<p>
+Čarobnjak izvodi compatibility check, ali taj korak nije zamena za administratorski pre-check. Automatska provera potvrđuje tehničke uslove poznate vCenter-u; ona ne zna da li je izabrani prozor promene odobren, da li monitoring prati novu lokaciju, da li backup politika obuhvata ciljni datastore ili da li aplikacioni tim očekuje promenu. Pre pokretanja operacije treba proveriti sledeće slojeve.
+</p>
+
+<h4>Compute i CPU</h4>
+
+<ul>
+  <li>Ciljni ESXi host mora biti povezan sa odgovarajućim vCenter Server-om, u stanju koje dozvoljava prijem VM-a i sa dovoljno slobodnih CPU i memorijskih resursa.</li>
+  <li>Host mora podržavati verziju virtuelnog hardvera, guest OS i sve virtuelne uređaje konkretne VM. VMware Compatibility Guide i proizvodna dokumentacija imaju prednost nad pretpostavkom da „noviji host podržava sve”.</li>
+  <li>Aktivni CPU skup instrukcija VM-a mora biti dostupan na odredištu. Intel i AMD nisu međusobno vMotion kompatibilni. Različite generacije istog proizvođača obično zahtevaju odgovarajući EVC baseline.</li>
+  <li>CPU ili memory reservation mora moći da se zadovolji na odredišnom hostu odnosno resource pool-u. Nominalno slobodan RAM nije dovoljan ako admission ili reservation pravila sprečavaju smeštaj.</li>
+  <li>DRS affinity, anti-affinity i VM-Host pravila moraju dozvoljavati cilj. Pravilo tipa „must run” je ograničenje, dok „should run” može dati upozorenje zavisno od okolnosti.</li>
+</ul>
+
+<h4>Mreža za vMotion i mreža virtuelne mašine</h4>
+
+<ul>
+  <li>Svaki učesnik u vMotion toku mora imati ispravno konfigurisan VMkernel adapter sa omogućenim vMotion servisom i IP povezivošću do odgovarajućeg peer-a.</li>
+  <li>MTU mora biti dosledan duž čitave putanje. Jumbo frames nisu obavezni, ali ako se koriste, moraju raditi end-to-end; delimično podešen MTU stvara teško uočljive prekide i pad protoka.</li>
+  <li>Za produkciju se preporučuje namenski VLAN i adekvatan fizički kapacitet, uz redundansu uplink-ova prema dizajnu. vMotion saobraćaj može sadržati memorijsko stanje workload-a i zato mora biti izolovan i zaštićen.</li>
+  <li>Ciljni host mora imati odgovarajuću standardnu ili distribuiranu port grupu. Isti naziv port grupe nije dokaz da su VLAN, teaming, security i shaping politike iste.</li>
+  <li>Ako se menja vCenter ili mrežni domen, mrežno mapiranje mora očuvati L2/L3 dostupnost koju aplikacija očekuje. Promena port grupe može promeniti VLAN i time izazvati stvaran aplikacioni prekid iako je sama migracija uspešna.</li>
+</ul>
+
+<h4>Storage, datoteke i politike</h4>
+
+<ul>
+  <li>Za compute-only vMotion svi hostovi moraju imati pristup datastore-ovima na kojima se nalaze VM home i diskovi, osim kada se koristi podržana migracija bez zajedničkog storage-a.</li>
+  <li>Za storage migraciju proveravaju se slobodan prostor, maksimalne veličine, protokol, putanje, latencija, podržani tipovi diskova i eventualni RDM ili posebni uređaji.</li>
+  <li>Ciljni datastore ili datastore cluster mora zadovoljiti VM Storage Policy. Stanje <em>noncompliant</em> posle migracije nije samo estetsko upozorenje već dokaz da zahtevana zaštita ili performansna karakteristika možda nije ostvarena.</li>
+  <li>Snapshot lanac, Changed Block Tracking, backup proxy način rada, replikacija i zaključane datoteke mogu uticati na trajanje ili podršku. Aktivni backup ili snapshot konsolidacija ne treba da se ukrštaju sa migracijom bez provere proizvoda i operativne politike.</li>
+  <li>Storage vMotion nije backup. Greška ili korupcija u izvornom guest fajl-sistemu prenosi se na odredište, a migracija ne stvara nezavisnu tačku oporavka.</li>
+</ul>
+
+<h4>Virtuelni uređaji, bezbednost i zavisnosti</h4>
+
+<ul>
+  <li>Host uređaji vezani direktno za VM, kao što su određeni PCI passthrough, DirectPath I/O, vGPU, SR-IOV, lokalni USB i drugi uređaji, mogu ograničiti ili onemogućiti migraciju. Tačan status zavisi od uređaja, načina konfiguracije, verzije ESXi-ja i podrške proizvođača.</li>
+  <li>CD/DVD uređaj povezan na ISO sa lokalnog diska administratorovog računara ili lokalnog datastore-a može blokirati migraciju. Najbezbednije je odvojiti nepotrebne medije pre promene, uz prethodnu proveru da ih gost ne koristi.</li>
+  <li>Za enkriptovanu VM cilj mora imati pristup odgovarajućem key provider-u i podržavati primenjene enkripcione i bezbednosne politike. Migraciju ne treba koristiti kao improvizovani način zaobilaženja KMS ili Native Key Provider kontrole.</li>
+  <li>Opcija enkripcije vMotion saobraćaja može biti postavljena na <em>Disabled</em>, <em>Opportunistic</em> ili <em>Required</em>, u zavisnosti od verzije i konfiguracije. <em>Required</em> odbija odredište koje ne podržava potrebnu zaštitu; <em>Opportunistic</em> koristi enkripciju kada je obe strane podržavaju.</li>
+  <li>Administrator mora imati odgovarajuće privilegije nad izvornom VM, ciljnim resource pool-om ili hostom, datastore-om i mrežom. Najmanje privilegije treba definisati ulogom, a ne dodelom širokog administratorskog naloga.</li>
+</ul>
+
+<h3>Enhanced vMotion Compatibility – EVC</h3>
+
+<p>
+EVC izlaže VM-ovima zajednički CPU baseline koji podržavaju svi hostovi u klasteru. Noviji procesor time ne „postaje sporiji procesor”, već se gostu maskiraju instrukcije koje nisu deo izabranog baseline-a. To omogućava da aktivno CPU stanje VM-a bude prihvatljivo na drugom hostu iste CPU porodice. EVC ne omogućava vMotion između Intel i AMD procesora i ne rešava neusaglašen BIOS, firmware, virtuelni uređaj, mrežu ili storage.
+</p>
+
+<p>
+EVC se najbolje planira pre prvog uključivanja VM-ova u klasteru. Kada se baseline snizi, već uključena VM može i dalje imati aktivne instrukcije koje je videla pri poslednjem potpunom power-on ciklusu. Guest restart nije isto što i isključivanje i ponovno uključivanje VM-a: da bi VM dobila novi CPU feature set, može biti potreban potpuni power cycle. Zbog toga se EVC ne menja impulsivno radi jedne neuspele migracije. Najpre se uporede model procesora, microcode, BIOS postavke, cluster EVC i per-VM EVC, zatim se planira uticaj na sve workload-e.
+</p>
+
+<p>
+Per-VM EVC je dostupan za podržane verzije virtuelnog hardvera i scenarije, ali ni on ne uklanja potrebu da svaki ciljni host podrži izabrani baseline. Broadcom KB navodi da je odgovarajuća VM hardware verzija preduslov za prikaz i korišćenje ove opcije; zato se tačan uslov uvek proverava za instaliranu vSphere verziju pre promene virtuelnog hardvera.
+</p>
+
+<h3>Cross vCenter vMotion</h3>
+
+<p>
+Cross vCenter migracija pomera ili, u pojedinim tokovima, klonira VM između vCenter Server instanci. Ona je korisna pri konsolidaciji data centara, promeni SSO ili administrativnog domena i migraciji ka drugoj infrastrukturi. Ovo nije „običan vMotion sa dužom mrežom”: menja se domen upravljanja, pa se moraju mapirati datacenter, cluster ili host, resource pool, datastore, mreža, folder i po potrebi storage politika.
+</p>
+
+<p>
+Za vSphere 8 dokumentacija navodi da source i destination vCenter Server i ESXi hostovi za podržane cross-vCenter tokove moraju zadovoljiti minimalne verzijske zahteve; vrsta operacije i licenca zavise od konkretnog izdanja i načina pokretanja. Stoga se licenca ne zaključuje iz starog tutorijala: proveravaju se aktuelni Broadcom Product Guide, TechDocs za instaliranu verziju i pravo korišćenja organizacije. Ako vCenter instance nisu u istom SSO domenu, koriste se odgovarajući kredencijali ciljnog sistema i proverava mrežna dostupnost svih potrebnih management i vMotion veza. Identiteti, tagovi, custom attributes, alarmi, backup registracije, distribuirani switch objekti i politike ne moraju se automatski preneti sa istim značenjem.
+</p>
+
+<h3>Projektovanje bezbedne vMotion mreže</h3>
+
+<p>
+vMotion mreža treba da ima dovoljno kapaciteta, predvidivu latenciju i najmanje dve nezavisne fizičke putanje kada zahtev dostupnosti to opravdava. U manjim laboratorijama migracija može raditi preko jedne VMkernel veze i 1 GbE mreže, ali to nije dokaz da je dizajn pogodan za produkciju. Za veće VM-ove i paralelne migracije uobičajena polazna osnova je 10 GbE ili brže, uz merenje stvarnog workload-a. Više vMotion VMkernel adaptera i Multi-NIC vMotion mogu povećati protok i redundansu kada su pravilno povezani sa odvojenim uplink-ovima.
+</p>
+
+<p>
+Management i vMotion saobraćaj ne treba spajati bez procene rizika. Zagušena zajednička veza može istovremeno usporiti migraciju i ugroziti upravljivost hosta. VLAN je logička segmentacija, a ne automatska enkripcija. Kada regulatorni ili bezbednosni zahtev nalaže zaštitu memorijskog stanja u tranzitu, primenjuje se podržana vMotion enkripcija i potvrđuje njeno stvarno korišćenje događajima i konfiguracijom.
+</p>
+
+<h3>Plan promene i izbor metode</h3>
+
+<ol>
+  <li><strong>Definiši cilj.</strong> Da li se uklanja host, datastore, mreža ili administrativni domen? Najmanja promena obično nosi najmanji rizik.</li>
+  <li><strong>Odredi dozvoljeni prekid.</strong> Ako poslovni servis dopušta uredno gašenje, cold migration može biti jednostavnija i bezbednija od složene hot migracije.</li>
+  <li><strong>Mapiraj zavisnosti.</strong> Zabeleži host, cluster, resource pool, datastore-e svih diskova, port grupe, storage policy, uređaje, EVC, reservations, DRS pravila, backup i monitoring.</li>
+  <li><strong>Prikupi početne dokaze.</strong> Proveri zdravlje gosta i aplikacije, alarme, poslednje događaje, snapshot-e, storage kapacitet i latency, host resurse i mrežnu dostupnost.</li>
+  <li><strong>Izvrši compatibility check.</strong> Upozorenje se ne prihvata mehanički; dokumentuje se zašto je bezbedno ili se uklanja uzrok.</li>
+  <li><strong>Planiraj rollback.</strong> Za compute-only vMotion rollback je povratna migracija ako je izvorni host zdrav. Za storage migraciju povratak znači novu migraciju na izvorni datastore, pa se unapred čuva kapacitet i izbegava prerano uklanjanje izvora.</li>
+  <li><strong>Izvrši i nadziraj.</strong> Jedna kontrolisana promena je dijagnostički jasnija od talasa migracija bez ograničenja konkurentnosti.</li>
+  <li><strong>Validiraj servis, ne samo task.</strong> Uspešan vCenter task ne dokazuje da aplikacija radi, da je VM na pravom VLAN-u ili da je storage policy compliant.</li>
+</ol>
+
+<h3>Migracija kroz vSphere Client</h3>
+
+<p>
+Za jednu ili nekoliko VM-ova GUI daje najbolju preglednost compatibility provere. U vSphere Client-u izaberi VM, zatim <strong>Actions &gt; Migrate</strong> ili desni klik i <strong>Migrate</strong>. Nazivi se mogu neznatno razlikovati između izdanja, ali čarobnjak tipično nudi sledeće opcije:
+</p>
+
+<pre><code class="language-none">Change compute resource only
+Change storage only
+Change both compute resource and storage
+Cross vCenter Server export ili odgovarajući napredni tok, ako je dostupan</code></pre>
+
+<p>
+Kod compute migracije bira se ciljni host, cluster ili resource pool, a zatim se pregleda kartica kompatibilnosti. Kod storage migracije bira se datastore ili datastore cluster, format virtuelnog diska kada je opcija dostupna i VM Storage Policy. Kod kombinovane migracije dodatno se mapiraju mreže. Čarobnjak na završnoj strani mora jasno prikazati izvor, odredište i sve promene; administrator treba da sačuva task ID, vreme i change zapis.
+</p>
+
+<h3>VCF PowerCLI i bezbedna automatizacija</h3>
+
+<p>
+VCF PowerCLI se izvršava sa administratorske radne stanice koja ima PowerShell, odgovarajuće module i mrežni pristup vCenter Server-u. Komande za čitanje u nastavku ne menjaju stanje. <code>Connect-VIServer</code> uspostavlja sesiju, a kredencijale ne treba upisivati u skriptu u čistom tekstu.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+
+$vm = Get-VM -Name 'WebServer01'
+$targetHost = Get-VMHost -Name 'esxi02.lab.local'
+$targetDatastore = Get-Datastore -Name 'SSD-Datastore'
+
+$vm | Select-Object Name, PowerState, VMHost, Version
+$targetHost | Select-Object Name, ConnectionState, PowerState,
+    CpuUsageMhz, CpuTotalMhz, MemoryUsageGB, MemoryTotalGB
+$targetDatastore | Select-Object Name, Type, CapacityGB, FreeSpaceGB</code></pre>
+
+<p>
+Pre promene proveravaju se mrežni adapteri i diskovi VM-a. Ove komande su read-only; cilj je da se uoče port grupa koja ne postoji na odredištu, disk na neočekivanom datastore-u ili povezani medij.
+</p>
+
+<pre><code class="language-powershell">Get-NetworkAdapter -VM $vm |
+    Select-Object Name, Type, NetworkName, ConnectionState, MacAddress
+
+Get-HardDisk -VM $vm |
+    Select-Object Name, StorageFormat, CapacityGB, Filename
+
+Get-CDDrive -VM $vm |
+    Select-Object Name, IsoPath, HostDevice, ConnectionState
+
+Get-Snapshot -VM $vm |
+    Select-Object Name, Created, SizeGB, Description</code></pre>
+
+<p>
+Sledeće komande menjaju stanje. Pokreću se tek nakon odobrenog pre-check-a. <code>Move-VM</code> vraća task rezultat kada radi sinhrono; <code>-RunAsync</code> je koristan za kontrolisano asinhrono izvršenje, ali zahteva eksplicitno praćenje task-a.
+</p>
+
+<pre><code class="language-powershell"># STATE-CHANGING: compute-only migracija
+Move-VM -VM $vm -Destination $targetHost -Confirm:$true
+
+# STATE-CHANGING: storage-only migracija
+Move-VM -VM $vm -Datastore $targetDatastore -Confirm:$true
+
+# STATE-CHANGING: istovremena promena hosta i datastore-a
+Move-VM -VM $vm -Destination $targetHost `
+    -Datastore $targetDatastore -Confirm:$true</code></pre>
+
+<p>
+Masovna migracija pomoću obrasca <code>Get-VM Web* | Move-VM</code> jeste moguća, ali wildcard može obuhvatiti više objekata nego što je planirano. Bezbedniji produkcioni obrazac prvo materijalizuje tačan skup, prikazuje ga operateru, proverava broj i tek zatim izvršava migraciju sa kontrolisanom konkurentnošću.
+</p>
+
+<pre><code class="language-powershell"># READ-ONLY: pregled tačnog skupa
+$migrationSet = Get-VM -Name 'WebServer01','WebServer02'
+$migrationSet | Select-Object Name, PowerState, VMHost
+
+if ($migrationSet.Count -ne 2) {
+    throw 'Pre-check nije pronašao očekivane dve VM. Migracija je prekinuta.'
+}
+
+# STATE-CHANGING: pokretati u odobrenom prozoru promene
+$tasks = foreach ($item in $migrationSet) {
+    Move-VM -VM $item -Destination $targetHost -RunAsync -Confirm:$false
+}
+
+$tasks | Wait-Task
+$tasks | Select-Object Name, State, PercentComplete, Description</code></pre>
+
+<p>
+Tačan skup parametara <code>Move-VM</code> zavisi od verzije VCF PowerCLI-ja i tipa odredišta. Pre automatizacije proverava se aktuelna Broadcom PowerCLI referenca i pomoć iz instaliranog modula pomoću <code>Get-Help Move-VM -Full</code>. Migracija nije podržana preko <code>vim-cmd</code> kao ravnopravna zamena za vCenter orkestraciju; ESXi Shell i <code>esxcli</code> služe za ciljanu dijagnostiku, ne za improvizovanje vMotion operacije.
+</p>
+
+<h3>Praćenje, događaji, metrike i logovi</h3>
+
+<p>
+Tok se prvo prati u <strong>Recent Tasks</strong> i <strong>Monitor &gt; Tasks and Events</strong>. Zabeleži početak, kraj, procenat, task ID, izvor, cilj i potpunu poruku greške. Performance Charts treba korelisati za oba hosta i relevantne datastore-e: CPU, memory, network throughput, datastore latency i slobodan kapacitet. Visok vMotion protok je očekivan; problem je kada zajedno sa njim rastu gubici, latencija aplikacije ili zagušenje management mreže.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Izvor dokaza</th>
+      <th>Komponenta</th>
+      <th>Šta tražimo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Tasks and Events</td>
+      <td>vCenter Server</td>
+      <td>Tačno vreme, korisnik, izvor i cilj, compatibility upozorenje, konačna greška</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmkernel.log</code></td>
+      <td>ESXi VMkernel</td>
+      <td>vMotion mreža, migracioni tok, storage I/O, device i connectivity poruke</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/hostd.log</code></td>
+      <td>ESXi host agent</td>
+      <td>Operacija nad VM-om, konfiguracija uređaja, registracija i lokalni task</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vpxa.log</code></td>
+      <td>vCenter agent na ESXi hostu</td>
+      <td>Komunikacija hosta sa vCenter-om i orkestracija task-a</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmware/vpxd/vpxd.log</code></td>
+      <td>vCenter Server Appliance</td>
+      <td>vCenter odluka, compatibility i task korelacija; pristup samo ovlašćenim administratorima</td>
+    </tr>
+    <tr>
+      <td><code>vmware.log</code> u VM direktorijumu</td>
+      <td>VMX proces virtuelne mašine</td>
+      <td>Stanje virtuelnih uređaja i VM-specifične poruke u vremenu migracije</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Logovi se filtriraju uskim vremenskim prozorom i identitetom VM-a, hosta ili task-a. Sledeći primer je read-only i izvršava se u ESXi Shell-u kao nalog sa odgovarajućim privilegijama; SSH se uključuje samo prema bezbednosnoj proceduri i nakon rada ponovo isključuje ako politika tako nalaže.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: poslednje relevantne poruke na ESXi hostu
+tail -n 300 /var/log/vmkernel.log | grep -Ei 'vmotion|migrate|WebServer01'
+tail -n 300 /var/log/hostd.log | grep -Ei 'migrate|WebServer01'
+tail -n 300 /var/log/vpxa.log | grep -Ei 'migrate|WebServer01'</code></pre>
+
+<p>
+Jedan red iz loga nije root cause. Vreme mora biti usklađeno između hostova, vCenter-a i administratorske stanice, zatim se poruka povezuje sa task-om, mrežnim testom, resursnim stanjem i poslednjom promenom. Support bundle se prikuplja pre restartovanja servisa kada incident to zahteva, jer restart može ukloniti dragocen prolazni dokaz.
+</p>
+
+<h3>Najčešći kvarovi i sistematična dijagnostika</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatni neposredni uzrok</th>
+      <th>Dokaz i najmanje invazivna provera</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Target host does not support current hardware requirements</td>
+      <td>CPU feature ili EVC mismatch; ponekad BIOS/microcode razlika</td>
+      <td>Pročitati punu compatibility poruku; uporediti CPU modele, cluster/per-VM EVC, build, BIOS i firmware</td>
+      <td>Odabrati kompatibilan host ili planirano uskladiti EVC. Ne snižavati EVC naslepo; power cycle samo u odobrenom prekidu</td>
+    </tr>
+    <tr>
+      <td>vMotion interface ili network unreachable</td>
+      <td>Nedostaje VMkernel servis, routing/VLAN/MTU ili uplink problem</td>
+      <td>Proveriti VMkernel konfiguraciju, fizičke uplink-ove i VMkernel ping sa odgovarajućeg interfejsa</td>
+      <td>Ispraviti VLAN, gateway/rutu, MTU ili teaming prema dizajnu; ponoviti test pre migracije</td>
+    </tr>
+    <tr>
+      <td>Ciljna mreža nije dostupna</td>
+      <td>Port grupa ne postoji ili nema isti stvarni backing/politiku</td>
+      <td>Uporediti switch, port group, VLAN ID, uplink i security politiku</td>
+      <td>Kreirati ili pravilno mapirati ciljnu mrežu kroz odobrenu mrežnu promenu</td>
+    </tr>
+    <tr>
+      <td>Insufficient resources</td>
+      <td>Nedovoljan kapacitet, reservation, limit ili admission/DRS ograničenje</td>
+      <td>Proveriti host i resource pool raspoloživost, VM reservation i DRS pravila</td>
+      <td>Odabrati drugo odredište ili planski osloboditi/dodeliti resurse; ne ukidati reservations bez vlasnika servisa</td>
+    </tr>
+    <tr>
+      <td>Datastore nije dostupan ili nema prostora</td>
+      <td>Path/APD/PDL problem, nevidljiv LUN/NFS export ili kapacitet</td>
+      <td>Proveriti vidljivost datastore-a sa oba hosta, alarms, paths, kapacitet i latenciju</td>
+      <td>Stabilizovati storage ili izabrati validno odredište; ne forsirati migraciju dok je putanja nestabilna</td>
+    </tr>
+    <tr>
+      <td>Connected device prevents migration</td>
+      <td>Lokalni ISO, USB, PCI passthrough, vGPU ili drugi vezani uređaj</td>
+      <td>Pregledati Edit Settings i punu compatibility poruku</td>
+      <td>Bezbedno odvojiti nepotreban uređaj ili koristiti podržan postupak; ako je uređaj poslovno potreban, planirati cold migration ili drugo odredište</td>
+    </tr>
+    <tr>
+      <td>Migracija stoji ili traje neuobičajeno dugo</td>
+      <td>Visok memory dirty rate, zagušena mreža, storage latency ili previše paralelnih task-ova</td>
+      <td>Korelisati vMotion protok, memory activity, host CPU, packet loss i datastore latency</td>
+      <td>Smanjiti konkurentnost, promeniti termin, povećati raspoloživ protok ili planski smanjiti workload; ne prekidati task bez procene stanja</td>
+    </tr>
+    <tr>
+      <td>Task uspešan, aplikacija nedostupna</td>
+      <td>Pogrešan VLAN/mapiranje, fizička mreža nije naučila novu lokaciju, aplikaciona zavisnost ili latentni guest problem</td>
+      <td>Proveriti guest IP/gateway, port group, ARP/MAC stanje, VMware Tools heartbeat i aplikacioni health check</td>
+      <td>Ako je mrežno mapiranje pogrešno, vratiti odgovarajuću port grupu ili VM na prethodni host; zatim otkloniti osnovni uzrok</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>VMkernel test vMotion putanje</h4>
+
+<p>
+Na ESXi hostu se najpre identifikuje VMkernel adapter i TCP/IP stack. <code>vmkping</code> je read-only test. Source interfejs i odredišna IP adresa moraju pripadati baš vMotion putanji; običan ping sa management interfejsa ne dokazuje ispravnost vMotion mreže.
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: pregled VMkernel adaptera
+esxcli network ip interface list
+
+# READ-ONLY: primer testa sa izabranog VMkernel adaptera
+vmkping -I vmk1 192.0.2.22
+
+# READ-ONLY: jumbo test samo ako je end-to-end MTU 9000 deo dizajna
+vmkping -I vmk1 -d -s 8972 192.0.2.22</code></pre>
+
+<p>
+Adrese iz opsega <code>192.0.2.0/24</code> u primeru su dokumentacione i moraju se zameniti laboratorijskim adresama. Uspešan mali ping i neuspešan veliki paket ukazuju na MTU nedoslednost. Ne rešava se isključivanjem provere ili nasumičnim menjanjem MTU-a na jednom elementu, već usklađivanjem VMkernel adaptera, virtual switch-a, fizičkog switch-a i svih međuveza.
+</p>
+
+<h3>Praktikum – kontrolisana migracija i dijagnostika</h3>
+
+<h4>Laboratorijska topologija i preduslovi</h4>
+
+<pre><code class="language-none">vCenter: vcsa.lab.local
+Cluster: CL-LAB
+Source host: esxi01.lab.local
+Target host: esxi02.lab.local
+Shared datastore: DS-SHARED-01
+Target datastore: DS-SHARED-02
+VM: WebServer01
+VM network: PG-SERVER-VLAN120
+vMotion VMkernel: vmk1 na oba hosta</code></pre>
+
+<p>
+Vežba se izvodi isključivo u laboratoriji ili u odobrenom produkcionom prozoru. Potreban je nalog sa minimalnim privilegijama za migraciju, čitanje hosta, mreže i datastore-a, kao i VCF PowerCLI na administratorskoj stanici. VM mora imati jednostavan testni servis i poznatu početnu proveru, na primer HTTP health endpoint i kontinuirani ping sa zasebne testne stanice. Snapshot nije obavezan niti je rollback za migraciju; backup se koristi prema politici zaštite podataka.
+</p>
+
+<h4>Vežba 1 – pre-check i početni dokaz</h4>
+
+<p>
+<strong>Cilj:</strong> dokazati da je VM zdrava i da odredište zadovoljava compute, mrežne i storage uslove pre promene. Rizik je nizak jer se stanje samo čita.
+</p>
+
+<ol>
+  <li>U vSphere Client-u zabeleži trenutni host, datastore-e, port grupu, power state, VMware Tools status, alarme, snapshot-e i poslednje događaje VM-a.</li>
+  <li>Proveri da su oba hosta <em>Connected</em>, da nisu u maintenance stanju i da ciljni host ima dovoljno resursa.</li>
+  <li>Na oba hosta proveri VMkernel adapter sa omogućenim vMotion servisom. Izvrši <code>vmkping</code> u oba smera.</li>
+  <li>Potvrdi da oba hosta vide <code>DS-SHARED-01</code> i da cilj vidi <code>PG-SERVER-VLAN120</code> sa istim VLAN i policy vrednostima.</li>
+  <li>Pokreni test aplikacije i kontinuirani ping. Sačuvaj vreme, prosečnu latenciju i očekivani HTTP odgovor.</li>
+  <li>Pokreni <strong>Migrate &gt; Change compute resource only</strong>, izaberi <code>esxi02.lab.local</code> i sačekaj compatibility rezultat, ali još ne potvrđuj migraciju.</li>
+</ol>
+
+<p>
+<strong>Očekivani rezultat i kriterijum završetka:</strong> compatibility check prikazuje da je cilj kompatibilan bez neobjašnjenih upozorenja; vMotion putanja radi u oba smera; aplikacija i VMware Tools su zdravi; početno stanje je dokumentovano. Ako bilo koji uslov nije ispunjen, migracija se ne pokreće.
+</p>
+
+<h4>Vežba 2 – compute-only vMotion i post-check</h4>
+
+<p>
+<strong>Cilj:</strong> premestiti uključenu <code>WebServer01</code> sa <code>esxi01</code> na <code>esxi02</code> bez promene datastore-a i dokazati kontinuitet servisa. Rizik je umeren: pogrešna mreža, resursna zagušenost ili neotkrivena kompatibilnost mogu izazvati prekid.
+</p>
+
+<ol>
+  <li>Ostavi aktivan kontinuirani ping i aplikacioni health check sa nezavisne testne stanice.</li>
+  <li>U čarobnjaku potvrdi <strong>Change compute resource only</strong>, izaberi <code>esxi02.lab.local</code>, pregledaj compatibility stranu i završni sažetak.</li>
+  <li>Pokreni migraciju i prati Recent Tasks. Ne pokreći paralelni storage ili snapshot task.</li>
+  <li>Po završetku potvrdi da je VM na <code>esxi02</code>, da je power state ostao <em>Powered on</em>, datastore isti, port grupa ista i VMware Tools heartbeat zelen.</li>
+  <li>Uporedi ping i HTTP rezultate sa početnim stanjem; pregledaj Events i performanse oba hosta u vremenu task-a.</li>
+  <li>Zabeleži trajanje, eventualno izgubljene pakete, task ID i konačan status.</li>
+</ol>
+
+<p>
+<strong>Rollback:</strong> ako je migracija završena, ali servis nije zdrav, najpre utvrdi da li je uzrok mreža ili aplikacija. Ako je izvorni host zdrav i povratak smanjuje rizik, pokreni novu compute-only migraciju na <code>esxi01</code>. Ako task još traje, ne isključuj VM i ne restartuj management agente bez potvrđene potrebe. Eskaliraj prema incident proceduri i sačuvaj dokaze.
+</p>
+
+<p>
+<strong>Kriterijum završetka:</strong> task je uspešan, VM radi na ciljnom hostu, aplikacioni test je uspešan, storage i mrežna pripadnost su očekivani i nema novog kritičnog alarma.
+</p>
+
+<h4>Vežba 3 – Storage vMotion</h4>
+
+<p>
+<strong>Cilj:</strong> premestiti datoteke uključene VM sa <code>DS-SHARED-01</code> na <code>DS-SHARED-02</code> i potvrditi politiku, kapacitet i aplikacioni rad. Preuslov je dovoljno slobodnog prostora na cilju, zdrave storage putanje i odsustvo konfliktnog backup ili consolidation posla.
+</p>
+
+<ol>
+  <li>Zabeleži sve diskove i njihove trenutne datastore putanje, provisioned/used veličine, snapshot stanje i VM Storage Policy.</li>
+  <li>Proveri slobodan prostor, alarme, latenciju i policy kompatibilnost <code>DS-SHARED-02</code>.</li>
+  <li>Izaberi <strong>Migrate &gt; Change storage only</strong>. Izaberi cilj i storage policy; format diska menjaj samo ako je to izričit cilj promene.</li>
+  <li>Pokreni migraciju i prati task, datastore throughput, latency i slobodan prostor na oba datastore-a.</li>
+  <li>Po završetku proveri da VM home i svi planirani VMDK-ovi pokazuju ciljnu lokaciju. Potvrdi status Storage Policy compliance, aplikacioni test i Events.</li>
+</ol>
+
+<p>
+<strong>Rollback:</strong> povratak je nova Storage vMotion operacija na izvorni datastore, pod uslovom da je on zdrav i da prostor nije uklonjen. Izvor se ne demontira i ne briše dok post-check, backup registracija i period posmatranja nisu završeni.
+</p>
+
+<p>
+<strong>Kriterijum završetka:</strong> sve planirane datoteke su na ciljnom datastore-u, politika je compliant ili je odobreno odstupanje dokumentovano, aplikacija radi i nema storage alarma.
+</p>
+
+<h4>Vežba 4 – namerna, bezbedna compatibility greška</h4>
+
+<p>
+<strong>Cilj:</strong> uvežbati dijagnostiku bez izazivanja prekida. U laboratoriji poveži virtuelni CD/DVD uređaj na ISO koji je dostupan samo izvoru ili izaberi cilj bez odgovarajuće testne port grupe. Nemoj potvrditi migraciju; koristi samo compatibility check.
+</p>
+
+<ol>
+  <li>Zabeleži simptom: puna poruka, vreme, VM, izvor i cilj.</li>
+  <li>Odredi obim: proveri da li druga laboratorijska VM ima isti problem i da li cilj uopšte vidi resurs.</li>
+  <li>Postavi hipotezu da vezani uređaj ili mrežno mapiranje blokira operaciju.</li>
+  <li>Potvrdi hipotezu u <strong>Edit Settings</strong> i PowerCLI read-only pregledom <code>Get-CDDrive</code> ili <code>Get-NetworkAdapter</code>.</li>
+  <li>Bezbedna korekcija je odvajanje samo laboratorijskog, nepotrebnog ISO-a ili izbor pravilne postojeće port grupe. Ne kreiraj lažnu produkcionu mrežu radi prolaska čarobnjaka.</li>
+  <li>Ponovi compatibility check i potvrdi da je greška nestala.</li>
+  <li>Vrati laboratoriju u početno stanje ako je scenario zahtevao privremenu izmenu.</li>
+</ol>
+
+<p>
+<strong>RCA zapis:</strong> simptom je odbijena migracija; neposredni uzrok je nedostupan vezani resurs; osnovni uzrok je neusklađena konfiguracija VM-a ili ciljnih resursa; privremena mera je izbor kompatibilnog cilja; trajna mera je standardizacija medija, port grupa i pre-check kontrola.
+</p>
+
+<h4>Vežba 5 – PowerCLI migracija sa kontrolom skupa i rollback-om</h4>
+
+<p>
+<strong>Cilj:</strong> automatizovati jednu compute migraciju bez wildcard rizika. Preuslovi su završena Vežba 1, odobren nalog, instaliran VCF PowerCLI i poznat povratni host.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+
+$vm = Get-VM -Name 'WebServer01' -ErrorAction Stop
+$sourceHost = $vm.VMHost
+$targetHost = Get-VMHost -Name 'esxi02.lab.local' -ErrorAction Stop
+
+# READ-ONLY kontrola pre promene
+[pscustomobject]@{
+    VM = $vm.Name
+    PowerState = $vm.PowerState
+    Source = $sourceHost.Name
+    Target = $targetHost.Name
+    TargetConnection = $targetHost.ConnectionState
+} | Format-List
+
+if ($vm.PowerState -ne 'PoweredOn') {
+    throw 'Laboratorijska vežba očekuje uključenu VM.'
+}
+
+# STATE-CHANGING
+$task = Move-VM -VM $vm -Destination $targetHost `
+    -RunAsync -Confirm:$false -ErrorAction Stop
+$task | Wait-Task
+
+# READ-ONLY post-check
+Get-VM -Name 'WebServer01' |
+    Select-Object Name, PowerState, VMHost
+
+# ROLLBACK, izvršiti samo ako post-check nalaže povratak
+# Move-VM -VM (Get-VM 'WebServer01') `
+#     -Destination $sourceHost -Confirm:$true</code></pre>
+
+<p>
+<strong>Očekivani rezultat:</strong> task prelazi u <em>Success</em>, a post-check prikazuje ciljni host. <strong>Kriterijum završetka:</strong> pored PowerCLI izlaza potvrđeni su aplikacioni health check, mreža, Events i odsustvo kritičnih alarma. Komentarisani rollback se ne izvršava rutinski; koristi se samo kada je povratak opravdan i source ostaje validan.
+</p>
+
+<h3>Incident response kada migracija ne uspe</h3>
+
+<ol>
+  <li><strong>Zaustavi širenje promene.</strong> Pauziraj nove migracije istog talasa, ali ne prekidaj nasumično već aktivan task.</li>
+  <li><strong>Utvrdi stanje VM-a.</strong> Da li je uključena, na kom hostu je registrovana, gde su datoteke i da li aplikacija radi? Ne zaključuj samo iz procenta task-a.</li>
+  <li><strong>Sačuvaj dokaze.</strong> Task i Events, vreme, korisnik, source/target, alarme, metrike i relevantne logove.</li>
+  <li><strong>Odredi obim i posledicu.</strong> Jedna VM, jedan host, jedna mreža, jedan datastore ili sve migracije? Da li je pogođen samo administratorski task ili korisnički servis?</li>
+  <li><strong>Formuliši hipotezu.</strong> CPU/EVC, mreža, storage, uređaj, resurs ili vCenter komunikacija. Testiraj prvo read-only proverom.</li>
+  <li><strong>Primeni najmanju korekciju.</strong> Izbor drugog validnog hosta je bezbedniji od promene klasterskog EVC-a usred incidenta; smanjenje paralelnih task-ova je bezbednije od restartovanja agenata.</li>
+  <li><strong>Validiraj oporavak.</strong> Task status, stanje VM-a, aplikacija, mreža, datastore, policy i novi alarmi.</li>
+  <li><strong>Dokumentuj root cause.</strong> Razdvoji neposredni uzrok, osnovni procesni ili dizajnerski uzrok, workaround i trajnu meru.</li>
+</ol>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Migraciju tretiraj kao kontrolisanu promenu sa vlasnikom, ciljem, pre-check-om, rollback-om i dokazom uspeha.</li>
+  <li>Standardizuj vMotion VMkernel mrežu, MTU, VLAN, uplink raspored i naming; periodično testiraj putanju sa oba hosta.</li>
+  <li>Planiraj EVC pri dizajnu klastera i proveravaj Compatibility Guide pre nabavke ili uključivanja nove generacije hostova.</li>
+  <li>Ne pretpostavljaj kompatibilnost port grupa na osnovu naziva. Uporedi backing i efektivne politike.</li>
+  <li>Ne pokreći migraciju zajedno sa velikim backup-om, snapshot konsolidacijom ili storage maintenance poslom bez procene zajedničkog uskog grla.</li>
+  <li>Ograniči broj paralelnih migracija prema kapacitetu mreže, hosta i storage-a; meri, ne nagađaj.</li>
+  <li>Za grupne PowerCLI operacije koristi eksplicitnu listu, count proveru, <code>-WhatIf</code> kada je cmdlet podržava i kontrolisano praćenje task-ova.</li>
+  <li>Posle cross-vCenter migracije proveri identitet, dozvole, tagove, custom attributes, backup, monitoring, alarme, mrežu i CMDB; uspešan prenos VM-a ne prenosi nužno ceo operativni kontekst.</li>
+  <li>Ne koristi snapshot kao zamenu za backup ili rollback migracije. Povratna migracija je zasebna promena, a oporavak podataka pripada backup/restore proceduri.</li>
+  <li>Privremeno uključen ESXi Shell ili SSH vrati u stanje propisano hardening politikom i dokumentuj administrativni pristup.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je savladana kada administrator može, bez nagađanja i uz proverljive dokaze, da:
+</p>
+
+<ul>
+  <li>razlikuje compute-only, storage-only, kombinovanu, cold i cross-vCenter migraciju i izabere najmanje rizičnu metodu;</li>
+  <li>objasni pre-copy tok vMotion-a i uticaj RAM-a, dirty rate-a, mrežnog protoka i storage latencije;</li>
+  <li>proveri CPU/EVC, virtuelni hardver, uređaje, host resurse, DRS pravila, VMkernel putanju, port grupe, datastore i storage policy;</li>
+  <li>izvrši jednu kontrolisanu migraciju kroz vSphere Client i VCF PowerCLI, razlikujući read-only od state-changing komandi;</li>
+  <li>prati Tasks and Events, performanse i ključne ESXi/vCenter logove u istom vremenskom prozoru;</li>
+  <li>validira aplikaciju, mrežu, lokaciju datoteka, policy compliance, backup i monitoring posle promene;</li>
+  <li>razdvoji simptom, neposredni uzrok, root cause, workaround i trajnu korektivnu meru;</li>
+  <li>izvede bezbedan povratak kada je potreban i sačuva dokaze za change zapis ili RCA.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+Migracija virtuelne mašine je jedna od najvrednijih mogućnosti vSphere platforme, jer odvaja životni ciklus workload-a od životnog ciklusa pojedinačnog hosta i storage uređaja. vMotion održava izvršavanje dok prenosi aktivno stanje, Storage vMotion premešta datoteke uz aktivan I/O, a kombinovani i cross-vCenter tokovi omogućavaju šire reorganizacije. Međutim, dostupnost ne nastaje samim pritiskom na dugme: ona zavisi od kompatibilnog CPU baseline-a, zdrave i zaštićene vMotion mreže, odgovarajućeg storage-a, tačnog mapiranja mreža, dozvola, politika i discipline promene.
+</p>
+
+<p>
+Odgovoran administrator zato migraciju završava tek kada je servis potvrđen dokazima. Task status je važan, ali tek zajedno sa aplikacionim health check-om, mrežnim stanjem, storage politikom, alarmima, događajima i dokumentovanim rollback-om daje pouzdan odgovor. Takav način rada priprema čitaoca za narednu lekciju o osnovnom troubleshooting-u VM-a i za kasnije detaljne celine o VMkernel mreži, storage dijagnostici, DRS-u, održavanju i upravljanju incidentima.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere 8 dokumentacija za migraciju virtuelnih mašina, vMotion i cross-vCenter vMotion; VMware Compatibility Guide i zvanični EVC i vMotion Knowledge Base članci; VCF PowerCLI Move-VM reference; vSphere administrativne, mrežne, storage, bezbednosne, monitoring i troubleshooting reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-18-konverzija-template.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-20-osnovni-troubleshooting-vm.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

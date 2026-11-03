@@ -1,0 +1,603 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Backup, disaster recovery i obnova platforme – RPO, RTO, redosled oporavka i validacija | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Backup, disaster recovery i obnova Tanzu platforme – RPO, RTO, zavisnosti, redosled oporavka i završna validacija.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, backup, disaster recovery, obnova platforme, RPO, RTO, recovery, VKS klaster, validacija oporavka, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Backup, disaster recovery i obnova platforme – RPO, RTO, redosled oporavka i validacija">
+
+  <meta property="og:description"
+        content="Četrdeset deveta lekcija VMware &amp; Tanzu tutorijala – backup, disaster recovery, RPO, RTO, redosled oporavka i validacija platforme.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Backup, disaster recovery i obnova platforme – RPO, RTO, redosled oporavka i validacija">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.png"
+           alt="Backup, disaster recovery i obnova platforme – RPO, RTO, redosled oporavka i validacija">
+
+    </a>
+
+ 
+
+    <div class="page-subtitle">
+  XII. Lifecycle, automatizacija, recovery i interoperabilnost
+</div>
+
+<div class="page-subtitle">
+  49. Backup, disaster recovery i obnova platforme – RPO, RTO, redosled oporavka i validacija
+</div>
+
+<p>
+  Backup Tanzu okruženja nije jedna kopija jednog sistema. Platforma je lanac zavisnosti koji obuhvata fizičku i virtuelnu infrastrukturu, vCenter Server, mrežni i storage sloj, Supervisor, VKS klastere, Kubernetes objekte, persistent podatke, registre image-a, identitet, sertifikate, DNS i spoljne servise. Ako administrator sačuva samo virtuelne mašine ili samo YAML manifeste, dobio je delimičnu zaštitu, ali ne i dokaz da može da obnovi uslugu. Disaster recovery (DR) zato počinje analizom poslovne usluge i zavisnosti, a završava se funkcionalnim testom aplikacije, integriteta podataka i bezbednosnih kontrola.
+</p>
+
+<p>
+  Ova lekcija nastavlja lifecycle i automatizacioni način rada iz prethodnih lekcija: politike, rasporedi, retention i testovi moraju biti deklarativni, ponovljivi i proverljivi. Cilj nije samo napraviti backup, već projektovati obnovu koja ima vlasnika, odobren redosled, merljiv RPO i RTO, izolovanu kopiju, dokumentovan runbook i dokaz da je poslednji test završen u dozvoljenom vremenu.
+</p>
+
+<h3>1. Ishodi učenja i granice odgovornosti</h3>
+
+<p>Po završetku lekcije administrator treba da ume da:</p>
+
+<ul>
+  <li>prevede poslovne zahteve u RPO, RTO, retention i nivo konzistentnosti;</li>
+  <li>napravi mapu zavisnosti i matricu zaštite po slojevima Tanzu platforme;</li>
+  <li>razlikuje vCenter file-based backup, image-level backup, Kubernetes resource backup, CSI snapshot i aplikativno konzistentnu kopiju;</li>
+  <li>odredi redosled obnove infrastrukture, platformskih servisa, VKS klastera i aplikacija;</li>
+  <li>izvede kontrolisani backup i nedestruktivan restore test, prikupi logove i dokaže rezultat;</li>
+  <li>prepozna delimično uspešan backup, neusklađene verzije, nedostupno objektno skladište, neobnovljene tajne i nekonzistentne baze;</li>
+  <li>razdvoji tehnički oporavak resursa od potvrde da je poslovna usluga zaista obnovljena.</li>
+</ul>
+
+<p>
+  Granica ove lekcije je operativni dizajn i validacija oporavka. Izbor konkretnog enterprise backup proizvoda, ugovaranje sekundarne lokacije i detaljan poslovni continuity plan zavise od organizacije. Komercijalni proizvod nije automatski dokaz potpunog pokrića: mora biti izričito podržan za korišćenu kombinaciju vSphere/VCF, Supervisor, VKS, CSI drajvera i Kubernetes izdanja.
+</p>
+
+<h3>2. RPO, RTO, retention i prihvatljiv gubitak</h3>
+
+<p>
+  <strong>Recovery Point Objective (RPO)</strong> je najveći prihvatljiv vremenski gubitak podataka. Ako je RPO 15 minuta, organizacija mora obezbediti da u prihvatljivom incidentu ne izgubi više od približno 15 minuta potvrđenih promena. <strong>Recovery Time Objective (RTO)</strong> je najveće prihvatljivo vreme od proglašenja incidenta do povratka usluge na dogovoreni nivo. RTO nije samo vreme kopiranja podataka: obuhvata detekciju, odluku, eskalaciju, obezbeđivanje infrastrukture, restore, ponovno povezivanje zavisnosti, validaciju i predaju vlasniku usluge.
+</p>
+
+<pre><code class="language-none">RPO = vreme incidenta − vreme poslednje upotrebljive i konzistentne tačke oporavka
+ostvareni RTO = vreme potvrđene funkcionalne obnove − vreme proglašenja incidenta</code></pre>
+
+<p>
+  Retention određuje koliko dugo se tačke oporavka čuvaju, ali ne dokazuje njihovu upotrebljivost. Backup star 30 dana može zadovoljiti retention, a da ne zadovoljava RPO. Slično tome, replika sa greškom ili kriptovanim podacima može brzo preneti isti kvar na DR lokaciju. Zbog toga su backup, replikacija, visoka dostupnost i disaster recovery povezane, ali različite discipline.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Pojam</th><th>Pitanje koje rešava</th><th>Tipična greška</th><th>Dokaz</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>HA</td><td>Kako usluga preživljava lokalni kvar komponente?</td><td>HA se smatra zamenom za backup.</td><td>Kontrolisan failover i alarmi.</td></tr>
+    <tr><td>Backup</td><td>Iz koje istorijske tačke mogu vratiti stanje?</td><td>Proverava se samo status posla, ne restore.</td><td>Obnovljen uzorak i verifikovan sadržaj.</td></tr>
+    <tr><td>Replikacija</td><td>Kako kopiju brzo preneti na drugo mesto?</td><td>Logička korupcija se odmah replicira.</td><td>Lag, health i nezavisna tačka oporavka.</td></tr>
+    <tr><td>DR</td><td>Kako obnoviti kompletnu uslugu posle katastrofe?</td><td>Postoji alat, ali nema redosleda i vlasnika.</td><td>Izmeren end-to-end test prema runbook-u.</td></tr>
+    <tr><td>Retention</td><td>Koliko dugo čuvamo tačke oporavka?</td><td>TTL se meša sa RPO.</td><td>Politika, katalog kopija i test čitljivosti.</td></tr>
+  </tbody>
+</table>
+
+<h3>3. Klasifikacija usluga i recovery tier-ovi</h3>
+
+<p>
+  Jedinstven RPO i RTO za celu platformu obično je ili preskup ili beskoristan. Usluge treba klasifikovati prema posledici prekida, učestalosti promene i načinu rekonstrukcije. Git repozitorijum može biti autoritativan izvor za deklarativne objekte, ali nije backup runtime podataka. Baza podataka može zahtevati log shipping i point-in-time recovery, dok stateless frontend može biti ponovo raspoređen iz Git-a i registra.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Primer tier-a</th><th>Primer RPO/RTO</th><th>Primer zaštite</th><th>Napomena</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Tier 0 – identitet i upravljanje</td><td>RPO ≤ 1 h; RTO ≤ 4 h</td><td>Česte konfiguracione kopije, redundansa, izolovana dokumentacija i pristup</td><td>Vrednosti su primer; organizacija ih odobrava analizom uticaja.</td></tr>
+    <tr><td>Tier 1 – kritični stateful workload</td><td>RPO ≤ 15 min; RTO ≤ 2 h</td><td>Aplikativni backup/logovi, CSI ili storage kopija i Kubernetes metapodaci</td><td>Crash-consistent snapshot možda nije dovoljan.</td></tr>
+    <tr><td>Tier 2 – standardna poslovna usluga</td><td>RPO ≤ 4 h; RTO ≤ 8 h</td><td>Raspoređeni resource i volume backup</td><td>Test najmanje prema internom DR ciklusu.</td></tr>
+    <tr><td>Tier 3 – lako obnovljiv stateless servis</td><td>RPO 24 h; RTO 24 h</td><td>GitOps, image registry i minimalni backup tajni/podataka</td><td>Rebuild je često brži od restore-a.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Brojevi u tabeli nisu preporuka proizvođača. Oni su obrazac za razgovor sa vlasnikom usluge. Svaki cilj mora imati mernu tačku: kada incident počinje, ko ga proglašava, koji nivo funkcionalnosti znači „oporavljeno” i da li se vreme čekanja na poslovnu potvrdu računa u RTO.
+</p>
+
+<h3>4. Mapa slojeva i šta se zaista štiti</h3>
+
+<table>
+  <thead>
+    <tr><th>Sloj</th><th>Objekti i stanje</th><th>Primarna zaštita</th><th>Restore zavisnost</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Fizička/virtuelna infrastruktura</td><td>ESXi, datastore, vDS, port grupe, routing, load balancer</td><td>Redundansa, konfiguraciona evidencija, vendor backup gde je podržan</td><td>Compute, mreža, storage, DNS i vreme moraju biti dostupni.</td></tr>
+    <tr><td>vCenter Server</td><td>Inventar, konfiguracija, događaji, uloge, vDS podaci i servisi</td><td>Native file-based backup prema dokumentaciji izdanja</td><td>Kompatibilan VCSA installer/ISO, backup lokacija i mrežni identitet.</td></tr>
+    <tr><td>NSX/VCF komponente</td><td>Manager konfiguracija, mrežne politike, edge i fabric stanje</td><td>Native backup svake komponente; orkestrirani VCF postupak gde se koristi</td><td>Tačan proizvod, izdanje i propisan redosled.</td></tr>
+    <tr><td>Supervisor control plane</td><td>Supervisor konfiguracija i workload-management stanje</td><td>vSphere/Supervisor podržani backup i restore tok</td><td>Obnovljen i zdrav vCenter plus zavisna infrastruktura.</td></tr>
+    <tr><td>VKS klaster</td><td>Cluster API objekti, Kubernetes resursi i konfiguracija</td><td>Deklarativni izvori, podržani Velero/enterprise backup; po potrebi rebuild</td><td>Supervisor, namespace, politike, sadržajna biblioteka/registry i mreža.</td></tr>
+    <tr><td>Persistent volume</td><td>Blokovi/fajlovi aplikativnih podataka</td><td>CSI snapshot, data mover/file-system backup ili aplikativni backup</td><td>Kompatibilan CSI/storage, VolumeSnapshotClass i dozvoljen kapacitet.</td></tr>
+    <tr><td>Aplikacija</td><td>Deployments, Services, CRD/CR, ConfigMaps, Secrets, baze i redovi</td><td>GitOps + backup runtime objekata + nativni mehanizam baze</td><td>CRD/operator pre CR objekata; tajne, sertifikati, registry i spoljne usluge.</td></tr>
+    <tr><td>Spoljni sistemi</td><td>DNS, IdP, PKI, KMS, registry, object store, Git, monitoring</td><td>Sopstvena politika zaštite svakog sistema</td><td>Pristupni nalozi i break-glass procedura moraju biti dostupni nezavisno.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Najvažnije pravilo je da zaštita nižeg sloja ne podrazumeva automatsku aplikativnu konzistentnost višeg. Snapshot datastore-a može sačuvati blokove, ali ne mora isprazniti transakcioni log baze. Backup Kubernetes API objekata može obnoviti PVC deklaraciju, ali ne i sadržaj volumena. Git može ponovo kreirati Deployment, ali ne i Secret koji nikada nije bezbedno upisan u repozitorijum.
+</p>
+
+<h3>5. Konzistentnost podataka i izbor metode</h3>
+
+<p>
+  <strong>Crash-consistent</strong> kopija predstavlja stanje kakvo bi sistem video posle iznenadnog nestanka napajanja. Može biti dovoljna za neke fajl-sisteme i aplikacije sa dobrim journal-om. <strong>File-system-consistent</strong> kopija koordinira upis na nivou fajl-sistema. <strong>Application-consistent</strong> kopija koristi aplikativne hook-ove, quiesce, dump, log backup ili nativni API da bi transakcije bile u poznatom stanju. Potreban nivo određuje vlasnik aplikacije zajedno sa storage i platform timom.
+</p>
+
+<ul>
+  <li>Za bazu podataka koristite njen podržani backup/PITR mehanizam i testirajte restore kataloga, logova i ključeva.</li>
+  <li>Za PVC snapshot proverite da CSI drajver i storage podržavaju snapshot, da postoji odgovarajuća <code>VolumeSnapshotClass</code> i da kopija nije vezana samo za isti failure domain.</li>
+  <li>Za file-system backup proverite throughput, promenu podataka tokom posla, prava pristupa, symlink-ove i restore UID/GID vrednosti.</li>
+  <li>Za Kubernetes resurse proverite CRD, admission webhook-ove, operatore, finalizer-e, cluster-scoped resurse i mapiranje storage klasa.</li>
+</ul>
+
+<p>
+  Kubernetes <code>VolumeSnapshot</code> je standardizovan zahtev za point-in-time kopiju volumena. On nije sam po sebi off-site, immutable ili dugoročni backup. Ako se snapshot i izvorni volume nalaze na istom storage sistemu i u istom failure domain-u, kvar tog sistema može ukloniti oba. Produkciona strategija zahteva nezavisnu kopiju ili data mover kada analiza rizika to nalaže.
+</p>
+
+<h3>6. Pravilo 3-2-1-1-0 i bezbednost kopija</h3>
+
+<p>
+  Koristan cilj je 3-2-1-1-0: najmanje tri kopije podataka, na najmanje dva tipa medija ili nezavisna storage domena, jedna van primarne lokacije, jedna offline ili immutable, i nula neotkrivenih grešaka posle automatizovane verifikacije. Ovo nije zamena za procenu rizika, ali sprečava da produkcija i sve kopije dele isti administratorski nalog, KMS, mrežni segment ili failure domain.
+</p>
+
+<ul>
+  <li>Backup service account dobija najmanje potrebne privilegije; interaktivni administratorski nalog se ne koristi za raspoređene poslove.</li>
+  <li>Objektno skladište koristi enkripciju u prenosu i mirovanju, versioning/object lock kada je podržan i odvojenu politiku brisanja.</li>
+  <li>Ključevi, lozinke i recovery kodovi čuvaju se odvojeno od šifrovanih kopija, uz kontrolisan break-glass pristup.</li>
+  <li>Backup mreža, repozitorijum i konzola ne treba da dele istu kompromitovanu ravan upravljanja sa produkcijom.</li>
+  <li>Restore se prvo izvodi u izolovanoj mreži; pre povezivanja se proveravaju malware, identiteti, certifikati i izlazne integracije.</li>
+</ul>
+
+<h3>7. vCenter, Supervisor i verzijski uslovljeni tokovi</h3>
+
+<p>
+  vCenter Server Appliance ima podržani native <strong>file-based backup</strong>. Konfiguriše se kroz VAMI interfejs, tipično na <code>https://&lt;vcsa-fqdn&gt;:5480</code>, ili odgovarajući API, prema vodiču tačnog izdanja. Backup se šalje na podržani udaljeni protokol i može uključiti opcionu enkripciju. Restore se ne radi prostim kopiranjem fajlova u postojeću appliance: pokreće se iz kompatibilnog VCSA installera/ISO-a, postavlja nova appliance i zatim uvozi sačuvano stanje prema zvaničnom workflow-u.
+</p>
+
+<p>
+  Pre oslanjanja na vCenter backup proveravaju se status poslednjeg posla, dostupnost repozitorijuma, lozinka za enkripciju, DNS/NTP, installer iste podržane verzije/build-a i dokumentovana mrežna konfiguracija. Virtual-machine snapshot VCSA nije trajna zamena za file-based backup i ne treba ga zadržavati kao dugoročnu kopiju.
+</p>
+
+<p>
+  Za Supervisor control plane koristi se isključivo podržani postupak konkretnog vSphere/VCF izdanja. Zvanični vSphere 8 vodiči dokumentuju backup i restore Supervisor control plane-a i TKG workload-a; VCF/vSphere 9 vodiči koriste termin VKS i novije Velero tokove. Nazivi paketa, verzije plug-in-a, podržani object store i komande instalacije razlikuju se. Pre implementacije proveravaju se product interoperability i Velero/vSphere plugin matrice; primeri iz starije 7.x/8.x dokumentacije ne prenose se slepo na 9.x.
+</p>
+
+<div class="warning-box">
+  <strong>Upozorenje:</strong> Nemojte ručno praviti <code>etcdctl snapshot</code> Supervisor ili upravljanog VKS control plane-a kao generičan recovery postupak, osim ako tačan Broadcom runbook i podrška to izričito zahtevaju. Upravljani control plane ima vlasništvo i lifecycle koje platforma kontroliše; neautorizovana intervencija može napraviti nepodržano ili nekonzistentno stanje.
+</div>
+
+<h3>8. Velero i backup workload-a</h3>
+
+<p>
+  Velero čuva Kubernetes API objekte u object store-u, a podatke volumena obrađuje preko podržanog snapshot plug-in-a ili file-system/data-mover mehanizma. Status <code>Completed</code> znači da je Velero posao završen bez prijavljenih grešaka, ali nije dokaz aplikativne konzistentnosti. Status <code>PartiallyFailed</code> zahteva pregled grešaka i upozorenja; takva kopija ne sme automatski dobiti status „uspešna” u operativnom izveštaju.
+</p>
+
+<p>
+  Sledeće komande su read-only i izvršavaju se sa administratorske stanice na kojoj su podešeni tačan VKS <code>kubeconfig</code> i kompatibilan Velero CLI. Nazivi resursa i izlaz zavise od instalirane verzije.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get ns
+kubectl -n velero get pods,deploy,daemonset
+velero version
+velero backup-location get
+velero schedule get
+velero backup get</code></pre>
+
+<p>
+  Pre state-changing backup komande administrator potvrđuje kontekst, namespace obuhvat i zahtev za volumenima. Primer pravi ručni backup samo laboratorijskog namespace-a, uključuje cluster-scoped resurse koje Velero veže za izbor i zahteva snapshot volumena. Konkretna semantika plug-in-a i snapshot opcija mora biti potvrđena za instaliranu verziju.
+</p>
+
+<pre><code class="language-bash">BACKUP_NAME="payments-dr-$(date -u +%Y%m%dT%H%M%SZ)"
+velero backup create "$BACKUP_NAME" \
+  --include-namespaces payments-lab \
+  --include-cluster-resources=true \
+  --snapshot-volumes \
+  --ttl 168h \
+  --wait
+
+velero backup describe "$BACKUP_NAME" --details
+velero backup logs "$BACKUP_NAME"</code></pre>
+
+<p>
+  Komanda menja stanje tako što kreira <code>Backup</code> objekat i može pokrenuti storage snapshot ili prenos podataka. Bezbedna je samo kada je naziv jedinstven, object store dostupan, kvota dovoljna i aplikacija pripremljena za izabrani nivo konzistentnosti. Uspeh se potvrđuje fazom, brojem obrađenih resursa, odsustvom neočekivanih upozorenja, prisustvom kopije u backup lokaciji i kasnijim restore testom.
+</p>
+
+<p>Za pregled događaja i kontrolera koriste se sledeće read-only provere:</p>
+
+<pre><code class="language-bash">kubectl -n velero get events --sort-by=.metadata.creationTimestamp
+kubectl -n velero logs deploy/velero --since=2h
+kubectl get volumesnapshot,volumesnapshotcontent -A
+kubectl get pvc,pv -A
+kubectl api-resources | grep -Ei 'backup|restore|snapshot'</code></pre>
+
+<p>
+  Kod node-agent/file-system backup-a proveravaju se i odgovarajući DaemonSet podovi i <code>PodVolumeBackup</code>/<code>PodVolumeRestore</code> resursi ako ih instalirana verzija koristi. Logove treba korelisati po UTC vremenu, nazivu backup-a, namespace-u, PVC-u i snapshot handle-u, zajedno sa vCenter događajima i storage alarmima.
+</p>
+
+<h3>9. Šta manifesti i backup često ne obuhvate</h3>
+
+<ul>
+  <li>Image-e koji više ne postoje u registru ili su tag-ovani promenljivim tagom umesto digestom.</li>
+  <li>Spoljne DNS zapise, IdP grupe, PKI private key materijal, KMS ključeve i firewall pravila.</li>
+  <li>Dinamički generisane Secrets vrednosti koje GitOps namerno ne čuva.</li>
+  <li>Licencne fajlove i hardverski vezane aktivacije.</li>
+  <li>CRD ili operatore potrebne pre obnove njihovih custom resource objekata.</li>
+  <li>Podatke u <code>emptyDir</code>, lokalnom ephemeral storage-u i procesnoj memoriji.</li>
+  <li>Podržanu redoslednu konzistentnost između više baza, redova poruka i spoljnih API-ja.</li>
+  <li>Audit i monitoring istoriju ako su backend sistemi u istom failure domain-u.</li>
+</ul>
+
+<p>
+  Recovery inventar zato mora sadržati najmanje: vlasnika, tier, namespace, VKS klaster, storage class, PVC/kapacitet, metod zaštite, lokaciju kopije, enkripcioni ključ, raspored, retention, poslednji uspešan backup, poslednji uspešan restore test, zavisnosti, runbook i odobreni cilj.
+</p>
+
+<h3>10. Redosled oporavka platforme</h3>
+
+<ol>
+  <li><strong>Proglasiti incident i sačuvati dokaze.</strong> Zaustaviti automatizacije koje mogu prepisati stanje, zabeležiti vreme, obim, poslednje promene, alarme i audit trag.</li>
+  <li><strong>Obezbediti recovery ravan.</strong> Potvrditi osoblje, break-glass pristup, čiste administratorske stanice, dokumentaciju, kopije i ključeve.</li>
+  <li><strong>Obnoviti osnovne zavisnosti.</strong> Compute, storage, mrežu, routing, DNS, NTP, PKI/KMS i identitet u meri potrebnoj za upravljački sloj.</li>
+  <li><strong>Obnoviti management komponente.</strong> U VCF okruženju slediti tačno propisani SDDC Manager/vCenter/NSX redosled za izdanje; u vSphere okruženju obnoviti vCenter podržanim file-based tokom.</li>
+  <li><strong>Validirati vSphere stanje.</strong> Inventory, host connection, datastore, vDS/port grupe, certifikate, vreme, alarme i servise.</li>
+  <li><strong>Obnoviti Supervisor.</strong> Koristiti verzijski odgovarajući workflow; potvrditi control plane health, namespace-e, storage i mrežne servise.</li>
+  <li><strong>Obnoviti ili ponovo kreirati VKS klastere.</strong> Prvo platformsku konfiguraciju, Cluster API/VKS objekte i obavezne pakete; tek zatim workload-e.</li>
+  <li><strong>Obnoviti platformsku osnovu u klasteru.</strong> CRD, operatore, storage/network kontrolere, policy engine, ingress, cert-manager, external-dns i observability agente u zavisnom redosledu.</li>
+  <li><strong>Obnoviti podatke i workload-e.</strong> Secrets i konfiguracije, stateful komponente, baze i redove, pa stateless servise i ulazni saobraćaj.</li>
+  <li><strong>Validirati i kontrolisano vratiti saobraćaj.</strong> Tehničke provere, integritet podataka, poslovni test, bezbednosna potvrda, DNS/LB prebacivanje i pojačan monitoring.</li>
+</ol>
+
+<p>
+  Redosled nije univerzalna skripta. Ako je DNS spoljan i zdrav, ne obnavlja se. Ako je management domen VCF-a pogođen, koristi se VCF runbook, ne izolovani vCenter recept. Ako je oštećen samo jedan namespace, puni DR platforme je nepotrebno rizičan; bira se najmanji opseg koji pouzdano vraća uslugu.
+</p>
+
+<h3>11. Validacija: od infrastrukture do poslovne transakcije</h3>
+
+<table>
+  <thead>
+    <tr><th>Nivo</th><th>Provera</th><th>Dokaz uspeha</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Backup artefakt</td><td>Status, checksum gde postoji, enkripcija, retention i čitljivost</td><td>Katalog i uspešno učitan uzorak.</td></tr>
+    <tr><td>vSphere</td><td>vCenter servisi, hostovi, datastore-i, mreža, alarmi i vreme</td><td>Nema neočekivanih disconnected/degraded stanja.</td></tr>
+    <tr><td>Supervisor/VKS</td><td>API, čvorovi, conditions, sistemski podovi i paketi</td><td>Control plane dostupan; očekivani čvorovi Ready.</td></tr>
+    <tr><td>Storage</td><td>PVC Bound, mount, read/write, kapacitet i snapshot objekti</td><td>Kontrolni podatak čitljiv i potvrđen.</td></tr>
+    <tr><td>Aplikacija</td><td>Readiness, servis, ingress, zavisnosti i queue lag</td><td>Sintetička transakcija prolazi.</td></tr>
+    <tr><td>Podaci</td><td>DB recovery status, schema, redovi, checksum ili poslovni zbir</td><td>Vlasnik podataka potpisuje validaciju.</td></tr>
+    <tr><td>Bezbednost</td><td>RBAC, tajne, sertifikati, audit, skeniranje i egress</td><td>Nema prekomernih prava ili kompromitovanih kredencijala.</td></tr>
+    <tr><td>Cilj</td><td>Izmereni gubitak i ukupno vreme</td><td>Ostvareni RPO/RTO u okviru odobrenog cilja.</td></tr>
+  </tbody>
+</table>
+
+<p>Sledeće komande su read-only post-restore provere na obnovljenom VKS klasteru:</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get nodes -o wide
+kubectl get pods -A
+kubectl get pvc,pv -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+kubectl -n payments-lab rollout status deployment/api --timeout=5m
+kubectl -n payments-lab get ingress,service,endpointslice</code></pre>
+
+<p>
+  <code>Running</code> pod nije dovoljan dokaz. Readiness može proći dok baza sadrži zastarele ili nekonzistentne podatke. Završna provera treba da izvrši poznatu read/write poslovnu transakciju sa kontrolnim identifikatorom, potvrdi rezultat u bazi ili redu i zatim bezbedno ukloni testni zapis. Test se dogovara sa vlasnikom aplikacije da ne pokrene stvarnu naplatu, slanje poruke ili drugi neželjeni spoljni efekat.
+</p>
+
+<h3>12. Praktikum – projektovanje i dokaz kontrolisanog oporavka</h3>
+
+<h4>12.1. Cilj, topologija i preduslovi</h4>
+
+<p>
+  Cilj je napraviti i validirati backup laboratorijskog namespace-a <code>payments-lab</code>, uključujući testni PVC, a zatim ga obnoviti u izolovani namespace bez brisanja izvora. Vežba dokazuje operativni tok, ne pun DR vCenter/Supervisor platforme. Produkcioni restore se ne izvodi bez change/incident odobrenja i verzijski odgovarajućeg vendor runbook-a.
+</p>
+
+<ul>
+  <li>jedan zdrav Supervisor i jedan laboratorijski VKS klaster;</li>
+  <li>kompatibilna, podržana Velero instalacija sa zdravim <code>BackupStorageLocation</code> i odgovarajućim volume mehanizmom;</li>
+  <li>administratorska stanica sa <code>kubectl</code>, Velero CLI i kubeconfig kontekstom za laboratorijski klaster;</li>
+  <li>namespace <code>payments-lab</code> sa aplikacijom i nekritičnim kontrolnim podacima;</li>
+  <li>izolovani DNS/ingress ili onemogućen spoljni saobraćaj za restore namespace;</li>
+  <li>odobrena kvota i dovoljno prostora u object store-u i storage-u.</li>
+</ul>
+
+<p>
+  Potrebne su Kubernetes privilegije za čitanje obuhvaćenih resursa i kreiranje Velero backup/restore objekata. Ne koristiti trajni cluster-admin token u skriptama. Rizik je srednji: restore može kreirati resurse i PVC-ove; pogrešan namespace mapping može prepisati ili sukobiti se sa produkcionim imenima.
+</p>
+
+<h4>12.2. Pre-check i prikupljanje početnog stanja</h4>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i get pods -n payments-lab
+kubectl auth can-i create backups.velero.io -n velero
+kubectl -n payments-lab get all,pvc,configmap,secret
+kubectl -n velero get pods
+velero backup-location get
+velero backup get</code></pre>
+
+<p>
+  Očekivano je da je izabran laboratorijski kontekst, Velero podovi su spremni, backup lokacija je <code>Available</code>, a PVC je <code>Bound</code>. Sačuvajte početni inventar i SHA-256 kontrolnog, nepoverljivog fajla iz volumena. Ne iznosite sadržaj Secret objekata u tiket ili terminalski transcript.
+</p>
+
+<pre><code class="language-bash">kubectl -n payments-lab exec deploy/data-check -- \
+  sha256sum /data/recovery-marker.txt</code></pre>
+
+<h4>12.3. Kreiranje i validacija backup-a</h4>
+
+<p>
+  Pre backup-a vlasnik aplikacije obezbeđuje odgovarajući quiesce ili aplikativni backup baze. Sledeći Velero primer menja stanje i koristi se tek posle te potvrde.
+</p>
+
+<pre><code class="language-bash">BACKUP_NAME="payments-lab-$(date -u +%Y%m%dT%H%M%SZ)"
+
+velero backup create "$BACKUP_NAME" \
+  --include-namespaces payments-lab \
+  --include-cluster-resources=true \
+  --snapshot-volumes \
+  --ttl 168h \
+  --wait
+
+velero backup describe "$BACKUP_NAME" --details
+velero backup logs "$BACKUP_NAME"</code></pre>
+
+<p>
+  Kriterijum ove faze je <code>Completed</code>, bez neočekivanih warnings/errors, uz potvrđene volume operacije. Ako je faza <code>PartiallyFailed</code>, posao se ne proglašava uspešnim: evidentira se svaki izostavljeni resurs, utvrđuje uticaj i ponavlja backup tek posle korekcije. Sačuvajte naziv backup-a i UTC vreme jer su potrebni za korelaciju.
+</p>
+
+<h4>12.4. Nedestruktivni restore u izolovani namespace</h4>
+
+<p>
+  Najbezbedniji redovan test je restore u novo ime namespace-a. Pre njega proverite da aplikacija neće kontaktirati produkcione spoljne sisteme. Mapping može promeniti namespace, ali ne garantuje da će svi hardkodirani hostovi, RBAC reference ili cluster-scoped objekti biti automatski bezbedno prilagođeni.
+</p>
+
+<pre><code class="language-bash">RESTORE_NAME="payments-test-$(date -u +%Y%m%dT%H%M%SZ)"
+
+velero restore create "$RESTORE_NAME" \
+  --from-backup "$BACKUP_NAME" \
+  --namespace-mappings payments-lab:payments-restore \
+  --wait
+
+velero restore describe "$RESTORE_NAME" --details
+velero restore logs "$RESTORE_NAME"</code></pre>
+
+<p>
+  Ovo je state-changing postupak. Očekivano je da restore završi bez grešaka i da se namespaced objekti pojave u <code>payments-restore</code>. Cluster-scoped objekti i resursi koji već postoje mogu biti preskočeni ili obrađeni prema pravilima instalirane Velero verzije; zato se opis i log čitaju, ne samo završna faza.
+</p>
+
+<h4>12.5. Tehnička i aplikativna validacija</h4>
+
+<pre><code class="language-bash">kubectl -n payments-restore get all,pvc
+kubectl -n payments-restore get events --sort-by=.metadata.creationTimestamp
+kubectl -n payments-restore wait --for=condition=Ready pod \
+  --all --timeout=5m
+kubectl -n payments-restore exec deploy/data-check -- \
+  sha256sum /data/recovery-marker.txt</code></pre>
+
+<p>
+  Dobijeni hash mora biti jednak početnom. Zatim se izvodi bezopasna sintetička transakcija, proverava health endpoint, logovi aplikacije, stanje baze i dozvoljeni izlazni tok. Evidentiraju se početak restore-a, tehnička spremnost i vreme poslovne potvrde. Iz njih se računa ostvareni RTO; vreme poslednje potvrđene kopije koristi se za procenu ostvarenog RPO-a.
+</p>
+
+<h4>12.6. Troubleshooting grane</h4>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Dokazi i neposredni uzrok</th><th>Bezbedna korekcija</th><th>Trajna mera</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Backup lokacija nije Available</td><td>Velero log, DNS/TLS, credentials, object-store audit; mreža ili autentikacija</td><td>Ne pokretati restore; obnoviti pristup bez menjanja kopija.</td><td>Monitoring lokacije, rotacija tajni i nezavisna mrežna provera.</td></tr>
+    <tr><td>Backup je PartiallyFailed</td><td><code>describe --details</code> i backup log; nedozvoljeni/restricted resurs ili plug-in greška</td><td>Procena uticaja, podržano isključenje samo nebitnog resursa ili korekcija RBAC/plug-in-a.</td><td>Kompatibilna verzija i preflight test API resursa.</td></tr>
+    <tr><td>PVC ostaje Pending</td><td>Events, StorageClass, quota, CSI controller i vCenter događaji</td><td>Mapirati na podržanu storage klasu ili obezbediti kapacitet.</td><td>Dokumentovano cross-site mapiranje klasa i test kapaciteta.</td></tr>
+    <tr><td>Snapshot brisanje zaglavljeno</td><td>VolumeSnapshotContent handle, Supervisor događaji i privremeni PVC</td><td>Ne uklanjati finalizer naslepo; pratiti aktuelni Broadcom KB i potvrditi stale zavisnost.</td><td>Ispravna plug-in verzija, timeout nadzor i kontrolisano čišćenje.</td></tr>
+    <tr><td>Velero pod restartuje/OOM</td><td><code>kubectl describe pod</code>, restart count i memory metrics</td><td>Smanjiti paralelizam/opseg ili povećati resurse prema podržanoj preporuci.</td><td>Capacity baseline i test sa realnim brojem fajlova/volumena.</td></tr>
+    <tr><td>Pod radi, aplikacija ne radi</td><td>Readiness, Secret/ConfigMap, DNS, certifikat, DB i eksterni endpoint</td><td>Vratiti nedostajuću zavisnost; zadržati ingress izolovan.</td><td>Dependency manifest i automatizovan sintetički test.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Sistematični tok je: potvrditi simptom, odrediti obim i posledicu, sačuvati poslednje promene i vremensku liniju, prikupiti događaje/logove/metrike, postaviti hipotezu, dokazati neposredni i osnovni uzrok, primeniti najmanje invazivnu korekciju, ponoviti validaciju i dokumentovati nalaz. Privremeno ručno uklanjanje problematičnog objekta nije trajna mera ako verzijska nekompatibilnost ostaje.
+</p>
+
+<h4>12.7. Rollback i vraćanje laboratorije</h4>
+
+<p>
+  Pošto izvorni namespace nije brisan, rollback znači uklanjanje samo testnog restore-a. Pre brisanja arhivirajte rezultate i potvrdite da nijedan obnovljeni servis nije povezan sa produkcijom. Sledeće komande su destruktivne i dozvoljene su samo za tačno provereni laboratorijski namespace i restore objekat.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get namespace payments-restore
+velero restore describe "$RESTORE_NAME" --details
+
+kubectl delete namespace payments-restore
+velero restore delete "$RESTORE_NAME" --confirm</code></pre>
+
+<p>
+  Brisanje restore objekta ne mora automatski obrisati sve resurse koje je restore kreirao, a ponašanje zavisi od verzije. Nakon brisanja proverite namespace, PV/PVC, VolumeSnapshot objekte i object-store politiku. Backup zadržite do isteka odobrenog TTL-a ili ga brišite samo kroz kontrolisan retention postupak. Kriterijum završetka vežbe je: izvorna aplikacija netaknuta, testni resursi uklonjeni, kopija katalogizovana, RPO/RTO izmereni i nalaz potpisan.
+</p>
+
+<h3>13. Incident response i odluka restore ili rebuild</h3>
+
+<p>
+  Restore nije uvek najbrži ni najsigurniji put. Ako je VKS klaster deklarativno definisan, Supervisor zdrav, a podaci imaju nezavisnu kopiju, često je čist rebuild klastera i restore workload-a pouzdaniji od pokušaja popravke kompromitovanog control plane-a. Kod ransomware incidenta obnova „na mestu” može sačuvati napadačev pristup; prednost ima čista zona, rotacija kredencijala i forenzičko očuvanje originala.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Uslov</th><th>Prednost restore-a</th><th>Prednost rebuild-a</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Poznata dobra tačka, veliki state</td><td>Brže vraćanje podataka i kompleksnog runtime stanja</td><td>Može biti presporo zbog prenosa.</td></tr>
+    <tr><td>Deklarativan klaster, mali state</td><td>Čuva runtime detalje</td><td>Čistije, ponovljivo i lakše za dokazivanje.</td></tr>
+    <tr><td>Kompromitovan identitet/control plane</td><td>Rizik vraćanja kompromitacije</td><td>Nova trust osnova i rotirani identiteti.</td></tr>
+    <tr><td>Nekompatibilna ciljna verzija</td><td>Može biti nepodržano</td><td>Nova podržana platforma uz migraciju podataka.</td></tr>
+  </tbody>
+</table>
+
+<h3>14. Administratorske prakse</h3>
+
+<ul>
+  <li>Backup politika i restore runbook verzionišu se, pregledaju posle svake arhitektonske promene i čuvaju van primarne platforme.</li>
+  <li>Svaki kritični workload ima vlasnika, recovery tier, mapu zavisnosti i definisan funkcionalni test.</li>
+  <li>Alarm se podiže za propušten raspored, <code>Failed</code>/<code>PartiallyFailed</code>, nedostupnu lokaciju, rast trajanja, OOM i prekoračenje retention-a.</li>
+  <li>Restore testovi se izvode periodično i posle većih upgrade-a, promene CSI-ja, Velero plug-in-a, storage-a, KMS-a ili mrežne topologije.</li>
+  <li>Kopije i ključevi imaju odvojene administrativne domene; brisanje i smanjenje retention-a zahtevaju pojačanu kontrolu.</li>
+  <li>Ne zaključuje se uspeh iz zelene kontrolne table. Dokaz uključuje restore, podatke, aplikaciju, bezbednost i izmereno vreme.</li>
+  <li>Za svaku verziju čuva se kompatibilan installer, matrica interoperabilnosti i tačan vendor runbook.</li>
+  <li>DR vežba ima posmatrača i zapis odluka; otkriveni jaz dobija vlasnika, rok i retest.</li>
+</ul>
+
+<h3>15. Završna kontrolna tačka</h3>
+
+<p>Administrator je savladao lekciju kada može dokazivo da:</p>
+
+<ul class="checklist">
+  <li>izračuna i objasni RPO/RTO bez mešanja sa rasporedom i retention-om;</li>
+  <li>mapira svaku Tanzu komponentu na metod zaštite, lokaciju kopije i restore zavisnost;</li>
+  <li>objasni zašto snapshot, GitOps ili vCenter backup pojedinačno nisu potpuna zaštita;</li>
+  <li>proveri zdravlje Velero servisa, backup lokacije, backup-a, snapshot-a i PVC-a bez promene stanja;</li>
+  <li>izvede odobren backup i izolovan restore test sa ispravnim namespace mapping-om;</li>
+  <li>prepozna <code>PartiallyFailed</code> kao neusaglašen rezultat i pronađe konkretan izostavljeni resurs;</li>
+  <li>odredi redosled od infrastrukture i trust servisa do stateful i stateless workload-a;</li>
+  <li>validira hash/kontrolni podatak, storage, aplikativnu transakciju, RBAC i sertifikate;</li>
+  <li>izmeri ostvareni RPO/RTO i dokumentuje odstupanje, uzrok, korektivnu meru i retest;</li>
+  <li>bezbedno očisti laboratorijski restore bez uticaja na izvornu aplikaciju i retained backup.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Pouzdan oporavak Tanzu platforme nastaje tek kada se više različitih kopija i procedura spoje u jedan testiran lanac. vCenter file-based backup štiti upravljačko stanje vCenter-a; podržani Supervisor workflow štiti platformsku kontrolnu ravan; Velero ili kompatibilan enterprise alat štiti Kubernetes objekte i, uz odgovarajući volume mehanizam, podatke; aplikativni backup obezbeđuje transakcionu konzistentnost. Nijedan od ovih slojeva sam ne dokazuje obnovu poslovne usluge.
+</p>
+
+<p>
+  Odgovoran administrator zato projektuje od kraja: definiše prihvatljivi gubitak i vreme, mapira zavisnosti, bira tačke oporavka, izoluje i štiti kopije, dokumentuje verzijski tačan redosled, testira restore i meri stvarni rezultat. U incidentu se prvo čuvaju dokazi i zaustavlja širenje greške, zatim se obnavlja najniži potreban zdravi sloj, a saobraćaj se vraća tek kada su infrastruktura, podaci, aplikacija i bezbednost zajednički validirani.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom TechDocs za vCenter Server file-based backup i restore, vSphere Supervisor control plane i VKS/TKG workload backup; Broadcom Knowledge Base članci za Velero, CSI snapshot i restore kvarove; zvanične Velero CLI i vSphere plug-in reference; Kubernetes dokumentacija za VolumeSnapshot, persistent storage i validaciju resursa; VCF administrativni i recovery vodiči
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-48-api-cli-gitops-i-automatizacija.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-50-inventar-cmdb-portabilnost-i-migracija-workload-a.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

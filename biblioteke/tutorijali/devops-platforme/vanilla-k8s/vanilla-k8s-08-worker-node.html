@@ -1,0 +1,738 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-08-worker-node.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Worker Node – mesto gde aplikacije stvarno rade | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Worker Node predstavlja izvršni deo Kubernetes klastera na kojem se pokreću Pod-ovi i kontejneri. Upoznajte ulogu kubelet-a, container runtime-a i kube-proxy-ja u radu aplikacija.">
+
+  <meta name="keywords"
+        content="Worker Node, Kubernetes Worker Node, kubelet, kube-proxy, container runtime, Pod, Kubernetes arhitektura, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-08-worker-node.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Worker Node – mesto gde aplikacije stvarno rade">
+
+  <meta property="og:description"
+        content="Razumevanje Worker Node čvorova, njihovih komponenti i načina na koji izvršavaju aplikacije u Kubernetes klasteru.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-08-worker-node.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-07-worker-node.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Worker Node – mesto gde aplikacije stvarno rade">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+    Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-07-worker-node.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-07-worker-node.png"
+           alt="Worker Node – mesto gde aplikacije stvarno rade">
+
+    </a>
+   
+<div class="page-subtitle">
+  II. Topologija, komponente i život klastera
+</div>
+   <div class="page-subtitle">
+8. Worker node – kubelet, CRI runtime, kube-proxy i lokalno izvršavanje Podova
+</div>
+<p>
+  Control plane donosi odluke o željenom stanju klastera, ali se stvarni procesi aplikacije izvršavaju na worker node računarima. Na njima se preuzimaju kontejnerske slike, kreiraju Pod sandbox okruženja, pokreću kontejneri, montiraju volumeni, primenjuju mrežna pravila, izvršavaju zdravstvene provere i sprovode ograničenja procesora, memorije i lokalnog skladišta. Zbog toga worker node nije samo „server na kome rade kontejneri”, već kontrolisana izvršna jedinica koja povezuje Kubernetes API, operativni sistem, container runtime, mrežni dodatak, skladišne drajvere i stvarne aplikacione procese.
+</p>
+<p>
+  Administrator mora da razlikuje tri stanja: node koji je registrovan u klasteru, node koji je spreman da prihvata nove Pod-ove i node koji zaista može pouzdano da izvršava dodeljeno opterećenje. Objekat Node može postojati u API-ju, a da je kubelet nedostupan. Node može imati stanje <code>Ready</code>, ali nedovoljno slobodnog prostora za novu sliku. Može biti tehnički zdrav, ali označen kao <code>SchedulingDisabled</code> zbog planiranog održavanja. Zbog toga se stanje worker node-a nikada ne procenjuje na osnovu jedne kolone ili jedne komande.
+</p>
+
+<h3>Uloga worker node-a u arhitekturi klastera</h3>
+<p>
+  Kada scheduler izabere worker node za novi Pod, on upisuje vezu između Pod-a i izabranog node-a u Kubernetes API. Scheduler ne pokreće kontejner i ne prijavljuje se na server. Kubelet na izabranom node-u posmatra API, prepoznaje da mu je dodeljen novi Pod i započinje lokalno usaglašavanje stvarnog stanja sa deklarisanim stanjem. Preko Container Runtime Interface-a, odnosno CRI-ja, zahteva od container runtime-a da pripremi Pod sandbox, preuzme potrebne slike i pokrene kontejnere. Preko integracija sa mrežnim i skladišnim komponentama omogućava mrežni interfejs i montiranje volumena.
+</p>
+<p>
+  Worker node zbog toga mora da ima stabilnu vezu ka API serveru, ispravno vreme, funkcionalan DNS, podržan operativni sistem, kompatibilan container runtime i pravilno podešene kernel, cgroup i mrežne funkcije. Gubitak jedne od tih zavisnosti može proizvesti različite simptome: kubelet ne može da registruje node, Pod ostaje u stanju <code>ContainerCreating</code>, slika ne može da se preuzme, volumen ne može da se montira ili aplikacija radi lokalno, ali nije dostupna preko Service objekta.
+</p>
+<p>
+  U tipičnoj enterprise implementaciji worker node je Linux virtuelna ili fizička mašina. Kubernetes podržava i Windows worker node-ove, ali Linux i Windows Pod-ovi ne koriste isti operativni sistem niti se proizvoljno izvršavaju na bilo kom node-u. Mešoviti klaster zahteva odgovarajuće oznake, selektore, kompatibilne slike, CNI podršku i odvojene operativne procedure. Ova lekcija koristi Linux worker node-ove sa systemd servisima, containerd runtime-om i Kubernetes klasterom postavljenim pomoću kubeadm-a.
+</p>
+
+<h3>Komponente koje rade na worker node-u</h3>
+<p><strong>Kubelet.</strong></p>
+<p>
+  Kubelet je primarni agent node-a. Registruje node u API serveru, prati PodSpec objekte dodeljene tom node-u i pokušava da obezbedi da odgovarajući kontejneri budu pokrenuti i zdravi. On izvršava liveness, readiness i startup provere, upravlja lokalnim Pod direktorijumima, prijavljuje stanje node-a i Pod-ova, pokreće postupke node-pressure eviction i komunicira sa container runtime-om preko CRI-ja. Kubelet ne upravlja kontejnerima koji nisu deo njegovog izvora željenog stanja, osim u meri potrebnoj za lokalno čišćenje i upravljanje resursima.
+</p>
+<p>
+  U kubeadm okruženju kubelet se obično izvršava kao systemd servis. Njegova konfiguracija nije samo skup komandnih opcija; većina operativnih parametara nalazi se u kubelet konfiguracionom fajlu, dok systemd drop-in konfiguracija definiše način pokretanja i putanje do kubeconfig i konfiguracionih fajlova. Ručno menjanje opcija bez razumevanja načina na koji ih kubeadm generiše može dovesti do razilaženja node-ova ili do gubitka promena pri narednom upgrade-u.
+</p>
+<p><strong>Container runtime.</strong></p>
+<p>
+  Container runtime pokreće i zaustavlja kontejnere, upravlja slikama i implementira CRI pozive koje šalje kubelet. Savremeni Kubernetes zahteva CRI-kompatibilan runtime. U referentnom okruženju koristi se containerd sa uključenim CRI dodatkom. Stari ugrađeni dockershim uklonjen je iz Kubernetes projekta još u verziji 1.24, pa instaliran Docker Engine sam po sebi više ne predstavlja direktan Kubernetes runtime bez dodatnog CRI sloja. Administrator zato proverava konkretan CRI endpoint, a ne samo postojanje komande <code>docker</code>.
+</p>
+<p><strong>Mrežna komponenta.</strong></p>
+<p>
+  CNI dodatak priprema mrežu za Pod: dodeljuje adresu, povezuje mrežni namespace kontejnera sa mrežom node-a i primenjuje funkcije koje zavise od izabranog rešenja. <code>kube-proxy</code>, kada se koristi, održava lokalna pravila potrebna za implementaciju Kubernetes Service apstrakcije. Neke mrežne platforme mogu zameniti deo ili celokupnu funkciju kube-proxy-ja eBPF mehanizmima, pa odsustvo kube-proxy Pod-a nije automatski kvar. Administrator mora znati koji je mrežni model namerno implementiran u konkretnom klasteru.
+</p>
+<p><strong>CSI i node dodatne komponente.</strong></p>
+<p>
+  Container Storage Interface node dodatak priprema i montira volumene na node-u. Device plugin-ovi objavljuju specijalizovane resurse, kao što su GPU uređaji. Agenti za prikupljanje logova, bezbednosni senzori, monitoring exporter-i i mrežni daemon-i često se izvršavaju kao DaemonSet, po jedan Pod na svakom odgovarajućem node-u. Njihov kvar može ostaviti aplikaciju aktivnom, ali klaster bez telemetrije, mrežne zaštite ili mogućnosti montiranja novih volumena.
+</p>
+
+<h3>Tok lokalnog izvršavanja Pod-a</h3>
+<ol>
+  <li>Scheduler postavlja <code>spec.nodeName</code>; od tog trenutka Pod je vezan za konkretan node, ali kontejneri još ne moraju postojati.</li>
+  <li>Kubelet kroz watch/list komunikaciju sa API serverom uočava dodeljeni Pod, proverava njegovu specifikaciju i pribavlja potrebne Secret, ConfigMap i volume podatke u granicama svojih ovlašćenja.</li>
+  <li>Preko CRI-ja zahteva kreiranje Pod sandbox-a. Runtime pokreće sandbox infrastrukturu, a CNI dodatak iz mrežnog namespace-a priprema interfejs, IP adresu i rute.</li>
+  <li>Kubelet, runtime i CSI node dodatak pripremaju volumene; neuspeh u ovoj fazi tipično ostavlja Pod u <code>ContainerCreating</code> uz događaje <code>FailedMount</code> ili <code>FailedAttachVolume</code>.</li>
+  <li>Runtime preuzima slike i kreira kontejnere. Kubelet zatim izvršava startup, readiness i liveness probe provere i objavljuje Pod status API serveru.</li>
+  <li>Kada readiness uslov postane uspešan, odgovarajući EndpointSlice može uključiti Pod adresu kao spreman backend Service objekta. Kube-proxy ili izabrana zamenska data-plane implementacija na node-ovima zatim sprovodi Service prosleđivanje.</li>
+</ol>
+<p>
+  Ovaj redosled je dijagnostička mapa. <code>Pending</code> bez dodeljenog node-a prvenstveno vodi ka scheduler događajima; dodeljen Pod u <code>ContainerCreating</code> vodi ka kubelet, CRI, CNI i CSI dokazima; <code>Running</code> Pod koji nije <code>Ready</code> vodi ka probe rezultatima i aplikacionim logovima; spreman Pod koji nije dostupan preko Service-a vodi ka EndpointSlice, Service i lokalnom data plane-u. Time se izbegava nasumično restartovanje komponenti koje još nisu ni učestvovale u neuspešnoj fazi.
+</p>
+
+<h3>Kube-proxy i lokalni Service data plane</h3>
+<p>
+  Kube-proxy posmatra Service i EndpointSlice objekte i programira lokalni mrežni data plane tako da ClusterIP i drugi Service tokovi stignu do odgovarajućih backend Pod-ova. On nije klasičan korisnički proxy kroz koji nužno prolazi svaki paket; uobičajeno konfiguriše kernel pravila i prosleđivanje. Stvarno ponašanje zavisi od operativnog sistema, izabranog proxy režima i mrežne platforme, pa administrator mora proveriti aktivnu <code>KubeProxyConfiguration</code> umesto da pretpostavi iptables ili IPVS samo na osnovu starijih tutorijala.
+</p>
+<p>
+  Nftables režim je stabilan od Kubernetes 1.33, zahteva Linux kernel 5.13 ili noviji i u aktuelnoj upstream dokumentaciji predstavlja preporučenu zamenu za IPVS, ali kompatibilnost izabranog mrežnog dodatka i razlike u NodePort ponašanju moraju se proveriti pre migracije. IPVS režim je označen kao zastareo od Kubernetes 1.35; i dalje se sreće u postojećim klasterima, ali se ne uvodi automatski samo zato što su IPVS kernel moduli prisutni. eBPF mrežna rešenja mogu raditi bez kube-proxy-ja; tada se Service mapa, health i troubleshooting proveravaju alatima te platforme. Zato se kvar Service pristupa ne zaključuje iz samog statusa kube-proxy Pod-a: proveravaju se EndpointSlice objekti, spremnost backend-a, DNS, lokalna pravila ili data-plane mape i mrežna politika.
+</p>
+
+<h3>Kako Node objekat predstavlja stvarni server</h3>
+<p>
+  Kubernetes Node objekat je API reprezentacija izvršnog računara. On sadrži identitet, oznake, taint-ove, prijavljeni kapacitet, raspoložive resurse za Pod-ove, adrese, informacije o operativnom sistemu, kernelu, kubeletu i container runtime-u, kao i skup uslova koji opisuju trenutno zdravlje. Brisanje Node objekta ne gasi fizičku ili virtuelnu mašinu. Obrnuto, gašenje mašine ne briše odmah Node objekat iz API-ja.
+</p>
+<p>
+  Polje <code>capacity</code> opisuje ukupno prijavljene resurse, dok <code>allocatable</code> predstavlja deo koji scheduler može da koristi za Pod zahteve. Razlika nastaje zbog resursa rezervisanih za operativni sistem, kubelet i druge sistemske procese, kao i zbog eviction pragova. U ozbiljnom klasteru nije poželjno izložiti Pod-ovima svu fizičku memoriju i procesorski kapacitet. Bez sistemskih rezervi, aplikaciono opterećenje može iscrpeti node i onemogućiti upravo servise potrebne za njegov oporavak.
+</p>
+<p>
+  Node heartbeat se prenosi pomoću statusa Node objekta i Lease objekta u namespace-u <code>kube-node-lease</code>. Lease omogućava efikasnije, česte obnove prisutnosti bez stalnog upisivanja celog Node statusa. Ako control plane dovoljno dugo ne prima heartbeat, stanje <code>Ready</code> prelazi u <code>Unknown</code>, a node controller može dodati odgovarajuće taint-ove i pokrenuti dalji postupak u skladu sa toleracijama Pod-ova i politikom klastera.
+</p>
+
+<h3>Node uslovi i razlikovanje simptoma</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Uslov</th>
+      <th>Normalno stanje</th>
+      <th>Značenje odstupanja</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Ready</code></td>
+      <td><code>True</code></td>
+      <td><code>False</code> znači da je kubelet prijavio nespremnost; <code>Unknown</code> najčešće znači da control plane ne dobija izveštaje.</td>
+      <td>Kubelet servis, mrežna veza ka API serveru, sertifikati i vreme.</td>
+    </tr>
+    <tr>
+      <td><code>MemoryPressure</code></td>
+      <td><code>False</code></td>
+      <td>Raspoloživa memorija je prešla konfigurisan eviction prag.</td>
+      <td>Potrošnja memorije, requests/limits, kernel OOM događaji i eviction poruke.</td>
+    </tr>
+    <tr>
+      <td><code>DiskPressure</code></td>
+      <td><code>False</code></td>
+      <td>Nedovoljno prostora ili inode-a na nodefs/imagefs/containerfs sloju.</td>
+      <td><code>df -h</code>, <code>df -i</code>, runtime slike, Pod logovi i lokalni ephemeral podaci.</td>
+    </tr>
+    <tr>
+      <td><code>PIDPressure</code></td>
+      <td><code>False</code></td>
+      <td>Node se približio raspoloživom broju procesa.</td>
+      <td>Broj procesa, runaway procesi, PID limit i broj procesa u kontejnerima.</td>
+    </tr>
+    <tr>
+      <td><code>NetworkUnavailable</code></td>
+      <td><code>False</code> ili odsutan, zavisno od CNI-ja</td>
+      <td>Mreža node-a još nije pravilno konfigurisana ili CNI prijavljuje problem.</td>
+      <td>CNI DaemonSet, CNI konfiguracija, rute, interfejsi i mrežni logovi.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Node condition nije dijagnoza uzroka, već sažet signal. Na primer, <code>DiskPressure=True</code> ne govori da li su prostor zauzele slike, kontejnerski logovi, aplikacioni <code>emptyDir</code> volumeni ili datoteke van Kubernetes kontrole. Administrator najpre potvrđuje signal u Node statusu, zatim meri stvarno stanje operativnog sistema i tek potom bira korektivnu radnju.
+</p>
+
+<h3>Resursi, cgroups i kvalitet servisa</h3>
+<p>
+  Scheduler odlučuje da li Pod može biti postavljen na node prvenstveno na osnovu deklarisanih zahteva, a ne na osnovu trenutne prosečne potrošnje. Ako kontejner zahteva 2 GiB memorije, scheduler rezerviše taj iznos u računu node-a čak i kada proces trenutno koristi 200 MiB. Zahtev koji nije definisan može omogućiti preveliku koncentraciju Pod-ova, dok nerealno visok zahtev može ostaviti kapacitet neiskorišćenim.
+</p>
+<p>
+  Kubelet i container runtime sprovode ograničenja pomoću funkcija operativnog sistema, a na Linux node-ovima prvenstveno pomoću cgroups. CPU limit se sprovodi ograničavanjem raspoloživog procesorskog vremena, pa kontejner može biti usporen. Prekoračenje memorijskog limita ne može se rešiti istim mehanizmom; proces može biti završen OOM mehanizmom, što se na nivou kontejnera često vidi kao <code>OOMKilled</code>.
+</p>
+<p>
+  Kubernetes dodeljuje Pod-u QoS klasu <code>Guaranteed</code>, <code>Burstable</code> ili <code>BestEffort</code>. Ona utiče na izbor kandidata za eviction pri pritisku resursa, ali nije jedini faktor. Kubelet uzima u obzir prekoračenje zahteva, prioritet Pod-a i relativnu potrošnju. Zbog toga oznaka <code>Guaranteed</code> smanjuje rizik od ranog eviction-a, ali ne predstavlja apsolutnu garanciju da Pod nikada neće biti završen.
+</p>
+<p>
+  Ephemeral storage takođe mora da se planira. Writable slojevi kontejnera, <code>emptyDir</code> volumeni i node-level kontejnerski logovi koriste lokalno skladište. Aplikacija koja nema ograničenje lokalnog ephemeral prostora može popuniti node i uticati na sve Pod-ove na njemu. PersistentVolume nije zamena za pravilno upravljanje lokalnim logovima i privremenim podacima.
+</p>
+
+<h3>Oznake, taint-ovi i izbor node-a</h3>
+<p>
+  Label opisuje osobinu node-a i može se koristiti za izbor položaja Pod-a. Taint odbija Pod-ove koji nemaju odgovarajući toleration. Ovi mehanizmi imaju različitu namenu: label i affinity izražavaju gde workload treba ili preferira da radi, dok taint štiti node od neodgovarajućeg workload-a. Toleration samo dozvoljava da Pod bude razmatran za tainted node; ne garantuje da će baš tamo biti raspoređen.
+</p>
+<p>
+  Oznake koje utiču na bezbednosnu izolaciju ne treba nekontrolisano prepuštati kubeletu ili lokalnom administratoru node-a. Ako kompromitovan node može sebi da dodeli oznaku poput <code>workload-zone=trusted</code>, može privući osetljive Pod-ove. Za takve odluke koriste se kontrolisani prefiksi oznaka, odgovarajuća autorizacija i NodeRestriction mehanizmi. Promena label-a, taint-a ili toleration-a mora se tretirati kao promena politike raspoređivanja, a ne kao kozmetičko uređivanje inventara.
+</p>
+
+<h3>Planirano održavanje i bezbedno pražnjenje node-a</h3>
+<p>
+  <code>kubectl cordon</code> označava node kao nepogodan za novo raspoređivanje, ali ne uklanja postojeće Pod-ove. <code>kubectl drain</code> dodatno pokušava da eviktuje odgovarajuće Pod-ove koristeći Eviction API i poštujući PodDisruptionBudget gde je primenljivo. DaemonSet Pod-ovi se uobičajeno ne uklanjaju drain postupkom i zahtevaju opciju <code>--ignore-daemonsets</code>. Statički, odnosno mirror Pod-ovi ne mogu se ukloniti preko API servera.
+</p>
+<p>
+  Drain nije bezuslovna dozvola za gašenje node-a. Ako je jedina replika aplikacije lokalno vezana za node, ako Pod koristi nezaštićene lokalne podatke, ako PodDisruptionBudget ne dozvoljava prekid ili ako nema kapaciteta na drugim node-ovima, operacija može stati ili izazvati gubitak dostupnosti. Opcija <code>--delete-emptydir-data</code> potvrđuje da će lokalni podaci iz <code>emptyDir</code> volumena biti izgubljeni. Opcija <code>--force</code> može ukloniti Pod-ove kojima ne upravlja controller i ne sme se rutinski koristiti.
+</p>
+<p>
+  Bezbedan redosled je: potvrditi redundansu i kapacitet, proveriti PodDisruptionBudget, cordon-ovati node, izvršiti drain, obaviti promenu, proveriti lokalne servise, vratiti node u <code>Ready</code>, uncordon-ovati ga i potvrditi da prima novi workload. Preskakanje završne validacije može ostaviti node formalno dostupan, ali bez funkcionalne CNI, CSI ili runtime komponente.
+</p>
+
+<h3>Logovi i izvori podataka za dijagnostiku</h3>
+<p>
+  Na systemd Linux node-u kubelet i containerd logovi čitaju se pomoću <code>journalctl</code>. Kubelet log pokazuje registraciju, statusne izveštaje, probe, mount greške, eviction odluke i CRI probleme. Containerd log otkriva greške pri radu runtime-a, snapshotter-a, image pull operacijama i CRI komunikaciji. Aplikacioni standardni izlaz i greške dostupni su pomoću <code>kubectl logs</code>, dok se node-level kontejnerski logovi uobičajeno nalaze ispod <code>/var/log/pods</code> i preko veza u <code>/var/log/containers</code>.
+</p>
+<p>
+  Alat <code>crictl</code> omogućava pregled CRI runtime-a kada je Kubernetes API nedostupan ili kada je potrebno uporediti ono što kubelet očekuje sa onim što runtime zaista vidi. On mora biti konfigurisan za tačan runtime i image endpoint. Korišćenje podrazumevanog automatskog ispitivanja više endpoint-a produžava dijagnostiku i može dati zbunjujuće rezultate na serveru sa ostacima prethodnih runtime instalacija.
+</p>
+<p>
+  Administrator ne počinje troubleshooting brisanjem Pod-a ili restartovanjem svih servisa. Najpre čuva stanje: vreme nastanka, Node conditions, događaje, spisak Pod-ova, zauzeće resursa i relevantne logove. Restart može ukloniti simptom i istovremeno izbrisati najvredniji trag uzroka.
+</p>
+
+<hr>
+
+<h3>Integrisani praktikum – bezbedno održavanje worker node-a i provera povratka u rad</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong></p>
+<p>
+  Produkcioni tim održava tročlani worker sloj: <code>k8s-worker-01</code>, <code>k8s-worker-02</code> i <code>k8s-worker-03</code>. Na njima radi interna aplikacija <code>inventory-web</code> u namespace-u <code>inventory-prod</code>. Potrebno je izvršiti planirano ažuriranje operativnog sistema na node-u <code>k8s-worker-02</code>, restartovati server i dokazati da se node bezbedno vratio u klaster. Aplikacija ima tri replike i PodDisruptionBudget koji zahteva najmanje dve raspoložive replike.
+</p>
+<p><strong>Cilj.</strong></p>
+<p>
+  Izvesti jedan worker node iz raspoređivanja bez prekida dostupnosti aplikacije, prikupiti početne dokaze, isprazniti node kontrolisanim eviction postupkom, simulirati održavanje restartovanjem kubelet servisa, vratiti node u rad i izvršiti negativni test koji potvrđuje da cordon zaista sprečava novo raspoređivanje.
+</p>
+<p><strong>Referentno okruženje.</strong></p>
+<ul>
+  <li>Kubernetes klaster sa tri Linux worker node-a i najmanje jednim odvojenim control plane node-om;</li>
+  <li>containerd kao CRI runtime sa endpoint-om <code>unix:///run/containerd/containerd.sock</code>;</li>
+  <li>systemd, instalirani <code>kubectl</code> i <code>crictl</code> alati;</li>
+  <li>namespace <code>inventory-prod</code>, Deployment <code>inventory-web</code> i Service <code>inventory-web</code>;</li>
+  <li>administratorska radna stanica sa ispravnim kubeconfig fajlom i SSH pristupom node-u <code>k8s-worker-02</code>.</li>
+</ul>
+<p><strong>Potrebna prava.</strong></p>
+<p>
+  Kubernetes nalog mora moći da čita Node, Pod, Event, Deployment i PodDisruptionBudget objekte, menja <code>spec.unschedulable</code> na ciljnom Node objektu i kreira Eviction zahteve za Pod-ove. Za praktikum je prihvatljiv namenski cluster-admin nalog u kontrolisanom lab okruženju; u produkciji treba koristiti užu RBAC ulogu za node maintenance. Operativni nalog mora imati odobreni <code>sudo</code> pristup za pregled systemd servisa i restart kubelet-a. Promena mora biti evidentirana u sistemu za upravljanje promenama.
+</p>
+<p><strong>Preduslovi.</strong></p>
+<ul>
+  <li>Postoji potvrđen maintenance prozor i vlasnik aplikacije je obavešten.</li>
+  <li>Na druga dva worker node-a postoji dovoljno allocatable CPU i memorije za eviktovane Pod-ove.</li>
+  <li>Aplikacija ne zavisi od nezaštićenih lokalnih podataka na <code>k8s-worker-02</code>.</li>
+  <li>Control plane i mrežni dodatak su zdravi.</li>
+  <li>Komanda <code>kubectl auth can-i create pods/eviction --all-namespaces</code> vraća <code>yes</code>.</li>
+</ul>
+
+<ol>
+  <li>
+    <strong>Kreiranje referentne aplikacije i politike prekida.</strong>
+    U lab klasteru napravite namespace, Deployment sa tri replike, Service i PodDisruptionBudget. Pod anti-affinity preferira raspodelu replika na različite node-ove, ali je ne čini obaveznom kako praktikum ne bi ostao blokiran u manjem okruženju.
+    <pre><code class="language-bash">mkdir -p "$HOME/worker-node-lab"
+
+cat &gt; "$HOME/worker-node-lab/inventory-web.yaml" &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inventory-prod
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-web
+  namespace: inventory-prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: inventory-web
+  template:
+    metadata:
+      labels:
+        app: inventory-web
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: inventory-web
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        ports:
+        - name: http
+          containerPort: 80
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+            ephemeral-storage: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+            ephemeral-storage: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-web
+  namespace: inventory-prod
+spec:
+  selector:
+    app: inventory-web
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+
+---
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: inventory-web-pdb
+  namespace: inventory-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: inventory-web
+EOF
+
+kubectl apply -f "$HOME/worker-node-lab/inventory-web.yaml"</code></pre> <strong>Validacija:</strong> Deployment mora imati tri dostupne replike, a PDB mora prikazati najmanje dve dozvoljene raspoložive replike i, u stabilnom stanju, jednu dozvoljenu dobrovoljnu disrupciju. <pre><code class="language-bash">kubectl rollout status deployment/inventory-web -n inventory-prod --timeout=180s
+kubectl get deployment,pod,pdb -n inventory-prod -o wide</code></pre>
+
+  </li>
+  <li>
+    <strong>Početna provera klastera i ciljnog node-a.</strong>
+    Pre promene sačuvajte početno stanje. Sva tri worker node-a treba da budu <code>Ready</code>, a <code>k8s-worker-02</code> ne sme već biti označen kao nepogodan za raspoređivanje.
+    <pre><code class="language-bash">kubectl get nodes -o wide
+kubectl describe node k8s-worker-02 &gt; "$HOME/worker-node-lab/k8s-worker-02-before.txt"
+kubectl get pods -A -o wide --field-selector spec.nodeName=k8s-worker-02
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 50</code></pre>
+    <strong>Validacija:</strong> U izlazu <code>kubectl describe node</code> očekuju se <code>Ready=True</code>, <code>MemoryPressure=False</code>, <code>DiskPressure=False</code> i <code>PIDPressure=False</code>. Neočekivano odstupanje zaustavlja planirano održavanje i pretvara postupak u incidentnu dijagnostiku.
+    <pre><code class="language-bash">kubectl get node k8s-worker-02 \
+  -o custom-columns='NAME:.metadata.name,UNSCHEDULABLE:.spec.unschedulable,READY:.status.conditions[?(@.type=="Ready")].status,MEMORY:.status.conditions[?(@.type=="MemoryPressure")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status,PID:.status.conditions[?(@.type=="PIDPressure")].status'</code></pre>
+  </li>
+  <li>
+    <strong>Provera kapaciteta i rasporeda aplikacije.</strong>
+    Utvrdite da li druge mašine mogu da prime workload. Deo <code>Allocated resources</code> u opisu node-a prikazuje zbir requests i limits, ali ne zamenjuje monitoring stvarne potrošnje.
+    <pre><code class="language-bash">kubectl describe node k8s-worker-01
+kubectl describe node k8s-worker-03
+kubectl get pods -n inventory-prod -l app=inventory-web -o wide
+kubectl get pdb inventory-web-pdb -n inventory-prod -o yaml</code></pre>
+    <strong>Validacija:</strong> Deployment mora imati tri <code>Ready</code> Pod-a, a <code>disruptionsAllowed</code> u PDB statusu mora biti najmanje <code>1</code>. Vrednost <code>0</code> znači da bezbedan drain trenutno može biti blokiran i da se prvo mora obnoviti redundansa.
+  </li>
+  <li>
+    <strong>Provera lokalnih servisa i CRI veze.</strong>
+    Prijavite se na ciljni server i proverite kubelet, containerd, prostor, inode-e i runtime endpoint. Ove informacije predstavljaju lokalnu osnovu za poređenje nakon promene.
+    <pre><code class="language-bash">ssh admin@k8s-worker-02
+
+sudo systemctl is-active kubelet
+sudo systemctl is-active containerd
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock info
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock pods
+df -h
+df -i
+free -h
+timedatectl status
+exit</code></pre> <strong>Validacija:</strong> Oba servisa vraćaju <code>active</code>, CRI info se završava bez greške, kritični filesystem-i imaju operativnu rezervu prostora i inode-a, a vreme je sinhronizovano. Ne postoji univerzalni procenat za svaki sistem, ali ulazak u maintenance sa više od 85% zauzeća zahteva objašnjenje i procenu rasta.
+
+  </li>
+  <li>
+    <strong>Cordon node-a.</strong>
+    Cordon sprečava novo standardno raspoređivanje na ciljnom node-u, ali ne prekida postojeće Pod-ove. Ovaj korak stvara stabilnu tačku pre drain operacije.
+    <pre><code class="language-bash">kubectl cordon k8s-worker-02</code></pre>
+    <strong>Validacija:</strong> Node treba da se prikaže kao <code>Ready,SchedulingDisabled</code>, a polje <code>spec.unschedulable</code> mora biti <code>true</code>.
+    <pre><code class="language-bash">kubectl get node k8s-worker-02
+kubectl get node k8s-worker-02 -o jsonpath='{.spec.unschedulable}{"\n"}'</code></pre>
+  </li>
+  <li>
+    <strong>Negativni test raspoređivanja.</strong>
+    Kreirajte privremeni Pod koji izričito zahteva <code>k8s-worker-02</code>. Pošto je node cordon-ovan, Pod treba da ostane u stanju <code>Pending</code>. Test ne koristi toleration koji bi zaobišao unschedulable taint.
+    <pre><code class="language-bash">cat &gt; "$HOME/worker-node-lab/cordon-negative-test.yaml" &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cordon-negative-test
+  namespace: inventory-prod
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: k8s-worker-02
+  containers:
+  - name: test
+    image: busybox:1.36
+    command: ["sh", "-c", "sleep 600"]
+  restartPolicy: Never
+EOF
+
+kubectl apply -f "$HOME/worker-node-lab/cordon-negative-test.yaml"
+sleep 5
+kubectl get pod cordon-negative-test -n inventory-prod -o wide
+kubectl describe pod cordon-negative-test -n inventory-prod</code></pre> <strong>Očekivani rezultat:</strong> Pod ostaje <code>Pending</code>, a scheduler događaj navodi da je ciljni node unschedulable. Ako Pod postane <code>Running</code>, proverite da li manifest zaista koristi odgovarajući hostname label i da li Pod ima toleration koji dozvoljava raspoređivanje. <pre><code class="language-bash">kubectl delete pod cordon-negative-test -n inventory-prod</code></pre>
+
+  </li>
+  <li>
+    <strong>Bezbedan drain.</strong>
+    Drain eviktuje workload Pod-ove i poštuje PodDisruptionBudget. Opcija <code>--ignore-daemonsets</code> potvrđuje da DaemonSet Pod-ovi ostaju na node-u. U ovom scenariju se ne koristi <code>--force</code> niti <code>--delete-emptydir-data</code>, jer nisu prethodno odobreni gubitak lokalnih podataka i uklanjanje neupravljanih Pod-ova.
+    <pre><code class="language-bash">kubectl drain k8s-worker-02 \
+  --ignore-daemonsets \
+  --grace-period=30 \
+  --timeout=10m</code></pre>
+    <strong>Validacija:</strong> Komanda mora završiti porukom da je node drained. Na node-u mogu ostati DaemonSet i mirror Pod-ovi, ali aplikacioni Pod-ovi kojima upravljaju Deployment, StatefulSet ili drugi controller-i treba da budu eviktovani i nadoknađeni na drugim node-ovima.
+    <pre><code class="language-bash">kubectl get pods -A -o wide --field-selector spec.nodeName=k8s-worker-02
+kubectl get pods -n inventory-prod -l app=inventory-web -o wide
+kubectl get deployment inventory-web -n inventory-prod
+kubectl get pdb inventory-web-pdb -n inventory-prod</code></pre>
+  </li>
+  <li>
+    <strong>Provera dostupnosti aplikacije posle evikcije.</strong>
+    Pokrenite privremeni Pod na preostalim raspoloživim node-ovima i izvršite HTTP zahtev prema Service objektu. Time se proveravaju Deployment, Service, DNS i mrežni put, a ne samo stanje replika.
+    <pre><code class="language-bash">kubectl run inventory-check \
+  -n inventory-prod \
+  --image=curlimages/curl:8.10.1 \
+  --restart=Never \
+  --command -- sh -c 'curl -fsS --max-time 10 http://inventory-web.inventory-prod.svc.cluster.local/ &gt;/dev/null'
+
+kubectl wait \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  pod/inventory-check \
+  -n inventory-prod \
+  --timeout=60s
+
+kubectl logs inventory-check -n inventory-prod
+kubectl delete pod inventory-check -n inventory-prod</code></pre> <strong>Validacija:</strong> Pod završava u fazi <code>Succeeded</code>. <code>Failed</code>, timeout ili DNS greška zahtevaju proveru endpoint-a, readiness stanja i mrežnog dodatka pre početka radova na serveru.
+
+  </li>
+  <li>
+    <strong>Simulacija planiranog održavanja kubelet-a.</strong>
+    U ovom lab praktikumu restartuje se kubelet umesto celog operativnog sistema. U produkciji se na ovoj tački izvršava odobreno ažuriranje i restart servera. Pre restarta sačuvajte poslednje logove.
+    <pre><code class="language-bash">ssh admin@k8s-worker-02
+
+sudo journalctl -u kubelet --since "-30 minutes" --no-pager \
+  &gt; /tmp/kubelet-before-maintenance.log
+sudo journalctl -u containerd --since "-30 minutes" --no-pager \
+  &gt; /tmp/containerd-before-maintenance.log
+
+sudo systemctl restart kubelet
+sudo systemctl is-active kubelet
+sudo systemctl status kubelet --no-pager
+exit</code></pre> <strong>Validacija:</strong> Kubelet mora biti <code>active</code>. Kratak prekid heartbeata može biti normalan, ali node ne sme ostati u stanju <code>NotReady</code>. Ako je izvršen restart servera, dodatno se proveravaju kernel verzija, vreme, mount tačke i oba systemd servisa.
+
+  </li>
+  <li>
+    <strong>Provera lokalnog runtime-a i logova nakon održavanja.</strong>
+    Potvrdite da kubelet komunicira sa containerd-om i pregledajte samo logove nastale nakon promene. Posebnu pažnju obratite na TLS, bootstrap, CNI, CRI i certificate greške.
+    <pre><code class="language-bash">ssh admin@k8s-worker-02
+
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock info
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock ps -a
+sudo journalctl -u kubelet --since "-10 minutes" --no-pager
+sudo journalctl -u containerd --since "-10 minutes" --no-pager
+sudo test -d /etc/cni/net.d &amp;&amp; sudo ls -la /etc/cni/net.d
+exit</code></pre> <strong>Validacija:</strong> Ne sme postojati ponavljajuća greška koja onemogućava registraciju node-a, CRI pozive ili inicijalizaciju mreže. Pojedinačna prolazna poruka tokom pokretanja može biti normalna samo ako iza nje sledi uspešan oporavak.
+
+  </li>
+  <li>
+    <strong>Provera povratka Node statusa.</strong>
+    Sa administratorske stanice sačekajte da API ponovo vidi node kao spreman. Cordon stanje ostaje aktivno i nakon restarta kubelet-a ili servera, jer je zapisano u Node objektu.
+    <pre><code class="language-bash">kubectl wait \
+  --for=condition=Ready \
+  node/k8s-worker-02 \
+  --timeout=180s
+
+kubectl get node k8s-worker-02
+kubectl describe node k8s-worker-02 \
+  &gt; "$HOME/worker-node-lab/k8s-worker-02-after-maintenance.txt"</code></pre> <strong>Validacija:</strong> Node mora biti <code>Ready,SchedulingDisabled</code>, bez MemoryPressure, DiskPressure i PIDPressure uslova. Neočekivani taint, nedostajući kapacitet ili promenjena runtime verzija dokumentuju se pre uncordon operacije.
+
+  </li>
+  <li>
+    <strong>Vraćanje node-a u raspoređivanje.</strong>
+    Tek nakon lokalne i API validacije uklonite cordon. Ova komanda ne premešta automatski postojeće Pod-ove nazad; ona samo dozvoljava scheduleru da node koristi za buduće odluke.
+    <pre><code class="language-bash">kubectl uncordon k8s-worker-02</code></pre>
+    <strong>Validacija:</strong> Node mora biti <code>Ready</code> bez oznake <code>SchedulingDisabled</code>, a <code>spec.unschedulable</code> treba da bude <code>false</code> ili odsutan.
+    <pre><code class="language-bash">kubectl get node k8s-worker-02
+kubectl get node k8s-worker-02 -o jsonpath='{.spec.unschedulable}{"\n"}'</code></pre>
+  </li>
+  <li>
+    <strong>Pozitivni test raspoređivanja na vraćeni node.</strong>
+    Ponovo kreirajte test Pod sa nodeSelector pravilom. Sada treba da bude raspoređen na <code>k8s-worker-02</code> i da završi jednostavnu komandu.
+    <pre><code class="language-bash">cat &gt; "$HOME/worker-node-lab/uncordon-positive-test.yaml" &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: uncordon-positive-test
+  namespace: inventory-prod
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: k8s-worker-02
+  containers:
+  - name: test
+    image: busybox:1.36
+    command: ["sh", "-c", "echo worker-node-ready"]
+  restartPolicy: Never
+EOF
+
+kubectl apply -f "$HOME/worker-node-lab/uncordon-positive-test.yaml"
+kubectl wait \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  pod/uncordon-positive-test \
+  -n inventory-prod \
+  --timeout=120s
+
+kubectl get pod uncordon-positive-test -n inventory-prod -o wide
+kubectl logs uncordon-positive-test -n inventory-prod</code></pre> <strong>Očekivani rezultat:</strong> Kolona <code>NODE</code> prikazuje <code>k8s-worker-02</code>, faza je <code>Succeeded</code>, a log sadrži <code>worker-node-ready</code>. Time su provereni scheduler, kubelet, CRI, image pull i osnovno izvršavanje kontejnera.
+
+  </li>
+  <li>
+    <strong>Završna funkcionalna provera i evidencija.</strong>
+    Proverite aplikaciju, node uslove, najnovije događaje i raspored sistemskih DaemonSet Pod-ova. Sačuvajte razliku početnog i završnog Node opisa kao prilog promeni.
+    <pre><code class="language-bash">kubectl rollout status deployment/inventory-web -n inventory-prod --timeout=180s
+kubectl get pods -n inventory-prod -l app=inventory-web -o wide
+kubectl get node k8s-worker-02
+kubectl get pods -A -o wide --field-selector spec.nodeName=k8s-worker-02
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 50
+
+diff -u \
+  "$HOME/worker-node-lab/k8s-worker-02-before.txt" \
+  "$HOME/worker-node-lab/k8s-worker-02-after-maintenance.txt" \
+  &gt; "$HOME/worker-node-lab/k8s-worker-02-change.diff" || true</code></pre> <strong>Kriterijumi prihvatanja:</strong> node je <code>Ready</code> i schedulable; nema pressure uslova; pozitivni test je završen na ciljnom node-u; Deployment ima tri dostupne replike; Service test prolazi; nema ponavljajućih kubelet, runtime, CNI ili CSI grešaka; vreme prekida aplikacije je nula prema aplikacionom monitoringu.
+
+  </li>
+  <li>
+    <strong>Cleanup lab objekata.</strong>
+    Test Pod-ovi više nisu potrebni. Referentna aplikacija može ostati za sledeće vežbe ili se ukloniti brisanjem manifesta. Brisanje namespace-a uklanja sve objekte u njemu i zato se u deljenom klasteru ne izvršava bez provere vlasništva.
+    <pre><code class="language-bash">kubectl delete pod uncordon-positive-test \
+  -n inventory-prod \
+  --ignore-not-found
+
+# Samo kada je ceo lab završen i namespace nije deljen:
+
+kubectl delete -f "$HOME/worker-node-lab/inventory-web.yaml"</code></pre> <strong>Rollback:</strong> Ako node posle održavanja nije zdrav, ne izvršavajte <code>uncordon</code>. Ostavite ga u stanju <code>SchedulingDisabled</code>, vratite neuspešnu OS ili konfiguracionu promenu prema odobrenom rollback planu, proverite kubelet i runtime, pa ponovite validaciju. Ako je uncordon već izvršen, odmah ponovo primenite <code>kubectl cordon k8s-worker-02</code> pre dalje dijagnostike.
+
+  </li>
+</ol>
+
+<h3>Tipične greške i način razlikovanja</h3>
+<ul>
+  <li><strong><code>NotReady</code> uz odsutan kubelet heartbeat:</strong> proveravaju se <code>systemctl status kubelet</code>, kubelet journal, mrežni put do API servera, DNS, vreme i sertifikati. Restart bez čitanja logova nije dijagnoza.</li>
+  <li><strong><code>Ready</code>, ali Pod ostaje <code>Pending</code>:</strong> pregledaju se scheduler događaji, requests, taint/toleration, node affinity, portovi, volumeni i PodDisruptionBudget. Kubelet još nije uključen ako Pod nije dodeljen node-u.</li>
+  <li><strong><code>ContainerCreating</code>:</strong> Pod je dodeljen, ali kubelet još priprema runtime, mrežu ili volumen. <code>kubectl describe pod</code>, kubelet log, CNI/CSI Pod logovi i <code>crictl</code> razlikuju uzrok.</li>
+  <li><strong><code>ImagePullBackOff</code>:</strong> proveravaju se naziv i arhitektura slike, registry DNS i mreža, autentikacija, CA poverenje i rate limit. Brisanje Pod-a neće ispraviti pogrešan image reference.</li>
+  <li><strong><code>DiskPressure</code> uz dovoljno prostora na pogrešnom filesystem-u:</strong> proveravaju se svi nodefs, imagefs ili odvojeni runtime mount-ovi, kao i inode-i. Sam <code>df -h /</code> može propustiti punu particiju containerd-a.</li>
+  <li><strong><code>OOMKilled</code> kontejner uz zdrav node:</strong> verovatno je prekoračen limit konkretnog kontejnera. Kernel ili kubelet node-level OOM događaj ima širi uticaj i zahteva proveru ukupne memorije i sistemskih rezervi.</li>
+  <li><strong>Drain blokiran:</strong> najpre se čita tačna poruka. PDB blokada zahteva obnovu dostupnih replika ili odobrenu promenu politike; neupravljani Pod zahteva identifikaciju vlasnika. <code>--force</code> nije univerzalni lek.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Praksa</th>
+      <th>Provera i učestalost</th>
+      <th>Prag za reakciju</th>
+      <th>Reakcija, evidencija i mera uspeha</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Node dostupnost</td>
+      <td><code>kubectl get nodes</code>, Node conditions i Lease starost; kontinuirani monitoring i posle svakog održavanja.</td>
+      <td><code>Ready=False</code> ili <code>Unknown</code>, propušten heartbeat izvan očekivanog kratkog restarta.</td>
+      <td>Cordon pogođenog node-a ako je moguće, provera kubelet-a i mreže, otvaranje incidenta. Dokumentuju se vreme, uslovi i uzrok. Uspeh je stabilno <code>Ready=True</code> bez ponavljanja alarma.</td>
+    </tr>
+    <tr>
+      <td>Kapacitet i zasićenje</td>
+      <td>Node CPU, memorija, filesystem, inode-i, PID i requests/allocatable odnos; dnevni trend i kapacitivni izveštaj najmanje mesečno.</td>
+      <td>Trajno visoka potrošnja, requests blizu allocatable kapaciteta, filesystem iznad internog praga ili ubrzan rast.</td>
+      <td>Identifikacija workload-a, korekcija requests/limits, čišćenje kontrolisanim mehanizmima ili proširenje kapaciteta. Evidencija ide u monitoring i capacity plan. Uspeh se meri smanjenjem pressure događaja i neuspelih scheduling pokušaja.</td>
+    </tr>
+    <tr>
+      <td>Kubelet i runtime zdravlje</td>
+      <td>systemd stanje, restart count, kubelet i containerd logovi; kontinuirani alarmi i ručna kontrola posle patch-a ili promene konfiguracije.</td>
+      <td>Servis nije active, ponavljajuće CRI greške, neuobičajen rast latencije ili restart loop.</td>
+      <td>Sačuvati logove, proveriti endpoint i konfiguraciju, zatim kontrolisano restartovati samo pogođenu komponentu. Beleži se promena konfiguracije i verzije. Uspeh je stabilan servis i uspešno kreiranje test Pod-a.</td>
+    </tr>
+    <tr>
+      <td>Node pressure i eviction</td>
+      <td>Conditions, kubelet eviction poruke, OOM događaji, Pod statusi i lokalni prostor; kontinuirano i nakon svakog eviction događaja.</td>
+      <td><code>MemoryPressure</code>, <code>DiskPressure</code> ili <code>PIDPressure=True</code>, ili rast broja eviktovanih Pod-ova.</td>
+      <td>Cordon ako je stabilnost ugrožena, identifikacija dominantnog potrošača i bezbedno oslobađanje resursa. Incident sadrži izabrane žrtve i root cause. Uspeh je uklonjen pressure uslov bez nekontrolisanog gubitka Pod-ova.</td>
+    </tr>
+    <tr>
+      <td>Verzijska usklađenost</td>
+      <td><code>kubectl get nodes -o wide</code>, evidencija kubelet, kernel, OS i runtime verzija; pre i posle upgrade ciklusa.</td>
+      <td>Verzija van podržanog skew-a, nepodržan OS/runtime ili neočekivano različita konfiguracija node-ova.</td>
+      <td>Zaustaviti rollout, uskladiti sa odobrenom matricom i testirati canary node. Dokumentacija se čuva u CMDB-u i change zapisu. Uspeh je usklađen inventar bez degradacije workload-a.</td>
+    </tr>
+    <tr>
+      <td>Kontrola label-a i taint-ova</td>
+      <td>Periodični izvoz Node manifesta i audit događaja; posle svake promene topologije ili scheduling politike.</td>
+      <td>Nepoznata label/taint promena, workload na pogrešnoj zoni ili nekontrolisana toleration pravila.</td>
+      <td>Cordon po potrebi, vraćanje odobrene politike i analiza identiteta koji je izvršio promenu. Čuva se u Git repozitorijumu infrastrukture i audit sistemu. Uspeh je podudarnost deklarisanog i stvarnog stanja.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Backup worker node-a razlikuje se od backup-a control plane podataka. Node se u dobro projektovanom klasteru smatra zamenljivom infrastrukturom: čuvaju se automatizovana konfiguracija operativnog sistema, kubelet i runtime konfiguracija, paketske verzije, CNI/CSI preduslovi, certificate bootstrap procedura i podaci potrebni za ponovno priključivanje. Ne treba se oslanjati na ručni image jedne mašine kao jedini način oporavka.
+</p>
+<p>
+  Persistentni aplikacioni podaci čuvaju se na nivou odgovarajućeg storage sistema i aplikacione konzistentnosti, a ne kopiranjem direktorijuma kubelet-a. Direktorijumi kao što je <code>/var/lib/kubelet</code> sadrže lokalno radno stanje i mount strukture i ne predstavljaju samostalan, konzistentan backup aplikacije. Probni restore worker sloja podrazumeva kreiranje novog node-a iz odobrene automatizacije, njegovo bezbedno priključivanje, uspešno pokretanje DaemonSet komponenti i test Pod-a, pa kontrolisano uklanjanje test node-a. Uspešan restore je ponovljiva rekonstrukcija, a ne samo postojanje arhive.
+</p>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Node se prikazuje u <code>kubectl get nodes</code> sa očekivanim imenom, adresom, verzijom i ulogom.</li>
+  <li><code>Ready=True</code>, a <code>MemoryPressure</code>, <code>DiskPressure</code> i <code>PIDPressure</code> imaju vrednost <code>False</code>.</li>
+  <li><code>systemctl is-active kubelet containerd</code> potvrđuje da su oba servisa aktivna.</li>
+  <li><code>crictl info</code> uspešno pristupa odobrenom CRI endpoint-u bez upozorenja o pogrešnom socket-u.</li>
+  <li>Allocatable resursi ostavljaju dokumentovanu rezervu za operativni sistem i Kubernetes sistemske servise.</li>
+  <li>Filesystem prostor i inode-i provereni su na svim mount tačkama koje koriste kubelet i container runtime.</li>
+  <li>CNI i CSI DaemonSet Pod-ovi na node-u imaju očekivano <code>Ready</code> stanje.</li>
+  <li>Label-i i taint-ovi odgovaraju odobrenoj scheduling i bezbednosnoj politici.</li>
+  <li>Pre drain operacije provereni su broj replika, PDB, lokalni podaci i kapacitet drugih node-ova.</li>
+  <li>Posle maintenance-a izvršen je test Pod vezan za ciljni node i završen je sa statusom <code>Succeeded</code>.</li>
+  <li>Aplikaciona funkcionalna provera preko Service objekta završena je bez timeout-a i HTTP greške.</li>
+  <li>Početno stanje, komande, rezultati, odstupanja, rollback odluka i vreme završetka upisani su u change zapis.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator worker node-a mora da razume čitav izvršni lanac: scheduler vezuje Pod za node, kubelet lokalno sprovodi željeno stanje, CRI runtime upravlja kontejnerima, CNI obezbeđuje mrežu, CSI povezuje skladište, a Linux kernel sprovodi procese, cgroups i filesystem operacije. Kvar aplikacije zato se ne pripisuje automatski „Kubernetesu”; uzrok se sistematski razdvaja između scheduling odluke, kubelet-a, runtime-a, mreže, skladišta, operativnog sistema i samog procesa u kontejneru.
+</p>
+<p>
+  Posle ove lekcije administrator treba da ume da pročita Node objekat, razlikuje kapacitet od allocatable resursa, proceni conditions i pressure signale, proveri kubelet i runtime, koristi <code>crictl</code> i systemd logove, bezbedno cordon-uje i drain-uje node, izvrši negativni i pozitivni test raspoređivanja i dokaže da je node funkcionalno vraćen u rad. Takođe mora da prepozna kada je problem lokalni, kada je posledica politike raspoređivanja, a kada zahteva uključivanje mrežnog, storage, bezbednosnog, aplikacionog ili infrastrukturnog tima.
+</p>
+<p>
+  Granica ovlašćenja je jednako važna kao tehničko znanje. Node administrator ne menja PodDisruptionBudget samo da bi drain komanda prošla, ne briše lokalne podatke bez saglasnosti vlasnika, ne koristi <code>--force</code> radi ubrzanja promene i ne vraća node u raspoređivanje dok lokalna i klasterska validacija nisu završene. Pouzdan worker sloj ne nastaje zato što se serveri retko kvare, već zato što su njihovo stanje, zamena, održavanje i oporavak predvidljivi, merljivi i dokumentovani.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za arhitekturu Node i node komponenti, kubelet i kubectl CLI reference, Container Runtime Interface i containerd integraciju, upravljanje resursima i QoS klasama, node-pressure eviction, scheduling, taint i toleration mehanizme, PodDisruptionBudget i bezbedno pražnjenje node-a; zvanični vodiči za CRI dijagnostiku pomoću crictl alata, logging arhitekturu, troubleshooting klastera, sigurnosne kontekste, sistemske rezerve i administraciju kubeadm klastera; primarna Linux dokumentacija za systemd, cgroups, procese, filesystem i kernel mehanizme upravljanja resursima.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-07-control-plane.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-09-etcd.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

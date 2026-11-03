@@ -1,0 +1,833 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-23-requests-limits-qos.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Requests i limits – upravljanje CPU i memorijskim resursima | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes requests i limits određuju minimalne i maksimalne CPU i memorijske resurse koje aplikacije koriste, omogućavajući stabilan i efikasan rad klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes requests, Kubernetes limits, CPU requests, memory requests, CPU limits, memory limits, resursi Pod-a, scheduler, QoS klase, ResourceQuota, LimitRange, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-23-requests-limits-qos.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Requests i limits – upravljanje CPU i memorijskim resursima">
+
+  <meta property="og:description"
+        content="Naučite kako Kubernetes koristi requests i limits za raspoređivanje workload-a, zaštitu resursa i obezbeđivanje stabilnog rada aplikacija u klasteru.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-23-requests-limits-qos.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-34-requests-limits.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Requests i limits – upravljanje CPU i memorijskim resursima">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-34-requests-limits.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-34-requests-limits.png"
+           alt="Requests i limits – upravljanje CPU i memorijskim resursima">
+
+    </a>
+
+     
+<div class="page-subtitle">
+  V. Konfiguracija, zdravlje, resursi i raspoređivanje
+</div>
+   <div class="page-subtitle">
+  23. Requests, limits, QoS i ephemeral storage – kapacitet, zaštita čvora i rizik od evikcije
+</div>
+<p>
+  Kubernetes može da rasporedi veliki broj aplikacija na zajedničke worker čvorove, ali samo ako kontrolna ravan raspolaže dovoljno preciznim podacima o njihovim potrebama. Ti podaci se prvenstveno izražavaju kroz <strong>resource requests</strong> i <strong>resource limits</strong>. Request opisuje količinu resursa koja je potrebna kontejneru za planiranje i očekivani rad, dok limit određuje gornju granicu potrošnje koju izvršno okruženje treba da sprovede. Njihova uloga nije samo da spreče jednu aplikaciju da zauzme ceo čvor. Oni utiču na izbor čvora, gustinu smeštanja workload-a, QoS klasu poda, ponašanje tokom pritiska na memoriju, CPU throttling, kapacitet klastera, autoscaling i pouzdanost produkcionih servisa.
+</p>
+<p>
+  Dobro podešeni resursi nastaju merenjem, testiranjem i kontrolisanim promenama. Vrednosti se ne biraju prema veličini kontejnerske slike, broju korisnika bez dodatnog konteksta ili slobodnoj memoriji razvojnog računara. Administrator mora da razume profil aplikacije: osnovnu potrošnju u stanju mirovanja, potrošnju pri normalnom opterećenju, kratkotrajne vrhove, ponašanje garbage collectora, broj radnih procesa, veličinu keša, zavisnost od CPU vremena i posledice prekoračenja memorijskog limita.
+</p>
+<h3>Kako Kubernetes posmatra CPU i memoriju</h3>
+<p>
+  Kubernetes CPU izražava kao količinu procesorskog vremena. Vrednost <code>1</code> predstavlja jedan logički CPU, virtuelni CPU ili jedno jezgro koje je operativnom sistemu vidljivo kao procesorska jedinica. Vrednost <code>500m</code> predstavlja 500 millicpu, odnosno polovinu jednog CPU-a. Za CPU se ne koriste memorijske jedinice. Zapis <code>0.5</code> i <code>500m</code> ima isto značenje, ali je millicpu zapis obično pregledniji i smanjuje rizik od grešaka.
+</p>
+<p>
+  Memorija se izražava u bajtovima ili binarnim i decimalnim prefiksima. Vrednosti <code>Mi</code> i <code>Gi</code> predstavljaju mebibajte i gibibajte, dok <code>M</code> i <code>G</code> predstavljaju decimalne megabajte i gigabajte. U praksi se za Kubernetes manifest najčešće koriste <code>Mi</code> i <code>Gi</code>. Posebno je opasan zapis <code>400m</code> za memoriju: malo slovo <code>m</code> označava mili-jedinicu, a ne megabajt. Takva vrednost ne predstavlja 400 MB.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Primer</th>
+      <th>Značenje</th>
+      <th>Administratorska napomena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>cpu: 250m</code></td>
+      <td>Četvrtina jednog CPU-a</td>
+      <td>Pogodno za lakši servis, ali mora biti potvrđeno merenjem</td>
+    </tr>
+    <tr>
+      <td><code>cpu: "2"</code></td>
+      <td>Dva CPU-a</td>
+      <td>Scheduler mora pronaći čvor sa najmanje dva CPU-a raspoloživa prema requests vrednostima</td>
+    </tr>
+    <tr>
+      <td><code>memory: 256Mi</code></td>
+      <td>256 mebibajta</td>
+      <td>Uobičajen binarni zapis za memoriju</td>
+    </tr>
+    <tr>
+      <td><code>memory: 2Gi</code></td>
+      <td>Dva gibibajta</td>
+      <td>Limit mora uključiti realne vršne potrebe procesa i pomoćnih komponenti</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Requests – osnova za planiranje poda</h3>
+<p>
+  Scheduler koristi requests vrednosti kada odlučuje na koji čvor može da rasporedi Pod. Za svaki kontejner u Podu posmatraju se traženi resursi, a efektivni zahtev poda obuhvata zbir zahteva njegovih aplikacionih i sidecar kontejnera, uz posebna pravila za init kontejnere. Scheduler ne proverava trenutnu potrošnju aplikacije u trenutku raspoređivanja. On poredi zahteve novog poda sa <code>allocatable</code> kapacitetom čvorova i requests vrednostima podova koji su već planirani na tim čvorovima.
+</p>
+<p>
+  Zbog toga čvor može imati mnogo slobodne memorije prema operativnom sistemu, a da novi Pod ipak ostane u stanju <code>Pending</code>. Requests vrednosti postojećih podova mogu već rezervisati raspoloživi kapacitet za potrebe schedulera. Obrnuto, čvor može biti preopterećen stvarnom potrošnjom iako zbir requests vrednosti izgleda nizak, jer su aplikacije dobile mogućnost da koriste više od deklarisanih zahteva.
+</p>
+<p>
+  Request nije unapred fizički izdvojen blok memorije koji nijedan drugi proces ne može da dodirne. To je prvenstveno deklaracija potrebna za planiranje, obračun kapaciteta i donošenje odluka pri pritisku na resurse. Kod CPU-a request utiče i na relativni udeo procesorskog vremena kada se više kontejnera nadmeće za CPU. Kontejner može koristiti više CPU-a od request vrednosti ako na čvoru postoji slobodan kapacitet i ako ga limit ne zaustavlja.
+</p>
+<p>
+  Prenizak request omogućava gušće raspoređivanje nego što je bezbedno. Posledice mogu biti latencija, nestabilan rad, node pressure i evikcije. Previsok request smanjuje iskorišćenost klastera, stvara lažan nedostatak kapaciteta i može izazvati nepotrebno dodavanje čvorova. Request zato treba da predstavlja realnu količinu resursa potrebnu da instanca aplikacije pouzdano izvršava očekivano opterećenje, a ne apsolutni minimum pri kojem se proces samo pokreće.
+</p>
+<h3>Limits – gornja granica potrošnje</h3>
+<p>
+  Limit određuje maksimalnu količinu resursa koju kontejner može da koristi. CPU i memorijski limit nemaju isto operativno ponašanje. Kada kontejner dostigne CPU limit, Linux kontrolne grupe i mehanizam CPU kvote ograničavaju vreme procesora. Proces se obično ne prekida, ali može biti usporen. To se vidi kao <strong>CPU throttling</strong>: aplikacija ostaje pokrenuta, dok vreme odziva raste, obrada zahteva kasni ili se povećava red čekanja.
+</p>
+<p>
+  Kada proces pokuša da koristi memoriju iznad dozvoljenog limita, memorija se ne može „usporiti” na isti način. Kernel može prekinuti proces zbog prekoračenja cgroup memorijske granice. Kubernetes tada često prikazuje stanje <code>OOMKilled</code>, a kubelet može ponovo pokrenuti kontejner u skladu sa restart politikom poda. Ponavljanje ovog događaja može dovesti do stanja <code>CrashLoopBackOff</code>.
+</p>
+<p>
+  Memorijski limit mora obuhvatiti ukupnu memoriju procesa posmatranu iz perspektive kontrolne grupe, a ne samo heap koji prijavljuje aplikacioni runtime. U obzir mogu ući native alokacije, radni skup, memorijski mapirani fajlovi, pomoćne biblioteke, broj thread-ova, keširanje i drugi delovi procesa. Za Java, .NET, Node.js i slične runtime sisteme aplikaciona konfiguracija mora biti usklađena sa limitom. Na primer, Java heap podešen skoro do samog Kubernetes limita ne ostavlja dovoljno prostora za metaspace, thread stack, native biblioteke i ostale van-heap alokacije.
+</p>
+<p>
+  CPU limit nije obavezan u svakoj arhitekturi. Za latency-sensitive servise prenizak CPU limit može izazvati throttling upravo tokom vršnog opterećenja, iako čvor ima slobodan procesorski kapacitet. Neke organizacije zato zahtevaju precizne CPU requests vrednosti, ali CPU limite primenjuju selektivno. Takva odluka mora biti zasnovana na politici platforme, izolaciji zakupaca, profilu workload-a i merenju. Memorijski limit je obično važniji kao zaštita čvora od nekontrolisanog rasta procesa, ali ni on ne sme biti proizvoljno nizak.
+</p>
+<h3>Odnos requests i limits vrednosti</h3>
+<p>
+  Request ne sme biti veći od odgovarajućeg limita. Ako je naveden samo limit, a request nije definisan i ne postoji druga politika koja ga određuje, Kubernetes može za request upotrebiti istu vrednost kao limit. Ako nije naveden ni request ni limit, kontejner može biti prihvaćen bez eksplicitnog ograničenja, osim kada namespace sadrži <code>LimitRange</code>, <code>ResourceQuota</code> ili admission politiku koja postavlja ili zahteva vrednosti.
+</p>
+<pre><code class="language-yaml">resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 750m
+    memory: 512Mi</code></pre>
+<p>
+  Ovaj primer govori scheduleru da instanca treba najmanje 250 millicpu i 256 Mi memorije za planiranje. Tokom rada može koristiti do 750 millicpu i do 512 Mi memorije. Dostizanje CPU limita proizvodi throttling, dok pokušaj prekoračenja memorijskog limita može završiti prekidom procesa.
+</p>
+<p>
+  Razlika između request i limit vrednosti predstavlja prostor za kratkotrajno povećanje potrošnje. Velika razlika nije automatski prednost. Ako stotine podova imaju male requests vrednosti i veoma visoke limite, zbir njihovih mogućih potrošnji može višestruko premašiti fizički kapacitet čvora. Takav overcommit može biti prihvatljiv za CPU, gde se procesorsko vreme deli, ali je mnogo rizičniji za memoriju, koja nije kompresibilan resurs u istom smislu.
+</p>
+<h3>QoS klase i ponašanje pri pritisku na resurse</h3>
+<p>
+  Kubernetes svakom Podu dodeljuje jednu od tri QoS klase: <code>Guaranteed</code>, <code>Burstable</code> ili <code>BestEffort</code>. Klasa se određuje na osnovu requests i limits konfiguracije svih relevantnih kontejnera u Podu. QoS klasa utiče na način na koji se workload posmatra tokom pritiska na resurse, ali sama po sebi nije potpuna garancija da Pod nikada neće biti eviktovan ili prekinut.
+</p>
+<ul>
+  <li><strong>Guaranteed:</strong> u klasičnom container-level modelu svaki kontejner ima nenulte CPU i memorijske request i limit vrednosti, a za svaki resurs request je jednak limitu. Kada se koristi beta Pod-level resources model, Pod-level CPU i memory request moraju biti jednaki odgovarajućim limitima i imaju prvenstvo u određivanju QoS klase. Ova klasa daje najpredvidljiviji profil i najjaču zaštitu u odnosu na niže QoS klase, ali može smanjiti fleksibilnost i gustinu smeštanja.</li>
+  <li><strong>Burstable:</strong> najmanje jedan kontejner ima CPU ili memorijski request ili limit, ali uslovi za Guaranteed nisu ispunjeni. Ovo je česta klasa za poslovne aplikacije kojima treba garantovana osnova i prostor za vršnu potrošnju.</li>
+  <li><strong>BestEffort:</strong> nijedan kontejner nema definisane CPU ni memorijske requests ili limits vrednosti. Takvi podovi prvi su kandidati za uklanjanje pri nedostatku resursa i nisu odgovarajući za kritične produkcione servise.</li>
+</ul>
+<p>
+  Pri node pressure događajima kubelet ne odlučuje isključivo prema nazivu QoS klase. Važni su vrsta oskudnog resursa, prekoračenje request vrednosti, prioritet poda i relativna potrošnja. Administrator zato ne sme da tumači Guaranteed kao apsolutnu zaštitu. Pod i dalje može biti pogođen kvarom čvora, administrativnim drain postupkom, preemption događajem, prekoračenjem sopstvenog memorijskog limita ili drugim operativnim uzrokom.
+</p>
+<h3>LimitRange, ResourceQuota i politika namespace-a</h3>
+<p>
+  Ručno unošenje resursa u svaki manifest nije dovoljna kontrola za višekorisnički klaster. <code>LimitRange</code> može definisati podrazumevane, minimalne i maksimalne vrednosti za kontejnere ili podove u namespace-u. Ako aplikacioni tim izostavi resurse, podrazumevane vrednosti mogu biti automatski primenjene. Ako tim zahteva vrednost izvan dozvoljenog opsega, API zahtev se odbija.
+</p>
+<p>
+  <code>ResourceQuota</code> ograničava zbir requests i limits vrednosti u celom namespace-u. Time se sprečava da jedan tim deklaracijama zauzme sav planerski kapacitet klastera. Quota ipak ne određuje kako treba dimenzionisati pojedinačnu aplikaciju. Ona postavlja granicu potrošnje namespace-a, dok se pravilno dimenzionisanje zasniva na merenjima i poslovnim SLO zahtevima.
+</p>
+<p>
+  LimitRange i ResourceQuota moraju se projektovati zajedno. Podrazumevane vrednosti koje LimitRange automatski dodaje troše kvotu. Loše usklađena politika može izazvati odbijanje novih podova iako tim nije eksplicitno uneo velike zahteve. Pre promene administrator proverava postojeće objekte, trenutnu potrošnju kvote, broj replika, autoscaling opseg i planirane deployment-e.
+</p>
+<h3>Uticaj na scheduling, autoscaling i kapacitet</h3>
+<p>
+  Horizontal Pod Autoscaler najčešće poredi posmatranu CPU potrošnju sa CPU request vrednošću. Ako request nije realan, procenat iskorišćenja nije pouzdan. Kontejner koji koristi 200m CPU-a izgleda kao da je na 200% ako mu je request 100m, ali samo na 50% ako mu je request 400m. HPA zato ne popravlja loše dimenzionisanje; on ga može učiniti vidljivijim ili dodatno pojačati njegove posledice.
+</p>
+<p>
+  Cluster autoscaler i slični sistemi za proširenje kapaciteta reaguju na podove koji ne mogu da budu raspoređeni prema requests vrednostima i ostalim scheduling uslovima. Previsoki requests mogu pokrenuti nepotrebno skaliranje infrastrukture. Preniski requests mogu sprečiti blagovremeno dodavanje čvorova, jer scheduler formalno vidi dovoljno kapaciteta iako su postojeći čvorovi operativno preopterećeni.
+</p>
+<p>
+  Za pouzdan obračun kapaciteta administrator prati najmanje zbir requests vrednosti, zbir limits vrednosti, stvarnu potrošnju, allocatable resurse, broj pending podova, throttling, OOM događaje i trend rasta. Sam prikaz <code>kubectl top</code> nije dovoljan za dugoročno dimenzionisanje jer pokazuje trenutni ili kratkoročni uzorak, a ne percentile i sezonske vrhove.
+</p>
+<h3>Local ephemeral storage – prolazni prostor koji može ugroziti čvor</h3>
+<p>
+  <strong>Local ephemeral storage</strong> je lokalni, prolazni prostor na worker čvoru koji Kubernetes može da prati, rezerviše i ograničava resursom <code>ephemeral-storage</code>. Podaci nisu trajni: vezani su za konkretan Pod i čvor i mogu nestati kada se Pod ukloni ili ponovo kreira na drugom čvoru. Ovaj resurs ne treba mešati sa generičkim ephemeral volume tipovima kao što su CSI ephemeral volume ili generic ephemeral volume; oni mogu imati drugačiji storage backend i obračun. Ovde je reč o lokalnom prostoru kojim upravljaju kubelet i container runtime.
+</p>
+<p>
+  U obračun potrošnje poda ulaze zapisivi slojevi kontejnera, logovi kontejnera na nivou čvora i disk-backed <code>emptyDir</code> volumeni. <code>emptyDir</code> sa <code>medium: Memory</code> koristi tmpfs: njegova potrošnja obračunava se kao memorija kontejnera koji je upisuje, a ne kao local ephemeral storage. Image slojevi koji se dele između kontejnera predstavljaju node-level potrošnju i predmet su image garbage collection-a, ali nisu deo individualne <code>ephemeral-storage</code> potrošnje kontejnera na isti način kao njegov writable layer i logovi.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Izvor potrošnje</th>
+      <th>Gde se obračunava</th>
+      <th>Tipičan rizik</th>
+      <th>Kontrola</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Writable container layer</td>
+      <td>Po kontejneru i Podu</td>
+      <td>Privremeni fajlovi, cache ili core dump nekontrolisano rastu</td>
+      <td><code>requests.ephemeral-storage</code>, <code>limits.ephemeral-storage</code> i aplikaciona politika čišćenja</td>
+    </tr>
+    <tr>
+      <td>Container logs</td>
+      <td>Po kontejneru i na node filesystem-u</td>
+      <td>Log storm popunjava disk ili inode tabelu</td>
+      <td>Kubelet log rotacija, centralno prikupljanje i alarmi</td>
+    </tr>
+    <tr>
+      <td>Disk-backed <code>emptyDir</code></td>
+      <td>Na nivou poda; potrošnja se deli između kontejnera koji ga montiraju</td>
+      <td>Scratch podaci rastu bez granice</td>
+      <td><code>sizeLimit</code> i Pod/container ephemeral-storage limit</td>
+    </tr>
+    <tr>
+      <td><code>emptyDir.medium: Memory</code></td>
+      <td>Kao memorijska potrošnja kontejnera koji upisuje</td>
+      <td>OOM kontejnera ili MemoryPressure</td>
+      <td><code>sizeLimit</code> plus odgovarajući memorijski limit</td>
+    </tr>
+    <tr>
+      <td>Neiskorišćene slike</td>
+      <td>Na nivou čvora</td>
+      <td><code>imagefs</code> ili <code>nodefs</code> ostaje bez prostora</td>
+      <td>Kubelet image garbage collection i eviction pragovi</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Request za <code>ephemeral-storage</code> učestvuje u scheduling odluci: scheduler sabira zahteve kontejnera i bira čvor čiji <code>allocatable</code> lokalni storage može da primi Pod. Limit je zbirno ograničenje potrošnje lokalnog prostora. Ako zbir writable layer-a i logova kontejnera pređe njegov container limit, Pod postaje kandidat za evikciju. Ako ukupna potrošnja Pod-a — container slojevi i logovi zajedno sa disk-backed <code>emptyDir</code> volumenima — pređe dozvoljeni Pod limit, kubelet označava Pod za evikciju. Ovo nije analogno OOM restartu jednog procesa: posledica je uklanjanje celog Poda sa čvora.
+</p>
+<pre><code class="language-yaml">resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+    ephemeral-storage: 256Mi
+  limits:
+    cpu: 750m
+    memory: 512Mi
+    ephemeral-storage: 1Gi
+volumeMounts:
+  - name: scratch
+    mountPath: /work
+volumes:
+  - name: scratch
+    emptyDir:
+      sizeLimit: 700Mi</code></pre>
+<p>
+  <code>emptyDir.sizeLimit</code> i <code>limits.ephemeral-storage</code> rešavaju povezane, ali različite probleme. Prvi ograničava konkretan volume; drugi obuhvata i druge lokalne zapise kontejnera i poda. <code>sizeLimit</code> ne garantuje da će svaki bajt biti dostupan: isti filesystem dele drugi podovi, logovi i sistemske komponente, pa node-pressure eviction može nastupiti pre dostizanja te vrednosti. Obrnuto, samo container limit bez <code>sizeLimit</code> ne opisuje jasno budžet pojedinačnog deljenog <code>emptyDir</code> volumena.
+</p>
+<p>
+  Jedinice zahtevaju istu disciplinu kao memorija. Zapis <code>ephemeral-storage: 400m</code> znači 0,4 bajta, a ne 400 MB. Za praktične vrednosti koriste se <code>Mi</code> i <code>Gi</code>. Pogrešna jedinica može proći sintaksnu validaciju i proizvesti izuzetno mali limit, pa manifest treba proveriti server-side dry-run postupkom i čitanjem primljenog PodSpec-a.
+</p>
+<h3>Kako kubelet meri lokalni storage i gde su granice tačnosti</h3>
+<p>
+  Kubelet može periodično skenirati direktorijume ili, na podržanim Linux filesystem-ima, koristiti project quota evidenciju. Periodično skeniranje može kasniti za stvarnom potrošnjom i ne vidi pouzdano prostor koji zauzima obrisan fajl dok ga proces još drži otvorenim. Project quota poboljšava praćenje takvih slučajeva, ali zahteva odgovarajući filesystem i konfiguraciju; quota se koristi za merenje, ne kao samostalni mehanizam koji direktno zaustavlja upis.
+</p>
+<p>
+  Raspored filesystem-a na čvoru neposredno utiče na vidljivost. Kubernetes podržava prepoznate konfiguracije sa jednim filesystem-om za kubelet podatke ili sa odvojenim filesystem-ima za slike i zapisive slojeve. Ako administrator proizvoljno montira zaseban disk na putanju koja nije deo podržanog kubelet layout-a, kubelet može prestati pravilno da obračunava local ephemeral storage. Zato se node storage projektuje kroz podržanu konfiguraciju distribucije i runtime-a, a zatim proverava preko Node capacity/allocatable podataka i metrika.
+</p>
+<p>
+  Za pritisak na disk kubelet prati raspoložive bajtove i inode na signalima kao što su <code>nodefs.available</code>, <code>nodefs.inodesFree</code>, <code>imagefs.available</code>, <code>imagefs.inodesFree</code>, a u podržanim split-image konfiguracijama i <code>containerfs</code> signale. Tačan skup zavisi od layout-a, container runtime-a, Kubernetes verzije i feature gate stanja. Kada prag bude pređen, Node dobija stanje <code>DiskPressure</code>, scheduler izbegava dalje raspoređivanje preko odgovarajućeg taint-a, a kubelet prvo pokušava node-level reclaim — na primer brisanje mrtvih podova/kontejnera i neiskorišćenih slika — pre evikcije aktivnih korisničkih podova.
+</p>
+<h3>Evikcija nije isto što i OOM, preemption ili API eviction</h3>
+<p>
+  Node-pressure eviction je lokalna zaštitna odluka kubeleta. Ona nije isto što i scheduler preemption, kojim se oslobađa mesto za Pod višeg prioriteta, niti isto što i API-initiated eviction korišćen tokom <code>kubectl drain</code> postupka. Kubelet pri node pressure-u ne garantuje poštovanje PodDisruptionBudget-a. Kod hard eviction praga Pod može biti zaustavljen bez uobičajenog grace perioda; kod soft pragova ponašanje zavisi od <code>eviction-soft-grace-period</code> i <code>eviction-max-pod-grace-period</code> konfiguracije.
+</p>
+<p>
+  Redosled kandidata ne treba svesti na formulu „BestEffort pa Burstable pa Guaranteed”. Kubelet za oskudni resurs razmatra da li potrošnja Poda premašuje njegov request, Pod Priority i relativno prekoračenje request-a. QoS je koristan indikator, naročito za memoriju, ali <code>ephemeral-storage</code> ne ulazi u određivanje QoS klase: Pod sa jednakim CPU i memory request/limit vrednostima može biti <code>Guaranteed</code> i ipak imati loše dimenzionisan storage ili biti eviktovan zbog <code>DiskPressure</code>. Guaranteed Pod može biti uklonjen i kada nijedan pogodniji kandidat ne može da oslobodi dovoljno resursa.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Neposredni uzrok</th>
+      <th>Dokaz</th>
+      <th>Trajna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Pending</code> i <code>Insufficient ephemeral-storage</code></td>
+      <td>Nijedan dozvoljeni čvor nema dovoljan nealokirani request kapacitet</td>
+      <td>Scheduler Event u <code>kubectl describe pod</code></td>
+      <td>Ispraviti request na osnovu merenja ili dodati/oslobađati podržani kapacitet</td>
+    </tr>
+    <tr>
+      <td><code>Evicted</code> zbog prekoračenja local storage limita</td>
+      <td>Pod ili kontejner premašio sopstveni budžet</td>
+      <td>Pod status/message, Event i kubelet log</td>
+      <td>Zaustaviti nekontrolisan rast, uvesti rotaciju/čišćenje i tek zatim podesiti limit</td>
+    </tr>
+    <tr>
+      <td><code>DiskPressure=True</code> i node-pressure eviction</td>
+      <td>Node filesystem prešao eviction prag za bajtove ili inode</td>
+      <td>Node condition, taint, events, filesystem i kubelet metrike/log</td>
+      <td>Ukloniti uzrok, povećati/rezervisati kapacitet i ispraviti retention, image i log politiku</td>
+    </tr>
+    <tr>
+      <td><code>OOMKilled</code></td>
+      <td>Proces je pogodio cgroup memory limit</td>
+      <td><code>lastState.terminated.reason</code> i container/node evidencija</td>
+      <td>Ispraviti memory leak/runtime profil ili validirano povećati memorijski budžet</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Napredne i verzijski zavisne mogućnosti</h3>
+<p>
+  Savremene Kubernetes verzije podržavaju dodatne mogućnosti upravljanja resursima, ali njihovu dostupnost treba proveriti prema verziji API servera, kubeleta, feature gate podešavanjima i podršci distribucije. Pod-level resources su u Kubernetes v1.34 beta i podrazumevano uključena funkcionalnost preko feature gate-a <code>PodLevelResources</code>. Omogućavaju deklarisanje CPU-a, memorije i hugepages resursa na nivou poda; ne obuhvataju <code>ephemeral-storage</code> i nisu podržani za Windows podove. Kada postoje i Pod-level i container-level vrednosti, važe posebna pravila prvenstva i raspodele, pa podršku admission politika, autoscalera i resource manager-a treba proveriti pre usvajanja.
+</p>
+<p>
+  In-place Pod resize omogućava promenu određenih CPU i memorijskih vrednosti bez obaveznog kreiranja potpuno novog poda, ali ponašanje zavisi od verzije, feature gate-ova i <code>resizePolicy</code> podešavanja kontejnera. U aktuelnoj upstream dokumentaciji za Kubernetes v1.36 container-level in-place resize i Pod-level resize opisani su kao beta i podrazumevano uključeni uz odgovarajuće feature gate-ove; Pod-level resize zahteva dodatne uslove, a <code>kubectl --subresource=resize</code> zahteva klijent v1.32 ili noviji. Za neke container-level promene potreban je restart kontejnera, a za druge nije. Ovaj mehanizam ne menja <code>ephemeral-storage</code>. Pre produkcione upotrebe administrator mora potvrditi podršku konkretne distribucije, runtime-a, operativnog sistema, admission politika, autoscalera i monitoring sistema. Promena Deployment šablona sa kontrolisanim rollout-om ostaje najšire primenljiv i najlakše proverljiv postupak.
+</p>
+<p>
+  Na Linux worker čvorovima sprovođenje ograničenja oslanja se na cgroups i container runtime. cgroup v2 predstavlja savremenu osnovu za kontrolu i evidenciju resursa. CPU Manager sa <code>static</code> politikom može određenim Guaranteed kontejnerima sa celobrojnim CPU zahtevima dodeliti ekskluzivne procesore, što je važno za workload-e osetljive na latenciju. To je posebna node-level arhitektonska odluka i ne treba je uključivati samo promenom aplikacionog manifesta bez koordinacije sa platformskim timom.
+</p>
+<h3>Kako se biraju početne vrednosti</h3>
+<p>
+  Početne vrednosti treba izvesti iz testa koji dovoljno liči na produkciju. Prvo se meri potrošnja tokom mirovanja, zagrevanja aplikacije, normalnog opterećenja, planiranog vrha i kontrolisanog preopterećenja. Za memoriju se posmatra stabilni radni skup, rast tokom vremena, ponašanje keša i garbage collectora, kao i vrednost neposredno pre završetka procesa. Za CPU se posmatraju proseci, visoki percentili, throttling i odnos potrošnje prema broju obrađenih zahteva.
+</p>
+<p>
+  Razumna početna strategija je da request pokriva održivu potrošnju pri normalnom opterećenju sa bezbednosnom rezervom, dok limit pokriva potvrđene vrhove bez skrivanja curenja memorije ili neograničenog CPU rada. Tačan procenat rezerve nije univerzalan. Kritični servis sa strogim SLO zahtevom, batch posao, razvojni alat i pomoćni sidecar nemaju isti profil niti isti rizik.
+</p>
+<p>
+  Promena se radi postepeno. Veliko smanjenje memorijskog limita može momentalno izazvati OOM događaje. Veliko smanjenje CPU limita može proizvesti latenciju bez očiglednog pada poda. Veliko povećanje request vrednosti može blokirati rollout jer nove i stare replike tokom rolling update-a privremeno postoje istovremeno. Pre promene treba proveriti <code>maxSurge</code>, <code>maxUnavailable</code>, slobodan allocatable kapacitet i PodDisruptionBudget.
+</p>
+<h3>Integrisani praktikum – kontrolisano dimenzionisanje poslovnog API servisa</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Tim održava interni servis <code>inventory-api</code> koji zaposlenima omogućava čitanje podataka o IT opremi. Aplikacija radi kao Deployment sa dve replike u namespace-u <code>inventory-prod</code>. Platforma je Vanilla Kubernetes klaster sa Linux worker čvorovima, Metrics Server komponentom i standardnim RBAC-om. Cilj promene je da svaka replika dobije merljive CPU, memorijske i local ephemeral storage requests i limits vrednosti, da namespace bude zaštićen LimitRange i ResourceQuota objektima i da se potvrdi ponašanje pri CPU, memorijskom i storage opterećenju.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koriste se kontekst <code>vk8s-admin</code>, namespace <code>inventory-prod</code>, Deployment <code>inventory-api</code>, Service <code>inventory-api</code> i lokalni direktorijum <code>~/labs/lesson-23</code>. Primer koristi sliku <code>registry.k8s.io/e2e-test-images/resource-consumer:1.13</code> kao demonstracioni servis za kontrolisano CPU i memorijsko opterećenje, a organizaciono odobrenu BusyBox sliku za izolovan storage test. Pre početka treba potvrditi da su konkretni tagovi dostupni za arhitekturu čvorova; u produkciji se koriste skenirane i pinovane slike iz internog registra.
+</p>
+<p>
+  <strong>Preduslovi i prava pristupa.</strong> Administrator mora imati pravo čitanja Node, Pod, Event i metrics podataka, kao i pravo kreiranja i izmene Namespace, Deployment, Service, LimitRange i ResourceQuota objekata. Za produkcionu promenu preporučuje se zasebna servisna ili korisnička uloga sa najmanjim potrebnim skupom privilegija. Nije potrebno pristupati tajnama niti koristiti privilegovane kontejnere.
+</p>
+<ol>
+  <li>
+    <strong>Priprema direktorijuma i potvrda konteksta.</strong>
+    Pre kreiranja objekata administrator mora potvrditi da komande neće biti izvršene nad pogrešnim klasterom. Direktorijum služi za čuvanje manifesta, izlaza provera i rollback kopije.
+    <pre><code class="language-bash">mkdir -p ~/labs/lesson-23
+cd ~/labs/lesson-23
+kubectl config use-context vk8s-admin
+kubectl config current-context
+kubectl cluster-info</code></pre>
+    <strong>Validacija:</strong> komanda <code>kubectl config current-context</code> mora vratiti <code>vk8s-admin</code>, a <code>kubectl cluster-info</code> mora uspešno prikazati adresu control plane-a. Ako kontekst nije očekivan, postupak se odmah prekida.
+  </li>
+  <li>
+    <strong>Početna provera kapaciteta i podrške za metrike.</strong>
+    Pre definisanja requests vrednosti proverava se allocatable kapacitet worker čvorova i dostupnost Metrics API-ja.
+    <pre><code class="language-bash">kubectl get nodes
+kubectl describe nodes | grep -A 8 "Allocatable:"
+kubectl get nodes \
+  -o custom-columns='NAME:.metadata.name,EPHEMERAL_CAPACITY:.status.capacity.ephemeral-storage,EPHEMERAL_ALLOCATABLE:.status.allocatable.ephemeral-storage,DISK_PRESSURE:.status.conditions[?(@.type=="DiskPressure")].status'
+kubectl top nodes</code></pre>
+    <strong>Validacija:</strong> svi planirani worker čvorovi treba da budu u stanju <code>Ready</code>, <code>DiskPressure</code> treba da bude <code>False</code>, a <code>kubectl top nodes</code> treba da vrati CPU i memorijsku potrošnju. Metrics API po pravilu ne prikazuje ephemeral storage; za njega se koriste Node status, kubelet/runtime metrike i monitoring filesystem-a. Greška <code>Metrics API not available</code> znači da Metrics Server nije dostupan ili još nema podatke; resursi se mogu primeniti, ali CPU i memorijski deo praktikuma ne treba nastaviti bez merenja.
+  </li>
+  <li>
+    <strong>Kreiranje namespace-a.</strong>
+    Namespace odvaja resurse laboratorijskog poslovnog servisa i omogućava primenu politike na jasno definisan opseg.
+    <pre><code class="language-bash">cat &gt; 01-namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inventory-prod
+  labels:
+    environment: production
+    application-domain: inventory
+EOF
+kubectl apply -f 01-namespace.yaml
+kubectl get namespace inventory-prod --show-labels</code></pre>
+    <strong>Validacija:</strong> namespace mora imati status <code>Active</code> i obe deklarisane oznake.
+  </li>
+  <li>
+    <strong>Primena LimitRange politike.</strong>
+    Politika postavlja podrazumevane vrednosti za kontejnere koji ih izostave i sprečava ekstremno male ili velike deklaracije. Podrazumevane vrednosti nisu zamena za eksplicitnu konfiguraciju Deployment-a, već zaštitna mreža.
+    <pre><code class="language-bash">cat &gt; 02-limit-range.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: inventory-container-limits
+  namespace: inventory-prod
+spec:
+  limits:
+    - type: Container
+      min:
+        cpu: 50m
+        memory: 64Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+        ephemeral-storage: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 512Mi
+EOF
+kubectl apply -f 02-limit-range.yaml
+kubectl describe limitrange inventory-container-limits -n inventory-prod</code></pre>
+    <strong>Validacija:</strong> izlaz mora prikazati minimum, maksimum, default request i default limit vrednosti. Administrator dokumentuje da će svaki novokreirani kontejner bez eksplicitnih resursa dobiti podrazumevane vrednosti.
+  </li>
+  <li>
+    <strong>Primena namespace kvote.</strong>
+    Quota ograničava zbir resursa svih podova u namespace-u. Vrednosti ostavljaju prostor za dve radne replike, kontrolisani rolling update i jedan kraći testni Pod, ali ne dozvoljavaju nekontrolisano širenje.
+    <pre><code class="language-bash">cat &gt; 03-resource-quota.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: inventory-compute-quota
+  namespace: inventory-prod
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    requests.ephemeral-storage: 4Gi
+    limits.ephemeral-storage: 8Gi
+    pods: "10"
+EOF
+kubectl apply -f 03-resource-quota.yaml
+kubectl describe resourcequota inventory-compute-quota -n inventory-prod</code></pre>
+    <strong>Validacija:</strong> polje <code>Hard</code> mora prikazati zadate granice, a početne <code>Used</code> vrednosti treba da budu nula ili da odražavaju samo postojeće objekte ako namespace nije bio prazan.
+  </li>
+  <li>
+    <strong>Kreiranje servisa sa eksplicitnim requests i limits vrednostima.</strong>
+    Svaka replika traži 200m CPU-a, 256Mi memorije i 256Mi local ephemeral storage-a, a može koristiti najviše 800m CPU-a, 512Mi memorije i 1Gi ephemeral storage-a. Readiness i liveness provere koriste ugrađenu HTTP putanju demonstracione aplikacije.
+    <pre><code class="language-bash">cat &gt; 04-inventory-api.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+  namespace: inventory-prod
+  labels:
+    app: inventory-api
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: inventory-api
+  template:
+    metadata:
+      labels:
+        app: inventory-api
+    spec:
+      containers:
+        - name: inventory-api
+          image: registry.k8s.io/e2e-test-images/resource-consumer:1.13
+          args:
+            - -port
+            - "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: 800m
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: inventory-prod
+spec:
+  selector:
+    app: inventory-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+EOF
+kubectl apply -f 04-inventory-api.yaml
+kubectl rollout status deployment/inventory-api -n inventory-prod --timeout=180s</code></pre>
+    <strong>Validacija:</strong> rollout mora biti uspešan, a dve replike moraju biti dostupne. Ako Pod ostane u stanju <code>Pending</code>, proveravaju se events podaci pre bilo kakvog povećanja kapaciteta.
+    <pre><code class="language-bash">kubectl get deployment,pods,service -n inventory-prod -o wide
+kubectl get events -n inventory-prod --sort-by=.lastTimestamp
+kubectl get pods -n inventory-prod \
+  -l app=inventory-api \
+  -o custom-columns='NAME:.metadata.name,QOS:.status.qosClass,CPU_REQ:.spec.containers[0].resources.requests.cpu,MEM_REQ:.spec.containers[0].resources.requests.memory,EPH_REQ:.spec.containers[0].resources.requests.ephemeral-storage,CPU_LIMIT:.spec.containers[0].resources.limits.cpu,MEM_LIMIT:.spec.containers[0].resources.limits.memory,EPH_LIMIT:.spec.containers[0].resources.limits.ephemeral-storage'</code></pre>
+    Očekivana QoS klasa je <code>Burstable</code>, jer requests i limits vrednosti nisu jednake.
+  </li>
+  <li>
+    <strong>Provera potrošnje, kvote i opisa poda.</strong>
+    Početno stanje predstavlja osnovu za poređenje sa opterećenjem. Jedan trenutni uzorak nije dovoljan za produkciono dimenzionisanje, ali potvrđuje da su metrike povezane sa odgovarajućim podovima.
+    <pre><code class="language-bash">kubectl top pods -n inventory-prod --containers
+kubectl describe resourcequota inventory-compute-quota -n inventory-prod
+POD_NAME="$(kubectl get pod -n inventory-prod -l app=inventory-api -o jsonpath='{.items[0].metadata.name}')"
+kubectl describe pod "$POD_NAME" -n inventory-prod</code></pre>
+    <strong>Validacija:</strong> pre kreiranja klijenta quota treba da evidentira 400m CPU requests, 512Mi memorijskih requests, 512Mi ephemeral-storage requests, 1600m CPU limita, 1Gi memorijskih limita i 2Gi ephemeral-storage limita za dve replike. Opis poda mora prikazati iste vrednosti i uspešne probe bez restartovanja.
+  </li>
+  <li>
+    <strong>Funkcionalna provera servisa.</strong>
+    Privremeni Pod koristi se kao klijent unutar klastera. On nema eksplicitne resurse, pa LimitRange treba automatski da mu dodeli podrazumevane vrednosti.
+    <pre><code class="language-bash">kubectl run inventory-client \
+  -n inventory-prod \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never \
+  --command -- sleep 600
+kubectl wait \
+  --for=condition=Ready \
+  pod/inventory-client \
+  -n inventory-prod \
+  --timeout=120s
+kubectl exec -n inventory-prod inventory-client -- \
+  curl -fsS http://inventory-api/</code></pre>
+    <strong>Validacija:</strong> HTTP zahtev mora biti uspešan. Zatim se potvrđuje da je LimitRange dodao podrazumevane vrednosti klijentskom kontejneru.
+    <pre><code class="language-bash">kubectl get pod inventory-client -n inventory-prod \
+  -o jsonpath='{.spec.containers[0].resources}{"\n"}'
+kubectl describe resourcequota inventory-compute-quota -n inventory-prod</code></pre>
+  </li>
+  <li>
+    <strong>Kontrolisani CPU test.</strong>
+    Demonstracioni endpoint dobija zahtev da generiše CPU opterećenje. Test se pokreće samo kratko i u ovom izolovanom namespace-u. U stvarnoj produkciji opterećenje se generiše odobrenim load-test alatom u dogovorenom terminu.
+    <pre><code class="language-bash">kubectl exec -n inventory-prod inventory-client -- \
+  curl -fsS \
+  "http://inventory-api/ConsumeCPU?millicores=700&amp;durationSec=60"
+sleep 10
+kubectl top pods -n inventory-prod --containers</code></pre>
+    <strong>Validacija:</strong> jedna ili obe replike mogu pokazati povećanu CPU potrošnju, ali ne bi trebalo da budu terminirane. CPU potrošnja pojedinačnog kontejnera treba da ostane u okviru limita od 800m. Za pouzdanu analizu throttling-a u produkciji koriste se container runtime ili Prometheus metrike kao što su periodi i sekunde CPU throttling-a.
+  </li>
+  <li>
+    <strong>Kontrolisani memorijski test i posmatranje rizika.</strong>
+    Prvo se zahteva 300 Mi memorije, što bi trebalo da ostane ispod limita od 512 Mi. Posle testa proveravaju se potrošnja, restart count i events podaci.
+    <pre><code class="language-bash">kubectl exec -n inventory-prod inventory-client -- \
+  curl -fsS \
+  "http://inventory-api/ConsumeMem?megabytes=300&amp;durationSec=60"
+sleep 10
+kubectl top pods -n inventory-prod --containers
+kubectl get pods -n inventory-prod \
+  -l app=inventory-api \
+  -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason'</code></pre>
+    <strong>Validacija:</strong> servis treba da ostane dostupan, probe treba da prolaze, a restart count ne treba da se poveća. Stvarna evidentirana memorija može odstupati od tražene količine zbog postojeće potrošnje procesa i načina obračuna radnog skupa.
+  </li>
+  <li>
+    <strong>Kontrolisani local ephemeral storage test.</strong>
+    Testni Pod dobija request od 64Mi, limit od 160Mi i disk-backed <code>emptyDir</code> sa <code>sizeLimit: 128Mi</code>. Najpre se upisuje 64Mi i potvrđuje normalan rad. Zatim se, isključivo u laboratoriji, pokušava upis iznad storage budžeta. Kubelet obračun radi periodično, pa evikcija ne mora biti trenutna.
+    <pre><code class="language-bash">cat &gt; 05-ephemeral-storage-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-storage-test
+  namespace: inventory-prod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: writer
+      image: busybox:1.36.1
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+          ephemeral-storage: 160Mi
+      volumeMounts:
+        - name: scratch
+          mountPath: /scratch
+  volumes:
+    - name: scratch
+      emptyDir:
+        sizeLimit: 128Mi
+EOF
+kubectl apply --server-side --dry-run=server \
+  -f 05-ephemeral-storage-test.yaml -o yaml &gt; /dev/null
+kubectl apply -f 05-ephemeral-storage-test.yaml
+kubectl wait --for=condition=Ready pod/ephemeral-storage-test \
+  -n inventory-prod --timeout=120s
+kubectl exec -n inventory-prod ephemeral-storage-test -- \
+  dd if=/dev/zero of=/scratch/sample.bin bs=1M count=64
+kubectl exec -n inventory-prod ephemeral-storage-test -- \
+  du -h /scratch/sample.bin
+kubectl get pod ephemeral-storage-test -n inventory-prod \
+  -o jsonpath='{.spec.containers[0].resources}{"\n"}'</code></pre>
+    <strong>Očekivani rezultat:</strong> fajl veličine približno 64Mi postoji, Pod ostaje <code>Running</code>, a primljeni PodSpec prikazuje 64Mi request i 160Mi limit. Komanda <code>kubectl top</code> nije dokaz storage potrošnje.
+    <p>
+      Sledeći upis može dovesti do greške na filesystem-u ili do naknadne evikcije, u zavisnosti od filesystem-a, načina merenja i vremena kubelet skeniranja. Ne izvršava se na deljenom produkcionom čvoru.
+    </p>
+    <pre><code class="language-bash">kubectl exec -n inventory-prod ephemeral-storage-test -- \
+  dd if=/dev/zero of=/scratch/overflow.bin bs=1M count=128 || true
+kubectl get pod ephemeral-storage-test -n inventory-prod -w</code></pre>
+    Posmatranje sa <code>-w</code> prekida se sa <code>Ctrl+C</code> čim se vidi rezultat ili po isteku dogovorenog vremena. Dokazi se zatim prikupljaju read-only komandama:
+    <pre><code class="language-bash">kubectl get pod ephemeral-storage-test -n inventory-prod -o wide
+kubectl describe pod ephemeral-storage-test -n inventory-prod
+kubectl get events -n inventory-prod \
+  --field-selector involvedObject.name=ephemeral-storage-test \
+  --sort-by=.lastTimestamp
+kubectl get nodes \
+  -o custom-columns='NAME:.metadata.name,DISK_PRESSURE:.status.conditions[?(@.type=="DiskPressure")].status'</code></pre>
+    <strong>Tumačenje i recovery:</strong> poruka o prekoračenju local ephemeral storage limita ukazuje na Pod-level budžet; <code>DiskPressure=True</code> ukazuje na node-level problem. Testni Pod nema poslovne podatke i bezbedno se vraća brisanjem i ponovnim kreiranjem nakon uklanjanja fajlova ili korekcije manifesta. U produkciji se prvo zaustavlja izvor rasta logova/cache-a, čuva incidentni dokaz i proverava slobodan prostor; ne brišu se nasumično direktorijumi ispod kubelet ili runtime putanja.
+  </li>
+  <li>
+    <strong>Negativni test – odbijanje resursa izvan politike.</strong>
+    Kreira se manifest sa memorijskim limitom većim od maksimuma dozvoljenog LimitRange objektom. Očekuje se odbijanje na API nivou, bez pokretanja poda.
+    <pre><code class="language-bash">cat &gt; 06-invalid-pod.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: invalid-memory-request
+  namespace: inventory-prod
+spec:
+  containers:
+    - name: test
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 3Gi
+EOF
+kubectl apply -f 06-invalid-pod.yaml</code></pre>
+    <strong>Očekivani rezultat:</strong> API server treba da odbije objekat jer je memorijski limit od 3Gi veći od maksimalnih 2Gi. Proverava se da Pod nije nastao.
+    <pre><code class="language-bash">kubectl get pod invalid-memory-request -n inventory-prod</code></pre>
+    Očekuje se poruka <code>NotFound</code>. Ako je Pod ipak kreiran, LimitRange nije primenjen u očekivanom namespace-u ili manifest ne koristi očekivani kontekst.
+  </li>
+  <li>
+    <strong>Negativni test – prekoračenje memorijskog limita.</strong>
+    Ovaj korak namerno može izazvati prekid kontejnera i koristi se samo u laboratoriji ili unapred odobrenom testnom okruženju. Bezbednija produkciona alternativa je load test na posebnom staging klasteru.
+    <pre><code class="language-bash">kubectl exec -n inventory-prod inventory-client -- \
+  curl -fsS \
+  "http://inventory-api/ConsumeMem?megabytes=700&amp;durationSec=120" || true
+sleep 15
+kubectl get pods -n inventory-prod \
+  -l app=inventory-api \
+  -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,LAST_REASON:.status.containerStatuses[0].lastState.terminated.reason'
+kubectl get events -n inventory-prod --sort-by=.lastTimestamp | tail -n 20</code></pre>
+    <strong>Validacija:</strong> pogođeni kontejner može biti završen sa razlogom <code>OOMKilled</code>, nakon čega ga kubelet ponovo pokreće. Druga replika treba da održava dostupnost servisa. Ako obe replike istovremeno izgube readiness, servis nema dovoljnu otpornost za ovakav test ili zahtevi nisu ravnomerno raspoređeni.
+  </li>
+  <li>
+    <strong>Provera logova i razlikovanje simptoma.</strong>
+    Aplikacioni logovi mogu pokazati poslednji uspešan zahtev, ali OOM prekid često ne ostavlja urednu aplikacionu poruku jer proces prekida kernel. Zato se kombinuju prethodni log, status kontejnera, events podaci i node-level evidencija.
+    <pre><code class="language-bash">FAILED_POD="$(kubectl get pod -n inventory-prod -l app=inventory-api \
+  --sort-by=.status.containerStatuses[0].restartCount \
+  -o jsonpath='{.items[-1:].metadata.name}')"
+kubectl logs -n inventory-prod "$FAILED_POD" --previous || true
+kubectl describe pod -n inventory-prod "$FAILED_POD"
+kubectl get events -n inventory-prod \
+  --field-selector involvedObject.name="$FAILED_POD" \
+  --sort-by=.lastTimestamp</code></pre>
+    <strong>Tumačenje:</strong> <code>OOMKilled</code> ukazuje na prekoračenje memorijske granice kontejnera. <code>Evicted</code> sa porukom o memory pressure-u ukazuje na pritisak na nivou čvora. <code>Pending</code> sa porukom <code>Insufficient memory</code> znači da scheduler nije našao dovoljan nealokirani request kapacitet. Rast latencije bez restarta, uz throttling metrike, ukazuje na CPU ograničenje.
+  </li>
+  <li>
+    <strong>Rollback konfiguracije.</strong>
+    Ako je promena resursa izvršena na postojećem Deployment-u, najbezbedniji povratak je vraćanje prethodno odobrenog manifesta iz sistema kontrole verzija ili korišćenje Deployment revision istorije. U ovom praktikumu početno stanje nastalo je primenom fajla <code>04-inventory-api.yaml</code>, pa se resursi mogu korigovati u tom fajlu i ponovo primeniti.
+    <pre><code class="language-bash">kubectl rollout history deployment/inventory-api -n inventory-prod
+kubectl rollout undo deployment/inventory-api -n inventory-prod
+kubectl rollout status deployment/inventory-api -n inventory-prod --timeout=180s</code></pre>
+    <strong>Validacija:</strong> rollout mora biti završen, željeni broj replika dostupan, a requests i limits vrednosti moraju odgovarati izabranoj prethodnoj reviziji. Ako je Deployment kreiran samo jednom i nema korisne prethodne revizije, koristi se odobrena kopija manifesta, a ne nasumično ručno menjanje aktivnih podova.
+  </li>
+  <li>
+    <strong>Cleanup laboratorijskih resursa.</strong>
+    Brisanje namespace-a uklanja sve objekte u njemu i predstavlja destruktivnu operaciju. Pre komande mora se potvrditi da namespace ne sadrži druge aplikacije ili podatke.
+    <pre><code class="language-bash">kubectl get all,limitrange,resourcequota -n inventory-prod
+kubectl delete namespace inventory-prod
+kubectl wait \
+  --for=delete \
+  namespace/inventory-prod \
+  --timeout=180s</code></pre>
+    <strong>Validacija:</strong> <code>kubectl get namespace inventory-prod</code> treba da vrati <code>NotFound</code>. U stvarnom produkcionom scenariju ne briše se namespace; uklanjaju se samo privremeni testni objekti i vraća odobrena konfiguracija.
+  </li>
+</ol>
+<h3>Kriterijumi prihvatanja praktikuma</h3>
+<ul>
+  <li>Dve replike Deployment-a postaju <code>Available</code>, prolaze readiness proveru i dostupne su preko Service objekta.</li>
+  <li>Svaka replika ima request od 200m CPU-a i 256Mi memorije, kao i limit od 800m CPU-a i 512Mi memorije.</li>
+  <li>Svaka replika ima request od 256Mi i limit od 1Gi za <code>ephemeral-storage</code>, a namespace kvota evidentira zbir deklarisanih vrednosti.</li>
+  <li>Podovi aplikacije imaju očekivanu QoS klasu <code>Burstable</code>.</li>
+  <li>ResourceQuota tačno evidentira zbir resursa aktivnih podova i odbija potrošnju iznad namespace granice.</li>
+  <li>LimitRange automatski dodaje podrazumevane resurse testnom klijentu i odbija kontejner sa limitom iznad dozvoljenog maksimuma.</li>
+  <li>CPU test ne prekida kontejner, dok se memorijski negativni test razlikuje kao <code>OOMKilled</code>, a ne kao scheduling ili node-pressure problem.</li>
+  <li>Storage test potvrđuje primljene request/limit vrednosti i razlikuje prekoračenje Pod limita od node-level <code>DiskPressure</code> događaja.</li>
+  <li>Administrator može da pronađe prethodne logove, Pod status i događaje potrebne za objašnjenje restarta.</li>
+  <li>Rollback vraća poznatu Deployment reviziju i završava se bez nedostupnih replika.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<p>
+  <strong>Praćenje odnosa stvarne potrošnje i requests vrednosti.</strong> Za svaki produkcioni workload prate se CPU i memorijski percentili po kontejneru, a ne samo trenutni maksimum. Operativna provera može početi komandama <code>kubectl top pods --containers</code> i <code>kubectl describe pod</code>, dok se za period od najmanje nekoliko dana koriste Prometheus, OpenTelemetry kompatibilan sistem ili druga odobrena monitoring platforma. Pregled se radi posle svakog izdanja, promene opterećenja i najmanje mesečno za stabilne servise. Dugotrajan CPU iznad request vrednosti, memorija koja se približava limitu ili stalni rast radnog skupa zahteva analizu. Prva reakcija nije automatsko povećanje limita, već poređenje sa brojem zahteva, latencijom, greškama i promenama verzije. Nalaz, period merenja, percentili i odobrena nova vrednost dokumentuju se u change zapisu i repozitorijumu manifesta. Uspeh se meri smanjenjem throttling-a, OOM događaja i pending podova bez neopravdanog rasta rezervisanog kapaciteta.
+</p>
+<p>
+  <strong>Kontrola CPU throttling-a.</strong> Prate se kumulativno vreme i broj throttled perioda po kontejneru, zajedno sa latencijom aplikacije. Provera se radi posle rollout-a i tokom poznatih vršnih termina. Povremeni kratki throttling nije automatski incident, ali trajno povećanje uz pogoršanje SLO pokazatelja zahteva reakciju. Prvo se proverava da li je CPU limit prenizak, da li aplikacija ima neočekivanu petlju, da li je request realan i da li je čvor preopterećen. Odluka o povećanju ili uklanjanju CPU limita dokumentuje se sa rezultatima testa opterećenja i procenom uticaja na druge zakupce klastera.
+</p>
+<p>
+  <strong>Kontrola OOM i node-pressure događaja.</strong> Najmanje dnevno automatski se prate restart count, <code>OOMKilled</code>, <code>Evicted</code> i <code>MemoryPressure</code> signali. Nakon svakog alarma proveravaju se <code>kubectl describe pod</code>, prethodni kontejnerski log, namespace events, node conditions i sistemski logovi kubeleta. Na systemd čvorovima kubelet log se obično pregleda komandom <code>journalctl -u kubelet</code>, u skladu sa privilegijama i procedurom pristupa čvoru. OOMKilled zahteva proveru limita i profila procesa; node pressure zahteva proveru ukupne potrošnje, rezervacija sistemskih servisa i rasporeda podova. Dokumentuju se pogođeni Pod, čvor, vreme, prethodni limit, vršna potrošnja i korektivna promena. Uspešnost se meri odsustvom ponavljanja pod istim validiranim opterećenjem.
+</p>
+<p>
+  <strong>Periodična revizija LimitRange i ResourceQuota objekata.</strong> Posle promene broja replika, autoscaling opsega, rollout strategije ili veličine čvorova proveravaju se <code>kubectl describe limitrange</code> i <code>kubectl describe resourcequota</code>. Najmanje kvartalno se porede kvote sa stvarnim potrebama timova. Reakcija je potrebna kada je stabilna iskorišćenost kvote iznad približno 80%, kada rolling update ne može da kreira surge repliku ili kada podrazumevane vrednosti više ne odgovaraju tipičnim aplikacijama. Promena se evidentira u platformskom repozitorijumu, change zahtevu i dokumentaciji vlasništva namespace-a. Uspeh znači da legitimni rollout-i prolaze, a nekontrolisane deklaracije ostaju blokirane.
+</p>
+<p>
+  <strong>Budžet i alarmi za local ephemeral storage.</strong> Za svaki produkcioni kontejner definiše se očekivana veličina writable layer-a, logova i scratch podataka. Prate se slobodni bajtovi i inode za <code>nodefs</code>, <code>imagefs</code> i, kada postoji, <code>containerfs</code>, kao i <code>DiskPressure</code>, evikcije i stopa rasta logova. ResourceQuota za <code>ephemeral-storage</code> nije dovoljna sama: za razliku od CPU/memory kvote, može ignorisati novi Pod koji uopšte ne deklariše odgovarajući request ili limit. Zato LimitRange podrazumevane vrednosti ili admission politika moraju obezbediti da svaki relevantan kontejner dobije storage budžet. Kod incidenta se najpre zaustavlja izvor rasta i čuvaju dokazi; ručno brisanje sadržaja iz kubelet/runtime direktorijuma nije prihvatljiva prečica.
+</p>
+<p>
+  <strong>Provera kapaciteta pre promene.</strong> Pre povećanja requests vrednosti ili broja replika proveravaju se allocatable resursi, zbir zahteva na čvorovima, taints, affinity pravila, topology spread, PodDisruptionBudget i rolling update parametri. Komande <code>kubectl describe nodes</code>, <code>kubectl get pods -o wide</code>, <code>kubectl get events</code> i izveštaj monitoring sistema daju osnovu za odluku. Reakcija je potrebna ako očekivani surge zahtevi ne mogu stati ni na jedan dozvoljeni čvor. Tada se prvo usklađuje rollout strategija ili kapacitet, umesto da se promena pusti i ostavi nove podove u stanju Pending.
+</p>
+<p>
+  <strong>Čuvanje konfiguracije i oporavak.</strong> Requests, limits, LimitRange i ResourceQuota manifesti čuvaju se u verzionisanom Git repozitorijumu, zajedno sa odobrenjem promene i rezultatima validacije. Kubernetes objekti nisu zamena za izvor konfiguracije. Integritet se proverava pregledom commita, potpisom ili organizacionim kontrolama repozitorijuma i periodičnim poređenjem željenog i stvarnog stanja. Probni restore sastoji se od primene izabrane verzije manifesta u izolovanom namespace-u ili staging klasteru i potvrde da API validacija, rollout i kvota rade očekivano. Backup je upotrebljiv tek kada se iz njega može rekonstruisati politika i workload sa tačnim vrednostima, oznakama i zavisnostima.
+</p>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Potvrđen je tačan Kubernetes kontekst komandom <code>kubectl config current-context</code>.</li>
+  <li>Za svaki kontejner evidentirani su CPU i memorijski request i limit u aktivnom PodSpec-u.</li>
+  <li>Komandom <code>kubectl get pods</code> potvrđene su očekivane QoS klase.</li>
+  <li>Komandama <code>kubectl describe nodes</code> i <code>kubectl top nodes</code> potvrđeni su allocatable kapacitet i stvarna potrošnja.</li>
+  <li>Provereno je da rollout strategija ima dovoljno kapaciteta za stare, nove i surge replike.</li>
+  <li><code>kubectl describe resourcequota</code> pokazuje očekivane Hard i Used vrednosti.</li>
+  <li><code>kubectl describe limitrange</code> pokazuje odobrene minimalne, maksimalne i podrazumevane vrednosti.</li>
+  <li>Nema neobjašnjenih <code>OOMKilled</code>, <code>Evicted</code>, <code>Pending</code> ili rastućih restart count vrednosti.</li>
+  <li>Provereni su local ephemeral storage requests/limits, <code>emptyDir.sizeLimit</code>, slobodni bajtovi i inode, kao i Node uslov <code>DiskPressure</code>.</li>
+  <li>CPU throttling je poređen sa latencijom i aplikacionim SLO pokazateljima.</li>
+  <li>Funkcionalni zahtev prema servisu uspeva pre i posle promene.</li>
+  <li>Rollback manifest ili prethodna Deployment revizija provereni su pre produkcione izmene.</li>
+  <li>Odobrene vrednosti, merenja, rizik, vreme promene i rezultat upisani su u change zapis i Git repozitorijum.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Requests i limits vrednosti povezuju aplikacioni profil sa fizičkim kapacitetom klastera. Administrator mora da razume da request predstavlja osnovu za scheduling, obračun kapaciteta i relativno ponašanje pri konkurenciji, dok limit predstavlja izvršnu granicu sa različitim posledicama po resursu. CPU limit najčešće usporava proces kroz throttling, memorijski limit može izazvati OOM prekid, a prekoračenje local ephemeral storage budžeta može dovesti do evikcije celog Poda. Zato se iste numeričke strategije ne primenjuju nekritički na CPU, memoriju i disk.
+</p>
+<p>
+  Nakon ove lekcije administrator treba da ume da definiše CPU, memory i ephemeral-storage resurse u Deployment manifestu, primeni LimitRange i ResourceQuota politiku, potvrdi QoS klasu, proveri uticaj na scheduling i rollout, izmeri potrošnju i razlikuje CPU throttling, OOMKilled, prekoračenje Pod storage limita, node-pressure evikciju i nedostatak planerskog kapaciteta. Bezbedna promena podrazumeva početno merenje, procenu surge kapaciteta, postepenu implementaciju, funkcionalnu proveru, praćenje događaja i spreman rollback.
+</p>
+<p>
+  Granica odgovornosti administratora nalazi se između platformskih kontrola i ponašanja same aplikacije. Administrator može da obezbedi kvote, izolaciju, monitoring i proverljiv postupak promene, ali ne može resursnim limitom popraviti curenje memorije, neefikasan algoritam ili pogrešno podešen runtime. Kada potrošnja ne može da se objasni infrastrukturnim stanjem, kada je potrebna promena aplikacionog heap-a, broja procesa ili obrasca obrade, problem se eskalira razvojnom i aplikacionom timu uz priložene metrike, događaje, logove i reproduktivan test.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za upravljanje CPU, memorijskim i local ephemeral storage resursima podova i kontejnera; QoS klase, scheduling, Pod Priority i node-pressure eviction; LimitRange i ResourceQuota admission politike; kubelet filesystem, garbage collection i eviction konfiguraciju; Metrics API, cgroup i CPU Manager; Pod-level resources i in-place resize funkcionalnosti
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-22-probes-i-graceful-shutdown.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-24-scheduling.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

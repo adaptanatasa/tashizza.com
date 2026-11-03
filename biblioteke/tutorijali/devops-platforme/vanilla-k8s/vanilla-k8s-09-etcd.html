@@ -1,0 +1,546 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-09-etcd.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>etcd – baza stanja Kubernetes klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="etcd je distribuirana key-value baza podataka u kojoj Kubernetes čuva kompletno stanje klastera, konfiguraciju objekata i ključne informacije potrebne za rad platforme.">
+
+  <meta name="keywords"
+        content="etcd, Kubernetes etcd, Kubernetes baza podataka, key-value baza, stanje Kubernetes klastera, control plane, kube-apiserver, backup etcd, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-09-etcd.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="etcd – baza stanja Kubernetes klastera">
+
+  <meta property="og:description"
+        content="Upoznajte etcd kao distribuiranu bazu stanja Kubernetes klastera i ključnu komponentu za čuvanje konfiguracije, objekata i informacija o platformi.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-09-etcd.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-09-etcd.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="etcd – baza stanja Kubernetes klastera">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-09-etcd.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-09-etcd.png"
+           alt="etcd – baza stanja Kubernetes klastera">
+
+    </a>
+
+
+<div class="page-subtitle">
+  II. Topologija, komponente i život klastera
+</div>
+<div class="page-subtitle">
+  9. etcd i stanje klastera – quorum, konzistentnost, snapshot i značaj oporavka
+</div>
+<p>
+  Kubernetes klaster ne može da održava željeno stanje samo na osnovu procesa koji trenutno rade. Control plane mora trajno da pamti deklaracije korisnika, konfiguraciju klastera, identitete objekata, njihove verzije, statuse i rezultate odluka kontrolera. Tu ulogu obavlja <strong>etcd</strong>: distribuirano, konzistentno key-value skladište koje predstavlja trajni izvor stanja Kubernetes API-ja. API server je jedina standardna Kubernetes komponenta koja neposredno čita i menja podatke u etcd-u; scheduler, controller manager, kubelet i administratorski alati komuniciraju sa API serverom, a ne direktno sa bazom.
+</p>
+<p>
+  Zbog toga etcd nije obična pomoćna baza. Njegova dostupnost, integritet i latencija direktno određuju da li control plane može da prihvata promene. Kada etcd izgubi kvorum, postojeći Pod-ovi na worker čvorovima mogu nastaviti da rade, ali klaster više ne može pouzdano da registruje novo stanje, raspoređuje workload-e, obrađuje izmene ili sprovodi oporavak. Administrator zato etcd tretira kao jednu od najkritičnijih komponenti platforme: pristup mu je strogo ograničen, diskovi se pažljivo biraju, rezervne kopije se redovno proveravaju, a promene članstva i oporavak izvode se isključivo prema unapred testiranoj proceduri.
+</p>
+
+<h3>Uloga etcd-a u Kubernetes arhitekturi</h3>
+<p>
+  Kubernetes API objekti predstavljaju deklarativni zapis željenog i zabeleženog stvarnog stanja klastera. Deployment opisuje koliko replika aplikacije treba da postoji, Service definiše stabilan način pristupa, ConfigMap i Secret nose konfiguracione podatke, Node objekat predstavlja registrovani čvor, dok statusna polja beleže rezultate rada kontrolera i agenata. API server validira zahtev, primenjuje autentikaciju, autorizaciju i admission pravila, serijalizuje objekat i upisuje odgovarajuće podatke u etcd.
+</p>
+<p>
+  etcd čuva podatke kao uređene ključeve i vrednosti. Kubernetes iznad toga gradi model API resursa, namespace-ova, revizija i praćenja promena. Svaka uspešna izmena povećava etcd reviziju. API server i njegovi klijenti koriste revizije za konzistentno čitanje i za mehanizam <em>watch</em>, kojim kontroleri saznaju da je objekat kreiran, izmenjen ili obrisan. Taj mehanizam omogućava da Kubernetes reaguje na promene bez stalnog ponovnog čitanja cele baze.
+</p>
+<p>
+  Administrator ne treba da uređuje Kubernetes podatke direktno pomoću komande <code>etcdctl put</code> ili <code>etcdctl del</code>. Takva promena zaobilazi API validaciju, admission kontrolu, autorizaciju, finalizere i očekivanu semantiku resursa. Rezultat mogu biti nekonzistentni ili nečitljivi objekti, gubitak podataka i kvar control plane-a. Direktan pristup etcd-u koristi se za proveru zdravlja, održavanje, snapshot i strogo kontrolisan oporavak, a upravljanje Kubernetes objektima obavlja se kroz API server.
+</p>
+
+<h3>Raft, članovi klastera i kvorum</h3>
+<p>
+  etcd koristi konsenzusni algoritam Raft. Jedan član u datom trenutku ima ulogu lidera, dok ostali članovi prate njegov dnevnik. Zahtev za upis potvrđen je tek kada ga prihvati većina članova. Time se obezbeđuje da potvrđeni podaci ostanu konzistentni čak i kada pojedini član prestane da radi ili se mreža privremeno podeli.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Broj članova</th>
+      <th>Potreban kvorum</th>
+      <th>Tolerisani trajni kvarovi</th>
+      <th>Administratorska ocena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>1</td>
+      <td>0</td>
+      <td>Prihvatljivo samo za lokalni lab ili razvoj</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+      <td>Ne povećava toleranciju na kvar i uglavnom se izbegava</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>2</td>
+      <td>1</td>
+      <td>Uobičajen produkcioni minimum</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>3</td>
+      <td>2</td>
+      <td>Koristi se kada su opravdani dodatni kapacitet i tolerancija</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Neparan broj članova je praktično pravilo jer dodatni parni član ne povećava broj kvarova koje klaster može da podnese. Klaster sa četiri člana i dalje zahteva tri glasa i podnosi samo jedan kvar, kao i klaster sa tri člana, ali ima veći trošak replikacije. Dodavanje članova zato nije metod povećanja performansi: svaki upis mora biti potvrđen kvorumom, pa veći broj članova i veća mrežna udaljenost mogu povećati latenciju.
+</p>
+<p>
+  U referentnom okruženju ove lekcije koriste se tri control plane čvora: <code>k8s-cp01</code>, <code>k8s-cp02</code> i <code>k8s-cp03</code>. kubeadm je postavio lokalni, odnosno <em>stacked</em>, etcd član na svakom čvoru. Članovi koriste TCP port 2380 za međusobnu peer komunikaciju, dok API server pristupa lokalnom članu preko TLS zaštićenog endpoint-a na portu 2379. Drugi podržan model jeste eksterni etcd klaster na zasebnim serverima. On pruža jasnije razdvajanje odgovornosti i kvarova, ali zahteva dodatne hostove, sertifikate, monitoring i poseban životni ciklus.
+</p>
+
+<h3>Konzistentnost, revizije i tok jednog zahteva</h3>
+<p>
+  Kada administrator izvrši <code>kubectl apply</code>, zahtev stiže do API servera. Posle provere identiteta i prava, admission kontroleri mogu da izmene ili odbiju objekat. API server zatim proverava semantiku i konkurentne izmene, kodira objekat u format skladištenja i šalje transakciju etcd-u. Lider replicira zapis pratiocima, većina ga potvrđuje, transakcija postaje committed, a API server vraća uspešan odgovor klijentu.
+</p>
+<p>
+  Kontroleri koji prate odgovarajući resurs dobijaju događaj kroz watch tok. Na primer, Deployment kontroler kreira ReplicaSet, a scheduler kasnije bira čvor za novonastali Pod. Svaka od tih odluka proizvodi novu API operaciju i novu etcd reviziju. etcd zato nije skladište sadržaja kontejnerskih volumena, logova aplikacija ili image slojeva. On čuva stanje Kubernetes API-ja, dok aplikacioni podaci pripadaju odgovarajućim persistent volume sistemima, bazama i zasebnim backup procedurama.
+</p>
+<p>
+  Linearizabilno čitanje daje najsvežije potvrđeno stanje, ali zahteva koordinaciju sa liderom. Serijalizabilno čitanje može biti obrađeno lokalno i imati manju latenciju, ali može vratiti starije stanje. Kubernetes API server bira odgovarajuću semantiku u skladu sa operacijom. Administrator obično ne menja taj mehanizam, ali mora razumeti da spori ili nestabilni etcd upisi mogu izazvati spore API zahteve, istek vremena, prekid watch tokova i kašnjenje kontrolera.
+</p>
+
+<h3>Disk, mreža i kapacitet</h3>
+<p>
+  etcd je posebno osetljiv na latenciju trajnog upisa. Potvrđena transakcija zahteva zapisivanje dnevnika na disk i komunikaciju sa većinom članova. Zbog toga su predvidiva I/O latencija, kvalitetan SSD ili NVMe uređaj i stabilna mreža važniji od samog velikog sekvencijalnog protoka. Deljenje sporog diska sa intenzivnim logovanjem, image skladištem ili drugim bazama može proizvesti povremene zastoje koji se u Kubernetesu vide kao spor API server i gubitak lidera.
+</p>
+<p>
+  Članovi treba da budu raspoređeni tako da kvar jednog fizičkog hosta, napajanja ili zone ne ukloni većinu. Istovremeno, mrežna latencija između njih mora ostati dovoljno mala i stabilna za Raft. Raspoređivanje jednog etcd klastera preko veoma udaljenih lokacija bez detaljnog merenja često je lošije od regionalnog klastera sa nezavisnim planom oporavka. etcd ne treba posmatrati kao geografski distribuiranu aplikacionu bazu.
+</p>
+<p>
+  Administrator prati veličinu baze, iskorišćenost backend kvote, trajanje fsync operacija, broj promena lidera, neuspele peer poruke i latenciju API servera. Popunjavanje particije sa <code>--data-dir</code> direktorijumom može zaustaviti član, a dostizanje backend kvote aktivira alarm <code>NOSPACE</code> i sprečava nove upise. Povećanje kvote bez analize samo odlaže problem; prvo treba utvrditi rast objekata, završiti kompakciju i defragmentaciju kada su opravdane i osloboditi prostor.
+</p>
+
+<h3>Kompakcija i defragmentacija</h3>
+<p>
+  Pošto etcd održava istoriju revizija radi watch i MVCC funkcionalnosti, stari zapisi mogu povećavati logičku veličinu baze. Kompakcija uklanja istorijske revizije starije od izabrane tačke, ali ne mora odmah smanjiti fizičku veličinu datoteke. Defragmentacija reorganizuje backend bazu i vraća neiskorišćen prostor operativnom sistemu.
+</p>
+<p>
+  Ove operacije nisu sinonimi. Kompakcija menja dostupnu istoriju revizija, dok defragmentacija preuređuje fizičko skladište. Defragmentacija pojedinačnog člana privremeno blokira njegove operacije, pa se u višestrukom klasteru izvodi član po član, uz proveru zdravlja između članova. Ne pokreće se istovremeno nad svim endpoint-ima i ne sprovodi se naslepo samo zato što je datoteka velika.
+</p>
+<p>
+  Kubernetes i konkretna distribucija mogu automatski upravljati kompakcijom. Pre ručne intervencije administrator proverava verziju etcd-a, parametre procesa, metrike <code>etcd_mvcc_db_total_size_in_bytes</code> i <code>etcd_mvcc_db_total_size_in_use_in_bytes</code>, raspoloživi prostor i vendor proceduru. Značajna razlika između ukupne i aktivno korišćene veličine ukazuje da defragmentacija može vratiti prostor, ali se promena prvo testira i dokumentuje.
+</p>
+
+<h3>Bezbednost podataka i pristupa</h3>
+<p>
+  etcd sadrži gotovo sve podatke dostupne kroz Kubernetes API. To može obuhvatiti Secret objekte, ServiceAccount podatke, konfiguraciju mreže, identitete workload-a, nazive sistema, interne endpoint-e i metapodatke organizacije. Zato pristup etcd sertifikatima praktično predstavlja visokoprivilegovan pristup celom klasteru.
+</p>
+<p>
+  Komunikacija klijenata i članova mora koristiti TLS. Client-to-server i peer-to-peer saobraćaj imaju različite sertifikate i namene. Privatni ključevi u kubeadm okruženju obično se nalaze ispod direktorijuma <code>/etc/kubernetes/pki/etcd</code> i dostupni su samo korisniku <code>root</code>. Portovi 2379 i 2380 ne izlažu se korisničkim, workload ili javnim mrežama. Firewall pravila dopuštaju isključivo poznate control plane i administrativne izvore.
+</p>
+<p>
+  TLS štiti podatke u prenosu, ali sam po sebi ne šifruje vrednosti u backend datoteci. Kubernetes Secret objekti se bez dodatne konfiguracije mogu nalaziti u etcd-u u obliku koji nije šifrovan na nivou API skladištenja. Produkcioni klaster zato treba da koristi Kubernetes encryption at rest konfiguraciju, a u odgovarajućim okruženjima KMS v2 provajder i spoljašnje upravljanje ključevima. Šifrovanje diska i snapshot fajlova predstavlja dodatni sloj, a ne zamenu za API-level enkripciju.
+</p>
+<p>
+  Snapshot se klasifikuje najmanje kao i sam klaster. Ne šalje se elektronskom poštom, ne ostavlja u javnom object storage-u i ne kopira na administratorski računar bez opravdanja. Pristup backup lokaciji mora biti auditovan, podaci šifrovani, a rok čuvanja usklađen sa bezbednosnom politikom i zahtevima oporavka.
+</p>
+
+<h3>Snapshot, kontinuitet rada i oporavak</h3>
+<p>
+  Snapshot predstavlja konzistentnu kopiju etcd backend-a u određenom trenutku. U Kubernetes okruženju njime se čuva stanje API objekata, ali ne i sadržaj persistent volume-a, eksternih baza, kontejnerskog registra ili konfiguracija koje postoje samo izvan API-ja. Potpun plan oporavka zato mora uskladiti etcd snapshot sa backup-om aplikacionih podataka i spoljašnjih zavisnosti.
+</p>
+<p>
+  Snapshot može biti napravljen onlajn pomoću <code>etcdctl snapshot save</code> sa aktivnog endpoint-a. Kopiranje same datoteke <code>member/snap/db</code> sa diska člana moguće je samo uz precizno razumevanje postupka; takva kopija može izgubiti podatke koji su još u write-ahead logu. Za rutinski backup prednost ima zvanični snapshot API. Status i integritet snapshot-a proveravaju se alatom <code>etcdutl snapshot status</code> kompatibilnim sa korišćenom verzijom etcd-a.
+</p>
+<p>
+  Backup nije potvrđen time što fajl postoji. Mora biti proverljiv, prenet u zaštićeno odvojeno skladište i periodično vraćen u izolovanom okruženju. Probni restore potvrđuje da su dostupni odgovarajući alati, sertifikati, konfiguracioni podaci, dokumentacija i osoblje koje razume proceduru. RPO određuje koliko često se snapshot pravi, a RTO koliko brzo control plane mora biti vraćen.
+</p>
+<p>
+  Restore nije isto što i povratak jednog pokvarenog člana. Ako je kvorum zdrav, trajno otkazani član se obično uklanja i zamenjuje novim članom prema proceduri za članstvo. Snapshot restore se koristi kada je izgubljen kvorum, kada je došlo do logičkog brisanja ili korupcije koju treba vratiti na ranije stanje, ili kada se izvodi kontrolisan disaster recovery. Restore kreira novi logički etcd klaster sa novim identitetima članova. Ne sme se improvizovati nad delimično aktivnim starim klasterom.
+</p>
+
+<h3>Provera zdravlja i razlikovanje simptoma</h3>
+<p>
+  Zdravlje etcd-a proverava se na više nivoa. <code>etcdctl endpoint health</code> potvrđuje da endpoint može da obradi probni zahtev. <code>endpoint status</code> prikazuje lidera, Raft indeks, reviziju, verziju i veličinu baze. <code>member list</code> potvrđuje očekivano članstvo. Kubernetes API provere, logovi API servera i Prometheus metrike pokazuju kako stanje etcd-a utiče na ostatak control plane-a.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Mogući uzrok</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Jedan endpoint nije zdrav, ostala dva jesu</td>
+      <td>Kvar procesa, hosta, diska, sertifikata ili mreže jednog člana</td>
+      <td>Stanje static Pod-a, kubelet log i peer dostupnost tog člana</td>
+    </tr>
+    <tr>
+      <td>Svi endpoint-i sporo odgovaraju</td>
+      <td>Visoka disk latencija, mrežni zastoji ili preveliko opterećenje</td>
+      <td>Disk fsync metrike, prostor, API latencija i promene lidera</td>
+    </tr>
+    <tr>
+      <td>Alarm NOSPACE</td>
+      <td>Dostignuta backend kvota</td>
+      <td><code>etcdctl alarm list</code>, veličina baze i slobodan prostor</td>
+    </tr>
+    <tr>
+      <td>API čitanje radi, upisi otkazuju</td>
+      <td>Gubitak kvoruma, NOSPACE ili problem sa potvrdom upisa</td>
+      <td>Endpoint health svih članova i etcd/API server logovi</td>
+    </tr>
+    <tr>
+      <td>Česte promene lidera</td>
+      <td>Nestabilna mreža, spori diskovi, CPU zastoji ili loše timeout vrednosti</td>
+      <td>Raft i peer metrike, sistemski resursi i vremenska sinhronizacija</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Normalan izbor novog lidera tokom kontrolisanog restarta jednog člana nije isto što i neprekidne promene lidera bez planirane aktivnosti. Jedan nedostupan član u tročlanom klasteru jeste degradirano, ali funkcionalno stanje; drugi kvar u tom trenutku znači gubitak kvoruma. Administrator zato ne čeka da korisnici prijave problem, već odmah obnavlja redundansu.
+</p>
+
+<hr>
+
+<h3>Integrisani praktikum: verifikovan snapshot i izolovani probni restore</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Organizacija koristi kubeadm Kubernetes klaster sa tri control plane čvora: <code>k8s-cp01</code>, <code>k8s-cp02</code> i <code>k8s-cp03</code>. etcd radi kao static Pod na svakom čvoru. Pre planirane nadogradnje control plane-a administrator mora da napravi proverljiv snapshot, sačuva dokaz o stanju i potvrdi mogućnost vraćanja podataka bez ugrožavanja produkcionog klastera.
+</p>
+<p>
+  <strong>Cilj.</strong> Napraviti onlajn snapshot sa čvora <code>k8s-cp01</code>, proveriti njegov status i checksum, kopirati ga u zaštićeno backup skladište i izvršiti probni restore u izolovani direktorijum. Praktikum ne prebacuje produkcioni API server na vraćenu bazu; time se proverava upotrebljivost rezervne kopije uz minimalan operativni rizik.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Kubernetes je instaliran pomoću kubeadm-a. Lokalni etcd endpoint je <code>https://127.0.0.1:2379</code>. Sertifikati se nalaze u <code>/etc/kubernetes/pki/etcd</code>. Na čvoru postoje binarni alati <code>etcdctl</code> i <code>etcdutl</code> čija je minor verzija kompatibilna sa serverom. Backup direktorijum je <code>/var/backups/kubernetes/etcd</code>, a probni restore se smešta u <code>/var/lib/etcd-restore-test</code>.
+</p>
+<p>
+  <strong>Preduslovi i prava.</strong> Potrebni su SSH pristup čvoru <code>k8s-cp01</code>, kontrolisani <code>sudo</code> pristup za čitanje etcd klijentskog ključa i pisanje u backup direktorijum, kao i Kubernetes pravo za čitanje stanja control plane čvorova. Direktan etcd klijentski sertifikat ne kopira se van control plane čvora. Promena mora imati evidentiran change zahtev, vlasnika, vreme izvođenja, RPO, RTO i odobrenu lokaciju rezervne kopije.
+</p>
+<ol>
+  <li>
+    <strong>Potvrditi identitet čvora, verzije i stanje Kubernetes API-ja.</strong>
+    Pre backup-a administrator proverava da radi na očekivanom serveru i da klaster nije već u incidentnom stanju. Snapshot napravljen tokom neprepoznatog kvara može biti tehnički validan, ali nedovoljan kao jedina tačka oporavka.
+    <pre><code class="language-bash">hostname -f
+sudo etcdctl version
+sudo etcdutl version
+kubectl get nodes -o wide
+kubectl get --raw='/readyz?verbose'</code></pre>
+    <strong>Validacija:</strong> hostname mora odgovarati čvoru <code>k8s-cp01</code>; alati moraju biti kompatibilni sa serverskom verzijom; sva tri control plane čvora treba da budu <code>Ready</code>, a API readyz provere da vrate uspeh. Ako API ili etcd već pokazuju grešku, backup se može napraviti radi očuvanja trenutnog stanja, ali se planirana nadogradnja odlaže i otvara incident.
+  </li>
+  <li>
+    <strong>Definisati TLS parametre i proveriti članstvo.</strong>
+    Koristi se lokalni endpoint i sertifikati namenjeni etcd administrativnom klijentu. Promenljive važe samo u root shell-u otvorenom za ovu proceduru.
+    <pre><code class="language-bash">sudo -i
+export ETCDCTL_API=3
+export ETCD_ENDPOINTS="https://127.0.0.1:2379"
+export ETCD_CACERT="/etc/kubernetes/pki/etcd/ca.crt"
+export ETCD_CERT="/etc/kubernetes/pki/etcd/healthcheck-client.crt"
+export ETCD_KEY="/etc/kubernetes/pki/etcd/healthcheck-client.key"
+
+etcdctl \
+  --endpoints="${ETCD_ENDPOINTS}" \
+  --cacert="${ETCD_CACERT}" \
+  --cert="${ETCD_CERT}" \
+  --key="${ETCD_KEY}" \
+  member list --write-out=table</code></pre> <strong>Validacija:</strong> izlaz treba da prikaže tri pokrenuta člana sa očekivanim imenima i peer adresama za <code>k8s-cp01</code>, <code>k8s-cp02</code> i <code>k8s-cp03</code>. Neočekivani dodatni član, član bez imena ili pogrešna peer adresa zahtevaju istragu pre nastavka.
+
+  </li>
+  <li>
+    <strong>Proveriti zdravlje i međusobnu usklađenost endpoint-a.</strong>
+    Iz static Pod manifesta preuzimaju se stvarne client adrese članova. U referentnom okruženju to su <code>10.20.0.11</code>, <code>10.20.0.12</code> i <code>10.20.0.13</code>. Sertifikat mora sadržati odgovarajuće SAN vrednosti; u suprotnom se koriste imena navedena u sertifikatu i manifestu.
+    <pre><code class="language-bash">export ETCD_ALL_ENDPOINTS="https://10.20.0.11:2379,https://10.20.0.12:2379,https://10.20.0.13:2379"
+
+etcdctl \
+  --endpoints="${ETCD_ALL_ENDPOINTS}" \
+  --cacert="${ETCD_CACERT}" \
+  --cert="${ETCD_CERT}" \
+  --key="${ETCD_KEY}" \
+  endpoint health --cluster --write-out=table
+
+etcdctl \
+  --endpoints="${ETCD_ALL_ENDPOINTS}" \
+  --cacert="${ETCD_CACERT}" \
+  --cert="${ETCD_CERT}" \
+  --key="${ETCD_KEY}" \
+  endpoint status --cluster --write-out=table
+
+etcdctl \
+  --endpoints="${ETCD_ALL_ENDPOINTS}" \
+  --cacert="${ETCD_CACERT}" \
+  --cert="${ETCD_CERT}" \
+  --key="${ETCD_KEY}" \
+  alarm list</code></pre> <strong>Validacija:</strong> sva tri endpoint-a moraju biti zdrava, tačno jedan član treba da bude lider, a primenjeni Raft indeksi i revizije treba da budu jednaki ili kratkotrajno veoma bliski. Lista alarma treba da bude prazna. Veliko i trajno zaostajanje jednog člana nije razlog da se on odmah briše; prvo se proveravaju mreža, disk i logovi.
+
+  </li>
+  <li>
+    <strong>Kreirati zaštićeni backup direktorijum i metapodatke promene.</strong>
+    Direktorijum je dostupan samo root korisniku. Ime snapshot-a sadrži UTC vreme kako bi redosled kopija bio nedvosmislen.
+    <pre><code class="language-bash">install -d -m 0700 -o root -g root /var/backups/kubernetes/etcd
+BACKUP_TS="$(date -u +%Y%m%dT%H%M%SZ)"
+SNAPSHOT="/var/backups/kubernetes/etcd/k8s-prod-etcd-${BACKUP_TS}.db"
+METADATA="/var/backups/kubernetes/etcd/k8s-prod-etcd-${BACKUP_TS}.txt"
+
+{
+echo "cluster=k8s-prod"
+echo "source_node=$(hostname -f)"
+echo "created_utc=${BACKUP_TS}"
+echo "etcdctl_version=$(etcdctl version | tr '\n' ' ')"
+echo "snapshot=${SNAPSHOT}"
+} > "${METADATA}"
+
+chmod 0600 "${METADATA}"</code></pre> <strong>Validacija:</strong> komande <code>stat</code> i <code>ls -ld</code> treba da potvrde vlasnika <code>root</code> i dozvole <code>0700</code> za direktorijum, odnosno <code>0600</code> za metapodatke. <pre><code class="language-bash">stat -c '%U:%G %a %n' /var/backups/kubernetes/etcd "${METADATA}"</code></pre>
+
+  </li>
+  <li>
+    <strong>Napraviti onlajn snapshot kroz etcd API.</strong>
+    Operacija čita konzistentno stanje aktivnog endpoint-a i ne zahteva zaustavljanje etcd-a.
+    <pre><code class="language-bash">etcdctl \
+  --endpoints="${ETCD_ENDPOINTS}" \
+  --cacert="${ETCD_CACERT}" \
+  --cert="${ETCD_CERT}" \
+  --key="${ETCD_KEY}" \
+  snapshot save "${SNAPSHOT}"
+
+chmod 0600 "${SNAPSHOT}"
+sync</code></pre> <strong>Validacija:</strong> komanda mora da prijavi uspešno čuvanje snapshot-a. Fajl mora postojati, imati nenultu veličinu i biti čitljiv samo root korisniku. <pre><code class="language-bash">test -s "${SNAPSHOT}"
+stat -c '%U:%G %a %s bytes %n' "${SNAPSHOT}"</code></pre>
+
+  </li>
+  <li>
+    <strong>Proveriti status snapshot-a i napraviti nezavisni checksum.</strong>
+    <code>etcdutl snapshot status</code> proverava strukturu snapshot-a i prikazuje hash, reviziju, broj ključeva i veličinu. SHA-256 checksum služi za proveru integriteta tokom prenosa i čuvanja.
+    <pre><code class="language-bash">etcdutl snapshot status "${SNAPSHOT}" --write-out=table | tee -a "${METADATA}"
+sha256sum "${SNAPSHOT}" | tee "${SNAPSHOT}.sha256"
+chmod 0600 "${SNAPSHOT}.sha256"</code></pre>
+    <strong>Validacija:</strong> status mora biti pročitan bez greške, revizija i broj ključeva moraju biti veći od nule, a sledeća komanda mora vratiti <code>OK</code>.
+    <pre><code class="language-bash">sha256sum --check "${SNAPSHOT}.sha256"</code></pre>
+  </li>
+  <li>
+    <strong>Izvesti negativni test integriteta na bezbednoj kopiji.</strong>
+    Test pokazuje da procedura zaista otkriva izmenjen fajl. Produkcioni snapshot se ne menja.
+    <pre><code class="language-bash">CORRUPT_COPY="/tmp/k8s-prod-etcd-corrupt-test.db"
+cp --reflink=auto "${SNAPSHOT}" "${CORRUPT_COPY}"
+printf 'CORRUPTION-TEST' | dd of="${CORRUPT_COPY}" bs=1 seek=4096 conv=notrunc status=none
+etcdutl snapshot status "${CORRUPT_COPY}" --write-out=table
+rm -f "${CORRUPT_COPY}"</code></pre>
+    <strong>Očekivani rezultat:</strong> status oštećene kopije treba da završi greškom zbog neusaglašenog hash-a ili nevažeće baze. Uspešno čitanje oštećene kopije zahteva proveru da li je promena zaista pogodila proveravani deo fajla; test se ne smatra uspešnim samo zato što je komanda izvršena. Originalni snapshot se ponovo proverava komandom <code>sha256sum --check</code>.
+  </li>
+  <li>
+    <strong>Izvršiti izolovani probni restore.</strong>
+    <strong>Upozorenje:</strong> restore ne sme da koristi aktivni direktorijum <code>/var/lib/etcd</code>. Njegovo brisanje ili prepisivanje na produkcionom čvoru može zaustaviti control plane i prouzrokovati gubitak podataka. Koristi se isključivo namenski test direktorijum.
+    <pre><code class="language-bash">RESTORE_DIR="/var/lib/etcd-restore-test"
+
+if [ -e "${RESTORE_DIR}" ]; then
+echo "Direktorijum ${RESTORE_DIR} već postoji; prekid radi zaštite podataka." >&2
+exit 1
+fi
+
+etcdutl --data-dir="${RESTORE_DIR}" snapshot restore "${SNAPSHOT}"
+
+chown -R root:root "${RESTORE_DIR}"
+chmod 0700 "${RESTORE_DIR}"</code></pre> <strong>Validacija:</strong> restore mora da se završi bez greške, a direktorijum treba da sadrži novu strukturu <code>member</code> sa snapshot i WAL podacima. Ovaj korak potvrđuje da je snapshot moguće raspakovati u novu etcd bazu, ali još ne predstavlja potpunu vežbu vraćanja Kubernetes control plane-a. <pre><code class="language-bash">test -d "${RESTORE_DIR}/member/snap"
+test -d "${RESTORE_DIR}/member/wal"
+find "${RESTORE_DIR}" -maxdepth 3 -type f -printf '%p %s bytes\n'</code></pre>
+
+  </li>
+  <li>
+    <strong>Sačuvati paket u odobreno udaljeno skladište.</strong>
+    Produkciona implementacija treba da koristi šifrovani backup sistem ili object storage sa TLS-om, server-side enkripcijom, verzionisanjem, ograničenim servisnim identitetom i politikom zadržavanja. Sledeći primer pretpostavlja da organizacioni alat <code>backup-upload</code> već postoji kao odobren preduslov i da ne zahteva unos tajne u komandnoj liniji.
+    <pre><code class="language-bash">backup-upload \
+  --classification=confidential \
+  --destination=kubernetes-etcd/k8s-prod/ \
+  "${SNAPSHOT}" "${SNAPSHOT}.sha256" "${METADATA}"</code></pre>
+    <strong>Validacija:</strong> alat mora vratiti identifikator objekta i potvrdu uspešnog prenosa. U udaljenom skladištu proveravaju se veličina, checksum, vreme, politika zadržavanja i zabrana anonimnog pristupa. Identifikator kopije upisuje se u change zahtev i evidenciju disaster recovery kopija.
+  </li>
+  <li>
+    <strong>Pregledati relevantne logove.</strong>
+    U kubeadm okruženju etcd je static Pod kojim upravlja kubelet. Kubernetes log može se pročitati pomoću <code>kubectl logs</code>, dok kubelet i container runtime logovi pomažu kada API nije dostupan ili se kontejner ne pokreće.
+    <pre><code class="language-bash">kubectl -n kube-system logs etcd-k8s-cp01 --since=30m
+journalctl -u kubelet --since '-30 minutes' --no-pager
+crictl ps -a --name etcd
+crictl logs "$(crictl ps -a --name etcd -q | head -n 1)"</code></pre>
+    <strong>Tumačenje:</strong> traže se poruke o sporim apply operacijama, prekoračenju vremena, gubitku peer veze, promenama lidera, neuspešnom fsync-u, nevažećim sertifikatima i nedostatku prostora. Pojedinačna informativna poruka bez uticaja nije isto što i ponavljajući obrazac u više članova.
+  </li>
+  <li>
+    <strong>Očistiti samo izolovani test restore.</strong>
+    Brisanje se obavlja tek kada su rezultati evidentirani. Promenljiva se eksplicitno proverava kako bi se sprečilo brisanje pogrešne putanje.
+    <pre><code class="language-bash">case "${RESTORE_DIR}" in
+  /var/lib/etcd-restore-test)
+    rm -rf --one-file-system "${RESTORE_DIR}"
+    ;;
+  *)
+    echo "Neočekivana putanja; cleanup je odbijen." >&amp;2
+    exit 1
+    ;;
+esac
+
+test ! -e "${RESTORE_DIR}"</code></pre> <strong>Rollback i cleanup:</strong> praktikum nije menjao aktivni etcd klaster, pa produkcioni rollback nije potreban. Ako snapshot ili provera nisu uspešni, ne koristi se nevalidna kopija, ne briše se prethodni uspešan backup i planirana nadogradnja se ne započinje. Novi snapshot se pravi tek nakon otklanjanja uzroka.
+
+  </li>
+</ol>
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> Sva tri etcd endpoint-a su zdrava i bez alarma; članstvo sadrži tačno tri očekivana člana; snapshot ima nenultu veličinu i validan status; lokalni SHA-256 test vraća <code>OK</code>; negativni test otkriva oštećenu kopiju; izolovani restore kreira očekivanu <code>member/snap</code> i <code>member/wal</code> strukturu; udaljena kopija ima potvrđen checksum i politiku zadržavanja; aktivni API server ostaje spreman tokom cele procedure; dokaz o izvršenju, rezultat i identifikator backup-a evidentirani su u change i DR dokumentaciji.
+</p>
+
+<h3>Tipične greške i bezbedan odgovor administratora</h3>
+<ul>
+  <li><strong>Snapshot se čuva samo na istom control plane disku.</strong> Takva kopija ne štiti od kvara hosta, diska, krađe ili greške administratora. Snapshot se prenosi u fizički ili administrativno odvojeno, šifrovano skladište.</li>
+  <li><strong>Postojanje fajla smatra se dokazom uspešnog backup-a.</strong> Potrebni su status, checksum, evidentiran prenos i periodični probni restore.</li>
+  <li><strong>Nezdravi član se odmah uklanja.</strong> U tročlanom klasteru pogrešno uklanjanje člana tokom drugog problema može ugroziti kvorum. Najpre se potvrđuju članstvo, većina, identitet člana i uzrok kvara.</li>
+  <li><strong>Svi članovi se defragmentiraju istovremeno.</strong> Time se može blokirati čitav klaster. Operacija se izvodi serijski, uz proveru zdravlja posle svakog člana.</li>
+  <li><strong>Direktno se menjaju Kubernetes ključevi u etcd-u.</strong> Promena zaobilazi Kubernetes API pravila i može napraviti nekonzistentno stanje. Objekti se menjaju pomoću podržanog API-ja.</li>
+  <li><strong>Restore se pokreće preko aktivnog data direktorijuma.</strong> Bez izolacije i kompletnog plana to je potencijalno destruktivna radnja. Prvo se izvodi probni restore u nov direktorijum ili odvojeno DR okruženje.</li>
+  <li><strong>Dodavanje četvrtog člana smatra se povećanjem dostupnosti.</strong> Četiri člana i dalje podnose samo jedan trajni kvar. Topologija se zasniva na potrebnom kvorumu, failure domenima i izmerenoj latenciji.</li>
+  <li><strong>TLS se poistovećuje sa enkripcijom podataka na disku.</strong> TLS štiti prenos; encryption at rest, KMS, šifrovanje backup-a i diska rešavaju druge slojeve rizika.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Zdravlje i članstvo.</strong> Komande <code>etcdctl endpoint health --cluster</code>, <code>endpoint status --cluster</code>, <code>member list</code> i <code>alarm list</code> izvršavaju se kroz monitoring neprekidno, a ručno pre i posle control plane promene. Reakciju zahtevaju nedostupan član, neočekivano članstvo, alarm, trajno zaostajanje revizije ili ponavljane promene lidera. Prva reakcija je očuvanje kvoruma i prikupljanje logova, ne uklanjanje člana. Rezultat se dokumentuje u monitoring sistemu i change zapisu, a uspeh meri dostupnošću sva tri očekivana endpoint-a bez alarma.</li>
+  <li><strong>Disk i backend kvota.</strong> Prate se slobodan prostor, inode-i, <code>etcd_mvcc_db_total_size_in_bytes</code>, aktivno korišćena veličina i fsync histogrami. Provera je stalna, uz kapacitivni pregled najmanje mesečno. Reakcija počinje pre nego što slobodan prostor ili backend kvota postanu kritični; organizacija definiše upozorenja, na primer pri 70% i kritični alarm pri 85% iskorišćenosti. Dokumentuju se trend, uzrok rasta i odobrena korektivna akcija.</li>
+  <li><strong>Latencija i promene lidera.</strong> Prometheus i etcd metrike prate trajanje WAL fsync-a, backend commit-a, peer round-trip vreme i broj promena lidera. Svaki ponavljajući rast iznad dokumentovanog baznog nivoa, naročito uz API timeout poruke, zahteva proveru storage-a, CPU zastoja i mreže. Uspeh se meri povratkom latencije u bazni opseg i odsustvom novih neželjenih izbora lidera.</li>
+  <li><strong>Backup.</strong> Snapshot čuva Kubernetes API stanje. Uobičajeno se pravi najmanje jednom dnevno i pre svake rizične promene, a češće kada RPO to zahteva. Čuva se u šifrovanom, odvojenom skladištu sa kontrolom pristupa, verzionisanjem i definisanim rokom zadržavanja. Svaka kopija dobija checksum i metapodatke o klasteru, reviziji, vremenu i verziji alata.</li>
+  <li><strong>Probni restore.</strong> Najmanje kvartalno, kao i nakon značajne promene verzije ili backup sistema, snapshot se vraća u izolovano okruženje. Potpuna DR vežba treba da podigne odvojeni etcd i testni API server, potvrdi čitanje očekivanih reprezentativnih objekata i izmeri RTO. Uspeh nije samo pokrenut proces, već funkcionalan API, potvrđeno članstvo, očekivani objekti i dokumentovano vreme oporavka.</li>
+  <li><strong>Sertifikati i pristup.</strong> Rok važenja etcd CA, server, peer i client sertifikata proverava se automatizovano i pre svake nadogradnje. Privatni ključevi ostaju sa minimalnim dozvolama, a pristup se auditira. Istek koji ulazi u organizacioni prag za obnovu zahteva planiranu rotaciju i proveru zdravlja posle svakog člana.</li>
+  <li><strong>Promene članstva i verzije.</strong> Dodavanje, uklanjanje ili zamena člana radi se samo uz potvrđen kvorum, svež verifikovan snapshot, tačne member ID vrednosti i zvaničnu proceduru za instaliranu verziju. Nadogradnje se izvode podržanim redosledom i član po član. Dokumentuju se početno stanje, komande, identiteti članova, rezultat svake validacije i plan povratka.</li>
+  <li><strong>Vremenska sinhronizacija i failure domeni.</strong> NTP stanje, mrežna dostupnost i fizički raspored control plane čvorova proveravaju se kontinuirano i nakon infrastrukturnih promena. Dva ili tri člana na istom hipervizoru, storage uređaju ili napajanju predstavljaju skriveni zajednički kvar. Uspeh se meri time da kvar jednog definisanog failure domena ne uklanja kvorum.</li>
+</ul>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Potvrđeno je da etcd-u direktno pristupa API server, a da se Kubernetes objekti ne menjaju pomoću direktnih <code>etcdctl put</code> ili <code>del</code> operacija.</li>
+  <li><code>member list</code> prikazuje tačno tri očekivana člana: <code>k8s-cp01</code>, <code>k8s-cp02</code> i <code>k8s-cp03</code>.</li>
+  <li><code>endpoint health --cluster</code> potvrđuje da su sva tri endpoint-a zdrava, a <code>alarm list</code> ne vraća aktivne alarme.</li>
+  <li><code>endpoint status --cluster</code> prikazuje tačno jednog lidera i međusobno usklađene revizije i Raft indekse.</li>
+  <li>Provereni su slobodan prostor, backend veličina, fsync latencija i broj promena lidera.</li>
+  <li>Snapshot je napravljen kroz etcd snapshot API, ima nenultu veličinu i uspešan <code>etcdutl snapshot status</code>.</li>
+  <li>SHA-256 provera snapshot-a vraća <code>OK</code>, a kontrolisani negativni test prepoznaje oštećenu kopiju.</li>
+  <li>Probni restore je uspešno kreirao izolovanu <code>member/snap</code> i <code>member/wal</code> strukturu bez izmene aktivnog <code>/var/lib/etcd</code> direktorijuma.</li>
+  <li>Snapshot, checksum i metapodaci nalaze se u šifrovanom odvojenom skladištu sa potvrđenom politikom zadržavanja.</li>
+  <li>Rezultat backup-a, identifikator udaljene kopije, revizija, vreme i rezultat restore testa evidentirani su u change i disaster recovery dokumentaciji.</li>
+  <li>Pre nadogradnje ili promene članstva postoji odobren rollback plan i poznat prag za eskalaciju.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da etcd nije samo servis koji „čuva konfiguraciju”, već konzistentni sistem zapisa na kome se zasniva čitav Kubernetes control plane. Mora da poveže Raft kvorum, lidera, revizije, disk latenciju, peer komunikaciju i watch tokove sa ponašanjem API servera i kontrolera. Time može da razlikuje lokalni kvar jednog člana od gubitka kvoruma, normalan izbor lidera od hronične nestabilnosti i logički rast baze od fizičke fragmentacije.
+</p>
+<p>
+  U praktičnom radu administrator treba da ume da proveri članstvo, zdravlje, alarme, revizije i veličinu baze; da napravi i kriptografski proveri snapshot; da izvede izolovani probni restore; da pronađe static Pod, kubelet i container runtime logove; i da dokumentuje dokaz da je rezervna kopija upotrebljiva. Mora da zna da snapshot etcd-a ne obuhvata aplikacione volume podatke i da uspešan restore baze nije automatski dokaz potpunog oporavka svih poslovnih servisa.
+</p>
+<p>
+  Najveći produkcioni rizici nastaju kada se direktno menjaju ključevi, član uklanja bez potvrđenog kvoruma, svi članovi održavaju istovremeno, backup čuva samo lokalno ili restore pokreće preko aktivnog data direktorijuma. Takve operacije prelaze granicu rutinske administracije i zahtevaju odobrenu proceduru, svež verifikovan snapshot, koordinaciju vlasnika platforme i jasno definisan povratak.
+</p>
+<p>
+  Razlog za eskalaciju postoji kada nije moguće potvrditi većinu članova, kada se članstvo razlikuje od dokumentovane topologije, kada postoji sumnja na korupciju ili kompromitovanje sertifikata, kada su izgubljeni i etcd i povezani aplikacioni podaci, ili kada dostupni snapshot nije prošao proveru integriteta. Odgovoran administrator tada ne pokušava nasumične destruktivne komande. On zaustavlja planiranu promenu, čuva dokaze, štiti preostali kvorum i uključuje odgovorne za Kubernetes platformu, storage, mrežu, bezbednost i kontinuitet poslovanja.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za arhitekturu control plane-a, rad i zaštitu etcd klastera, kubeadm implementacije, API server, enkripciju podataka u mirovanju, KMS v2, bezbednost klastera i disaster recovery; zvanični etcd administrativni vodiči za Raft članstvo, konfiguraciju, TLS transportnu zaštitu, održavanje, kompakciju, defragmentaciju, monitoring, snapshot, proveru integriteta, restore, nadogradnju i hardverske zahteve; zvanične CLI reference za etcdctl i etcdutl i primarne smernice za backup, troubleshooting i oporavak distribuiranih sistema.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-08-worker-node.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-10-api-server.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

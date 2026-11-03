@@ -1,0 +1,809 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-37-pod-security-admission.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>SecurityContext, Pod Security Standards i admission | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Napredna Kubernetes lekcija o SecurityContext podešavanjima, Pod Security Standards profilima i Pod Security Admission kontroli za sprečavanje privilegovanih workload-a.">
+
+  <meta name="keywords"
+        content="Kubernetes SecurityContext, Pod Security Standards, Pod Security Admission, PSS, PSA, privileged container, runAsNonRoot, allowPrivilegeEscalation, Linux capabilities, seccomp, AppArmor, SELinux, admission controller, Kubernetes security, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-37-pod-security-admission.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="SecurityContext, Pod Security Standards i admission – sprečavanje privilegovanih workload-a">
+
+  <meta property="og:description"
+        content="Naučite kako SecurityContext, verzionisani Pod Security Standards profili i Pod Security Admission sprečavaju privilegovane Kubernetes workload-e pre njihovog pokretanja.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-37-pod-security-admission.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-37-pod-security-admission.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="SecurityContext, Pod Security Standards i admission – sprečavanje privilegovanih workload-a">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-37-pod-security-admission.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-37-pod-security-admission.png"
+           alt="SecurityContext, Pod Security Standards i admission – sprečavanje privilegovanih workload-a">
+
+    </a>
+
+    <div class="page-subtitle">
+      VIII. Identitet, autorizacija i zaštita workload-a
+    </div>
+    <div class="page-subtitle">
+      37. SecurityContext, Pod Security Standards i admission – sprečavanje privilegovanih workload-a
+    </div>
+
+    <p>
+      Prethodne lekcije razdvojile su identitet workload-a od njegovih dozvola: ServiceAccount određuje ko šalje API zahtev, a RBAC šta taj identitet sme da uradi. Međutim, ni precizan RBAC ne sprečava proces u kontejneru da bude pokrenut kao korisnik <code>root</code>, zatraži opasne Linux capabilities, koristi host mrežu, montira putanju čvora ili pokuša eskalaciju privilegija. Ova lekcija uvodi sledeću granicu odbrane: deklarativna podešavanja procesa u <code>SecurityContext</code> objektu i admission kontrolu koja neprihvatljiv Pod odbija pre nego što stigne do kubelet-a.
+    </p>
+    <p>
+      Bezbedan workload nije rezultat jednog polja. Slika mora biti izgrađena za rad bez root privilegija, manifest mora eksplicitno smanjiti ovlašćenja, runtime i kernel moraju podržavati izabrane mehanizme, a API server mora dosledno sprovoditi organizacionu politiku. Kubernetes <strong>Pod Security Standards</strong> (PSS) definišu tri verzionisana profila, dok ugrađeni <strong>Pod Security Admission</strong> (PSA) primenjuje te profile pri prijemu zahteva. Ovi mehanizmi smanjuju rizik, ali ne zamenjuju bezbednu sliku, RBAC, NetworkPolicy, zaštitu tajni, skeniranje ranjivosti, runtime detekciju ni audit.
+    </p>
+
+    <h3>SecurityContext kao ugovor o izvršavanju procesa</h3>
+    <p>
+      <code>securityContext</code> opisuje privilegije i kontrole pristupa sa kojima se proces izvršava. Polje postoji na nivou poda kao <code>PodSecurityContext</code> i na nivou pojedinačnog kontejnera kao <code>SecurityContext</code>. Podešavanja poda, kao što su <code>runAsUser</code>, <code>runAsGroup</code>, <code>fsGroup</code>, <code>supplementalGroups</code>, SELinux opcije i pod-level seccomp profil, mogu postaviti zajedničku osnovu. Kontejnerski nivo sadrži i kontrole kao što su <code>privileged</code>, <code>allowPrivilegeEscalation</code>, <code>capabilities</code> i <code>readOnlyRootFilesystem</code>; kada isto podržano podešavanje postoji na oba nivoa, eksplicitna vrednost kontejnera ima prednost za taj kontejner.
+    </p>
+    <p>
+      Init i ephemeral kontejneri su deo iste granice poverenja. Administrator koji proveri samo <code>spec.containers</code> može prevideti privilegovani init kontejner koji menja volume pre pokretanja aplikacije ili ephemeral kontejner dodat tokom dijagnostike. PSS zato relevantne kontrole primenjuje na regularne, init i ephemeral kontejnere. Sidecar implementiran kao restartabilni init kontejner takođe se proverava kao init kontejner.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Podešavanje</th>
+          <th>Namena i posledica</th>
+          <th>Važna granica</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>runAsNonRoot: true</code></td>
+          <td>Kubelet odbija pokretanje kada utvrdi da bi proces radio kao UID 0.</td>
+          <td>Ako slika koristi simboličkog korisnika čiji UID runtime ne može potvrditi, pokretanje može biti odbijeno; numerički ne-root UID daje proverljiviji ugovor.</td>
+        </tr>
+        <tr>
+          <td><code>runAsUser</code> i <code>runAsGroup</code></td>
+          <td>Postavljaju numerički UID i primarni GID procesa.</td>
+          <td>Nasumičan ili fiksan UID mora imati pristup aplikacionim fajlovima i volume-u; pogrešne dozvole izazivaju <code>Permission denied</code>.</td>
+        </tr>
+        <tr>
+          <td><code>allowPrivilegeEscalation: false</code></td>
+          <td>Postavlja Linux <code>no_new_privs</code> i sprečava sticanje većih privilegija preko setuid/setgid binarnih fajlova.</td>
+          <td>Efektivno je uvek <code>true</code> za privilegovani kontejner ili kontejner sa <code>CAP_SYS_ADMIN</code>; ne znači da proces nema postojeće capabilities.</td>
+        </tr>
+        <tr>
+          <td><code>privileged: true</code></td>
+          <td>Uklanja veliki deo izolacije i daje kontejneru privilegije približne procesu na hostu.</td>
+          <td>Ne koristi se za poslovne aplikacije; opravdani infrastrukturni izuzetak zahteva odvojenu zonu poverenja i dodatne kontrole.</td>
+        </tr>
+        <tr>
+          <td><code>capabilities</code></td>
+          <td>Razlaže tradicionalne root privilegije na manje Linux jedinice; preporučeno je <code>drop: ["ALL"]</code> pa dodavanje samo dokazane potrebe.</td>
+          <td>Capability je svojstvo Linux kernela. Dodela <code>NET_ADMIN</code>, <code>SYS_ADMIN</code>, <code>SYS_PTRACE</code> ili sličnih moćnih prava zahteva posebnu analizu.</td>
+        </tr>
+        <tr>
+          <td><code>seccompProfile</code></td>
+          <td>Filtrira sistemske pozive; <code>RuntimeDefault</code> koristi podrazumevani profil container runtime-a, a <code>Localhost</code> profil sa čvora.</td>
+          <td><code>RuntimeDefault</code> se može razlikovati između runtime-a i verzija; <code>Localhost</code> profil mora postojati na svakom mogućem čvoru.</td>
+        </tr>
+        <tr>
+          <td><code>readOnlyRootFilesystem: true</code></td>
+          <td>Sprečava upis u sloj korenskog filesystem-a kontejnera i otežava trajno menjanje binarnih fajlova.</td>
+          <td>Aplikacija mora dobiti namenski writable volume za privremene fajlove, keš ili PID; PSS Restricted ne zahteva ovo polje.</td>
+        </tr>
+        <tr>
+          <td><code>fsGroup</code> i <code>fsGroupChangePolicy</code></td>
+          <td>Omogućavaju grupni pristup podržanim volume-ima; politika <code>OnRootMismatch</code> može izbeći nepotrebnu rekurzivnu promenu vlasništva.</td>
+          <td>Promena vlasništva velikog volume-a može usporiti start; ponašanje zavisi od volume tipa i CSI drajvera.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Linux capabilities, seccomp, AppArmor i SELinux</h3>
+    <p>
+      Ovi mehanizmi rešavaju različite probleme i najbolje rade slojevito. Capabilities određuju koje privilegovane kernel operacije proces može da izvrši. Seccomp ograničava skup sistemskih poziva. AppArmor i SELinux predstavljaju Linux Security Module kontrole koje prema profilu ili oznakama ograničavaju pristup fajlovima, procesima i drugim objektima. Nijedan sloj samostalno ne predstavlja potpun sandbox.
+    </p>
+    <p>
+      PSS Restricted za Linux zahteva eksplicitni seccomp profil <code>RuntimeDefault</code> ili <code>Localhost</code>, zabranjuje <code>Unconfined</code>, zahteva uklanjanje capability-ja <code>ALL</code> i dozvoljava vraćanje samo <code>NET_BIND_SERVICE</code>. Aktuelni PSS prihvata odgovarajuće AppArmor vrednosti, ali stvarno sprovođenje zavisi od podrške čvora. Od Kubernetes 1.30 AppArmor se zadaje poljem <code>securityContext.appArmorProfile</code>; stara anotacija <code>container.apparmor.security.beta.kubernetes.io/*</code> je deprecated. Za seccomp se koriste strukturisana polja; istorijske alpha seccomp anotacije nisu funkcionalne u podržanim izdanjima.
+    </p>
+    <p>
+      SELinux oznake se ne izmišljaju u aplikacionom timu. Dozvoljene vrednosti i kompatibilnost zavise od OS-a, runtime-a i politike na čvorovima. PSS ograničava tipove koji se mogu navesti, ali admission prihvatanje ne dokazuje da je konkretan profil učitan niti da će aplikacija imati potreban pristup. Posle admission validacije mora se proveriti stvarno pokretanje procesa i kernel/runtime poruke na čvoru.
+    </p>
+
+    <h3>Bezbedna osnova manifesta</h3>
+    <p>
+      Sledeći fragment predstavlja produkcionu početnu tačku za tipičnu Linux aplikaciju bez potrebe za Kubernetes API-jem. Ne može se slepo dodati svakoj slici: aplikacija mora podržavati ne-root UID, upis samo u deklarisani <code>emptyDir</code> i rad bez dodatnih capabilities.
+    </p>
+    <pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hardened-web
+  namespace: secure-apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hardened-web
+  template:
+    metadata:
+      labels:
+        app: hardened-web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: registry.example.invalid/platform/hardened-web@sha256:REPLACE_ME
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi</code></pre>
+    <p>
+      Digest je namerno ostavljen kao obavezna zamena, jer izmišljeni digest ne bi bio izvršiv primer. <code>readOnlyRootFilesystem</code> ne čini <code>emptyDir</code> read-only; proces i dalje može pisati u eksplicitno montiranu putanju. <code>sizeLimit</code> pomaže u kontroli lokalne ephemeral storage potrošnje, ali raspoloživost zavisi i od ukupnog prostora čvora i odgovarajućih resource ograničenja. Readiness/liveness probe, mrežna politika i Service dodaju se prema aplikaciji i ne pripadaju samom PSS profilu.
+    </p>
+
+    <h3>Pod Security Standards: Privileged, Baseline i Restricted</h3>
+    <p>
+      PSS nisu Kubernetes API objekti niti proizvoljne politike koje administrator uređuje. To su upstream definisani, kumulativni i verzionisani profili. <code>Privileged</code> je odsustvo ograničenja i namenjen je pouzdanim infrastrukturnim workload-ima. <code>Baseline</code> sprečava poznate eskalacije uz visoku kompatibilnost. <code>Restricted</code> primenjuje aktuelne hardening prakse uz cenu veće verovatnoće da starija ili loše pripremljena aplikacija neće proći.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Oblast</th>
+          <th>Baseline</th>
+          <th>Dodatni zahtev Restricted profila</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Privilegovani i host pristup</td>
+          <td>Zabranjuje privileged kontejnere, HostProcess, host PID/IPC, hostNetwork i nedozvoljene hostPort vrednosti.</td>
+          <td>Nasleđuje Baseline.</td>
+        </tr>
+        <tr>
+          <td>Volume tipovi</td>
+          <td>Zabranjuje <code>hostPath</code> i druge poznato rizične obrasce kroz svoja pravila.</td>
+          <td>Dozvoljava samo eksplicitni skup: ConfigMap, CSI, downwardAPI, emptyDir, ephemeral, PVC, projected i Secret.</td>
+        </tr>
+        <tr>
+          <td>Identitet procesa</td>
+          <td>Ne zahteva obavezno non-root izvršavanje.</td>
+          <td>Zahteva <code>runAsNonRoot: true</code> i ne dozvoljava eksplicitni UID 0.</td>
+        </tr>
+        <tr>
+          <td>Eskalacija privilegija</td>
+          <td>Zabranjuje poznate opasne kombinacije, ali ne zahteva svako Restricted polje.</td>
+          <td>Za Linux zahteva <code>allowPrivilegeEscalation: false</code>.</td>
+        </tr>
+        <tr>
+          <td>Capabilities</td>
+          <td>Zabranjuje dodavanje definisanog skupa opasnih capabilities.</td>
+          <td>Zahteva <code>drop: ["ALL"]</code>; sme se dodati samo <code>NET_BIND_SERVICE</code>.</td>
+        </tr>
+        <tr>
+          <td>Seccomp</td>
+          <td>Ne dozvoljava eksplicitni <code>Unconfined</code>, ali profil može biti izostavljen.</td>
+          <td>Za Linux zahteva <code>RuntimeDefault</code> ili <code>Localhost</code>.</td>
+        </tr>
+        <tr>
+          <td>Sysctl</td>
+          <td>Dozvoljava samo verzijski definisan skup safe sysctl vrednosti.</td>
+          <td>Nasleđuje Baseline.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Tabela je operativni pregled, ne zamena za zvaničnu verzionisanu specifikaciju. Dopušteni sysctl parametri, SELinux tipovi i druge pojedinosti menjali su se kroz minor verzije. Zato produkciona promena mora dokumentovati i nivo i verziju profila. Vrednost <code>latest</code> automatski usvaja buduću specifikaciju posle nadogradnje control plane-a, što je korisno za kontinuirani audit, ali može neočekivano promeniti enforce odluke.
+    </p>
+
+    <h3>Šta PSS namerno ne rešava</h3>
+    <p>
+      PSS je široko primenljiva osnovna zaštita, ne kompletna organizaciona politika. Restricted profil, na primer, ne zahteva <code>readOnlyRootFilesystem: true</code>, ne bira dozvoljene image registre ili digest-e, ne ograničava ServiceAccount, ne zahteva resource requests/limits, ne proverava potpis slike, ne definiše egress i ne sprečava aplikacionu ranjivost. PSS takođe ne može izraziti pravilo „samo ovaj konkretni CSI drajver” ili „samo UID iz opsega dodeljenog tenant-u”.
+    </p>
+    <p>
+      Za dodatna pravila koriste se <code>ValidatingAdmissionPolicy</code> zasnovan na CEL-u ili pažljivo projektovani validating/mutating webhook-ovi. Mutacija može postaviti bezbedne podrazumevane vrednosti, ali ne sme skrivati činjenicu da aplikacioni manifest nije usaglašen. Svaki webhook uvodi zavisnost u API putanju, TLS sertifikate, dostupnost i failure policy; pogrešna politika može blokirati sav deployment ili, uz <code>failurePolicy: Ignore</code>, propustiti kontrolu upravo tokom kvara.
+    </p>
+
+    <h3>Admission tok i mesto Pod Security kontrole</h3>
+    <p>
+      Posle autentikacije i autorizacije API zahtev prolazi kroz mutating admission, zatim validaciju objekta i validating admission pre upisa u etcd. Admission ne autorizuje korisnika: RBAC može dozvoliti kreiranje poda, a PodSecurity ga ipak odbiti jer je manifest rizičan. Obrnuto, usaglašen SecurityContext ne daje pravo korisniku da kreira workload.
+    </p>
+    <p>
+      Ugrađeni <code>PodSecurity</code> je validating admission kontroler, stabilan od Kubernetes 1.25 i u aktuelnom Kubernetes 1.36 uključen u podrazumevani skup admission pluginova. Nasledio je uklonjeni <code>PodSecurityPolicy</code> (PSP), ali nije njegov API-kompatibilan naslednik: ne bira između proizvoljnih policy objekata, ne mutira pod da bi popunio security defaults i ne vezuje politiku za korisnika preko RBAC-a. Migracija sa PSP-a zato zahteva analizu stvarnih workload-a, dodavanje eksplicitnih polja i odabir namespace strategije, a ne samo promenu naziva plugina.
+    </p>
+    <p>
+      Deployment, StatefulSet, DaemonSet ili Job obično samo čuvaju Pod template; njihov kontroler kasnije kreira stvarni Pod. PSA primenjuje <code>enforce</code> na zahtev za Pod, ne na samu kreaciju workload kontrolera. Režimi <code>warn</code> i <code>audit</code> proveravaju Pod template podržanih workload resursa kako bi korisnik dobio raniji signal, ali konačna enforce odluka nastaje kada kontroler pokuša da kreira Pod. Zbog toga je moguće da Deployment objekat bude kreiran, a da nema dostupne replike jer su njegovi Pod zahtevi odbijeni.
+    </p>
+
+    <h3>Namespace oznake: enforce, audit i warn</h3>
+    <p>
+      PSA politiku najčešće dobija iz standardnih labela namespace-a. Svaki režim ima labelu nivoa i opcionu labelu verzije. Režimi mogu koristiti različite profile: razuman migracioni obrazac je <code>enforce=baseline</code>, dok <code>warn</code> i <code>audit</code> proveravaju <code>restricted</code>. Tako se poznate eskalacije odmah blokiraju, a tim dobija dokaz o preprekama za stroži profil.
+    </p>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-apps
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36</code></pre>
+    <p>
+      <code>enforce</code> odbija Pod koji krši profil. <code>warn</code> vraća upozorenje klijentu, ali dozvoljava zahtev. <code>audit</code> dodaje anotaciju audit događaju, pod uslovom da je Kubernetes audit konfigurisan tako da događaj bude zabeležen. Warn nije trajni inventar, a audit bez odgovarajuće audit politike i centralnog prikupljanja nije operativan dokaz.
+    </p>
+    <p>
+      Namespace labela je bezbednosna kontrola. Pravo menjanja Namespace objekata ili ovih labela praktično omogućava ublažavanje politike, pa mora biti ograničeno RBAC-om i praćeno auditom. Labela se ne kopira automatski na druge namespace-e, a promena globalnog default-a ne mora biti vidljiva u njihovim metapodacima. Inventar zato mora razlikovati eksplicitno označene namespace-e od onih koji nasleđuju cluster-wide default.
+    </p>
+
+    <h3>Verzionisanje politike i bezbedna nadogradnja</h3>
+    <p>
+      PSS verzija je vezana za Kubernetes minor izdanje, na primer <code>v1.36</code>. Zaključavanje verzije čini ponašanje predvidivim tokom control plane nadogradnje. <code>latest</code> prati najnoviju politiku koju API server poznaje. Dobra produkciona praksa je da enforce ostane zaključan na testiranu verziju, dok audit/warn privremeno koriste ciljnu noviju verziju. Posle sanacije svih nalaza i testa u preprodukciji pomeraju se enforce labela i dokumentovani kriterijum prihvatanja.
+    </p>
+    <p>
+      Verzija politike nije isto što i verzija manifesta ili kubelet-a. U klasteru sa skew-om čvorova potrebno je potvrditi da runtime i OS podržavaju tražena polja. Posebno treba proveriti mešovite Linux/Windows klastere: od PSS v1.25 kontrole specifične za Linux, uključujući privilege escalation, seccomp i capabilities, ne primenjuju se kada pod eksplicitno navede <code>spec.os.name: windows</code>. Ako to polje izostane, kubelet pre v1.24 ga ne popunjava i politika može manifest tretirati kao Linux. Node selector i <code>spec.os.name</code> moraju biti međusobno usklađeni.
+    </p>
+
+    <h3>Cluster-wide konfiguracija i izuzeci</h3>
+    <p>
+      Samoupravni vanilla klaster može proslediti <code>AdmissionConfiguration</code> API serveru parametrom <code>--admission-control-config-file</code> i definisati cluster-wide podrazumevane režime. Konfiguracioni API <code>pod-security.admission.config.k8s.io/v1</code> zahteva Kubernetes 1.25 ili noviji; 1.23–1.24 koristili su <code>v1beta1</code>, a 1.22 <code>v1alpha1</code>. U upravljanom klasteru pristup parametrima API servera može biti nedostupan i koristi se podržani mehanizam provajdera.
+    </p>
+    <pre><code class="language-yaml">apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: PodSecurity
+    configuration:
+      apiVersion: pod-security.admission.config.k8s.io/v1
+      kind: PodSecurityConfiguration
+      defaults:
+        enforce: baseline
+        enforce-version: v1.36
+        audit: restricted
+        audit-version: v1.36
+        warn: restricted
+        warn-version: v1.36
+      exemptions:
+        usernames: []
+        runtimeClasses: []
+        namespaces:
+          - kube-system</code></pre>
+    <p>
+      Primer je arhitektonski obrazac, ne univerzalna preporuka da se <code>kube-system</code> trajno izuzme. Izuzeci mogu biti korisni za kontrolisane infrastrukturne komponente, ali su široki: zahtev koji ispuni uslov izuzetka preskače <em>sva tri</em> režima, pa nema ni enforce, ni warn, ni audit evaluacije PSA. Izuzeci se mogu definisati po autentifikovanom korisničkom imenu, <code>RuntimeClass</code> nazivu ili namespace-u i moraju biti eksplicitni.
+    </p>
+    <p>
+      Izuzimanje krajnjeg korisnika često ne daje očekivani rezultat, jer Deployment-ov Pod kreira controller ServiceAccount, ne korisnik koji je kreirao Deployment. Izuzimanje controller ServiceAccount-a je još opasnije: posredno izuzima Pod template svakog korisnika koji sme da kreira odgovarajući workload. Prednost imaju namenski infrastrukturni namespace, ograničen RBAC, posebni čvorovi, audit i najmanji mogući izuzetak sa vlasnikom i rokom ukidanja.
+    </p>
+
+    <h3>Projektovanje politike po zonama poverenja</h3>
+    <p>
+      Jedna politika za ceo klaster često ili blokira platformu ili ostavlja aplikacije nedovoljno zaštićene. Produkcioni model razdvaja namespace-e prema funkciji i poverenju. Poslovne aplikacije treba projektovati za Restricted. Nasleđene aplikacije mogu privremeno imati Baseline enforce i Restricted warn/audit uz plan migracije. Infrastrukturni DaemonSet-i kojima su dokazano potrebni hostNetwork, hostPath ili dodatne capabilities smeštaju se u namenski, strogo administriran namespace i na odvojene čvorove kada je moguće.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Zona</th>
+          <th>Predložena PSA osnova</th>
+          <th>Dodatne kontrole</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Poslovne aplikacije</td>
+          <td>Restricted enforce, audit i warn na zaključanoj verziji</td>
+          <td>Non-root slike, read-only root FS, NetworkPolicy, digest/potpis slike, minimalni ServiceAccount</td>
+        </tr>
+        <tr>
+          <td>Prelazna zona</td>
+          <td>Baseline enforce; Restricted audit/warn</td>
+          <td>Inventar prekršaja, vlasnik, rok sanacije i zabrana novih izuzetaka bez odobrenja</td>
+        </tr>
+        <tr>
+          <td>Platformski add-on-i</td>
+          <td>Posebno procenjen profil ili najmanji izuzetak</td>
+          <td>Ograničen RBAC, namenski namespace/čvorovi, provenance slike, runtime monitoring i detaljan audit</td>
+        </tr>
+        <tr>
+          <td>Eksperimentalni lab</td>
+          <td>Najmanje Baseline enforce</td>
+          <td>Bez produkcionih tajni i mrežnog puta ka kritičnim sistemima; vremenski ograničen namespace</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Validacija pre promene stanja</h3>
+    <p>
+      Server-side dry-run prolazi kroz autentikaciju, autorizaciju, defaulting i admission, ali ne upisuje objekat. Zato je vredniji od samog lokalnog parsiranja YAML-a. Ipak, dry-run ne pokreće scheduler, image pull, CSI montažu ni proces; uspeh znači samo da je zahtev prihvatljiv API serveru u tom trenutku.
+    </p>
+    <pre><code class="language-bash">kubectl apply --dry-run=server -f workload.yaml
+
+kubectl label --dry-run=server --overwrite namespace secure-apps \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/enforce-version=v1.36</code></pre>
+    <p>
+      Kada se enforce labela dodaje ili menja, PSA proverava postojeće podove i vraća zbirna upozorenja, ali ne briše već pokrenute podove. Nova politika utiče na buduće kreacije; sledeći rollout, rescheduling ili zamena poda može biti odbijena. Zato namespace ne treba proglasiti usaglašenim samo zato što labela postoji. Potrebno je testirati sve Pod template-e, CronJob/Job scenarije, init kontejnere i operativne ephemeral kontejnere.
+    </p>
+
+    <h3>Integrisani praktikum: od detekcije do Restricted enforce politike</h3>
+    <p>
+      <strong>Poslovni i tehnički kontekst.</strong> Tim uvodi namespace <code>secure-apps</code> za internu web aplikaciju. Bezbednosni zahtev je da se poznato privilegovani workload odmah odbije, dok usaglašena aplikacija radi kao ne-root proces bez dodatnih capabilities, bez automatski montiranog API tokena i sa read-only korenskim filesystem-om. Vežba prvo uvodi Baseline enforce i Restricted warn/audit, zatim otklanja nalaze i podiže enforce na Restricted.
+    </p>
+    <p>
+      <strong>Topologija i preduslovi.</strong> Potreban je izolovan laboratorijski vanilla Kubernetes klaster 1.25 ili noviji sa omogućenim <code>PodSecurity</code> admission kontrolerom, Linux worker čvorom, funkcionalnim DNS-om i mogućnošću preuzimanja slike <code>nginxinc/nginx-unprivileged:1.27-alpine</code>. Za potpuno ponovljivu produkcionu primenu slika se preslikava u interni registry, skenira i referencira digest-om. Primer zaključava PSS na <code>v1.36</code>; na starijem API serveru mora se koristiti verzija koju taj server poznaje.
+    </p>
+    <p>
+      <strong>Prava i rizik.</strong> Izvršilac mora moći da kreira i briše namespace i laboratorijske Deployment/Pod objekte i da čita događaje. Promena namespace labela menja bezbednosnu politiku i u produkciji zahteva odobrenje. Cleanup koji briše namespace je destruktivan i izvršava se samo u izolovanoj laboratoriji.
+    </p>
+    <ol>
+      <li>
+        <strong>Proveriti kontekst, verziju i admission ponašanje.</strong> Komande su read-only osim server-side dry-run zahteva, koji ne upisuje stanje.
+        <pre><code class="language-bash">kubectl config current-context
+kubectl version
+kubectl auth whoami
+kubectl get --raw='/version'
+kubectl get namespace secure-apps</code></pre>
+        Ako namespace već postoji, vežba se zaustavlja dok se ne potvrdi vlasnik. Na samoupravnom kubeadm control plane-u ovlašćeni administrator može read-only proveriti static Pod manifest, ali ne treba menjati ga u ovoj vežbi:
+        <pre><code class="language-bash">sudo grep -n -- '--enable-admission-plugins\|--disable-admission-plugins\|--admission-control-config-file' \
+  /etc/kubernetes/manifests/kube-apiserver.yaml</code></pre>
+        Odsustvo eksplicitnog <code>PodSecurity</code> argumenta ne dokazuje da je plugin isključen, jer je podrazumevano omogućen u podržanim izdanjima. Funkcionalni test u narednim koracima daje pouzdaniji dokaz.
+      </li>
+      <li>
+        <strong>Kreirati namespace u postepenom režimu.</strong> Ova komanda menja stanje. Baseline se odmah sprovodi, dok Restricted za sada samo upozorava i ostavlja audit anotaciju.
+        <pre><code class="language-bash">kubectl create namespace secure-apps
+
+kubectl label namespace secure-apps --overwrite \
+  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce-version=v1.36 \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/audit-version=v1.36 \
+  pod-security.kubernetes.io/warn=restricted \
+  pod-security.kubernetes.io/warn-version=v1.36
+
+kubectl get namespace secure-apps --show-labels</code></pre>
+        <strong>Očekivani rezultat:</strong> namespace sadrži svih šest labela. Ako server prijavi da <code>v1.36</code> nije validna policy verzija, ne koristi se <code>latest</code> napamet; utvrđuje se verzija control plane-a i manifest prilagođava podržanoj, dokumentovanoj verziji.
+      </li>
+      <li>
+        <strong>Dokazati da Baseline odbija privilegovani Pod.</strong> Manifest je namerno nebezbedan i koristi se samo kao server-side dry-run; nijedan Pod se ne upisuje.
+        <pre><code class="language-bash">mkdir -p pod-security-lab
+cd pod-security-lab
+
+kubectl -n secure-apps run privileged-probe \
+  --image=busybox:1.36.1 \
+  --restart=Never \
+  --overrides='{"spec":{"containers":[{"name":"privileged-probe","image":"busybox:1.36.1","command":["sleep","3600"],"securityContext":{"privileged":true}}]}}' \
+  --dry-run=server -o yaml</code></pre>
+        <strong>Očekivani rezultat:</strong> API server odbija zahtev porukom koja navodi kršenje Baseline kontrole za privileged container. Ako se YAML ipak vrati bez odbijanja, proveravaju se namespace, labele i da li je <code>PodSecurity</code> admission aktivan. Ne uklanja se labela da bi test „prošao”.
+      </li>
+      <li>
+        <strong>Kreirati aplikacioni manifest koji je Baseline-kompatibilan, ali namerno nepotpun za Restricted.</strong>
+        <pre><code class="language-bash">cat &gt; 01-baseline-app.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: secure-apps
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+EOF
+
+kubectl apply --dry-run=server -f 01-baseline-app.yaml
+kubectl apply -f 01-baseline-app.yaml</code></pre>
+        <strong>Očekivani rezultat:</strong> zahtev je dozvoljen pod Baseline enforce režimom, ali <code>kubectl</code> prikazuje Restricted upozorenja, tipično za nedostajuće <code>allowPrivilegeEscalation: false</code>, <code>runAsNonRoot: true</code>, <code>capabilities.drop: ["ALL"]</code> i seccomp profil. Tačan tekst zavisi od policy verzije. Upozorenje se čuva kao nalaz, ne tumači kao neuspeh API-ja.
+      </li>
+      <li>
+        <strong>Prikupiti početne dokaze.</strong>
+        <pre><code class="language-bash">kubectl -n secure-apps rollout status deployment/web --timeout=120s
+kubectl -n secure-apps get deployment,replicaset,pod -o wide
+kubectl -n secure-apps get events --sort-by='.metadata.creationTimestamp'
+kubectl -n secure-apps get deployment web -o yaml</code></pre>
+        Podovi treba da budu Ready. Audit zapis, ako je audit omogućen, treba da sadrži PSA audit anotacije za Restricted prekršaje. Lokacija zavisi od <code>--audit-log-path</code> ili centralnog sistema upravljanog klastera. Warn izlaz terminala nije zamena za audit zapis.
+      </li>
+      <li>
+        <strong>Izraditi Restricted-kompatibilan i dodatno ojačan manifest.</strong> Ova verzija dodaje sva ključna Restricted polja, isključuje nepotrebni ServiceAccount token i postavlja read-only root filesystem sa namenskim writable putanjama koje nginx slika koristi.
+        <pre><code class="language-bash">cat &gt; 02-restricted-app.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: secure-apps
+  labels:
+    app: web
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: pid
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: pid
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
+EOF
+
+kubectl apply --dry-run=server -f 02-restricted-app.yaml</code></pre>
+        <strong>Kriterijum:</strong> dry-run prolazi bez Restricted upozorenja. Ako slika u korišćenom izdanju zahteva druge writable putanje ili UID, to se potvrđuje dokumentacijom i testom slike; ne vraća se root niti uklanja zaštita bez analize.
+      </li>
+      <li>
+        <strong>Primeniti hardening kroz kontrolisani rollout.</strong>
+        <pre><code class="language-bash">kubectl apply -f 02-restricted-app.yaml
+kubectl -n secure-apps rollout status deployment/web --timeout=180s
+kubectl -n secure-apps get pods -l app=web
+kubectl -n secure-apps logs deployment/web --tail=50</code></pre>
+        Ako rollout ne uspe, prvo se čuvaju događaji i logovi. Bezbedan rollback je <code>kubectl -n secure-apps rollout undo deployment/web</code>, jer je prethodna verzija i dalje Baseline-kompatibilna; zatim se u preprodukciji ispravlja image/permissions problem. Rollback je privremeno zaobilazno rešenje, ne trajno odustajanje od Restricted cilja.
+      </li>
+      <li>
+        <strong>Dokazati efektivni identitet i filesystem kontrole.</strong>
+        <pre><code class="language-bash">POD_NAME=$(kubectl -n secure-apps get pod -l app=web \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl -n secure-apps exec "$POD_NAME" -- id
+kubectl -n secure-apps exec "$POD_NAME" -- sh -c \
+  'test "$(id -u)" != "0" &amp;&amp; touch /tmp/allowed &amp;&amp; ! touch /should-fail'
+
+kubectl -n secure-apps get pod "$POD_NAME" \
+  -o jsonpath='{.spec.securityContext.seccompProfile.type}{"\n"}{.spec.containers[0].securityContext}{"\n"}'</code></pre>
+        <strong>Očekivani rezultat:</strong> UID nije 0, upis u <code>/tmp</code> uspeva, upis u root filesystem ne uspeva, a manifest pokazuje <code>RuntimeDefault</code>, uklonjene capabilities i onemogućenu eskalaciju. Komanda ne dokazuje sadržaj kernel capability seta; za dublju proveru koristi se odobren alat ili čitanje <code>/proc/1/status</code> uz pravilno tumačenje heksadecimalnih maski.
+      </li>
+      <li>
+        <strong>Podignuti enforce na Restricted tek nakon dry-run provere.</strong>
+        <pre><code class="language-bash">kubectl label --dry-run=server --overwrite namespace secure-apps \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/enforce-version=v1.36
+
+kubectl label --overwrite namespace secure-apps \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/enforce-version=v1.36
+
+kubectl get namespace secure-apps --show-labels</code></pre>
+        <strong>Validacija:</strong> labela pokazuje Restricted v1.36, postojeće dve replike ostaju Ready, a ponovno izvršavanje privileged dry-run testa biva odbijeno. Promena ne deložira neusaglašene postojeće podove; zato se radi i kontrolisani restart kako bi se dokazalo da nove kreacije prolaze.
+        <pre><code class="language-bash">kubectl -n secure-apps rollout restart deployment/web
+kubectl -n secure-apps rollout status deployment/web --timeout=180s
+kubectl -n secure-apps get events --sort-by='.metadata.creationTimestamp'</code></pre>
+      </li>
+      <li>
+        <strong>Simulirati regresiju i razlikovati mesto kvara.</strong> Sledeći patch postoji samo kao server-side dry-run i pokušava da vrati eskalaciju privilegija.
+        <pre><code class="language-bash">kubectl -n secure-apps patch deployment web \
+  --type='strategic' \
+  --patch='{"spec":{"template":{"spec":{"containers":[{"name":"web","securityContext":{"allowPrivilegeEscalation":true}}]}}}}' \
+  --dry-run=server</code></pre>
+        Warn provera workload template-a treba da prijavi prekršaj. Pošto enforce ne važi direktno za Deployment objekat, ponašanje klijenta i API verzije treba tumačiti zajedno sa konačnim testom stvarnog Pod-a. U produkciji se ne primenjuje ovaj patch samo da bi se proizveo incident.
+      </li>
+      <li>
+        <strong>Dokumentovati prihvatanje i bezbedno očistiti laboratoriju.</strong> Prihvatanje zahteva: zaključane namespace labele, uspešan server-side dry-run, dve Ready replike nakon restart-a, ne-root UID, dozvoljen upis samo u deklarisani volume, odbijeni privileged zahtev i sačuvan audit/događajni trag.
+        <pre><code class="language-bash">kubectl -n secure-apps get deployment web -o yaml &gt; accepted-deployment.yaml
+kubectl get namespace secure-apps -o yaml &gt; accepted-namespace.yaml
+
+kubectl delete namespace secure-apps</code></pre>
+        Poslednja komanda je destruktivna i briše sve namespace resurse. Izvršava se samo ako je <code>secure-apps</code> napravljen isključivo za ovu vežbu. U deljenom okruženju briše se samo <code>Deployment/web</code>, a namespace politika se ne menja bez zasebno odobrene promene.
+      </li>
+    </ol>
+
+    <h3>Troubleshooting: Pod je odbijen ili workload nema replike</h3>
+    <p>
+      Dijagnostika počinje razdvajanjem simptoma. Ako <code>kubectl apply</code> odmah vraća <code>Forbidden</code> sa PSS detaljima, odbijen je direktni Pod zahtev ili druga admission provera. Ako je Deployment kreiran, ali <code>READY 0/2</code>, njegov controller možda ne može da kreira Pod. Ako Pod postoji u stanju <code>CreateContainerConfigError</code> ili <code>CrashLoopBackOff</code>, admission je već prošao i problem je u kubelet/runtime fazi, dozvolama fajlova ili aplikaciji.
+    </p>
+    <pre><code class="language-bash">kubectl -n secure-apps get deployment,replicaset,pod
+kubectl -n secure-apps describe deployment web
+kubectl -n secure-apps describe replicaset -l app=web
+kubectl -n secure-apps get events --sort-by='.metadata.creationTimestamp'
+kubectl -n secure-apps logs deployment/web --all-containers --previous</code></pre>
+    <p>
+      Read-only redosled je: potvrditi kontekst i namespace labele; sačuvati primljenu admission poruku; pronaći vlasnički lanac Deployment–ReplicaSet–Pod; pregledati događaje; uporediti efektivni Pod template sa PSS verzijom; zatim proveriti runtime i aplikacione logove. Tek posle postavljene hipoteze menja se manifest. Uklanjanje enforce labele ili prebacivanje namespace-a na Privileged nije dijagnostika, već proširenje attack surface-a.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Simptom</th>
+          <th>Neposredni uzrok</th>
+          <th>Bezbedna korektivna mera</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>violates PodSecurity "restricted"</code></td>
+          <td>Jedno ili više polja regularnog, init ili ephemeral kontejnera krši zaključani profil.</td>
+          <td>Popisati svako navedeno polje, ispraviti sliku/manifest i ponoviti server-side dry-run.</td>
+        </tr>
+        <tr>
+          <td>Deployment postoji, ReplicaSet stalno prijavljuje <code>FailedCreate</code></td>
+          <td>Controller-ov Pod zahtev odbija enforce, quota ili drugi admission plugin.</td>
+          <td>Pregledati ReplicaSet događaje i tačnu poruku; ne tražiti aplikacioni log poda koji nikada nije kreiran.</td>
+        </tr>
+        <tr>
+          <td><code>runAsNonRoot</code> greška za sliku</td>
+          <td>Slika podrazumevano koristi root ili sadrži nenumerički USER koji runtime ne može potvrditi.</td>
+          <td>Izgraditi sliku sa numeričkim ne-root USER-om i pravilnim vlasništvom; <code>runAsUser</code> dodati tek posle testa dozvola.</td>
+        </tr>
+        <tr>
+          <td><code>Permission denied</code> nakon non-root promene</td>
+          <td>Konfiguracija, volume ili aplikaciona putanja pripada root-u.</td>
+          <td>Ispraviti image build ili volume ownership; pažljivo koristiti <code>fsGroup</code>. Privilegovani init <code>chown</code> nije prihvatljiva podrazumevana zakrpa.</td>
+        </tr>
+        <tr>
+          <td>Aplikacija pada uz read-only filesystem</td>
+          <td>Pokušava upis u neidentifikovanu putanju.</td>
+          <td>Iz loga utvrditi tačnu putanju i montirati ograničen <code>emptyDir</code> ili odgovarajući PVC; ne vraćati ceo root FS na writable bez analize.</td>
+        </tr>
+        <tr>
+          <td>Seccomp <code>operation not permitted</code></td>
+          <td>RuntimeDefault blokira syscall ili aplikacija pogrešno tumači drugi permission problem.</td>
+          <td>Korelisati runtime/kern log, syscall i verziju slike; prilagoditi aplikaciju ili kontrolisani Localhost profil. <code>Unconfined</code> je samo kratka izolovana dijagnostička hipoteza, ne produkciono rešenje.</td>
+        </tr>
+        <tr>
+          <td>Promena namespace labele nije ugasila stare Podove</td>
+          <td>PSA ne vrši retroaktivnu deložaciju.</td>
+          <td>Sanirati template i sprovesti kontrolisani rollout uz PDB i proveru kapaciteta.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Incident response: neočekivani privilegovani workload</h3>
+    <ol>
+      <li><strong>Odrediti simptom, obim i posledicu.</strong> Identifikovati namespace, Pod UID, owner references, čvor, image digest, ServiceAccount, host namespace/volume upotrebu, capabilities i vreme kreiranja. Privileged Pod na čvoru može značiti potencijalni incident na nivou čvora, ne samo aplikacije.</li>
+      <li><strong>Sačuvati dokaze pre promene.</strong> Sačuvati Pod/Deployment/DaemonSet manifest, događaje, audit zapise za kreiranje i promenu namespace labela, runtime/kubelet logove, listu zahvaćenih čvorova i relevantne mrežne tokove. Secret i token vrednosti se ne kopiraju u tiket.</li>
+      <li><strong>Postaviti hipotezu.</strong> Razlikovati odobren infrastrukturni izuzetak, pogrešnu ili uklonjenu PSA labelu, globalni izuzetak, kompromitovan administratorski identitet, webhook fail-open i stariji Pod koji je postojao pre pooštravanja politike.</li>
+      <li><strong>Ograničiti štetu.</strong> Uz incidentnog vlasnika sprečiti nove kreacije vraćanjem odobrene namespace politike i uklanjanjem neovlašćenog RBAC pristupa. Izolovati čvor i workload mrežno kada rizik opravdava prekid. Brisanje poda pre prikupljanja dokaza može ukloniti važan trag i izazvati automatsko ponovno kreiranje.</li>
+      <li><strong>Iskoreniti uzrok.</strong> Ukloniti neodobreni controller, rotirati kompromitovane akreditacije, vratiti Git-known-good manifeste, pregledati host zbog promena i po potrebi reprovisionovati čvor iz pouzdanog izvora. Samo dodavanje PSA labele ne poništava radnje koje je privilegovani proces već izvršio.</li>
+      <li><strong>Oporaviti i dokazati.</strong> Ponovo rasporediti usaglašen workload, potvrditi Restricted/odobrenu politiku, negativni privileged dry-run, Ready stanje, audit kontinuitet i odsustvo neočekivanih procesa ili fajlova na čvoru.</li>
+      <li><strong>Sprečiti ponavljanje.</strong> Ograničiti pravo menjanja namespace labela i admission konfiguracije, uvesti alarm za privilegovane karakteristike i PSA exemptions metriku, kontrolisati image provenance i definisati rok svakom izuzetku.</li>
+    </ol>
+
+    <h3>Metrike, događaji, audit i logovi</h3>
+    <p>
+      API server izlaže Prometheus metrike <code>pod_security_evaluations_total</code>, <code>pod_security_exemptions_total</code> i <code>pod_security_errors_total</code>. Prva pokazuje broj evaluacija po odluci, režimu, nivou i verziji; druga korišćenje izuzetaka; treća interne greške evaluacije. Rast exemptions zahteva korelaciju sa odobrenim infrastrukturnim operacijama. Greška evaluacije nije isto što i legitimno odbijanje manifesta i zahteva hitnu proveru API servera.
+    </p>
+    <p>
+      User-facing warn poruka živi u odgovoru klijentu. Controller-ov <code>FailedCreate</code> obično se vidi u događajima ReplicaSet-a, DaemonSet-a ili Job-a. Audit režim dodaje anotacije audit događaju; njihov opstanak zavisi od audit nivoa i backend-a. Na kubeadm čvoru API server radi kao static Pod, pa se logovi čitaju preko container runtime-a ili centralne platforme. Journal putanja je relevantna samo kada je komponenta zaista systemd servis. Uvek se bira vremenski opseg oko <code>requestReceivedTimestamp</code> i korelišu korisnik, source IP, user agent, namespace, resurs, odgovor i audit ID.
+    </p>
+    <pre><code class="language-bash">kubectl -n secure-apps get events \
+  --field-selector=reason=FailedCreate \
+  --sort-by='.metadata.creationTimestamp'
+
+kubectl get --raw='/metrics' \
+  | grep '^pod_security_'</code></pre>
+    <p>
+      Druga komanda je read-only, ali pristup <code>/metrics</code> je obično ograničen i izlaz može biti velik. U produkciji se preferira odobreni Prometheus scrape i dashboard sa trendovima. Ako korisnik nema pravo, ne dodeljuje mu se široka API privilegija samo radi jednokratnog čitanja metrike.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+    <ul>
+      <li><strong>Inventar namespace politike.</strong> Najmanje mesečno i posle svake nadogradnje izvesti sve PSA labele, identifikovati namespace-e bez eksplicitnog enforce nivoa i povezati ih sa cluster-wide default-om. Svaki namespace mora imati vlasnika, zonu poverenja, nivo, verziju i datum sledeće revizije.</li>
+      <li><strong>Postepeno pooštravanje.</strong> Pre promene enforce nivoa aktivirati ciljnu politiku kroz audit/warn, prikupiti prekršaje tokom reprezentativnog poslovnog ciklusa, testirati sve controller template-e i tek zatim menjati enforce. Dry-run je obavezan, ali nije dovoljan bez stvarnog rollout testa.</li>
+      <li><strong>Kontrola izuzetaka.</strong> Kvartalno i posle incidenta pregledati username, RuntimeClass i namespace izuzetke, metriku <code>pod_security_exemptions_total</code>, vlasnika, poslovno opravdanje i rok. Izuzetak bez aktivnog vlasnika ili dokazane potrebe uklanja se kroz odobrenu promenu.</li>
+      <li><strong>Hardening šabloni.</strong> Održavati verzionisane Pod template obrasce sa non-root izvršavanjem, <code>allowPrivilegeEscalation: false</code>, <code>drop: ALL</code>, <code>RuntimeDefault</code>, read-only root filesystem-om i isključenim ServiceAccount tokenom kada nije potreban. Obrasci se testiraju protiv svih podržanih OS/runtime kombinacija.</li>
+      <li><strong>Zaštita kontrolne ravni.</strong> RBAC za menjanje Namespace labela, admission konfiguracije, ValidatingAdmissionPolicy i webhook objekata daje se najmanjem broju uloga. Promene se čuvaju deklarativno, prolaze peer review i korelišu sa audit zapisom.</li>
+      <li><strong>Nadogradnja PSS verzije.</strong> Pre minor nadogradnje uporediti PSS specifikacije stare i ciljne verzije, postaviti ciljnu verziju na audit/warn, sanirati nalaze i testirati rollback. Enforce verzija se pomera tek kada su kritični workload-i prošli kontrolisano ponovno kreiranje.</li>
+      <li><strong>Oporavak konfiguracije.</strong> Backup obuhvata Namespace objekte sa labelama, workload manifeste i API server AdmissionConfiguration u samoupravnom klasteru. Restore test mora dokazati i pozitivnu kreaciju usaglašenog poda i negativno odbijanje privilegovanog poda; samo postojanje YAML fajla nije dokaz funkcionalne kontrole.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Čitalac razlikuje pod-level <code>PodSecurityContext</code> od container-level <code>SecurityContext</code> polja i proverava regularne, init i ephemeral kontejnere.</li>
+      <li>Može da objasni posledice <code>runAsNonRoot</code>, UID/GID, <code>fsGroup</code>, <code>allowPrivilegeEscalation</code>, capabilities, seccomp i read-only root filesystem-a.</li>
+      <li>Razlikuje PSS profile Privileged, Baseline i Restricted i zna da su kumulativni i verzionisani.</li>
+      <li>Razlikuje standard PSS od admission mehanizma PSA i od prilagođenih CEL/webhook politika.</li>
+      <li>Može da postavi namespace režime <code>enforce</code>, <code>audit</code> i <code>warn</code> sa eksplicitnom policy verzijom.</li>
+      <li>Razume da enforce proverava stvarne Pod zahteve i da kreiran Deployment ne garantuje kreiranje replika.</li>
+      <li>Server-side dry-run odbija privilegovani test, a usaglašeni manifest prolazi bez Restricted upozorenja.</li>
+      <li>Stvarni proces radi kao ne-root, nema mogućnost eskalacije, nema dodatne capabilities i koristi očekivani seccomp profil.</li>
+      <li>Postojeći podovi su kontrolisano ponovo kreirani nakon pooštravanja politike; Ready stanje i događaji su provereni.</li>
+      <li>Izuzeci, pravo menjanja namespace labela, audit trag, metrike i rollback imaju dokumentovane vlasnike i kriterijume.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      SecurityContext pretvara očekivanja o privilegijama procesa u deo deklarativnog ugovora workload-a. Non-root UID, zabrana eskalacije, minimalne capabilities, seccomp, read-only root filesystem i pažljivo projektovane volume dozvole smanjuju mogućnost da kompromitovan proces preraste u kompromitovanje poda ili čvora. Međutim, ta polja vrede samo ako ih slika, runtime i OS stvarno podržavaju i ako se rezultat proveri u izvršavanju.
+    </p>
+    <p>
+      Pod Security Standards daju zajednički, verzionisani minimum, a Pod Security Admission taj minimum sprovodi u API putanji pre kreiranja poda. Produkciona zrelost vidi se u postepenom prelasku sa audit/warn na enforce, zaključavanju testirane verzije, odvojenim zonama poverenja i izuzetku koji je uži od problema koji rešava. Privileged namespace bez vlasnika i roka nije operativna fleksibilnost, već trajno otvorena granica napada.
+    </p>
+    <p>
+      Administrator posle ove lekcije ne procenjuje bezbednost po tome da li manifest sadrži nekoliko poznatih polja. On dokazuje koju politiku API server primenjuje, da li controller uspeva da kreira replike, pod kojim UID/GID proces radi, koje putanje su writable, koje operacije su odbijene, gde je audit trag i šta se dešava pri nadogradnji ili rollback-u. Time admission prestaje da bude prepreka deployment-u i postaje kontrolisana zaštita platforme.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za SecurityContext i Linux kernel bezbednosne kontrole, Pod Security Standards i Pod Security Admission; Kubernetes API, kubectl i AdmissionConfiguration reference; vodiči za namespace enforce, audit i warn režime, migraciju sa PodSecurityPolicy mehanizma, seccomp i AppArmor; bezbednosne, audit, metrics i troubleshooting smernice projekta Kubernetes
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-36-service-account.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-38-secrets-audit-policy.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+</body>
+</html>

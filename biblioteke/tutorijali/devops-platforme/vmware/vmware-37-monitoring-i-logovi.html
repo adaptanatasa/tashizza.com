@@ -1,0 +1,2120 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-37-monitoring-i-logovi.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Monitoring i logovi – praćenje zdravlja VMware infrastrukture | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte monitoring i logove u VMware okruženju i naučite kako se prati zdravlje ESXi hostova, virtuelnih mašina, mreže, storage-a i vCenter infrastrukture.">
+
+  <meta name="keywords"
+        content="VMware monitoring, VMware logovi, ESXi logovi, vCenter logovi, praćenje VMware infrastrukture, zdravlje infrastrukture, alarmi, događaji, performance charts, hostd log, vpxa log, vmkernel log, monitoring virtuelnih mašina, vSphere, VMware administracija, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-37-monitoring-i-logovi.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Monitoring i logovi – praćenje zdravlja VMware infrastrukture">
+
+  <meta property="og:description"
+        content="Saznajte kako se pomoću monitoringa, alarma, događaja i logova prati zdravlje VMware hostova, virtuelnih mašina, mreže i storage-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-37-monitoring-i-logovi.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-37-monitoring-i-logovi.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Monitoring i logovi – praćenje zdravlja VMware infrastrukture">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-37-monitoring-i-logovi.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-37-monitoring-i-logovi.png"
+           alt="Monitoring i logovi – praćenje zdravlja VMware infrastrukture">
+
+    </a>
+
+  <div class="page-subtitle">
+  VIII. Zaštita podataka, monitoring i sistematičan troubleshooting
+</div>
+
+<div class="page-subtitle">
+  37. Monitoring, alarmi i logovi – od bazne linije do pravovremenog upozorenja
+</div>
+
+ <p>Monitoring VMware infrastrukture nije posmatranje nekoliko grafikona niti reagovanje tek kada korisnici prijave zastoj. To je organizovan proces prikupljanja, čuvanja, povezivanja i tumačenja podataka o stanju ESXi hostova, vCenter Servera, virtuelnih mašina, mreže, storage sistema i upravljačkih servisa. Njegov cilj nije samo da potvrdi da komponenta trenutno radi, već da dovoljno rano otkrije degradaciju, rast rizika ili odstupanje od očekivanog ponašanja.</p>
+
+<p>Administrator mora razlikovati dostupnost od zdravlja sistema. ESXi host može odgovarati na mreži, a istovremeno imati zasićen storage red, nestabilan fizički adapter, nedostupan syslog server ili popunjen ramdisk. Virtuelna mašina može biti uključena, ali njena aplikacija može kasniti zbog CPU Ready vremena, swapping-a ili storage latencije. vCenter može prikazivati inventar, dok jedan od njegovih servisa radi nestabilno ili se baza približava kapacitetnom ograničenju. Zbog toga se stanje infrastrukture procenjuje kombinovanjem metrika, događaja, alarma, logova i operativnog konteksta.</p>
+
+<h3>Uloga monitoringa u radu administratora</h3>
+
+<p>Dobro projektovan monitoring treba da odgovori na četiri grupe pitanja:</p>
+
+<ul>
+  <li>da li su ključne komponente dostupne i međusobno povezane;</li>
+  <li>da li rade unutar očekivanih performansnih i kapacitetnih granica;</li>
+  <li>da li se pojavljuju greške, upozorenja ili promene koje povećavaju rizik;</li>
+  <li>da li postoji dovoljno istorijskih podataka da se incident naknadno rekonstruiše.</li>
+</ul>
+
+<p>Monitoring nije zamena za arhitektonsko razumevanje. Alarm koji prijavljuje visoku iskorišćenost CPU-a ne dokazuje da postoji CPU problem. Visoka iskorišćenost može biti normalna i poželjna ako nema CPU Ready vremena, host nije prezasićen, aplikacija ostvaruje očekivane performanse i opterećenje je planirano. Nasuprot tome, relativno niska prosečna iskorišćenost može prikriti kratke, ali učestale vršne periode, NUMA problem ili čekanje pojedinačnih vCPU niti.</p>
+
+<p>Zadatak administratora zato nije da ukloni crvenu boju iz konzole, već da utvrdi šta je signal, šta posledica i šta je zaista osnovni uzrok.</p>
+
+<h3>Slojevi podataka za praćenje VMware infrastrukture</h3>
+
+<p>vSphere okruženje proizvodi više različitih vrsta operativnih podataka. Oni se međusobno dopunjuju, ali nisu međusobno zamenljivi.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vrsta podatka</th>
+      <th>Šta predstavlja</th>
+      <th>Tipična upotreba</th>
+      <th>Ograničenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Metrika</td>
+      <td>Numeričko stanje resursa tokom vremena</td>
+      <td>CPU, memorija, latencija, throughput, packet drops, kapacitet</td>
+      <td>Bez konteksta ne objašnjava uzrok</td>
+    </tr>
+    <tr>
+      <td>Događaj</td>
+      <td>Zapis da se određena radnja ili promena dogodila</td>
+      <td>Power operacija, login, migracija, rekonfiguracija, gubitak veze</td>
+      <td>Ne mora označavati problem</td>
+    </tr>
+    <tr>
+      <td>Alarm</td>
+      <td>Procena uslova na osnovu definisanog okidača</td>
+      <td>Rano upozorenje i operativna eskalacija</td>
+      <td>Može biti loše podešen ili previše bučan</td>
+    </tr>
+    <tr>
+      <td>Log</td>
+      <td>Detaljan zapis rada određene komponente</td>
+      <td>Dijagnostika, korelacija, potvrda uzroka</td>
+      <td>Veliki obim, različit format i ograničeno lokalno čuvanje</td>
+    </tr>
+    <tr>
+      <td>Health status</td>
+      <td>Sažeta procena ugrađenog health mehanizma</td>
+      <td>Brza identifikacija oblasti koja zahteva proveru</td>
+      <td>Ne zamenjuje analizu osnovnih podataka</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>vSphere Monitoring and Performance dokumentacija razdvaja performance charts, alarms, events i health funkcije upravo zato što svaki od ovih mehanizama predstavlja drugačiji pogled na stanje sistema.</p>
+
+<h3>Arhitektura monitoringa u vSphere okruženju</h3>
+
+<p>U centralno upravljanom okruženju vCenter Server predstavlja osnovnu tačku za objedinjavanje inventara, događaja, alarma i istorijskih statistika. ESXi hostovi i upravljački agenti šalju podatke vCenter-u, dok vCenter servisi obrađuju, čuvaju i prikazuju te podatke kroz vSphere Client i API interfejse.</p>
+
+<p>To ipak ne znači da je vCenter jedini izvor istine. Kada je host disconnected, kada je vCenter nedostupan ili kada postoji problem u upravljačkom kanalu, administrator mora moći da proveri ESXi direktno. Lokalni ESXi logovi, ESXCLI, esxtop i Host Client mogu ostati dostupni čak i kada centralni prikaz nije pouzdan.</p>
+
+<p>Praktična monitoring arhitektura zato obično sadrži najmanje sledeće slojeve:</p>
+
+<ul>
+  <li>lokalno prikupljanje metrika i logova na ESXi hostu;</li>
+  <li>centralni vCenter pregled događaja, alarma i performansi;</li>
+  <li>udaljeno čuvanje logova na syslog platformi;</li>
+  <li>spoljno praćenje dostupnosti vCenter-a, ESXi management interfejsa i kritičnih servisa;</li>
+  <li>po potrebi integraciju sa SIEM, ITSM ili naprednom operations platformom.</li>
+</ul>
+
+<p>Centralizacija je posebno važna zato što se lokalni ESXi logovi mogu nalaziti na scratch lokaciji ili ramdisku, zavisno od instalacije i konfiguracije. Broadcom dokumentacija navodi da ESXi koristi servis <code>vmsyslogd</code>, da se logovi mogu čuvati lokalno i da se radi očuvanja i centralne analize mogu prosleđivati udaljenom syslog serveru.</p>
+
+<h3>Objekti koje administrator mora da prati</h3>
+
+<p>Monitoring se projektuje prema zavisnostima servisa, a ne prema tome koji objekti su najvidljiviji u vSphere Client-u.</p>
+
+<p><strong>vCenter Server</strong> zahteva praćenje dostupnosti appliance-a, stanja servisa, zauzeća njegovih particija, kapaciteta baze, vremena, DNS rezolucije, sertifikata, autentikacionih servisa i veze sa ESXi hostovima. Ako vCenter nije dostupan, postojeće virtuelne mašine uglavnom nastavljaju da rade na hostovima, ali centralno upravljanje, DRS, administrativni vMotion postupci, alarmi i niz drugih funkcija mogu biti ograničeni.</p>
+
+<p><strong>ESXi host</strong> zahteva praćenje upravljačke povezanosti, hardverskih senzora, CPU i memorijskog pritiska, storage putanja, datastora, mrežnih adaptera, VMkernel interfejsa, sistemskih servisa, scratch i log kapaciteta i stanja klaster funkcija kao što su HA i vSAN, kada su prisutne.</p>
+
+<p><strong>Virtuelna mašina</strong> zahteva praćenje power stanja, VMware Tools statusa, CPU Ready i Co-stop pokazatelja, memorijskog ballooning-a i swapping-a, disk latencije, mrežnih grešaka, snapshot stanja i aplikacione dostupnosti. VMware Tools heartbeat može pomoći u proceni stanja gosta, ali nije isto što i provera aplikacije. Operativni sistem može odgovarati dok poslovni servis ne radi.</p>
+
+<p><strong>Mreža</strong> zahteva praćenje link stanja, redundanse uplinkova, grešaka fizičkih portova, packet drops događaja, VLAN i MTU doslednosti, VMkernel dostupnosti i kapaciteta. Prosečan bandwidth nije dovoljan pokazatelj. Kratkotrajni burst, queue drop ili asimetrična greška mogu izazvati ozbiljan incident bez visoke prosečne iskorišćenosti.</p>
+
+<p><strong>Storage</strong> zahteva praćenje dostupnosti putanja, stanja multipathing-a, APD i PDL događaja, latencije na hostu i uređaju, queue stanja, prostora na datastore-u i ponašanja storage sistema izvan VMware sloja. vSphere može pokazati da zahtev dugo čeka, ali za potvrdu uzroka često je potrebna korelacija sa SAN, NAS ili array monitoringom.</p>
+
+<h3>Performance Charts i istorijske metrike</h3>
+
+<p>vSphere Client pruža pregled performansi za inventarske objekte, uključujući CPU, memoriju, mrežu i storage. Performance charts mogu biti pregledni ili napredni, zavisno od izabranog objekta, vremenskog perioda i verzije platforme.</p>
+
+<p>Administrator pri analizi mora da proveri:</p>
+
+<ul>
+  <li>koji objekat se meri;</li>
+  <li>koja je jedinica mere;</li>
+  <li>da li je vrednost prosečna, maksimalna, zbirna ili trenutna;</li>
+  <li>koji interval uzorkovanja se koristi;</li>
+  <li>da li je podatak real-time ili istorijski agregiran;</li>
+  <li>da li su metrika i vremenski interval odgovarajući za prijavljeni simptom.</li>
+</ul>
+
+<p>Istorijski podaci se agregiraju da bi se smanjili kapacitet i trošak čuvanja. Posledica je gubitak detalja. Kratak problem od nekoliko minuta može biti jasno vidljiv u real-time intervalu, ali gotovo nevidljiv u dugoročnom dnevnom proseku. Zbog toga incident treba analizirati u najužem periodu koji obuhvata početak simptoma, događaj i oporavak.</p>
+
+<p>Performance monitoring mora biti zasnovan na baznom stanju. Prag od 70% ili 80% nema univerzalnu vrednost. Administrator treba da zna kako se određeni klaster, host ili aplikacija ponašaju tokom normalnog radnog dana, batch perioda, backup prozora, patching-a i vršnog poslovnog opterećenja.</p>
+
+<h3>Događaji, zadaci i alarmi</h3>
+
+<p>Event predstavlja zapis o promeni ili aktivnosti. Može nastati zbog administratorske radnje, automatizacije, promene stanja ili detektovanog problema. Task predstavlja izvršavanje operacije koja ima početak, tok i rezultat. Alarm procenjuje stanje na osnovu određenog događaja, metrike ili uslova.</p>
+
+<p>Ova razlika je ključna u incident analizi. Na primer:</p>
+
+<ul>
+  <li>događaj može pokazati da je VM rekonfigurisana;</li>
+  <li>task može pokazati ko je pokrenuo operaciju i da li je uspešno završena;</li>
+  <li>alarm može pokazati da je nakon te promene dostignut kritičan prag;</li>
+  <li>log može objasniti tehnički razlog problema.</li>
+</ul>
+
+<p>vSphere poseduje unapred definisane alarme, ali enterprise okruženje obično zahteva i prilagođene alarmne definicije. Alarm treba da ima jasan objekat, okidač, warning i critical uslov, trajanje uslova, način resetovanja, vlasnika reakcije i dokumentovan postupak.</p>
+
+<p>Loše projektovan alarm proizvodi dve vrste rizika. Preosetljiv alarm generiše veliki broj obaveštenja i dovodi do alarm fatigue pojave. Preširok ili previše tolerantan alarm prijavljuje problem tek nakon što je usluga već pogođena.</p>
+
+<p>Prag treba da sadrži vremensku komponentu kada je to moguće. Jednokratni CPU skok od nekoliko sekundi često nije incident. CPU Ready, storage latencija ili gubitak storage putanje koji traju dovoljno dugo da utiču na uslugu jesu znatno važniji.</p>
+
+<p>PowerCLI omogućava pregled alarmnih definicija pomoću cmdleta <code>Get-AlarmDefinition</code>. Komanda se izvršava na administrativnoj stanici sa instaliranim aktuelnim VCF PowerCLI modulima, nakon povezivanja na vCenter Server. Ona samo čita konfiguraciju i bezbedna je za produkcionu proveru.</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa01.lab.local
+
+Get-AlarmDefinition |
+    Sort-Object Name |
+    Select-Object Name, Enabled, Entity</code></pre>
+
+<p>Rezultat treba pregledati zajedno sa stvarnim aktiviranim alarmima. Postojanje definicije ne znači da je alarm pravilno vezan, omogućen ili operativno koristan.</p>
+
+<h3>PowerCLI za događaje i performanse</h3>
+
+<p>PowerCLI je posebno koristan za ponovljive upite, poređenje većeg broja objekata i izvoz podataka. Aktuelni Broadcom Developer Portal ga objavljuje kao VCF PowerCLI, dok se brojni postojeći cmdleti i moduli i dalje koriste za vSphere administraciju.</p>
+
+<p>Za pregled novijih događaja može se koristiti <code>Get-VIEvent</code>. Sledeća komanda se izvršava na administrativnoj stanici pod nalogom koji ima pravo čitanja događaja. Ne menja stanje sistema.</p>
+
+<pre><code class="language-powershell">$start = (Get-Date).AddHours(-4)
+
+Get-VIEvent -Start $start -MaxSamples 5000 |
+    Sort-Object CreatedTime |
+    Select-Object CreatedTime, UserName, FullFormattedMessage</code></pre>
+
+<p>Parametar <code>-Start</code> ograničava vremenski period, dok <code>-MaxSamples</code> sprečava da podrazumevano ograničenje vrati premalo rezultata. U velikom okruženju upit treba dodatno ograničiti objektom ili vremenskim prozorom. Ne treba automatski zahtevati sve događaje za više meseci, jer takav upit može biti spor i administrativno skup.</p>
+
+<p>Za istorijske metrike koristi se <code>Get-Stat</code>. Primer proverava CPU Ready vrednosti određene virtuelne mašine tokom poslednjih trideset minuta:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "app01"
+$start = (Get-Date).AddMinutes(-30)
+
+Get-Stat -Entity $vm `
+    -Stat "cpu.ready.summation" `
+    -Start $start |
+    Sort-Object Timestamp |
+    Select-Object Timestamp, Value, Unit</code></pre>
+
+<p>Komanda samo čita statistiku. Ipak, rezultat nije dovoljno samo prikazati. <code>summation</code> metrika predstavlja zbir vremena u intervalu uzorkovanja, pa se mora tumačiti u odnosu na dužinu intervala i broj vCPU jedinica. Poređenje sirovih vrednosti iz različitih intervala može dati pogrešan zaključak.</p>
+
+<h3>ESXi lokalni monitoring</h3>
+
+<p>Kada je potreban neposredan uvid u trenutno stanje hosta, koriste se esxtop, ESXCLI, lokalni logovi i Host Client.</p>
+
+<p><code>esxtop</code> se pokreće u ESXi Shell ili SSH sesiji sa privilegovanim nalogom. Komanda ne menja konfiguraciju, ali stalna SSH dostupnost povećava bezbednosnu površinu, pa servis treba uključivati kontrolisano i isključiti nakon rada.</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Interaktivni prikaz omogućava prelazak između CPU, memorijskog, mrežnog, storage i drugih pogleda. esxtop prikazuje detaljne real-time podatke koje vCenter grafikoni mogu agregirati ili prikazivati drugačijom granularnošću. Administrator treba da zabeleži vreme posmatranja, pogođeni objekat i relevantne kolone, jer snimak bez vremenskog konteksta ima ograničenu forenzičku vrednost.</p>
+
+<p>Za automatizovano prikupljanje može se koristiti batch režim:</p>
+
+<pre><code class="language-bash">esxtop -b -d 5 -n 120 &gt; /tmp/esxtop.csv</code></pre>
+
+<p>Ova komanda uzima uzorak na svakih pet sekundi, ukupno 120 puta. Ne menja konfiguraciju, ali generiše izlazni fajl. Pre pokretanja treba proveriti slobodan prostor i izabrati trajnu ili privremenu lokaciju u skladu sa namenom. Nije dobra praksa ostaviti neograničeno prikupljanje na ramdisku.</p>
+
+<h3>ESXi logovi i njihova uloga</h3>
+
+<p>U aktuelnim ESXi izdanjima logovi su grupisani prema komponentama i dostupni su kroz lokacije kao što je <code>/var/run/log</code>, uz kompatibilne putanje koje se često prikazuju kroz <code>/var/log</code>. Broadcom KB za lokacije ESXi logova predstavlja referentni izvor za tačne fajlove određene verzije.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Log</th>
+      <th>Komponenta</th>
+      <th>Za šta se koristi</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>vmkernel.log</code></td>
+      <td>VMkernel</td>
+      <td>Storage putanje, uređaji, mrežni drajveri, CPU, memorija i kernel događaji</td>
+    </tr>
+    <tr>
+      <td><code>vmkwarning.log</code></td>
+      <td>VMkernel warnings</td>
+      <td>Sažeti pregled upozorenja koja zahtevaju dodatnu proveru</td>
+    </tr>
+    <tr>
+      <td><code>hostd.log</code></td>
+      <td>Host management servis</td>
+      <td>Lokalne operacije nad hostom i VM objektima, API zahtevi i greške upravljanja</td>
+    </tr>
+    <tr>
+      <td><code>vpxa.log</code></td>
+      <td>vCenter agent na hostu</td>
+      <td>Komunikacija i zadaci između ESXi hosta i vCenter Servera</td>
+    </tr>
+    <tr>
+      <td><code>vobd.log</code></td>
+      <td>VMkernel Observation servis</td>
+      <td>VOB događaji, alarmni obrasci, syslog i sistemska upozorenja</td>
+    </tr>
+    <tr>
+      <td><code>auth.log</code></td>
+      <td>Autentikacija</td>
+      <td>Prijave, SSH sesije i bezbednosno relevantni pristupi</td>
+    </tr>
+    <tr>
+      <td><code>fdm.log</code></td>
+      <td>vSphere HA agent</td>
+      <td>HA stanje, izbor mastera, heartbeat i HA akcije</td>
+    </tr>
+    <tr>
+      <td><code>vmware.log</code></td>
+      <td>VMX proces određene VM</td>
+      <td>Power operacije, virtuelni uređaji, VMX greške i ponašanje konkretne VM</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Log se ne bira prema tome koji naziv deluje poznato, već prema toku procesa. Ako vCenter ne može da izvrši operaciju nad VM-om, administrator može povezati <code>vpxd.log</code> na vCenter-u, <code>vpxa.log</code> i <code>hostd.log</code> na hostu i <code>vmware.log</code> konkretne virtuelne mašine.</p>
+
+<p>Za čitanje poslednjih poruka koristi se:</p>
+
+<pre><code class="language-bash">tail -n 100 /var/run/log/vmkernel.log</code></pre>
+
+<p>Za praćenje novih zapisa tokom reprodukcije problema:</p>
+
+<pre><code class="language-bash">tail -f /var/run/log/hostd.log</code></pre>
+
+<p>Komande ne menjaju stanje sistema i uobičajeno su bezbedne. Međutim, <code>tail -f</code> treba zaustaviti sa <code>Ctrl+C</code> nakon posmatranja. Administrator mora prvo zabeležiti tačno vreme događaja i proveriti vremensku zonu i sinhronizaciju vremena, jer logovi često koriste UTC oznake.</p>
+
+<p>Za filtriranje se može koristiti <code>grep</code>:</p>
+
+<pre><code class="language-bash">grep -Ei "error|failed|timeout|APD|PDL" /var/run/log/vmkernel.log</code></pre>
+
+<p>Ovakav filter služi samo kao početna selekcija. Reč <code>error</code> može biti deo bezazlenog konteksta, dok značajan problem ne mora sadržati nijednu od navedenih reči. Nalaz se zato proverava čitanjem okolnih redova i korelacijom sa događajima i metrikama.</p>
+
+<p>Od ESXi 8.0 uvedene su promene u formatiranju pojedinih logova, uključujući jasnije oznake severity nivoa, komponente i identifikatora procesa. Parseri i SIEM pravila napravljena za stariji format moraju se proveriti nakon nadogradnje.</p>
+
+<h3>Logovi virtuelne mašine</h3>
+
+<p>Log konkretne virtuelne mašine nalazi se u njenom direktorijumu na datastore-u, zajedno sa VM konfiguracionim fajlovima. Broadcom navodi da se lokacija može pronaći pomoću:</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>Komanda se izvršava na ESXi hostu sa privilegovanim nalogom i samo čita inventar registrovanih VM-ova. Dobijena putanja do <code>.vmx</code> fajla pokazuje direktorijum u kojem se nalazi <code>vmware.log</code>.</p>
+
+<p><code>vmware.log</code> je relevantan kada problem zahvata samo jednu virtuelnu mašinu: neuspešan power-on, virtuelni uređaj, snapshot operaciju, VMX proces, stun događaj ili problem komunikacije sa virtuelnim hardverom. Nije prvi izbor kada više VM-ova istovremeno ima isti storage problem; tada se analiza pomera ka <code>vmkernel.log</code>, adapterima, putanjama i storage sistemu.</p>
+
+<h3>vCenter Server logovi</h3>
+
+<p>Na vCenter Server Appliance-u glavni logovi se nalaze ispod <code>/var/log/vmware</code>, organizovani prema servisima. Za centralne vCenter operacije posebno je važan direktorijum <code>/var/log/vmware/vpxd</code>. Broadcom KB za povećanje nivoa logovanja potvrđuje ovu lokaciju za <code>vpxd</code> logove.</p>
+
+<p>Administrator u zavisnosti od simptoma proverava:</p>
+
+<ul>
+  <li><code>vpxd.log</code> za inventar, zadatke, komunikaciju sa hostovima i vCenter operacije;</li>
+  <li>servisno specifične logove za autentikaciju, sertifikate, lifecycle ili druge appliance komponente;</li>
+  <li>stanje servisa i appliance health kroz VAMI i komandne alate;</li>
+  <li>zauzeće filesystem-a, jer popunjena particija može zaustaviti servis ili zapisivanje logova.</li>
+</ul>
+
+<p>Povećavanje log nivoa može biti korisno samo kada standardni nivo ne pruža dovoljno dokaza. Ono menja ponašanje sistema, povećava količinu podataka i može ubrzati popunjavanje particije. Zato se primenjuje uz vremensko ograničenje, praćenje prostora i obavezno vraćanje na prethodni nivo nakon prikupljanja dokaza.</p>
+
+<h3>Centralizovani syslog</h3>
+
+<p>U enterprise okruženju lokalni logovi nisu dovoljni. Udaljeni syslog omogućava očuvanje podataka nakon restarta, kvara hosta ili gubitka lokalne instalacije, zajedničku pretragu više hostova i integraciju sa SIEM platformom.</p>
+
+<p>Projektovanje mora obuhvatiti:</p>
+
+<ul>
+  <li>najmanje jednu pouzdanu udaljenu destinaciju;</li>
+  <li>DNS i vremensku sinhronizaciju;</li>
+  <li>otvorene i dokumentovane firewall tokove;</li>
+  <li>odgovarajući transport i zaštitu podataka;</li>
+  <li>retention period usklađen sa operativnim, bezbednosnim i regulatornim zahtevima;</li>
+  <li>nadzor samog log pipeline-a.</li>
+</ul>
+
+<p>Monitoring syslog sistema je jednako važan kao konfiguracija slanja. Broadcom dokumentuje slučajeve u kojima nedostupan udaljeni syslog ili popunjena lokalna log lokacija ostavljaju poruke u <code>vobd.log</code>.</p>
+
+<p>Posebno je opasan slučaj prekomernog zapisivanja. Broadcom navodi da veoma intenzivni syslog upisi mogu blokirati druge servise, uključujući <code>vpxa</code> i FDM, što može dovesti do disconnected hostova ili narušavanja HA funkcionalnosti.</p>
+
+<p>To pokazuje zašto „više logova” nije automatski bolje. Potrebni su kontrola nivoa logovanja, kapacitet, rotacija, rate analiza i alarm kada logovi prestanu da stižu ili se njihov obim naglo promeni.</p>
+
+<h3>Vremenska korelacija</h3>
+
+<p>Bez usklađenog vremena nema pouzdane analize. ESXi, vCenter, syslog, storage, mrežni uređaji, backup platforma i operativni sistemi gostiju treba da koriste pouzdane vremenske izvore.</p>
+
+<p>Administrator pri incidentu pravi vremensku liniju:</p>
+
+<ol>
+  <li>tačno vreme prvog korisničkog simptoma;</li>
+  <li>vCenter događaji i taskovi neposredno pre simptoma;</li>
+  <li>alarm i metrika u istom intervalu;</li>
+  <li>ESXi i vCenter log poruke;</li>
+  <li>storage, mrežni i aplikacioni događaji;</li>
+  <li>vreme oporavka i izvršene korektivne akcije.</li>
+</ol>
+
+<p>Na ESXi hostu se može umetnuti syslog marker kako bi se u logovima precizno označio trenutak početka testa ili reprodukcije problema. Broadcom ovu tehniku preporučuje za lakše izolovanje relevantnog perioda.</p>
+
+<pre><code class="language-bash">esxcli system syslog mark --message="INC-2026-0715 pocetak testa storage latencije"</code></pre>
+
+<p>Komanda dodaje zapis u log i ne menja operativnu konfiguraciju. Poruka ne sme sadržati lozinke, tokene, lične podatke ili druge osetljive informacije, jer može biti prosleđena centralnom syslog sistemu.</p>
+
+<h3>Log bundle i eskalacija incidenta</h3>
+
+<p>Kada lokalna analiza nije dovoljna, prikuplja se support bundle. Bundle treba generisati što bliže vremenu incidenta, ali bez ugrožavanja stabilnosti sistema. Pre prikupljanja proveravaju se slobodan prostor, obim komponenti i mesto na koje će bundle biti sačuvan.</p>
+
+<p>PowerCLI cmdlet <code>Get-Log</code> može preuzeti delove logova ili generisati bundle sa hosta. Broadcom referenca navodi režime za pristup logovima i kreiranje log bundle-a.</p>
+
+<pre><code class="language-powershell">$host01 = Get-VMHost -Name "esxi01.lab.local"
+
+Get-Log -VMHost $host01 -Bundle `
+    -DestinationPath "D:\VMware\SupportBundles"</code></pre>
+
+<p>Komanda ne menja konfiguraciju, ali pokreće prikupljanje i transfer većeg broja dijagnostičkih podataka. Može potrošiti CPU, I/O, mrežni kapacitet i prostor, pa je u velikom incidentu ne treba nekontrolisano pokretati istovremeno na svim hostovima.</p>
+
+<p>Bundle sadrži osetljive informacije o infrastrukturi, imenima sistema, konfiguraciji, mrežama i korisničkim aktivnostima. Mora se čuvati u kontrolisanoj lokaciji, prenositi odobrenim kanalom i brisati prema retention pravilima.</p>
+
+<p>Pri izvozu kroz vSphere Client treba izabrati odgovarajuće komponente. Broadcom upozorava da izbor samo osnovnog skupa može izostaviti određene ESXi i VM logove, uključujući <code>vmkernel.log</code>, <code>hostd.log</code>, <code>vpxa.log</code> i <code>vmware.log</code>.</p>
+
+<h3>Bezbednost monitoringa i logovanja</h3>
+
+<p>Logovi su bezbednosni zapis, ali i izvor osetljivih podataka. Pristup njima treba dodeljivati prema principu najmanjih privilegija. Operater koji pregleda alarme ne mora automatski imati SSH root pristup ESXi hostovima.</p>
+
+<p>Posebno treba kontrolisati:</p>
+
+<ul>
+  <li>ko može menjati alarmne definicije;</li>
+  <li>ko može menjati nivo logovanja;</li>
+  <li>ko pristupa support bundle fajlovima;</li>
+  <li>ko može brisati ili menjati retention politiku;</li>
+  <li>da li SIEM razlikuje administratorske, servisne i neuspešne login događaje;</li>
+  <li>da li se beleži prekid dotoka logova sa pojedinačnog izvora.</li>
+</ul>
+
+<p>Monitoring sistem ne sme postati jedinstvena tačka kompromitacije. Centralni syslog ili operations platforma često imaju širok pogled na celu infrastrukturu. Potrebni su odvojeni nalozi, MFA gde je podržan, mrežna segmentacija, backup konfiguracije i audit administrativnih promena.</p>
+
+<h3>Tipične pogrešne administratorske odluke</h3>
+
+<ul>
+  <li><strong>Praćenje samo proseka:</strong> prikriva kratke vršne probleme i agregira značajne događaje.</li>
+  <li><strong>Alarm za svaku promenu:</strong> stvara buku i smanjuje verovatnoću pravovremene reakcije.</li>
+  <li><strong>Bez udaljenog logovanja:</strong> dokazi nestaju upravo kada host otkaže ili bude reinstaliran.</li>
+  <li><strong>Trajno debug logovanje:</strong> povećava I/O i rizik popunjavanja log particije.</li>
+  <li><strong>Posmatranje samo vCenter-a:</strong> ostavlja administratora bez dijagnostike kada centralno upravljanje ne radi.</li>
+  <li><strong>Traženje jedne „greške”:</strong> preskače korelaciju sa promenama, događajima i zavisnostima.</li>
+  <li><strong>Automatsko resetovanje alarma bez analize:</strong> uklanja indikator, ali ne i osnovni uzrok.</li>
+  <li><strong>Restart servisa kao prvi korak:</strong> može uništiti trenutno stanje i prikriti dokaze.</li>
+</ul>
+
+<h3>Sistematičan pristup incidentu</h3>
+
+<p>Kada monitoring prijavi problem, administrator prvo potvrđuje simptom. Proverava da li je alarm stvaran, koji objekat je pogođen i da li korisnici osećaju posledice. Zatim određuje obim: jedna VM, jedan host, ceo klaster, jedan datastore ili više lokacija.</p>
+
+<p>Nakon toga proverava poslednje promene i zavisnosti. Tek tada analizira događaje, alarme, metrike i logove. Hipoteza mora biti proverljiva. Na primer: „latencija potiče iz storage uređaja” nije potvrđena samo zato što je VM spora. Potrebno je uporediti VM latenciju, host queue, device latenciju, putanje i događaje storage sistema.</p>
+
+<p>Korektivna akcija bira se od najmanje invazivne. Restart servisa, reset agenta, uklanjanje hosta iz inventara ili promena naprednog parametra nisu početne dijagnostičke radnje. Posle korekcije proveravaju se oporavak usluge, normalizacija metrika, prestanak grešaka i stabilnost kroz dovoljno dug period.</p>
+
+<p>Incident se završava tek kada su dokumentovani simptom, obim, vremenska linija, osnovni uzrok, privremena mera, trajna korekcija, dokaz oporavka i preventivna akcija.</p>
+
+<h3>Kako administrator potvrđuje da monitoring zaista radi</h3>
+
+<p>Monitoring nije ispravan samo zato što konzola prikazuje zelene statuse. Potrebno je periodično testirati kompletan put signala:</p>
+
+<ul>
+  <li>da ESXi i vCenter generišu očekivane podatke;</li>
+  <li>da se događaj pojavljuje u vSphere Client-u;</li>
+  <li>da alarm prelazi u očekivano stanje;</li>
+  <li>da obaveštenje stiže odgovornoj grupi;</li>
+  <li>da udaljeni syslog prima poruku;</li>
+  <li>da retention omogućava pretragu potrebnog perioda;</li>
+  <li>da dežurni administrator zna koji runbook treba da primeni;</li>
+  <li>da se nakon normalizacije alarm pravilno resetuje.</li>
+</ul>
+
+<p>Bez ove provere postoji monitoring samo kao konfiguracija, ali ne i kao pouzdan operativni proces.</p>
+
+<h3>Najvažnija administratorska odluka</h3>
+
+<p>Najvažnija odluka nije izbor jednog alata, već izbor podataka koji zajedno dovoljno rano i dovoljno tačno opisuju stanje usluge. vCenter grafikoni daju pregled, ESXi alati detalj, događaji vremenski kontekst, alarmi eskalaciju, a logovi tehnički dokaz. Nijedan od tih slojeva samostalno nije dovoljan.</p>
+
+<p>Zreo VMware administrator zato ne reaguje na boju, pojedinačnu poruku ili jednu metriku. On gradi vremensku liniju, proverava zavisnosti, poredi ponašanje sa baznim stanjem, razlikuje simptom od osnovnog uzroka i čuva dokaze pre nego što menja sistem. Takav monitoring ne služi samo za otkrivanje kvarova. On podržava planiranje kapaciteta, bezbednosni audit, procenu rizika, kontrolu promena i pouzdan oporavak infrastrukture.</p>
+
+<h3>Praktikum – monitoring, alarmi, logovi i incident response</h3>
+
+<h3>Cilj praktikuma</h3>
+
+<p>U ovom delu praktikuma administrator uspostavlja proverljivo početno stanje VMware laboratorije, validira zdravlje vCenter Servera i ESXi hostova, prikuplja događaje i aktivne alarme, konfiguriše udaljeno slanje ESXi logova i automatizuje osnovni monitoring pomoću PowerCLI-ja. Svaka promena mora biti praćena dokazom da je konfiguracija uspešno primenjena i da podaci zaista stižu do odredišta.</p>
+
+<h3>Laboratorijska topologija</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Primer naziva</th>
+      <th>Uloga</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server Appliance</td>
+      <td><code>vcsa01.lab.local</code></td>
+      <td>Centralno upravljanje, događaji, alarmi i statistika</td>
+    </tr>
+    <tr>
+      <td>ESXi host 1</td>
+      <td><code>esxi01.lab.local</code></td>
+      <td>Primarni host za monitoring i syslog vežbe</td>
+    </tr>
+    <tr>
+      <td>ESXi host 2</td>
+      <td><code>esxi02.lab.local</code></td>
+      <td>Poređenje konfiguracije i automatizacija</td>
+    </tr>
+    <tr>
+      <td>Virtuelna mašina</td>
+      <td><code>app01</code></td>
+      <td>Objekat za događaje, zadatke i performanse</td>
+    </tr>
+    <tr>
+      <td>Syslog server</td>
+      <td><code>log01.lab.local</code></td>
+      <td>Centralno čuvanje ESXi logova</td>
+    </tr>
+    <tr>
+      <td>Administratorska stanica</td>
+      <td><code>admin01</code></td>
+      <td>PowerShell 7 i aktuelni VCF PowerCLI moduli</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Primeri naziva, IP adresa i putanja moraju se prilagoditi stvarnom laboratorijskom okruženju. Vežbe su primenljive na savremene vSphere 8 i vSphere/VCF 9 implementacije, ali se nazivi pojedinih menija, servisa i health prikaza mogu razlikovati između verzija i modela implementacije.</p>
+
+<h3>Osnovni preduslovi</h3>
+
+<ul>
+  <li>vCenter Server je dostupan kroz vSphere Client;</li>
+  <li>najmanje jedan ESXi host je povezan sa vCenter Serverom;</li>
+  <li>DNS rezolucija radi u oba smera za vCenter, ESXi i syslog server;</li>
+  <li>vCenter i ESXi hostovi imaju usklađeno vreme;</li>
+  <li>administrator ima pravo čitanja inventara, događaja, alarma i performansi;</li>
+  <li>za ESXi Shell i syslog konfiguraciju postoji kontrolisan privilegovani pristup;</li>
+  <li>na administratorskoj stanici instaliran je PowerShell i VCF PowerCLI;</li>
+  <li>pre promena postoji zapis početne konfiguracije.</li>
+</ul>
+
+<p>Za svakodnevni monitoring treba koristiti nalog sa pravima čitanja. Root pristup ESXi hostu i vCenter Appliance-u koristi se samo u vežbama koje zahtevaju lokalni CLI. SSH servise ne treba ostavljati trajno uključene ako to nije deo odobrenog operativnog standarda.</p>
+
+<hr>
+
+<h3>Vežba 1 – Izrada početnog monitoring inventara</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Pre podešavanja alarma ili centralnog logovanja administrator mora da dokumentuje šta prati i kakvo je trenutno stanje. Bez početnog snimka nije moguće dokazati da li je kasniji problem nov, da li je konfiguracija već bila neusklađena ili je promena proizvela neželjenu posledicu.</p>
+
+<p>Rezultat vežbe biće početni inventar koji sadrži stanje hostova, virtuelnih mašina, datastora, mrežnih adaptera, VMware Tools-a, aktivnih alarma i osnovne syslog konfiguracije.</p>
+
+<h4>Preduslovi i privilegije</h4>
+
+<p>Za GUI proveru dovoljan je nalog sa privilegijom čitanja inventara, alarma, događaja i performansi. Za PowerCLI je potreban isti nivo pristupa na vCenter Serveru. Za lokalni prikaz syslog konfiguracije potreban je kontrolisan pristup ESXi Shell-u ili SSH-u.</p>
+
+<h4>Procena rizika</h4>
+
+<p>Sve komande u ovoj vežbi samo čitaju stanje sistema. Rizik postoji ako se generišu preširoki upiti nad veoma velikim inventarom. Upite zato ograničiti na konkretan vCenter, klaster ili vremenski period.</p>
+
+<h4>Korak 1 – Provera stanja kroz vSphere Client</h4>
+
+<ol>
+  <li>Prijaviti se u vSphere Client.</li>
+  <li>Otvoriti objekat vCenter Servera i pregledati kartice <strong>Summary</strong> i <strong>Monitor</strong>.</li>
+  <li>Pregledati datacenter, klaster i svaki ESXi host.</li>
+  <li>Zabeležiti hostove koji nisu u stanju <strong>Connected</strong>.</li>
+  <li>Na nivou klastera i hostova otvoriti <strong>Monitor &gt; Issues and Alarms</strong>.</li>
+  <li>Pregledati aktivne alarme, vreme aktiviranja i pogođene objekte.</li>
+  <li>Na nivou datastora proveriti zauzeće i dostupnost.</li>
+  <li>Na nivou virtuelnih mašina proveriti power stanje, VMware Tools status i postojanje upozorenja.</li>
+</ol>
+
+<p>Ne treba odmah resetovati alarm. Najpre zabeležiti naziv alarma, objekat, vreme, trenutni status i opis okidača. Resetovanje alarma bez potvrde uzroka uklanja vidljivi indikator, ali ne rešava problem.</p>
+
+<h4>Korak 2 – Povezivanje PowerCLI-ja</h4>
+
+<p>Na administratorskoj stanici otvoriti PowerShell pod standardnim administrativnim nalogom i povezati se sa vCenter Serverom:</p>
+
+<pre><code class="language-powershell">Import-Module VCF.PowerCLI
+
+Connect-VIServer -Server "vcsa01.lab.local"</code></pre>
+
+<p><code>Connect-VIServer</code> uspostavlja sesiju prema vCenter Serveru i ne menja njegovu konfiguraciju. Lozinku ne treba unositi u skriptu kao običan tekst. U produkciji koristiti odobreni credential store, secrets manager ili interaktivnu autentikaciju.</p>
+
+<p>Proveriti aktivnu sesiju:</p>
+
+<pre><code class="language-powershell">$global:DefaultVIServers |
+    Select-Object Name, IsConnected, User</code></pre>
+
+<p>Očekuje se da je <code>IsConnected</code> postavljen na <code>True</code> i da je prikazan odgovarajući korisnik.</p>
+
+<h4>Korak 3 – Inventar ESXi hostova</h4>
+
+<pre><code class="language-powershell">Get-VMHost |
+    Sort-Object Name |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build,
+                  Manufacturer,
+                  Model,
+                  NumCpu,
+                  MemoryTotalGB</code></pre>
+
+<p><code>Get-VMHost</code> samo čita inventar vCenter Servera. Posebnu pažnju obratiti na hostove u stanjima <code>Disconnected</code>, <code>NotResponding</code> ili neočekivanom maintenance režimu. Zvanična PowerCLI referenca potvrđuje da cmdlet vraća hostove dostupne kroz povezani vCenter ili direktnu ESXi sesiju.</p>
+
+<p>Sačuvati rezultat u CSV fajl:</p>
+
+<pre><code class="language-powershell">$reportPath = "C:\VMware-Monitoring"
+New-Item -Path $reportPath -ItemType Directory -Force | Out-Null
+
+Get-VMHost |
+    Sort-Object Name |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build,
+                  NumCpu,
+                  MemoryTotalGB |
+    Export-Csv -Path "$reportPath\vmhosts-baseline.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Komanda menja samo lokalni filesystem administratorske stanice. Proveriti da fajl postoji, da nije prazan i da broj redova odgovara broju hostova.</p>
+
+<h4>Korak 4 – Inventar virtuelnih mašina</h4>
+
+<pre><code class="language-powershell">Get-VM |
+    Sort-Object Name |
+    Select-Object Name,
+                  PowerState,
+                  NumCpu,
+                  MemoryGB,
+                  VMHost,
+                  @{N="ToolsStatus";E={$_.ExtensionData.Guest.ToolsStatus}},
+                  @{N="ToolsVersionStatus";E={$_.ExtensionData.Guest.ToolsVersionStatus2}} |
+    Export-Csv -Path "$reportPath\vms-baseline.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>VMware Tools status ne treba tumačiti kao dokaz da aplikacija radi. On potvrđuje stanje komunikacije sa guest komponentom, ali ne proverava poslovni servis.</p>
+
+<h4>Korak 5 – Provera datastora</h4>
+
+<pre><code class="language-powershell">Get-Datastore |
+    Sort-Object Name |
+    Select-Object Name,
+                  Type,
+                  State,
+                  CapacityGB,
+                  FreeSpaceGB,
+                  @{N="FreePercent";E={
+                      if ($_.CapacityGB -gt 0) {
+                          [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+                      }
+                  }} |
+    Export-Csv -Path "$reportPath\datastores-baseline.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Očekuje se da produkcijski datastore-i budu dostupni i da slobodan kapacitet bude iznad internog operativnog praga. Sam procenat nije dovoljan: na veoma velikom datastore-u 10% može predstavljati dovoljno prostora, dok na malom datastore-u isti procenat može biti kritičan.</p>
+
+<h4>Korak 6 – Čitanje trenutne syslog konfiguracije</h4>
+
+<p>Na ESXi hostu otvoriti privremenu SSH sesiju ili ESXi Shell i izvršiti:</p>
+
+<pre><code class="language-bash">esxcli system syslog config get</code></pre>
+
+<p>Komanda samo čita konfiguraciju. Zabeležiti:</p>
+
+<ul>
+  <li>lokalnu log putanju;</li>
+  <li>jedinstveni direktorijum po hostu, ako je konfigurisan;</li>
+  <li>veličinu i broj rotiranih fajlova;</li>
+  <li>udaljeni log host;</li>
+  <li>proveru TLS sertifikata, kada se koristi bezbedan transport.</li>
+</ul>
+
+<p>Broadcom kao početni korak validacije lokalnog i udaljenog logovanja navodi upravo <code>esxcli system syslog config get</code>.</p>
+
+<h4>Očekivani rezultat i provera uspeha</h4>
+
+<ul>
+  <li>svi očekivani hostovi postoje u inventaru;</li>
+  <li>njihovo connection i power stanje je dokumentovano;</li>
+  <li>postoji CSV inventar VM-ova i datastora;</li>
+  <li>aktivni alarmi su evidentirani, ali nisu nekritički resetovani;</li>
+  <li>syslog konfiguracija svakog hosta je zabeležena;</li>
+  <li>datum, vreme, vCenter i korisnik koji je izvršio prikupljanje navedeni su u radnoj belešci.</li>
+</ul>
+
+<h4>Moguće greške i troubleshooting</h4>
+
+<ul>
+  <li><strong><code>Connect-VIServer</code> ne uspeva:</strong> proveriti DNS, TCP dostupnost prema vCenter-u, sertifikat i kredencijale.</li>
+  <li><strong>Nedostaju objekti:</strong> proveriti RBAC prava i da li je PowerCLI povezan na odgovarajući vCenter.</li>
+  <li><strong>CSV je prazan:</strong> proveriti rezultat komande pre <code>Export-Csv</code> i lokalna prava nad odredišnim direktorijumom.</li>
+  <li><strong>ESXi odbija SSH:</strong> ne uključivati servis bez odobrenja; koristiti DCUI, Host Client ili udaljeni ESXCLI ako je dostupan.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Konfiguracija VMware sistema nije menjana. Po potrebi izbrisati lokalne CSV fajlove, odjaviti PowerCLI sesiju i isključiti privremeno omogućen SSH:</p>
+
+<pre><code class="language-powershell">Disconnect-VIServer -Server "vcsa01.lab.local" -Confirm:$false</code></pre>
+
+<hr>
+
+<h3>Vežba 2 – Validacija zdravlja vCenter Server Appliance-a</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>vSphere Client može biti delimično dostupan i kada svi vCenter servisi nisu zdravi. Cilj je da administrator proveri appliance health, kapacitet particija i stanje servisa bez pokretanja nepotrebnog restarta.</p>
+
+<h4>Preduslovi i privilegije</h4>
+
+<ul>
+  <li>pristup VAMI interfejsu na portu 5480;</li>
+  <li>appliance root nalog za kontrolisanu laboratoriju;</li>
+  <li>SSH ili konzolni pristup VCSA-u;</li>
+  <li>poznato početno stanje i odobren prozor ako bi korektivna akcija postala neophodna.</li>
+</ul>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>U ovoj vežbi servisi se samo pregledaju. Ne izvršavati <code>service-control --stop --all</code>, restart svih servisa ili restart appliance-a kao preventivnu radnju. Takve akcije prekidaju centralno upravljanje i mogu ukloniti trenutno stanje potrebno za dijagnostiku.</p>
+
+<h4>Korak 1 – VAMI pregled</h4>
+
+<ol>
+  <li>Otvoriti <code>https://vcsa01.lab.local:5480</code>.</li>
+  <li>Prijaviti se odgovarajućim appliance nalogom.</li>
+  <li>Otvoriti <strong>Summary</strong> i proveriti health statuse.</li>
+  <li>Otvoriti <strong>Monitor</strong> i pregledati CPU, memoriju, bazu i storage particije.</li>
+  <li>Otvoriti <strong>Services</strong> i zabeležiti servise koji nisu pokrenuti.</li>
+  <li>Proveriti vremensku sinhronizaciju, backup status i poslednje appliance poruke.</li>
+</ol>
+
+<p>Nije svaki zaustavljen servis nužno kvar. Neki servisi zavise od omogućene funkcionalnosti i start profila. Sumnjiv nalaz mora se porediti sa verzijom, ulogom appliance-a i zvaničnim servisnim zavisnostima.</p>
+
+<h4>Korak 2 – Provera filesystem kapaciteta</h4>
+
+<p>Prijaviti se na VCSA kroz kontrolisanu SSH sesiju. Ako je otvoren appliance shell, preći u Bash samo kada je to dozvoljeno internim standardom:</p>
+
+<pre><code class="language-bash">shell</code></pre>
+
+<p>Zatim pregledati filesystem:</p>
+
+<pre><code class="language-bash">df -h</code></pre>
+
+<p>Komanda samo čita stanje. Posebno pregledati particije ispod <code>/storage</code>, uključujući log, bazu, arhivu i core lokacije koje postoje u konkretnoj verziji.</p>
+
+<p>Ne donositi zaključak samo na osnovu ukupnog procenta. Proveriti koja particija raste, od kada raste i koja komponenta u nju zapisuje. Ručno brisanje fajlova iz vCenter particija bez dokumentovanog postupka nije prihvatljiv način oslobađanja prostora.</p>
+
+<h4>Korak 3 – Status vCenter servisa</h4>
+
+<pre><code class="language-bash">service-control --status --all</code></pre>
+
+<p>Komanda samo čita stanje svih servisa. Broadcom je navodi kao standardni način pregleda statusa vCenter Appliance servisa.</p>
+
+<p>Za lakši pregled rezultat sačuvati u incident ili change dokumentaciju:</p>
+
+<pre><code class="language-bash">service-control --status --all &gt; /tmp/vcenter-services-before.txt</code></pre>
+
+<p>Fajl u <code>/tmp</code> je privremen i ne treba ga smatrati trajnim dokazom. Preuzeti ga u odobrenu administrativnu lokaciju ili sadržaj preneti u tiket.</p>
+
+<h4>Korak 4 – Provera pojedinačnog servisa</h4>
+
+<p>Kada GUI ili prethodni izlaz ukaže na konkretan servis, proveriti samo njega:</p>
+
+<pre><code class="language-bash">service-control --status vmware-vpxd</code></pre>
+
+<p>Naziv servisa mora se uzeti iz izlaza za konkretnu verziju. Ne pretpostavljati naziv na osnovu starije dokumentacije.</p>
+
+<h4>Korak 5 – Korelacija sa logovima</h4>
+
+<p>Za probleme centralnog vCenter servisa pregledati poslednje poruke u odgovarajućem direktorijumu:</p>
+
+<pre><code class="language-bash">tail -n 100 /var/log/vmware/vpxd/vpxd.log</code></pre>
+
+<p>Za vremenski ograničenu pretragu koristiti obrazac koji odgovara datumu incidenta:</p>
+
+<pre><code class="language-bash">grep -Ei "error|failed|timeout" \
+    /var/log/vmware/vpxd/vpxd.log |
+    tail -n 100</code></pre>
+
+<p>Rezultat se ne tumači izolovano. Pronađenu poruku povezati sa:</p>
+
+<ul>
+  <li>vremenom korisničkog simptoma;</li>
+  <li>stanjem servisa;</li>
+  <li>filesystem kapacitetom;</li>
+  <li>vSphere Client događajima;</li>
+  <li>stanjem ESXi hostova;</li>
+  <li>poslednjim promenama, patching-om ili sertifikatima.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>Administrator ima dokumentovan VAMI health prikaz, stanje particija i izlaz <code>service-control</code> komande. Ako je pronađen zaustavljen servis, nije automatski restartovan, već je prvo utvrđeno da li je servis očekivano aktivan i pronađen je relevantan log.</p>
+
+<h4>Troubleshooting grane</h4>
+
+<h4>VAMI je dostupan, ali vSphere Client nije:</h4>
+
+<ol>
+  <li>proveriti filesystem prostor;</li>
+  <li>proveriti <code>service-control --status --all</code>;</li>
+  <li>izolovati prvi neuspešan zavisni servis;</li>
+  <li>pregledati njegove logove;</li>
+  <li>proveriti DNS, vreme, sertifikate i poslednje promene;</li>
+  <li>tek nakon potvrde uzroka razmotriti kontrolisan restart konkretnog servisa.</li>
+</ol>
+
+<h4>VAMI i vSphere Client nisu dostupni, ali VCSA odgovara na mreži:</h4>
+
+<ol>
+  <li>proveriti da li je problem samo na korisničkoj stanici;</li>
+  <li>proveriti TCP dostupnost portova 443 i 5480;</li>
+  <li>pristupiti appliance konzoli ili odobrenom SSH kanalu;</li>
+  <li>proveriti prostor i servise;</li>
+  <li>sačuvati dokaze pre bilo kakvog restarta.</li>
+</ol>
+
+<h4>Rollback</h4>
+
+<p>Pošto servisi nisu menjani, rollback nije potreban. Ukloniti privremeni fajl nakon što je sadržaj bezbedno sačuvan:</p>
+
+<pre><code class="language-bash">rm -f /tmp/vcenter-services-before.txt</code></pre>
+
+<p>Komanda briše fajl i zato menja filesystem. Izvršiti je samo nakon provere tačne putanje.</p>
+
+<hr>
+
+<h3>Vežba 3 – Događaji, zadaci i aktivni alarmi</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Cilj je da administrator rekonstruiše kontrolisanu administrativnu promenu pomoću vCenter događaja i zadataka, a zatim da proveri aktivne alarme bez njihovog nekritičkog resetovanja.</p>
+
+<h4>Početno stanje</h4>
+
+<p>VM <code>app01</code> je uključena, VMware Tools rade, a administrator ima pravo da doda i ukloni bezopasnu napomenu u VM konfiguraciji. Promena mora biti odobrena u laboratoriji.</p>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>Ne koristiti promenu CPU-a, memorije, mrežnog adaptera, diska ili power stanja samo da bi se generisao događaj. Za ovu vežbu dovoljna je izmena polja Notes/Annotation, koja nema uticaj na izvršavanje gosta.</p>
+
+<h4>Korak 1 – Beleženje početnog vremena</h4>
+
+<p>Na administratorskoj stanici zabeležiti vreme neposredno pre promene:</p>
+
+<pre><code class="language-powershell">$changeStart = Get-Date
+$changeStart</code></pre>
+
+<h4>Korak 2 – Bezbedna GUI promena</h4>
+
+<ol>
+  <li>U vSphere Client-u pronaći VM <code>app01</code>.</li>
+  <li>Otvoriti <strong>Actions &gt; Edit Notes</strong> ili odgovarajuće polje za napomenu.</li>
+  <li>Uneti tekst: <code>LAB monitoring test – CHG-0037</code>.</li>
+  <li>Sačuvati promenu.</li>
+  <li>Otvoriti <strong>Monitor &gt; Tasks and Events</strong>.</li>
+  <li>Pronaći task rekonfiguracije i pripadajući događaj.</li>
+  <li>Zabeležiti vreme, korisnika i rezultat.</li>
+</ol>
+
+<h4>Korak 3 – Prikupljanje događaja kroz PowerCLI</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "app01"
+
+Get-VIEvent -Entity $vm `
+            -Start $changeStart `
+            -MaxSamples 200 |
+    Sort-Object CreatedTime |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage</code></pre>
+
+<p>Komanda samo čita događaje. <code>-Entity</code> ograničava upit na konkretnu VM, dok <code>-Start</code> sprečava pretragu nepotrebno velikog vremenskog perioda.</p>
+
+<p>Izvesti rezultat:</p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity $vm `
+            -Start $changeStart `
+            -MaxSamples 200 |
+    Sort-Object CreatedTime |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage |
+    Export-Csv -Path "$reportPath\app01-change-events.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<h4>Korak 4 – Pregled alarmnih definicija</h4>
+
+<pre><code class="language-powershell">Get-AlarmDefinition |
+    Sort-Object Name |
+    Select-Object Name, Enabled, Entity</code></pre>
+
+<p><code>Get-AlarmDefinition</code> vraća dostupne definicije alarma i ne menja njihovu konfiguraciju.</p>
+
+<p>Za klaster ili host ograničiti pregled na relevantan objekat:</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "Cluster-Lab"
+
+Get-AlarmDefinition -Entity $cluster |
+    Sort-Object Name |
+    Select-Object Name, Enabled, Description</code></pre>
+
+<h4>Korak 5 – Aktivirani alarmi</h4>
+
+<pre><code class="language-powershell">Get-View -ViewType AlarmManager |
+    Select-Object -ExpandProperty Description</code></pre>
+
+<p>Za praktičan pregled aktivnih alarmnih stanja pogodniji je pristup kroz inventarske objekte:</p>
+
+<pre><code class="language-powershell">Get-View -ViewType ManagedEntity -Property Name,TriggeredAlarmState |
+    Where-Object { $_.TriggeredAlarmState.Count -gt 0 } |
+    ForEach-Object {
+        $entity = $_
+        foreach ($alarmState in $entity.TriggeredAlarmState) {
+            [pscustomobject]@{
+                Entity       = $entity.Name
+                Status       = $alarmState.OverallStatus
+                Acknowledged = $alarmState.Acknowledged
+                Time         = $alarmState.Time
+                AlarmMoRef   = $alarmState.Alarm.Value
+            }
+        }
+    } |
+    Sort-Object Time -Descending</code></pre>
+
+<p>Ovaj upit samo čita trenutno aktivirana alarmna stanja. U većem inventaru treba ga ograničiti na klaster ili određeni tip objekta kako bi se smanjilo opterećenje i količina rezultata.</p>
+
+<h4>Korak 6 – Tumačenje rezultata</h4>
+
+<p>Za svaki alarm zabeležiti:</p>
+
+<ul>
+  <li>pogođeni objekat;</li>
+  <li>warning ili critical stanje;</li>
+  <li>vreme aktiviranja;</li>
+  <li>da li je alarm potvrđen;</li>
+  <li>koji događaj ili prag ga je aktivirao;</li>
+  <li>da li problem i dalje postoji;</li>
+  <li>ko je vlasnik reakcije.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>Promena napomene je vidljiva kao uspešan task i događaj sa tačnim korisnikom i vremenom. Administrator može da poveže promenu sa događajem i da napravi listu aktivnih alarma bez menjanja njihovog stanja.</p>
+
+<h4>Moguće greške</h4>
+
+<ul>
+  <li><strong>Događaj nije pronađen:</strong> proveriti objekat, početno vreme, vremensku zonu i <code>-MaxSamples</code>.</li>
+  <li><strong>Korisnik je prazan ili servisni:</strong> proveriti da li je promenu izvršila automatizacija ili drugi upravljački servis.</li>
+  <li><strong>Alarm je aktivan, ali nema trenutnog simptoma:</strong> proveriti reset uslov, istoriju i da li je alarm ostao u stale stanju.</li>
+  <li><strong>Previše rezultata:</strong> ograničiti upit objektom i kraćim vremenskim periodom.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Ukloniti laboratorijsku napomenu iz VM-a i ponovo proveriti događaje. I rollback je promena i treba da ostavi sopstveni task i event zapis.</p>
+
+<hr>
+
+<h3>Vežba 4 – Konfiguracija udaljenog ESXi syslog odredišta</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Lokalni logovi nisu dovoljni za pouzdanu istragu posle restarta, kvara ili reinstalacije hosta. Cilj je da se na jednom laboratorijskom ESXi hostu konfiguriše udaljeno syslog odredište, otvori odgovarajući firewall ruleset, pošalje test marker i potvrdi prijem na serveru.</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li><code>log01.lab.local</code> prima syslog poruke;</li>
+  <li>poznat je protokol i port, na primer UDP 514, TCP 514 ili TLS 6514;</li>
+  <li>DNS i routing između ESXi hosta i log servera rade;</li>
+  <li>retention i prava pristupa na log serveru su definisani;</li>
+  <li>postoje početni izlazi <code>esxcli system syslog config get</code> i firewall konfiguracije.</li>
+</ul>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>Vežbu prvo izvesti na jednom laboratorijskom hostu. Pogrešna adresa, port ili TLS konfiguracija mogu sprečiti udaljeno logovanje. Ne menjati lokalni log direktorijum niti smanjivati rotaciju bez posebnog plana.</p>
+
+<h4>Korak 1 – Provera mrežne rezolucije</h4>
+
+<pre><code class="language-bash">nslookup log01.lab.local</code></pre>
+
+<p>Ako <code>nslookup</code> nije odgovarajući alat u konkretnoj ESXi verziji, proveriti DNS kroz postojeće ESXi mrežne dijagnostičke komande i testirati IP dostupnost:</p>
+
+<pre><code class="language-bash">vmkping log01.lab.local</code></pre>
+
+<p><code>vmkping</code> potvrđuje ICMP putanju sa podrazumevanog VMkernel konteksta, ali ne dokazuje da je syslog port otvoren niti da aplikacija prima poruke.</p>
+
+<h4>Korak 2 – Čuvanje početne konfiguracije</h4>
+
+<pre><code class="language-bash">esxcli system syslog config get \
+    &gt; /tmp/syslog-config-before.txt
+
+esxcli network firewall ruleset list |
+    grep -i syslog \
+    &gt; /tmp/syslog-firewall-before.txt</code></pre>
+
+<h4>Korak 3 – Podešavanje udaljenog odredišta</h4>
+
+<p>Primer za TCP port 514:</p>
+
+<pre><code class="language-bash">esxcli system syslog config set \
+    --loghost='tcp://log01.lab.local:514'</code></pre>
+
+<p>Komanda menja ESXi konfiguraciju. Protokol i port moraju odgovarati stvarnom serveru. UDP ne pruža potvrdu isporuke; TCP povećava pouzdanost transporta; TLS zahteva dodatnu proveru sertifikata i trust chain-a.</p>
+
+<p>Za više odredišta koristi se sintaksa podržana konkretnom verzijom i dokumentacijom, uz jasno razdvajanje destinacija. Ne pretpostavljati format bez provere.</p>
+
+<h4>Korak 4 – Otvaranje syslog firewall ruleset-a</h4>
+
+<pre><code class="language-bash">esxcli network firewall ruleset set \
+    --ruleset-id=syslog \
+    --enabled=true</code></pre>
+
+<p>Komanda menja firewall stanje hosta. Ona ne otvara proizvoljne portove, već omogućava definisani syslog ruleset. Nakon promene proveriti:</p>
+
+<pre><code class="language-bash">esxcli network firewall ruleset list |
+    grep -i syslog</code></pre>
+
+<h4>Korak 5 – Učitavanje konfiguracije</h4>
+
+<pre><code class="language-bash">esxcli system syslog reload</code></pre>
+
+<p>Komanda signalizira <code>vmsyslogd</code> servisu da ponovo učita konfiguraciju. Ne restartuje ESXi host. Broadcom je dokumentuje kao standardnu akciju nakon promene ili pri ručnom ponovnom povezivanju udaljenog syslog toka.</p>
+
+<h4>Korak 6 – Validacija primenjene konfiguracije</h4>
+
+<pre><code class="language-bash">esxcli system syslog config get</code></pre>
+
+<p>Proveriti da izlaz prikazuje tačan protokol, FQDN i port.</p>
+
+<h4>Korak 7 – Slanje test markera</h4>
+
+<pre><code class="language-bash">esxcli system syslog mark \
+    --message="LAB-CHG-0037 esxi01 remote syslog validation"</code></pre>
+
+<p>Komanda dodaje kontrolisanu poruku u syslog tok. Ne unositi lozinke, tokene, lične podatke ili poverljive mrežne detalje.</p>
+
+<p>Na syslog serveru pretražiti poruku:</p>
+
+<pre><code class="language-bash">grep -R "LAB-CHG-0037" /var/log 2&gt;/dev/null</code></pre>
+
+<p>Tačna putanja zavisi od konfiguracije rsyslog-a, syslog-ng-a ili specijalizovane log platforme. U produkciji ne pretraživati rekurzivno ceo <code>/var/log</code> ako postoji indeksirana pretraga ili poznata host putanja.</p>
+
+<h4>Korak 8 – Potvrda lokalnog zapisa</h4>
+
+<pre><code class="language-bash">grep "LAB-CHG-0037" /var/run/log/syslog.log</code></pre>
+
+<p>Ako se marker nalazi lokalno, ali ne na udaljenom serveru, generisanje poruke radi, a problem se nalazi u udaljenom transportu, firewall-u, DNS-u, TLS trust-u ili prijemu na serveru.</p>
+
+<h4>Troubleshooting grane</h4>
+
+<h4>Marker postoji lokalno, ali ne stiže na server:</h4>
+
+<ol>
+  <li>proveriti rezultat <code>esxcli system syslog config get</code>;</li>
+  <li>proveriti syslog firewall ruleset;</li>
+  <li>proveriti DNS rezoluciju i routing;</li>
+  <li>proveriti da li server sluša na očekivanom protokolu i portu;</li>
+  <li>proveriti host ili mrežni firewall između sistema;</li>
+  <li>pregledati <code>syslog.log</code> i <code>vobd.log</code> za greške povezivanja;</li>
+  <li>izvršiti <code>esxcli system syslog reload</code> i ponoviti marker;</li>
+  <li>kod TLS-a proveriti trust chain i ime u sertifikatu.</li>
+</ol>
+
+<h4><code>esxcli system syslog reload</code> vraća grešku:</h4>
+
+<pre><code class="language-bash">ps -Cuv | grep vmsyslogd</code></pre>
+
+<p>Ako proces ne postoji, ne prelaziti odmah na široki restart management agenata. Potvrditi stanje servisa i konsultovati runbook za konkretnu verziju. Broadcom za slučaj kada reload ne može da signalizira <code>vmsyslogd</code> navodi proveru procesa i kontrolisano pokretanje samog syslog servisa.</p>
+
+<h4>Očekivani rezultat</h4>
+
+<ul>
+  <li>ESXi prikazuje tačno udaljeno odredište;</li>
+  <li>syslog firewall ruleset je omogućen;</li>
+  <li>reload se završava bez greške;</li>
+  <li>marker postoji u lokalnom logu;</li>
+  <li>isti marker se pojavljuje na udaljenom serveru sa ispravnim hostname-om i vremenom.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Vratiti vrednost zabeleženu u <code>/tmp/syslog-config-before.txt</code>. Ako host pre vežbe nije imao udaljeno odredište:</p>
+
+<pre><code class="language-bash">esxcli system syslog config set --reset=loghost
+
+esxcli system syslog reload</code></pre>
+
+<p>Broadcom za uklanjanje postojeće syslog konfiguracije dokumentuje eksplicitni <code>--reset=loghost</code> i zatim reload kako host ne bi nastavio neočekivano da šalje logove.</p>
+
+<p>Ako syslog firewall ruleset pre vežbe nije bio omogućen, vratiti ga u početno stanje:</p>
+
+<pre><code class="language-bash">esxcli network firewall ruleset set \
+    --ruleset-id=syslog \
+    --enabled=false</code></pre>
+
+<p>Pre izvršavanja proveriti zapis početnog stanja. Ne isključivati ruleset ako ga koriste druga odobrena syslog odredišta.</p>
+
+<hr>
+
+<h3>Vežba 5 – PowerCLI izveštaj o osnovnom operativnom zdravlju</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Ručna provera je korisna za pojedinačni incident, ali nije dovoljna za dosledan dnevni pregled. Cilj je napraviti čitljivi PowerCLI izveštaj koji identifikuje nedostupne hostove, datastore-e sa malo prostora, VM-ove bez očekivanog VMware Tools stanja i novije warning ili error događaje.</p>
+
+<h4>Procena rizika</h4>
+
+<p>Skripta samo čita podatke i upisuje lokalne CSV fajlove. U velikom okruženju mora se ograničiti scope i broj događaja. Ne koristiti nekontrolisane upite nad kompletnom istorijom.</p>
+
+<h4>Korak 1 – Definisanje parametara</h4>
+
+<pre><code class="language-powershell">$vCenter = "vcsa01.lab.local"
+$outputRoot = "C:\VMware-Monitoring\Daily"
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$outputPath = Join-Path $outputRoot $timestamp
+
+New-Item -Path $outputPath -ItemType Directory -Force |
+    Out-Null
+
+Connect-VIServer -Server $vCenter</code></pre>
+
+<h4>Korak 2 – Hostovi koji nisu u očekivanom stanju</h4>
+
+<pre><code class="language-powershell">$hostIssues = Get-VMHost |
+    Where-Object {
+        $_.ConnectionState -ne "Connected" -or
+        $_.PowerState -ne "PoweredOn"
+    } |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build
+
+$hostIssues |
+    Export-Csv -Path "$outputPath\host-issues.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Prazan fajl sa zaglavljem nije greška ako nema problematičnih hostova. Skripta treba da razlikuje „nema nalaza” od „upit nije uspeo”.</p>
+
+<h4>Korak 3 – Datastore kapacitet</h4>
+
+<pre><code class="language-powershell">$datastoreThreshold = 20
+
+$datastoreIssues = Get-Datastore |
+    Where-Object { $_.State -eq "Available" } |
+    ForEach-Object {
+        $freePercent = if ($_.CapacityGB -gt 0) {
+            [math]::Round(
+                ($_.FreeSpaceGB / $_.CapacityGB) * 100,
+                2
+            )
+        }
+        else {
+            0
+        }
+
+        if ($freePercent -lt $datastoreThreshold) {
+            [pscustomobject]@{
+                Name         = $_.Name
+                Type         = $_.Type
+                CapacityGB   = [math]::Round($_.CapacityGB, 2)
+                FreeSpaceGB  = [math]::Round($_.FreeSpaceGB, 2)
+                FreePercent  = $freePercent
+            }
+        }
+    }
+
+$datastoreIssues |
+    Export-Csv -Path "$outputPath\datastore-issues.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Prag od 20% je laboratorijski primer, a ne univerzalna preporuka. Produkcijski prag treba da zavisi od apsolutnog prostora, brzine rasta, snapshot i backup ponašanja, storage rezervi i vremena potrebnog za proširenje.</p>
+
+<h4>Korak 4 – VMware Tools odstupanja</h4>
+
+<pre><code class="language-powershell">$toolsIssues = Get-VM |
+    Where-Object { $_.PowerState -eq "PoweredOn" } |
+    ForEach-Object {
+        $guest = $_.ExtensionData.Guest
+
+        if ($guest.ToolsStatus -notin @(
+            "toolsOk",
+            "toolsOld"
+        )) {
+            [pscustomobject]@{
+                VMName             = $_.Name
+                VMHost             = $_.VMHost.Name
+                ToolsStatus        = $guest.ToolsStatus
+                ToolsVersionStatus = $guest.ToolsVersionStatus2
+            }
+        }
+    }
+
+$toolsIssues |
+    Export-Csv -Path "$outputPath\tools-issues.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Lista zahteva dodatnu proveru. Appliance VM, sistem bez podržanog VMware Tools paketa ili namerno isključena guest integracija mogu predstavljati prihvatljivo odstupanje.</p>
+
+<h4>Korak 5 – Noviji warning i error događaji</h4>
+
+<pre><code class="language-powershell">$eventStart = (Get-Date).AddHours(-4)
+
+$recentEvents = Get-VIEvent `
+    -Start $eventStart `
+    -MaxSamples 5000 |
+    Where-Object {
+        $_.FullFormattedMessage -match
+        "(?i)warning|error|failed|timeout|lost|disconnected"
+    } |
+    Sort-Object CreatedTime -Descending |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage
+
+$recentEvents |
+    Export-Csv -Path "$outputPath\recent-events.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<p>Tekstualno filtriranje je početna trijaža, a ne konačna klasifikacija. Neke kritične poruke ne sadrže izabrane reči, dok neke bezazlene poruke mogu sadržati reč <code>error</code> u opisnom kontekstu.</p>
+
+<h4>Korak 6 – Sažetak izvršavanja</h4>
+
+<pre><code class="language-powershell">$summary = [pscustomobject]@{
+    GeneratedAt         = Get-Date
+    vCenter             = $vCenter
+    HostIssueCount      = @($hostIssues).Count
+    DatastoreIssueCount = @($datastoreIssues).Count
+    ToolsIssueCount     = @($toolsIssues).Count
+    RecentEventCount    = @($recentEvents).Count
+    OutputPath          = $outputPath
+}
+
+$summary |
+    Format-List
+
+$summary |
+    Export-Csv -Path "$outputPath\summary.csv" `
+               -NoTypeInformation `
+               -Encoding UTF8</code></pre>
+
+<h4>Korak 7 – Provera uspeha</h4>
+
+<ol>
+  <li>Proveriti da je kreiran direktorijum sa timestamp oznakom.</li>
+  <li>Otvoriti svaki CSV i proveriti zaglavlja.</li>
+  <li>Uporediti broj hostova i datastore-a sa vSphere Client inventarom.</li>
+  <li>Nasumično proveriti najmanje jedan nalaz kroz GUI.</li>
+  <li>Proveriti da vreme događaja odgovara očekivanoj vremenskoj zoni.</li>
+  <li>Sačuvati sažetak uz dnevnu operativnu dokumentaciju.</li>
+</ol>
+
+<h4>Moguće greške</h4>
+
+<ul>
+  <li><strong>Skripta vraća delimične podatke:</strong> proveriti RBAC prava i greške u PowerShell sesiji.</li>
+  <li><strong>Događaji nedostaju:</strong> povećati <code>-MaxSamples</code> samo uz ograničen vremenski prozor.</li>
+  <li><strong>Fajl je zaključan:</strong> zatvoriti CSV u spreadsheet aplikaciji pre ponovnog izvoza.</li>
+  <li><strong>Tools status daje mnogo lažnih nalaza:</strong> dodati dokumentovanu listu izuzetaka, ali ne skrivati nepoznata odstupanja.</li>
+  <li><strong>Prag datastora nije koristan:</strong> uključiti apsolutni slobodan prostor i trend rasta, umesto oslanjanja samo na procenat.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Skripta nije menjala vSphere konfiguraciju. Po potrebi ukloniti generisani direktorijum tek nakon provere da ne sadrži potreban dokaz:</p>
+
+<pre><code class="language-powershell">Remove-Item -Path $outputPath -Recurse -Force</code></pre>
+
+<p>Ova komanda nepovratno briše lokalne fajlove i zato se ne izvršava kao automatski deo skripte. Bezbednija praksa je retention postupak koji uklanja izveštaje tek nakon unapred definisanog perioda.</p>
+
+<p>Zatvoriti PowerCLI sesiju:</p>
+
+<pre><code class="language-powershell">Disconnect-VIServer -Server $vCenter -Confirm:$false</code></pre>
+
+<hr>
+
+<h3>Kontrolna tačka nakon prvog dela praktikuma</h3>
+
+<p>Administrator je uspešno završio prvi deo praktikuma ako može samostalno da:</p>
+
+<ul>
+  <li>definiše laboratorijsku monitoring topologiju i identifikuje sve izvore podataka;</li>
+  <li>proveri health stanje vCenter Servera, klastera, ESXi hostova, datastore-a i virtuelnih mašina kroz vSphere Client;</li>
+  <li>napravi početni PowerCLI inventar hostova, VM-ova i datastore-a;</li>
+  <li>sačuva rezultat monitoringa u strukturisane CSV izveštaje;</li>
+  <li>proveri vCenter Appliance filesystem kapacitet bez menjanja sistema;</li>
+  <li>prikaže stanje svih vCenter servisa pomoću <code>service-control --status --all</code>;</li>
+  <li>pronađe odgovarajući vCenter servisni log i ograniči analizu na relevantan vremenski period;</li>
+  <li>razlikuje nedostupan vSphere Client od potpunog kvara vCenter Appliance-a;</li>
+  <li>izvrši bezbednu laboratorijsku promenu i pronađe njen task, događaj, korisnika i vreme izvršavanja;</li>
+  <li>prikupi događaje konkretnog objekta pomoću <code>Get-VIEvent</code> bez preširokog upita;</li>
+  <li>prikaže alarmne definicije i identifikuje objekte sa aktiviranim alarmima;</li>
+  <li>objasni zašto aktivan alarm ne treba resetovati pre potvrde uzroka i normalizacije uslova;</li>
+  <li>proveri postojeću ESXi syslog konfiguraciju i sačuva početno stanje;</li>
+  <li>konfiguriše udaljeno syslog odredište sa odgovarajućim protokolom i portom;</li>
+  <li>omogući i proveri ESXi syslog firewall ruleset;</li>
+  <li>učita novu syslog konfiguraciju bez restartovanja hosta;</li>
+  <li>generiše kontrolisani syslog marker i pronađe ga u lokalnom i udaljenom logu;</li>
+  <li>dijagnostikuje slučaj u kojem marker postoji lokalno, ali ne stiže do udaljenog servera;</li>
+  <li>vrati syslog i firewall konfiguraciju u dokumentovano početno stanje;</li>
+  <li>napravi ponovljiv PowerCLI izveštaj o hostovima, datastore kapacitetu, VMware Tools odstupanjima i novijim događajima;</li>
+  <li>proveri rezultate automatizacije kroz vSphere Client umesto da skriptu smatra dovoljnim dokazom;</li>
+  <li>dokumentuje početno stanje, promenu, očekivani rezultat, stvarni rezultat i rollback svake izvedene vežbe.</li>
+</ul>
+
+<h3>Napredni praktikum – korelacija, kvarovi i očuvanje dokaza</h3>
+   
+<hr>
+
+<h3>Vežba 6 – Korelacija događaja, metrika i logova tokom usporenja virtuelne mašine</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Korisnici prijavljuju da je aplikacija na virtuelnoj mašini <code>app01</code> bila spora između 10:20 i 10:35. Virtuelna mašina nije bila ugašena, nije prijavljen gubitak mrežne veze i u trenutku analize radi normalno. Cilj nije pronaći proizvoljnu poruku sa rečju <code>error</code>, već rekonstruisati vremensku liniju i utvrditi da li je simptom povezan sa CPU raspoređivanjem, memorijom, storage-om, mrežom ili administrativnom promenom.</p>
+
+<h4>Preduslovi i početno stanje</h4>
+
+<ul>
+  <li>poznat je tačan ili približan vremenski period simptoma;</li>
+  <li>administrator ima pristup vSphere događajima i istorijskim statistikama;</li>
+  <li>poznat je ESXi host na kojem je VM radila tokom incidenta;</li>
+  <li>vCenter i ESXi vreme su sinhronizovani;</li>
+  <li>nije izvršen restart VM-a, hosta ili management agenata pre prikupljanja dokaza.</li>
+</ul>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>Vežba je neinvazivna. Ne menjati broj vCPU jedinica, memoriju, shares, limits ili storage konfiguraciju dok osnovni uzrok nije potvrđen. Rightsizing može biti trajna korektivna mera, ali nije dijagnostički prvi korak.</p>
+
+<h4>Korak 1 – Potvrda simptoma i obima</h4>
+
+<ol>
+  <li>Zabeležiti ko je prijavio problem i koju je aplikacionu operaciju izvršavao.</li>
+  <li>Utvrditi da li je pogođena jedna VM, više VM-ova ili sve VM na istom hostu ili datastore-u.</li>
+  <li>Proveriti da li postoji aplikacioni log, monitoring zapis ili transakcioni pokazatelj koji potvrđuje usporenje.</li>
+  <li>Zabeležiti početak, vrhunac i prestanak simptoma.</li>
+  <li>Proveriti da li je VM tokom intervala migrirana na drugi host.</li>
+</ol>
+
+<h4>Korak 2 – Pregled događaja i zadataka</h4>
+
+<p>U vSphere Client-u otvoriti VM <code>app01</code>, zatim <strong>Monitor &gt; Tasks and Events</strong>. Vremenski prikaz ograničiti tako da obuhvati najmanje petnaest minuta pre početka simptoma i petnaest minuta posle oporavka.</p>
+
+<p>Tražiti:</p>
+
+<ul>
+  <li>vMotion ili Storage vMotion;</li>
+  <li>snapshot kreiranje, uklanjanje ili konsolidaciju;</li>
+  <li>backup operaciju;</li>
+  <li>promenu virtuelnog hardvera;</li>
+  <li>promenu resource pool, shares, reservation ili limit vrednosti;</li>
+  <li>HA, DRS, storage ili mrežni događaj;</li>
+  <li>gubitak VMware Tools heartbeat-a.</li>
+</ul>
+
+<p>Isti period prikupiti kroz PowerCLI:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "app01"
+$start = Get-Date "2026-07-22 10:05"
+$finish = Get-Date "2026-07-22 10:50"
+
+Get-VIEvent -Entity $vm `
+            -Start $start `
+            -Finish $finish `
+            -MaxSamples 2000 |
+    Sort-Object CreatedTime |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage</code></pre>
+
+<p>Upit samo čita događaje. Parametri <code>-Start</code>, <code>-Finish</code> i <code>-Entity</code> ograničavaju obim i sprečavaju nepotrebno skupu pretragu cele vCenter istorije. Aktuelna PowerCLI referenca i dalje navodi <code>Get-VIEvent</code> kao cmdlet za preuzimanje događaja sa vCenter sistema.</p>
+
+<h4>Korak 3 – Analiza performansi</h4>
+
+<p>U vSphere Client-u pregledati napredne performance grafikone VM-a za isti vremenski period. Ne menjati vremenski period između CPU, memorijskog, storage i mrežnog pregleda.</p>
+
+<p>Najpre proveriti:</p>
+
+<ul>
+  <li>CPU Usage, Demand, Ready i Co-stop;</li>
+  <li>Consumed, Active, Balloon i Swap metrike memorije;</li>
+  <li>read/write latency, throughput i outstanding I/O;</li>
+  <li>network usage, dropped receive i dropped transmit pakete.</li>
+</ul>
+
+<p>PowerCLI upit može objediniti više relevantnih metrika:</p>
+
+<pre><code class="language-powershell">$metrics = @(
+    "cpu.usage.average",
+    "cpu.ready.summation",
+    "mem.active.average",
+    "mem.vmmemctl.average",
+    "mem.swapinRate.average",
+    "mem.swapoutRate.average",
+    "disk.maxTotalLatency.latest",
+    "net.droppedRx.summation",
+    "net.droppedTx.summation"
+)
+
+Get-Stat -Entity $vm `
+         -Stat $metrics `
+         -Start $start `
+         -Finish $finish |
+    Sort-Object Timestamp, MetricId |
+    Select-Object Timestamp,
+                  MetricId,
+                  Value,
+                  Unit</code></pre>
+
+<p>Ne porediti direktno <code>summation</code> vrednosti iz različitih intervala uzorkovanja. CPU Ready rezultat mora se tumačiti u odnosu na trajanje intervala i broj vCPU jedinica. Jedna visoka vrednost nije dovoljna za promenu konfiguracije; traži se obrazac koji se vremenski poklapa sa aplikacionim simptomom.</p>
+
+<h4>Korak 4 – Utvrđivanje hosta na kojem je VM radila</h4>
+
+<p>Ako nije bilo migracije, trenutno stanje se može proveriti:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "app01" |
+    Select-Object Name, VMHost, PowerState</code></pre>
+
+<p>Ako je VM migrirana, događaji moraju pokazati izvorni i odredišni host. Logove treba analizirati na hostu koji je izvršavao VM u trenutku simptoma, a ne samo na hostu na kojem se ona sada nalazi.</p>
+
+<h4>Korak 5 – Analiza ESXi logova</h4>
+
+<p>Na odgovarajućem hostu pregledati <code>vmkernel.log</code> za storage, mrežne i VMkernel događaje. Broadcom navodi da su aktuelni ESXi logovi grupisani prema komponentama ispod <code>/var/run/log</code>.</p>
+
+<pre><code class="language-bash">grep "2026-07-22T10:" /var/run/log/vmkernel.log |
+    grep -Ei "timeout|latency|APD|PDL|NMP|Scsi|drop|reset"</code></pre>
+
+<p>Za upravljačke operacije proveriti:</p>
+
+<pre><code class="language-bash">grep "2026-07-22T10:" /var/run/log/hostd.log |
+    grep -Ei "app01|snapshot|reconfig|migrate|error|failed"
+
+grep "2026-07-22T10:" /var/run/log/vpxa.log |
+    grep -Ei "app01|migrate|task|error|failed"</code></pre>
+
+<p>Ako je sumnja ograničena na VMX proces, pronaći direktorijum VM-a:</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>Zatim pregledati <code>vmware.log</code> u direktorijumu virtuelne mašine. Broadcom potvrđuje da se taj log nalazi uz odgovarajući <code>.vmx</code> fajl.</p>
+
+<h4>Tumačenje nalaza</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nalaz</th>
+      <th>Verovatna oblast</th>
+      <th>Sledeća provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CPU Ready raste, host CPU je zasićen</td>
+      <td>CPU contention</td>
+      <td>Drugi VM-ovi na hostu, DRS događaji, limits i rightsizing</td>
+    </tr>
+    <tr>
+      <td>Balloon i swap rastu tokom simptoma</td>
+      <td>Memorijski pritisak</td>
+      <td>Host memory state, reservations i workload rast</td>
+    </tr>
+    <tr>
+      <td>Latencija raste na više VM-ova istog datastora</td>
+      <td>Storage putanja, uređaj ili array</td>
+      <td><code>vmkernel.log</code>, HBA, path stanje i array monitoring</td>
+    </tr>
+    <tr>
+      <td>Samo jedna VM ima visok I/O i snapshot događaj</td>
+      <td>VM-specifična operacija</td>
+      <td>Snapshot lanac, backup task i <code>vmware.log</code></td>
+    </tr>
+    <tr>
+      <td>Packet drops na više VM-ova istog uplinka</td>
+      <td>Host ili fizička mreža</td>
+      <td>pNIC statistika, switch port i uplink redundansa</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Primer razdvajanja uzroka</h4>
+
+<ul>
+  <li><strong>Simptom:</strong> aplikaciona transakcija traje 25 sekundi umesto 3 sekunde.</li>
+  <li><strong>Neposredni tehnički uzrok:</strong> VM I/O zahtevi čekaju zbog visoke storage latencije.</li>
+  <li><strong>Osnovni uzrok:</strong> backup operacija i konsolidacija velikog snapshot-a preklopile su se sa poslovnim vršnim periodom.</li>
+  <li><strong>Privremeno rešenje:</strong> pomeranje narednog backup posla van vršnog perioda.</li>
+  <li><strong>Trajna korektivna mera:</strong> promena backup rasporeda, alarm za dugotrajne snapshot-e i kapacitetna analiza datastore-a.</li>
+</ul>
+
+<h4>Očekivani rezultat i validacija</h4>
+
+<p>Administrator izrađuje vremensku liniju sa najmanje jednim aplikacionim dokazom, vCenter događajima, relevantnim metrikama i log nalazima. Zaključak se donosi tek kada najmanje dva nezavisna izvora potvrđuju istu hipotezu.</p>
+
+<h4>Recovery i rollback</h4>
+
+<p>Vežba ne menja sistem. Ako se naknadno odobri korektivna promena, ona mora imati poseban change zapis, početno stanje, merilo uspeha i plan vraćanja. Ne menjati resurse VM-a u okviru same istrage.</p>
+
+<hr>
+
+<h3>Vežba 7 – Bezbedna simulacija pogrešne syslog konfiguracije i oporavak</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Cilj je da administrator prepozna situaciju u kojoj ESXi i dalje lokalno zapisuje logove, ali ih ne šalje na udaljeni server. Kvar se izaziva isključivo na jednom laboratorijskom hostu promenom udaljenog syslog porta na port na kojem server ne sluša.</p>
+
+<h4>Preduslovi i početno stanje</h4>
+
+<ul>
+  <li>udaljeni syslog iz prvog dela praktikuma radi;</li>
+  <li>kontrolni marker uspešno stiže do servera;</li>
+  <li>početna konfiguracija je sačuvana;</li>
+  <li>na hostu nema aktivnog produkcionog incidenta;</li>
+  <li>poznat je tačan ispravan protokol, FQDN i port.</li>
+</ul>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>Vežba se izvodi isključivo u laboratoriji i samo na jednom hostu. Ne menjati lokalnu scratch lokaciju, ne puniti ramdisk i ne izazivati prekomerno logovanje. Broadcom dokumentuje da prekomerni syslog upisi mogu blokirati servise kao što su <code>vpxa</code> i FDM i dovesti do gubitka vCenter povezanosti ili narušavanja HA funkcionalnosti.</p>
+
+<h4>Korak 1 – Potvrda početnog stanja</h4>
+
+<pre><code class="language-bash">esxcli system syslog config get
+
+esxcli system syslog mark \
+    --message="LAB-SYSLOG-BEFORE-FAILURE"</code></pre>
+
+<p>Potvrditi da marker postoji lokalno i na udaljenom serveru.</p>
+
+<h4>Korak 2 – Uvođenje pogrešne konfiguracije</h4>
+
+<p>Primer pretpostavlja da ispravni server koristi TCP 514. Privremeno se postavlja nekorišćeni laboratorijski port:</p>
+
+<pre><code class="language-bash">esxcli system syslog config set \
+    --loghost='tcp://log01.lab.local:5514'
+
+esxcli system syslog reload</code></pre>
+
+<p>Komande menjaju konfiguraciju. Ne koristiti adresu tuđeg sistema niti port na kojem radi drugi servis.</p>
+
+<h4>Korak 3 – Generisanje dokaza</h4>
+
+<pre><code class="language-bash">esxcli system syslog mark \
+    --message="LAB-SYSLOG-EXPECTED-FAILURE"</code></pre>
+
+<p>Potvrditi da je marker lokalno zapisan:</p>
+
+<pre><code class="language-bash">grep "LAB-SYSLOG-EXPECTED-FAILURE" \
+    /var/run/log/syslog.log</code></pre>
+
+<p>Zatim potvrditi da ga nema na udaljenom serveru.</p>
+
+<h4>Korak 4 – Analiza alarma i logova</h4>
+
+<p>U vSphere Client-u proveriti događaje i aktivne alarme hosta. Na ESXi hostu pregledati:</p>
+
+<pre><code class="language-bash">tail -n 100 /var/run/log/vobd.log |
+    grep -Ei "syslog|remote|unreachable|failure"
+
+tail -n 100 /var/run/log/syslog.log |
+    grep -Ei "error|failed|connect|remote"</code></pre>
+
+<p>Broadcom dokumentuje poruku <code>vob.user.vmsyslogd.remote.failure</code> kada udaljeni syslog host postane nedostupan, kao i slučajeve u kojima <code>vobd.log</code> ukazuje na popunjen ramdisk ili prekid udaljenog logovanja.</p>
+
+<h4>Sistematičan troubleshooting</h4>
+
+<ol>
+  <li><strong>Potvrda simptoma:</strong> novi marker ne postoji na udaljenom serveru.</li>
+  <li><strong>Obim:</strong> proveriti da li je pogođen samo <code>esxi01</code> ili više hostova.</li>
+  <li><strong>Poslednja promena:</strong> syslog port je promenjen sa 514 na 5514.</li>
+  <li><strong>Lokalna funkcija:</strong> marker postoji u lokalnom logu.</li>
+  <li><strong>Firewall:</strong> ruleset je i dalje omogućen.</li>
+  <li><strong>DNS i routing:</strong> server se razrešava i dostupan je na mreži.</li>
+  <li><strong>Aplikacioni prijem:</strong> server ne sluša na portu 5514.</li>
+  <li><strong>Osnovni uzrok:</strong> pogrešna udaljena port konfiguracija.</li>
+</ol>
+
+<h4>Razdvajanje nalaza</h4>
+
+<ul>
+  <li><strong>Simptom:</strong> logovi sa jednog ESXi hosta prestaju da se pojavljuju u centralnoj pretrazi.</li>
+  <li><strong>Neposredni uzrok:</strong> TCP veza prema konfigurisanom portu ne može da se uspostavi.</li>
+  <li><strong>Osnovni uzrok:</strong> nevalidirana administratorska promena syslog porta.</li>
+  <li><strong>Privremeno rešenje:</strong> vratiti prethodni port i učitati konfiguraciju.</li>
+  <li><strong>Trajna mera:</strong> automatizovana post-change validacija markerom i periodična provera poslednje primljene poruke sa svakog hosta.</li>
+</ul>
+
+<h4>Korektivna akcija i oporavak</h4>
+
+<pre><code class="language-bash">esxcli system syslog config set \
+    --loghost='tcp://log01.lab.local:514'
+
+esxcli system syslog reload
+
+esxcli system syslog mark \
+    --message="LAB-SYSLOG-RECOVERY-VALIDATED"</code></pre>
+
+<p>Potvrditi:</p>
+
+<ul>
+  <li>ispravnu vrednost kroz <code>esxcli system syslog config get</code>;</li>
+  <li>lokalno postojanje recovery markera;</li>
+  <li>prijem istog markera na centralnom serveru;</li>
+  <li>prestanak novih remote failure poruka;</li>
+  <li>normalizaciju alarma ili događaja.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Rollback je vraćanje konfiguracije iz početnog zapisa. Vežba je završena tek kada centralni server primi novi marker posle rollback-a. Sama činjenica da komanda nije vratila grešku nije dovoljan dokaz oporavka.</p>
+
+<hr>
+
+<h3>Vežba 8 – Incident response za ESXi host koji je prikazan kao Disconnected</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>vCenter prikazuje host <code>esxi02.lab.local</code> kao <strong>Disconnected</strong>, dok virtuelne mašine na njemu nastavljaju da rade. Cilj je potvrditi da li je problem u samom hostu, management mreži, DNS-u, vCenter agentu, logovanju ili vCenter servisu, uz očuvanje dostupnosti VM-ova.</p>
+
+<h4>Upozorenje o riziku</h4>
+
+<p>Ne uklanjati host iz inventara, ne restartovati ESXi i ne koristiti široki restart management agenata kao prvi korak. Takve akcije mogu uticati na HA, aktivne zadatke, backup integraciju i upravljačku vidljivost.</p>
+
+<h4>Korak 1 – Potvrda simptoma</h4>
+
+<ol>
+  <li>U vSphere Client-u proveriti tačno stanje hosta i vreme promene.</li>
+  <li>Proveriti da li su pogođeni i drugi hostovi.</li>
+  <li>Proveriti da li vCenter prima događaje sa hosta.</li>
+  <li>Potvrditi dostupnost aplikacija u VM-ovima nezavisnim monitoringom.</li>
+  <li>Proveriti da li je bilo mrežne, firewall, DNS, certifikatske ili patching promene.</li>
+</ol>
+
+<h4>Korak 2 – Provera sa administratorske stanice</h4>
+
+<pre><code class="language-powershell">Resolve-DnsName "esxi02.lab.local"
+
+Test-NetConnection "esxi02.lab.local" -Port 443</code></pre>
+
+<p>Na Linux administratorskoj stanici odgovarajuće provere mogu biti:</p>
+
+<pre><code class="language-bash">getent hosts esxi02.lab.local
+
+curl -kI https://esxi02.lab.local/</code></pre>
+
+<p><code>-k</code> zanemaruje validaciju sertifikata i koristi se samo kao kratka dijagnostička provera. Ne predstavlja ispravnu trajnu konfiguraciju poverenja.</p>
+
+<h4>Korak 3 – Direktna provera ESXi hosta</h4>
+
+<p>Ako je Host Client dostupan, prijaviti se odobrenim nalogom i proveriti:</p>
+
+<ul>
+  <li>management interfejs i gateway;</li>
+  <li>DNS i vreme;</li>
+  <li>stanje fizičkih adaptera;</li>
+  <li>slobodan prostor na scratch i log lokacijama;</li>
+  <li>lokalne događaje i upozorenja;</li>
+  <li>da li se logovi i dalje ažuriraju.</li>
+</ul>
+
+<p>Na ESXi Shell-u:</p>
+
+<pre><code class="language-bash">date
+
+esxcli network ip interface list
+
+esxcli network nic list
+
+vdf -h
+
+tail -n 50 /var/run/log/hostd.log
+
+tail -n 50 /var/run/log/vpxa.log
+
+tail -n 50 /var/run/log/vobd.log</code></pre>
+
+<p><code>vdf -h</code> je značajan za ESXi ramdisk i visor filesystem prikaz. Popunjena log ili privremena lokacija može sprečiti normalno zapisivanje i doprineti blokiranju upravljačkih servisa.</p>
+
+<h4>Korak 4 – Provera da li se logovi ažuriraju</h4>
+
+<pre><code class="language-bash">ls -l --time-style=long-iso \
+    /var/run/log/hostd.log \
+    /var/run/log/vpxa.log \
+    /var/run/log/vmkernel.log</code></pre>
+
+<p>Ako se nijedan glavni log više ne ažurira, to je ozbiljan nalaz. Broadcom dokumentuje slučajeve u kojima prestanak zapisivanja više ESXi logova može prethoditi host unresponsiveness stanju; korektivni postupak zavisi od verzije i primenjenog fix-a.</p>
+
+<h4>Korak 5 – Korelacija sa vCenter-om</h4>
+
+<p>Na vCenter Appliance-u proveriti odgovarajući period u <code>vpxd.log</code>:</p>
+
+<pre><code class="language-bash">grep -Ei "esxi02|disconnect|timeout|SSL|certificate" \
+    /var/log/vmware/vpxd/vpxd.log |
+    tail -n 200</code></pre>
+
+<p>ESXi <code>vpxa.log</code> opisuje komunikaciju agenta sa vCenter-om, dok vCenter <code>vpxd.log</code> prikazuje centralnu stranu operacije. Broadcom navodi njihove aktuelne lokacije kao <code>/var/run/log</code> na ESXi hostu i <code>/var/log/vmware/vpxd</code> na VCSA-u.</p>
+
+<h4>Troubleshooting grane</h4>
+
+<h4>Host Client nije dostupan, ali VM-ovi rade:</h4>
+
+<ul>
+  <li>proveriti management VLAN, pNIC i VMkernel interfejs;</li>
+  <li>proveriti pristup kroz konzolu ili out-of-band management;</li>
+  <li>ne mešati dostupnost VM mreže sa dostupnošću management mreže;</li>
+  <li>sačuvati mrežne dokaze pre izmene vSwitch ili VLAN konfiguracije.</li>
+</ul>
+
+<h4>Host Client radi, ali vCenter ne može da poveže host:</h4>
+
+<ul>
+  <li>proveriti DNS rezoluciju između vCenter-a i hosta;</li>
+  <li>proveriti vreme i sertifikat;</li>
+  <li>pregledati <code>vpxa.log</code> i <code>vpxd.log</code>;</li>
+  <li>proveriti da li je <code>vpxa</code> blokiran zbog log I/O problema;</li>
+  <li>tek posle potvrde uzroka razmotriti kontrolisan reconnect ili restart konkretnog agenta.</li>
+</ul>
+
+<h4>Više hostova je istovremeno Disconnected:</h4>
+
+<ul>
+  <li>prioritetno proveriti vCenter servise i mrežu vCenter-a;</li>
+  <li>proveriti zajednički management switch, firewall, DNS i NTP;</li>
+  <li>proveriti centralni syslog ako svi hostovi šalju prema istom nedostupnom ili preopterećenom odredištu;</li>
+  <li>ne tretirati svaki host kao zaseban incident dok zajednička zavisnost nije isključena.</li>
+</ul>
+
+<h4>Primer klasifikacije incidenta</h4>
+
+<ul>
+  <li><strong>Simptom:</strong> host je u vCenter-u prikazan kao <code>Disconnected</code>.</li>
+  <li><strong>Neposredni uzrok:</strong> <code>vpxa</code> ne obrađuje komunikaciju sa vCenter Serverom.</li>
+  <li><strong>Osnovni uzrok:</strong> prekomeran syslog I/O blokira zapisivanje i zavisne servise.</li>
+  <li><strong>Posledica:</strong> izgubljena centralna upravljačka vidljivost i potencijalno narušena HA funkcionalnost, dok VM-ovi privremeno nastavljaju da rade.</li>
+  <li><strong>Privremena mera:</strong> zaustavljanje izvora prekomernog logovanja ili vraćanje bezbedne syslog konfiguracije prema odobrenom runbook-u.</li>
+  <li><strong>Trajna mera:</strong> korekcija uzroka log storm-a, patching prema podržanoj verziji, praćenje log rate-a i testiranje syslog kapaciteta.</li>
+</ul>
+
+<h4>Recovery validacija</h4>
+
+<p>Nakon korektivne akcije proveriti:</p>
+
+<ul>
+  <li>da se host vratio u <code>Connected</code> stanje;</li>
+  <li>da se <code>hostd.log</code> i <code>vpxa.log</code> normalno ažuriraju;</li>
+  <li>da novi vCenter task može da se izvrši nad bezopasnim objektom;</li>
+  <li>da HA i DRS status nisu degradirani;</li>
+  <li>da centralni syslog prima nove poruke;</li>
+  <li>da aplikacije u VM-ovima nisu pretrpele prekid;</li>
+  <li>da nema ponavljanja iste greške tokom posmatračkog perioda.</li>
+</ul>
+
+<h4>Rollback</h4>
+
+<p>Ako korektivna promena ne vraća povezanost ili proizvodi nove probleme, vratiti prethodnu dokumentovanu mrežnu, DNS, firewall ili syslog vrednost. Reconnect hosta nije rollback konfiguracije; to je pokušaj ponovnog uspostavljanja upravljačke sesije i mora biti praćen proverom osnovnog uzroka.</p>
+
+<hr>
+
+<h3>Vežba 9 – Prikupljanje support bundle-a i očuvanje dijagnostičkih dokaza</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Kada lokalna analiza ne potvrdi uzrok ili je potrebna eskalacija Broadcom podršci, administrator mora prikupiti odgovarajući support bundle bez nepotrebnog opterećenja cele infrastrukture i bez gubitka kontrole nad osetljivim podacima.</p>
+
+<h4>Preduslovi i procena rizika</h4>
+
+<ul>
+  <li>poznati su pogođeni hostovi i vremenski period incidenta;</li>
+  <li>proveren je slobodan prostor na odredištu;</li>
+  <li>poznato je da li je potreban ESXi, vCenter ili kombinovani bundle;</li>
+  <li>postoji odobrena bezbedna lokacija za čuvanje i transfer;</li>
+  <li>prikupljanje se ne pokreće istovremeno na svim hostovima bez opravdanja.</li>
+</ul>
+
+<p>Support bundle može sadržati nazive hostova, konfiguraciju, logove, opise VM-ova, stanje sistema i core dump podatke. Broadcom navodi da bundle ne sadrži sadržaj virtuelnih diskova ili snapshot fajlova, ali i dalje predstavlja osetljiv infrastrukturni materijal.</p>
+
+<h4>GUI postupak</h4>
+
+<ol>
+  <li>U vSphere Client-u izabrati vCenter ili pogođeni ESXi host.</li>
+  <li>Pokrenuti <strong>Export System Logs</strong>.</li>
+  <li>Izabrati samo pogođene hostove.</li>
+  <li>Uključiti vCenter i vSphere UI logove samo kada su relevantni.</li>
+  <li>Izabrati odgovarajuće log grupe.</li>
+  <li>Performance data uključiti samo kada je potrebno i definisati razuman interval.</li>
+  <li>Pre pokretanja zabeležiti vreme, obim i očekivanu lokaciju rezultata.</li>
+</ol>
+
+<p>Broadcom navodi da se kroz vSphere Client mogu izabrati pojedinačni hostovi, određene log grupe i opcionalno performance podaci sa definisanim trajanjem i intervalom.</p>
+
+<h4>ESXi CLI postupak</h4>
+
+<pre><code class="language-bash">vm-support -h</code></pre>
+
+<p>Najpre pregledati opcije dostupne u konkretnoj ESXi verziji. Za standardno prikupljanje:</p>
+
+<pre><code class="language-bash">vm-support</code></pre>
+
+<p>Za čuvanje na odgovarajućem shared datastore-u:</p>
+
+<pre><code class="language-bash">vm-support -w /vmfs/volumes/DATASTORE_NAME</code></pre>
+
+<p>Broadcom dokumentuje <code>vm-support</code> kao standardni ESXi postupak, uz mogućnost izbora odredišnog VMFS datastore-a.</p>
+
+<h4>VCSA CLI postupak</h4>
+
+<p>Pre prikupljanja proveriti:</p>
+
+<pre><code class="language-bash">df -h /storage/log</code></pre>
+
+<p>Zatim generisati bundle:</p>
+
+<pre><code class="language-bash">vc-support -l</code></pre>
+
+<p>Broadcom navodi da <code>vc-support -l</code> kreira vCenter log bundle i da se generisani fajl nalazi ispod <code>/storage/log</code> radi preuzimanja odobrenim kanalom.</p>
+
+<p>Ne pokretati prikupljanje ako nema dovoljno slobodnog prostora. Broadcom dokumentuje neuspešne ili gotovo prazne bundle fajlove kada je <code>/storage/log</code> visoko popunjen ili ima samo nekoliko gigabajta slobodnog prostora.</p>
+
+<h4>Validacija bundle-a</h4>
+
+<ol>
+  <li>Potvrditi da fajl postoji i da njegova veličina nije neuobičajeno mala.</li>
+  <li>Zabeležiti SHA-256 hash pre transfera.</li>
+  <li>Potvrditi da arhiva može da se otvori.</li>
+  <li>Proveriti da sadrži logove iz relevantnog vremenskog perioda.</li>
+  <li>Proveriti da su uključene komponente potrebne za incident.</li>
+  <li>Sačuvati naziv fajla, vreme prikupljanja, host, tiket i hash.</li>
+</ol>
+
+<pre><code class="language-bash">sha256sum /storage/log/vc-support-*.tgz</code></pre>
+
+<h4>Moguće greške</h4>
+
+<ul>
+  <li><strong>Bundle je veoma mali:</strong> proveriti slobodan prostor i poruke prikupljanja.</li>
+  <li><strong>Nedostaje <code>vmkernel.log</code> ili <code>hostd.log</code>:</strong> proveriti izabrane log grupe i da li je host zaista uključen.</li>
+  <li><strong>Prikupljanje traje predugo:</strong> ograničiti obim i proveriti zdravlje komponente koja se prikuplja.</li>
+  <li><strong>Datastore se puni:</strong> prekinuti kontrolisano ako je bezbedno, ukloniti samo jasno identifikovan nepotreban bundle i izabrati drugo odredište.</li>
+  <li><strong>Incident je već prošao kroz više rotacija:</strong> koristiti centralni syslog i ranije sačuvane događaje; lokalni bundle ne može vratiti obrisane podatke.</li>
+</ul>
+
+<h4>Recovery i čišćenje</h4>
+
+<p>Nakon bezbednog transfera i potvrde integriteta, lokalni bundle ukloniti prema odobrenoj retention politici. Ne koristiti široke wildcard komande u <code>/storage/log</code> niti ručno brisati aktivne logove. Stari support bundle fajlovi mogu popuniti <code>/storage/log</code>, ali se uklanjaju samo nakon jasne identifikacije.</p>
+
+<hr>
+
+<h3>Vežba 10 – Automatizovana provera logovanja na svim ESXi hostovima</h3>
+
+<h4>Cilj i kontekst</h4>
+
+<p>Cilj je napraviti read-only PowerCLI proveru koja za svaki ESXi host prikazuje udaljeno syslog odredište, stanje syslog firewall ruleset-a i vreme poslednjeg relevantnog vCenter događaja. Skripta treba da identifikuje odstupanja, ali ne sme automatski menjati hostove.</p>
+
+<h4>Upozorenje o riziku</h4>
+
+<p><code>Get-EsxCli -V2</code> može izložiti i metode koje menjaju konfiguraciju. U ovoj vežbi pozivaju se samo <code>Get</code> i <code>List</code> metode. Broadcom preporučuje V2 interfejs za kreiranje argumenata i pozivanje ESXCLI metoda kroz PowerCLI.</p>
+
+<h4>Postupak</h4>
+
+<pre><code class="language-powershell">$results = foreach ($vmHost in Get-VMHost |
+    Sort-Object Name) {
+
+    try {
+        $esxcli = Get-EsxCli -VMHost $vmHost -V2
+
+        $syslogConfig =
+            $esxcli.system.syslog.config.get.Invoke()
+
+        $firewallRules =
+            $esxcli.network.firewall.ruleset.list.Invoke()
+
+        $syslogRule = $firewallRules |
+            Where-Object { $_.Name -eq "syslog" }
+
+        [pscustomobject]@{
+            VMHost            = $vmHost.Name
+            ConnectionState   = $vmHost.ConnectionState
+            LogHost           = $syslogConfig.LogHost
+            LocalLogOutput    = $syslogConfig.LocalLogOutput
+            SyslogFirewall    = $syslogRule.Enabled
+            ValidationStatus  = if (
+                $vmHost.ConnectionState -eq "Connected" -and
+                -not [string]::IsNullOrWhiteSpace(
+                    $syslogConfig.LogHost
+                ) -and
+                $syslogRule.Enabled
+            ) {
+                "PASS"
+            }
+            else {
+                "REVIEW"
+            }
+            Error              = $null
+        }
+    }
+    catch {
+        [pscustomobject]@{
+            VMHost            = $vmHost.Name
+            ConnectionState   = $vmHost.ConnectionState
+            LogHost           = $null
+            LocalLogOutput    = $null
+            SyslogFirewall    = $null
+            ValidationStatus  = "ERROR"
+            Error              = $_.Exception.Message
+        }
+    }
+}
+
+$results |
+    Format-Table -AutoSize
+
+$results |
+    Export-Csv `
+        -Path "C:\VMware-Monitoring\syslog-audit.csv" `
+        -NoTypeInformation `
+        -Encoding UTF8</code></pre>
+
+<h4>Validacija</h4>
+
+<ul>
+  <li>broj rezultata mora odgovarati broju hostova u obimu;</li>
+  <li>najmanje jedan host ručno proveriti lokalnim ESXCLI-jem;</li>
+  <li><code>PASS</code> ne znači da server stvarno prima logove, već samo da host ima očekivanu konfiguraciju;</li>
+  <li>za punu end-to-end proveru uporediti poslednje primljeno vreme na syslog serveru;</li>
+  <li>svaki <code>ERROR</code> sačuvati kao nalaz, a ne preskočiti ga iz izveštaja.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>Administrator dobija listu hostova sa standardnom konfiguracijom i izdvojenu listu odstupanja. Skripta ne vrši remediation. Promene se sprovode odvojeno, kroz odobren change i prvo na pilot hostu.</p>
+
+<h4>Rollback</h4>
+
+<p>vSphere konfiguracija nije menjana. Po potrebi se uklanja samo lokalni CSV izveštaj u skladu sa retention pravilima.</p>
+
+<hr>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li><strong>Projektovanje:</strong> za svaki poslovno važan servis dokumentovati zavisnosti od vCenter-a, ESXi hosta, klastera, datastore-a, VMkernel mreže, fizičke mreže, DNS-a, NTP-a, syslog-a i backup platforme. Alarm bez poznate servisne zavisnosti često vodi pogrešnoj eskalaciji.</li>
+
+  <li><strong>Standardizacija:</strong> definisati standardne alarmne pragove, ali dozvoliti dokumentovane izuzetke za specifične workload-e. Svaki izuzetak mora imati vlasnika, razlog, datum revizije i dokaz da ne prikriva rizik.</li>
+
+  <li><strong>Redundansa:</strong> centralni syslog ne sme biti jedina nezaštićena tačka. Pratiti njegovu dostupnost, disk kapacitet, ingestion rate, queue stanje i poslednju primljenu poruku sa svakog ESXi hosta.</li>
+
+  <li><strong>Kapacitet:</strong> dnevno pratiti rast vCenter particija, datastore slobodan prostor i centralni log kapacitet. Reakcija se ne zasniva samo na procentu, već na apsolutnom prostoru, brzini rasta i vremenu potrebnom za proširenje.</li>
+
+  <li><strong>Bezbednost:</strong> read-only monitoring naloge odvojiti od privilegovanih naloga za korektivne akcije. SSH pristup uključivati vremenski ograničeno. Support bundle fajlove tretirati kao poverljive infrastrukturne podatke.</li>
+
+  <li><strong>Monitoring:</strong> kombinovati dostupnost, performanse, kapacitet, događaje, alarme i kontinuitet logovanja. Zeleni health status nije dovoljan ako nema svežih logova ili aplikacionog nadzora.</li>
+
+  <li><strong>Alerting:</strong> svaki alarm mora imati warning i critical kriterijum, minimalno trajanje, vlasnika, kanal obaveštavanja, runbook i uslov zatvaranja. Meriti broj lažnih alarma, prosečno vreme potvrde i prosečno vreme oporavka.</li>
+
+  <li><strong>Dokumentovanje:</strong> za incident sačuvati simptom, pogođene objekte, vremensku liniju, poslednje promene, događaje, metrike, relevantne log poruke, hipoteze, korektivne akcije i dokaz oporavka.</li>
+
+  <li><strong>Upravljanje promenama:</strong> promena syslog, alarma, retention-a ili nivoa logovanja mora imati početno stanje, pilot objekat, očekivani rezultat, monitoring tokom promene i rollback.</li>
+
+  <li><strong>Testiranje:</strong> najmanje kvartalno izvršiti end-to-end test: generisati marker, potvrditi lokalni zapis, udaljeni prijem, pretragu, alarmiranje i retention. Test koji proverava samo konfiguraciono polje nije dovoljan.</li>
+
+  <li><strong>Održavanje i patching:</strong> posle nadogradnje proveriti promene formata logova, lokacija, parsera, SIEM pravila i PowerCLI kompatibilnosti. Posebno validirati da se svi hostovi ponovo pojavljuju u centralnoj pretrazi.</li>
+
+  <li><strong>Backup:</strong> backup vCenter Appliance-a proveravati kroz uspešan status i periodičan restore test. Backup konfiguracije syslog ili SIEM platforme mora obuhvatiti parsere, izvore, pravila, dashboard-e i retention politiku.</li>
+
+  <li><strong>Disaster recovery:</strong> dokumentovati kako se incident analizira ako vCenter nije dostupan. Administrator mora znati kako direktno pristupa ESXi hostu, lokalnim logovima, centralnom syslog-u i out-of-band platformi.</li>
+
+  <li><strong>Automatizacija:</strong> automatizovati čitanje i poređenje konfiguracije pre automatizovanog menjanja. Skripta mora prikazati greške po objektu i nikada ne sme predstavljati delimičan rezultat kao potpun uspeh.</li>
+
+  <li><strong>Audit:</strong> najmanje mesečno pregledati ko je menjao alarmne definicije, syslog odredišta, nivoe logovanja i prava pristupa. Neuspešne prijave i prekid log toka tretirati kao bezbednosno relevantne događaje.</li>
+
+  <li><strong>Periodična provera oporavka:</strong> posle svakog incidenta proveriti da li se alarm resetovao, da li su metrike normalizovane, da li logovi ponovo stižu i da li se isti obrazac ponavlja tokom definisanog posmatračkog perioda.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Administrator je uspešno savladao lekciju ako može samostalno da:</p>
+
+<ul>
+  <li>projektuje monitoring tok koji obuhvata vCenter, ESXi, VM, mrežu, storage i centralni syslog;</li>
+  <li>napravi i sačuva proverljivo početno stanje infrastrukture;</li>
+  <li>pronađe i protumači aktivne alarme, događaje i zadatke bez nekritičkog resetovanja;</li>
+  <li>ograniči PowerCLI upit na odgovarajući objekat i vremenski period;</li>
+  <li>poveže aplikacioni simptom sa vSphere metrikama i administrativnim promenama;</li>
+  <li>izabere odgovarajući ESXi ili vCenter log prema toku procesa;</li>
+  <li>pronađe <code>vmkernel.log</code>, <code>hostd.log</code>, <code>vpxa.log</code>, <code>vobd.log</code>, <code>vmware.log</code> i <code>vpxd.log</code>;</li>
+  <li>objasni nalaz u logu u odnosu na vreme, objekat, događaj i metriku;</li>
+  <li>konfiguriše i validira udaljeni ESXi syslog;</li>
+  <li>generiše bezbedan syslog marker i potvrdi end-to-end prijem;</li>
+  <li>dijagnostikuje pogrešan syslog protokol, port, firewall, DNS ili TLS zavisnost;</li>
+  <li>razdvoji lokalno generisanje loga od udaljenog transporta i prijema;</li>
+  <li>sistematično istraži host u <code>Disconnected</code> stanju bez ugrožavanja aktivnih VM-ova;</li>
+  <li>razlikuje simptom, neposredni uzrok, osnovni uzrok, posledicu, privremenu meru i trajnu korekciju;</li>
+  <li>pre korektivne akcije sačuva relevantne događaje, metrike i logove;</li>
+  <li>izabere najmanje invazivnu korektivnu akciju;</li>
+  <li>validira oporavak kroz više nezavisnih izvora podataka;</li>
+  <li>prikupi ESXi i vCenter support bundle bez nepotrebnog opterećenja infrastrukture;</li>
+  <li>proveri slobodan prostor, veličinu, sadržaj i integritet support bundle-a;</li>
+  <li>bezbedno čuva, prenosi i uklanja dijagnostičke pakete;</li>
+  <li>automatizuje read-only proveru syslog konfiguracije na više hostova;</li>
+  <li>prepozna delimičan rezultat skripte i ne predstavi ga kao potpun uspeh;</li>
+  <li>dokumentuje incident, izvršenu promenu, rollback i naučene lekcije;</li>
+  <li>proveri da monitoring proces radi od generisanja događaja do prijema alarma i čuvanja dokaza.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Operativno zdravlje VMware infrastrukture ne može se proceniti iz jednog grafikona, jednog alarma ili jedne log poruke. Administrator mora da poveže korisnički simptom sa stanjem virtuelne mašine, hosta, mreže, storage-a i upravljačkih servisa, a zatim da izgradi vremensku liniju zasnovanu na dokazima.</p>
+
+<p>Najveći produkcioni rizik nije samo kvar komponente. Jednako su opasni monitoring koji ne prijavljuje prekid, alarmi koje više niko ozbiljno ne čita, lokalni logovi koji nestanu posle restarta i korektivna akcija koja se izvrši pre nego što je sačuvano stanje incidenta.</p>
+
+<p>Posle ove lekcije administrator treba da bude sposoban da uspostavi početno stanje, proveri centralno i lokalno logovanje, pronađe relevantne događaje i metrike, izoluje pogođeni sloj, formira proverljivu hipotezu i sprovede najmanje invazivan oporavak. Njegova odgovornost nije da što pre ukloni upozorenje iz konzole, već da zaštiti dostupnost sistema, sačuva dokaze, potvrdi osnovni uzrok i spreči ponavljanje incidenta.</p>
+
+<p>Zreo monitoring proces završava se tek kada je dokazano da se sistem oporavio, da se podaci ponovo prikupljaju, da alarmni i log tok rade i da su korektivne mere dokumentovane i proverljive.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Monitoring and Performance dokumentacija za monitoring performansi, događaje i alarme, zvaničnim administrativnim vodičima za ESXi i vCenter Server Appliance logove, centralizovani syslog i support bundle prikupljanje, relevantnim Broadcom Knowledge Base člancima o lokacijama logova, prekidu udaljenog logovanja, popunjenim log i ramdisk lokacijama, blokiranju management i HA servisa, kao i aktuelnoj VCF PowerCLI i ESXCLI referenci.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-36-backup-i-restore.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-38-troubleshooting.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

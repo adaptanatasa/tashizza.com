@@ -1,0 +1,594 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-44-logovi-dogadjaji-i-audit-trag.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>CI/CD sa Tanzu platformom – automatizacija build, test i deploy procesa | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="CI/CD sa VMware Tanzu platformom omogućava automatizaciju build, test i deploy procesa korišćenjem modernih DevOps alata i Kubernetes okruženja.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, CI/CD, Continuous Integration, Continuous Delivery, Tekton, Jenkins, GitLab CI, GitHub Actions, DevOps, TKG, cloud native, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-44-logovi-dogadjaji-i-audit-trag.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="CI/CD sa Tanzu platformom – automatizacija build, test i deploy procesa">
+
+  <meta property="og:description"
+        content="Trideset četvrta lekcija VMware & Tanzu tutorijala – automatizacija razvoja, testiranja i isporuke aplikacija kroz CI/CD procese u Kubernetes okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-44-logovi-dogadjaji-i-audit-trag.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-44-logovi.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="CI/CD sa Tanzu platformom – automatizacija build, test i deploy procesa">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-44-logovi.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-44-logovi.png"
+           alt="CI/CD sa Tanzu platformom – automatizacija build, test i deploy procesa">
+
+    </a>
+
+<div class="page-subtitle">
+  XI. Observability, operativni rad i troubleshooting
+</div>
+
+<div class="page-subtitle">
+  44. Logovi, događaji i audit trag – korelacija kroz vSphere, Supervisor, VKS i aplikaciju
+</div>
+
+<h3>Zašto jedan incident ostavlja trag u više sistema</h3>
+
+<p>U Tanzu okruženju korisnički zahtev ne prolazi kroz jednu komponentu. Promena VKS klastera može početi prijavom u vSphere Client ili pozivom API-ja, nastaviti se kroz vCenter Server i Workload Control Plane, izazvati usaglašavanje Cluster API kontrolera, promene virtuelnih mašina na ESXi hostovima i, konačno, reakcije Kubernetes kontrolera u workload klasteru. Aplikativni zahtev prolazi drugim putem: load balancer ili Ingress, Service, Pod i proces u kontejneru. Zbog toga nijedan pojedinačni log nije „cela istina”. Administrator rekonstruiše tok kombinovanjem vremena, identiteta, objekta, operacije, statusa, izvorišne adrese i korelacionih identifikatora.</p>
+
+<p>Prethodna lekcija postavila je baznu liniju metrika, alarma i kapaciteta. Ova lekcija dodaje dokazni sloj: <strong>šta se dogodilo, ko ili šta je pokrenulo promenu, kojim putem je zahtev prošao i gde je prvi put odstupio od očekivanog ponašanja</strong>. Metrika pokazuje da je stopa grešaka porasla; događaj pokazuje da scheduler ne može da postavi Pod; komponentni log objašnjava neuspeh; audit trag pokazuje koji identitet je neposredno pre incidenta promenio objekat.</p>
+
+<p><strong>Terminološka i verzijska napomena.</strong> U aktuelnoj VMware Cloud Foundation 9 dokumentaciji koristi se naziv <em>vSphere Kubernetes Service</em> (VKS). U vSphere 8 dokumentaciji, starijim komandama, putanjama logova i Knowledge Base člancima još se pojavljuju <em>Tanzu Kubernetes Grid Service</em>, TKG Service i TKGS. To nije automatski dokaz da je postupak zastareo, ali administrator mora proveriti izdanje vCenter Server-a, Supervisor-a, VKS servisa i Kubernetes release konkretne instalacije. Nazivi resursa, dostupnost ekrana, način preuzimanja support bundle-a i integracija sa centralnim log sistemom mogu se razlikovati.</p>
+
+<h3>Log, Kubernetes događaj, vSphere događaj i audit zapis nisu isto</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Izvor dokaza</th>
+      <th>Šta odgovara</th>
+      <th>Ograničenje</th>
+      <th>Tipična upotreba</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Komponentni ili aplikativni log</td>
+      <td>Kako je proces obradio zahtev i koju je grešku prijavio</td>
+      <td>Format i nivo detalja zavise od komponente; rotacija može brzo ukloniti dokaz</td>
+      <td>Uzrok greške, stack trace, timeout, zavisnost, restart</td>
+    </tr>
+    <tr>
+      <td>Kubernetes <code>Event</code></td>
+      <td>Šta je kontroler, scheduler ili kubelet primetio na objektu</td>
+      <td>Kratkotrajna operativna evidencija; ponovljeni događaji se agregiraju i nisu trajan audit</td>
+      <td><code>FailedScheduling</code>, <code>FailedMount</code>, image pull, probe i eviction problemi</td>
+    </tr>
+    <tr>
+      <td>vSphere Task/Event</td>
+      <td>Koja je infrastrukturna operacija pokrenuta, nad kojim objektom i sa kojim ishodom</td>
+      <td>Sažet prikaz; detaljan uzrok i izvor klijenta često zahtevaju vCenter logove</td>
+      <td>VM operacije, reconfiguration, login, permission i lifecycle događaji</td>
+    </tr>
+    <tr>
+      <td>Kubernetes API audit događaj</td>
+      <td>Ko je pozvao API, koju URI putanju i verb, nad kojim objektom, iz koje adrese i sa kojim statusom</td>
+      <td>Postoji samo ako je audit omogućen i pravilno usmeren; nivo politike određuje sadržaj</td>
+      <td>Bezbednosna istraga, dokaz promene i analiza RBAC/admission odluke</td>
+    </tr>
+    <tr>
+      <td>Centralizovani zapis</td>
+      <td>Korelacija i pretraga više izvora kroz zajednički vremenski opseg</td>
+      <td>Kvalitet zavisi od parsiranja, vremenske sinhronizacije, pokrivenosti i retencije</td>
+      <td>Incident response, trendovi, detekcije i dokazivanje usklađenosti</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Kubernetes audit događaj iz API grupe <code>audit.k8s.io</code> nije isto što i objekat <code>Event</code> iz <code>events.k8s.io</code> ili core API grupe. Audit je bezbednosno relevantan zapis API zahteva; običan Event je obaveštenje kontrolera o stanju resursa. Komanda <code>kubectl get events</code> zato ne može odgovoriti ko je promenio Deployment ako odgovarajući Event nije emitovan, dok audit zapis može sadržati korisnika, grupe, <code>sourceIPs</code>, <code>userAgent</code>, <code>verb</code>, <code>requestURI</code>, <code>objectRef</code>, odgovor i jedinstveni <code>auditID</code>.</p>
+
+<h3>Mapa izvora kroz vSphere, Supervisor, VKS i aplikaciju</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Primarni izvori</th>
+      <th>Šta se traži</th>
+      <th>Način pristupa</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server</td>
+      <td>Tasks and Events, <code>vpxd.log</code>, <code>vpxd-profiler.log</code>, <code>wcpsvc.log</code></td>
+      <td>Korisnik, MoID, task, session/opID, ClientIP, WCP lifecycle i API greške</td>
+      <td>vSphere Client, VCSA shell uz odobren pristup ili vCenter support bundle</td>
+    </tr>
+    <tr>
+      <td>ESXi</td>
+      <td><code>hostd.log</code>, <code>vpxa.log</code>, <code>vmkernel.log</code>, <code>vmkwarning.log</code></td>
+      <td>Host agent, komunikacija sa vCenter-om, VM operacije, storage i mrežni simptomi</td>
+      <td>Centralni syslog/support bundle; ESXi Shell samo kada je odobren</td>
+    </tr>
+    <tr>
+      <td>Supervisor i VKS servis</td>
+      <td><code>wcpsvc.log</code>, VKS servisni logovi, Supervisor support bundle, kontrolerski Pod logovi</td>
+      <td>Namespace, cluster lifecycle, reconciliation, Content Library, VM class, mreža i storage</td>
+      <td>vSphere Client, odgovarajući Kubernetes kontekst i support bundle</td>
+    </tr>
+    <tr>
+      <td>VKS control plane i node</td>
+      <td>API audit, API server, scheduler, controller manager, kubelet i container runtime logovi</td>
+      <td>API odluka, scheduling, reconciliation, node i runtime problem</td>
+      <td><code>kubectl</code>, centralni log sistem i podržani cluster log bundle</td>
+    </tr>
+    <tr>
+      <td>Aplikacija</td>
+      <td><code>stdout</code>/<code>stderr</code>, strukturisani aplikativni, Ingress i service mesh logovi</td>
+      <td>Request/trace ID, status, latency, tenant, verzija i zavisnost</td>
+      <td><code>kubectl logs</code> za kratku dijagnostiku; agent/forwarder za trajno čuvanje</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Na vCenter Server Appliance-u glavni vCenter log je <code>/var/log/vmware/vpxd/vpxd.log</code>; <code>/var/log/vmware/vpxd/vpxd-profiler.log</code> pomaže pri povezivanju sesije sa izvorišnom adresom, dok je <code>/var/log/vmware/wcp/wcpsvc.log</code> primarni log Workload Control Plane servisa. Putanje i sadržaj proveravaju se prema tačnoj verziji. Produkciona praksa je preuzimanje support bundle-a ili centralna kolekcija, a ne nekontrolisano uključivanje SSH-a i ručno menjanje fajlova na appliance-u.</p>
+
+<p>Za VKS servis Broadcom dokumentacija za novija izdanja navodi servisne logove pod <code>/var/log/tkg-svs/</code> i WCP kontrolerske logove pod <code>/var/log/vmware/wcp/</code>. Naziv direktorijuma <code>tkg-svs</code> zadržava istorijski TKG naziv i u okruženju koje se korisnički predstavlja kao VKS. Ne treba zaključivati lokaciju samo iz marketinškog naziva proizvoda.</p>
+
+<h3>Vreme, identitet objekta i korelacioni ključevi</h3>
+
+<p>Korelacija počinje normalizacijom vremena. vCenter, ESXi, Supervisor node-ovi, VKS node-ovi, centralni log sistem i klijentski sistemi moraju koristiti pouzdan NTP. U incidentnom zapisu uvek se čuvaju vremenska zona i precizan interval, na primer <code>2026-07-14T08:12:00Z–08:18:00Z</code>, a ne samo „oko deset sati”. Lokalno vreme interfejsa može se razlikovati od UTC zapisa u logu. Clock skew od nekoliko minuta može promeniti prividni redosled uzroka i posledice.</p>
+
+<p>Ime objekta nije dovoljno. Pod se ponovo kreira pod drugim imenom; VM može biti preimenovana; isti namespace i naziv klastera mogu postojati u različitim okruženjima. Kada su dostupni, čuvaju se vSphere Managed Object ID, instance UUID, Kubernetes <code>metadata.uid</code>, namespace, resourceVersion, container ID, image digest, node i cluster identitet. Za HTTP tok prenosi se <code>traceparent</code> ili organizacioni request ID kroz proxy i aplikaciju; lozinka, bearer token, session cookie i sadržaj tajne nikada se ne koriste kao korelacioni podatak.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pitanje</th>
+      <th>Minimalni ključ</th>
+      <th>Dodatni dokaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ko je promenio Kubernetes objekat?</td>
+      <td>Vreme, cluster, namespace, UID, verb i audit <code>user.username</code></td>
+      <td><code>sourceIPs</code>, <code>userAgent</code>, auditID, response code i admission annotations</td>
+    </tr>
+    <tr>
+      <td>Ko je pokrenuo vSphere task?</td>
+      <td>Task vreme, korisnik, objekat i MoID</td>
+      <td>Session ID, opID i ClientIP iz <code>vpxd</code>/<code>vpxd-profiler</code> zapisa</td>
+    </tr>
+    <tr>
+      <td>Zašto Pod nije postao Ready?</td>
+      <td>Pod UID, node, container i poslednji Event</td>
+      <td>Kubelet/runtime log, <code>kubectl logs --previous</code>, probe status i aplikativni request ID</td>
+    </tr>
+    <tr>
+      <td>Zašto VKS klaster ne napreduje?</td>
+      <td>Cluster UID, namespace, uslovi i vreme poslednje promene</td>
+      <td>Cluster API/VKS kontroler, WCP, vCenter task i VM/network/storage događaji</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Kubernetes logovi i događaji: bezbedna read-only dijagnostika</h3>
+
+<p>Sledeće komande izvršavaju se sa administratorske radne stanice i odgovarajućim kubeconfig kontekstom. One čitaju stanje, ali logovi mogu sadržati lične ili poverljive podatke, pa izlaz ne treba nekontrolisano kopirati u tiket. Pre prve komande proverava se kontekst i ograničava vremenski prozor.</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get nodes -o wide
+
+# Događaji za namespace, hronološki po poslednjem opažanju
+kubectl get events -n payments --sort-by='.metadata.creationTimestamp'
+
+# Potpun opis problematičnog poda i događaji povezani baš sa njim
+kubectl describe pod payments-api-7d8f6b7c9f-k2m4n -n payments
+kubectl get events -n payments \
+  --field-selector involvedObject.kind=Pod,involvedObject.name=payments-api-7d8f6b7c9f-k2m4n
+
+# Log konkretnog kontejnera u ograničenom prozoru
+kubectl logs pod/payments-api-7d8f6b7c9f-k2m4n -n payments \
+  -c application --since=20m --timestamps --tail=500
+
+# Prethodna instanca kontejnera posle restarta
+kubectl logs pod/payments-api-7d8f6b7c9f-k2m4n -n payments \
+  -c application --previous --timestamps --tail=500</code></pre>
+
+<p><code>kubectl logs --previous</code> je naročito važan kod <code>CrashLoopBackOff</code>, jer trenutni kontejner može još biti prazan dok je prethodna instanca ostavila uzrok pada. Ako Pod ima init ili sidecar kontejnere, uvek se navodi <code>-c</code>; podrazumevani izbor može prikazati pogrešan tok. Opcija <code>-f</code> služi kratkotrajnom praćenju, ali nije centralizacija niti dokaz retencije.</p>
+
+<p>Kubernetes događaji su efemerni i server može agregirati ponavljanje kroz polja kao što su count, first/last observed time ili series, zavisno od API prikaza. Zato se za produkcioni incident relevantni događaji izvoze ili centralizuju pre isteka retencije. Povećanje retencije bez proračuna opterećenja API servera i etcd-a nije bezazlena korekcija.</p>
+
+<h3>Audit trag Kubernetes API-ja</h3>
+
+<p>Audit lifecycle može emitovati faze <code>RequestReceived</code>, <code>ResponseStarted</code>, <code>ResponseComplete</code> i <code>Panic</code>. Politika određuje nivo zapisa: <code>None</code>, <code>Metadata</code>, <code>Request</code> ili <code>RequestResponse</code>. Pravila se obrađuju redom i primenjuje se prvo koje odgovara zahtevu. Široko uključivanje <code>RequestResponse</code> može beležiti tela zahteva i odgovora, povećati I/O i izložiti osetljive podatke. Preporučena politika daje dovoljno metapodataka za odgovornost, detaljnije nivoe ograničava na odabrane resurse i eksplicitno izuzima ili spušta nivo za vrlo učestale i osetljive zahteve.</p>
+
+<pre><code class="language-yaml">apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+omitManagedFields: true
+rules:
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+  - level: Metadata</code></pre>
+
+<p>Ovo je <strong>obrazac za dizajn politike, a ne manifest koji se slepo primenjuje na upravljani VKS control plane</strong>. Način konfiguracije audit politike i backend-a zavisi od podržanog VKS izdanja i modela upravljanja. Direktna izmena statičkih Pod manifesta ili parametara API servera na vendor-managed control plane VM-ovima može biti nepodržana i izgubljena pri reconciliation-u ili nadogradnji. Koristi se dokumentovani mehanizam konkretnog izdanja ili se otvara zahtev podršci.</p>
+
+<pre><code class="language-json">{
+  "kind": "Event",
+  "apiVersion": "audit.k8s.io/v1",
+  "level": "Metadata",
+  "auditID": "bba15b8b-9aa8-4bd0-8d37-2f4f0fba390c",
+  "stage": "ResponseComplete",
+  "requestURI": "/apis/apps/v1/namespaces/payments/deployments/payments-api",
+  "verb": "patch",
+  "user": {
+    "username": "system:serviceaccount:delivery:deployer",
+    "groups": ["system:serviceaccounts", "system:authenticated"]
+  },
+  "sourceIPs": ["10.20.30.41"],
+  "userAgent": "kubectl/v1.xx",
+  "objectRef": {
+    "resource": "deployments",
+    "namespace": "payments",
+    "name": "payments-api",
+    "uid": "5ee2d6af-6c29-49ad-a35e-874a0fdcbde9"
+  },
+  "responseStatus": {"code": 200}
+}</code></pre>
+
+<p>Audit zapis dokazuje identitet koji je Kubernetes API autentifikovao, ne nužno fizičku osobu. Ako je zahtev poslao CI service account, dalji lanac odgovornosti mora doći iz CI/CD evidencije: pipeline run, commit, odobrenje i federisani identitet. Impersonation, proxy i delegirani tokeni zahtevaju pregled dodatnih polja i upstream sistema. Uspešan HTTP kod potvrđuje API ishod, ali ne dokazuje da je Deployment kasnije postao raspoloživ.</p>
+
+<h3>vSphere Tasks, Events i audit korelacija</h3>
+
+<p>U vSphere Client-u prvo se beleže task naziv, status, initiator, objekat, početak i završetak. Zatim se u <code>vpxd.log</code> pretražuje mali vremenski opseg i odgovarajući MoID ili metoda, a session/opID se povezuje sa <code>vpxd-profiler.log</code> zapisom radi ClientIP-a. Broadcom KB postupci naglašavaju da task initiator može biti servisni nalog, pa izvorišna adresa i delegacioni lanac pomažu da se razlikuju vSphere Client, automatizacija i API integracija.</p>
+
+<pre><code class="language-bash"># Read-only primer na VCSA shell-u; zahtevaju se odobren pristup i tiket incidenta.
+# Vreme i MoID moraju prethodno biti poznati iz vSphere Client-a.
+cd /var/log/vmware/vpxd
+zgrep -i 'vm-1234' vpxd.log* | grep -i 'vim.VirtualMachine.reconfigure'
+zgrep 'SESSION-ID-IZ-PRETHODNOG-NALAZA' vpxd-profiler.log* | grep 'ClientIP'</code></pre>
+
+<p>Komande ne menjaju stanje, ali pristup VCSA shell-u je privilegovan. Ne koristi se širok <code>grep</code> nad svim logovima bez vremenskog i objektnog filtera, jer proizvodi veliku količinu podataka i lako vodi ka pogrešnoj korelaciji. Ako su logovi rotirani ili je appliance u degradiranom stanju, preferira se support bundle. Nikada se radi „oslobađanja prostora” ručno ne brišu aktivni ili rotirani VMware logovi; uzrok popunjenosti i podržani retention postupak proveravaju se dokumentacijom i, po potrebi, podrškom.</p>
+
+<h3>Centralizacija, retencija i bezbednost log pipeline-a</h3>
+
+<p><code>kubectl logs</code> je alat za lokalnu dijagnostiku, ne strategija čuvanja. Kada Pod ili node nestane, lokalni dokaz može nestati sa njim. Produkciona arhitektura koristi node-level agent ili podržani paket za prosleđivanje, centralni prijem, parsiranje, indeksiranje, kontrolu pristupa i arhivu. VKS Standard Packages mogu, u zavisnosti od izdanja i kompatibilne verzije repozitorijuma, obezbediti Fluent Bit paket. Instalacija paketa ne znači da su svi Supervisor, vCenter, ESXi, audit i aplikativni izvori automatski pokriveni.</p>
+
+<ul>
+  <li><strong>Pokrivenost:</strong> vodi se matrica izvora, vlasnika, formata, transporta, očekivanog volumena i poslednjeg potvrđenog prijema.</li>
+  <li><strong>TLS i identitet:</strong> forwarder proverava sertifikat odredišta i koristi namenski identitet sa minimalnim pravima; ne prihvata se trajni insecure režim.</li>
+  <li><strong>Buffer i backpressure:</strong> određuje se šta se dešava kada je odredište nedostupno, koliki je disk/memorijski buffer i da li agent može ugroziti node.</li>
+  <li><strong>Retencija:</strong> operativni, bezbednosni i regulatorni zapisi mogu imati različite rokove, pristup i immutable arhivu.</li>
+  <li><strong>Redakcija:</strong> tajne se sprečavaju na izvoru; naknadno maskiranje nije zamena za bezbedno logovanje.</li>
+  <li><strong>Integritet:</strong> pristup audit zapisima je uži od običnog aplikativnog pregleda, a izmene konfiguracije kolektora se same auditiraju.</li>
+</ul>
+
+<p>U VCF 9 okruženjima Broadcom dokumentuje audit događaje i integraciju sa VCF Operations for Logs; naziv i licencna dostupnost centralne platforme razlikuju se od starijih VMware Aria Operations for Logs/vRealize Log Insight izdanja. Lekcija zato ne pretpostavlja da je centralni proizvod instaliran. Isti principi važe za odobreni SIEM ili drugi backend, ali konkretni parseri, sadržajni paketi, licence i podržane integracije proveravaju se za lokalno izdanje.</p>
+
+<h3>Strukturisano aplikativno logovanje</h3>
+
+<p>Aplikacija u kontejneru treba da piše na <code>stdout</code> i <code>stderr</code>, osim kada vendor izričito zahteva drugi podržani obrazac. Jedan događaj treba da bude jedan strukturisani zapis sa UTC vremenom, severity vrednošću, servisom, verzijom, okruženjem, request/trace ID-em, statusom i trajanjem. Ne beleže se lozinke, tokeni, session cookie, privatni ključevi, kompletni authorization header-i niti neredigovani lični podaci.</p>
+
+<pre><code class="language-json">{
+  "timestamp": "2026-07-14T08:14:23.418Z",
+  "severity": "ERROR",
+  "service": "payments-api",
+  "version": "2.7.4",
+  "cluster": "vks-prod-01",
+  "namespace": "payments",
+  "pod": "payments-api-7d8f6b7c9f-k2m4n",
+  "trace_id": "4d7a9d6d59db4b0e8f55e4e2d1d8a741",
+  "operation": "authorizePayment",
+  "status_code": 503,
+  "duration_ms": 3012,
+  "dependency": "risk-engine",
+  "message": "upstream timeout"
+}</code></pre>
+
+<p>Visoka kardinalnost, kao što su nekontrolisani user ID, pune URL vrednosti ili nasumični identifikatori kao indeksirana polja, može naglo povećati cenu i usporiti pretragu. Takve vrednosti se po potrebi čuvaju kao neindeksirani sadržaj ili kroz tragove, prema pravilima platforme. Debug nivo se uključuje vremenski ograničeno, uz change zapis i plan vraćanja, jer povećava volumen i rizik od otkrivanja podataka.</p>
+
+<h3>Sistematičan troubleshooting tok</h3>
+
+<ol>
+  <li><strong>Definiši simptom, obim i posledicu.</strong> Navedi pogođene korisnike, klastere, namespace-ove, verzije i početak problema. Ne pretpostavljaj da poslednja vidljiva greška predstavlja osnovni uzrok.</li>
+  <li><strong>Sačuvaj dokaze pre promene.</strong> Zabeleži kontekst, vreme, događaje, alarme, metrike, logove, task-ove, UID/MoID i poslednje promene. Ne restartuj kontroler samo da bi „video da li pomaže”.</li>
+  <li><strong>Pronađi najviši zdrav i prvi nezdrav sloj.</strong> Proveravaj od korisničkog simptoma ka Ingress-u, aplikaciji, Service-u, Pod-u, node-u, VKS kontrolerima, Supervisor-u i vSphere infrastrukturi, ili obrnutim smerom kada incident počinje infrastrukturnim alarmom.</li>
+  <li><strong>Postavi jednu proverljivu hipotezu.</strong> Na primer: rollout je pokrenut neodobrenim service account-om i novi image ne prolazi readiness probe.</li>
+  <li><strong>Koreliraj nezavisne izvore.</strong> Audit potvrđuje patch i identitet; Deployment generation i ReplicaSet potvrđuju promenu; Event potvrđuje probe neuspeh; prethodni container log daje aplikativni uzrok.</li>
+  <li><strong>Primeni najmanje invazivnu korekciju.</strong> Privremeno zaobilazno rešenje jasno se odvaja od trajne mere. Svaka state-changing akcija ima vlasnika i rollback.</li>
+  <li><strong>Validiraj oporavak i odsustvo regresije.</strong> Ne završavaj incident kada alarm utihne; proveri funkcionalni zahtev, rollout, greške, latency i log pipeline.</li>
+  <li><strong>Dokumentuj osnovni uzrok.</strong> Odvoji neposredni tehnički uzrok, sistemski osnovni uzrok, doprinosne faktore i preventivne akcije.</li>
+</ol>
+
+<h3>Integrisani praktikum: rekonstrukcija neodobrenog rollout-a i neuspešne aplikacije</h3>
+
+<p><strong>Poslovni kontekst.</strong> Posle promene u namespace-u <code>payments</code> aplikacija vraća HTTP 503. vSphere infrastruktura nema aktivan kritični alarm, ali novi Pod-ovi se restartuju. Tim mora dokazati ko je promenio Deployment, zašto rollout nije uspeo i da li je uzrok u aplikaciji, VKS-u, Supervisor-u ili vSphere infrastrukturi.</p>
+
+<p><strong>Topologija.</strong> vCenter <code>vcsa01.example.internal</code> upravlja Supervisor-om i klasterom <code>vks-prod-01</code>. Aplikacija <code>payments-api</code> radi u namespace-u <code>payments</code>. Centralni log sistem prima vCenter, VKS audit i aplikativne zapise. Ako laboratorija nema centralni sistem, koriste se lokalni izvori, ali se ograničenje retencije beleži kao nalaz.</p>
+
+<p><strong>Preduslovi i prava.</strong> Potrebni su read-only pristup vSphere Tasks and Events, Kubernetes prava <code>get</code>, <code>list</code> i <code>watch</code> za workload objekte i događaje, pravo <code>pods/log</code>, kao i odobren pristup audit pretrazi. VCSA shell nije preduslov; koristi se samo ako centralni zapis i support bundle nisu dovoljni. Radna stanica ima <code>kubectl</code>, sinhronizovano vreme i odgovarajući kubeconfig.</p>
+
+<p><strong>Rizik.</strong> Faze 1–5 su read-only. Rollback u fazi 6 menja produkciono stanje i u realnom okruženju zahteva odobren change/incident postupak. Bezbedna laboratorijska simulacija koristi zaseban namespace i namerno pogrešan image tag umesto rušenja stvarne aplikacije.</p>
+
+<h3>Vežba 1 – utvrđivanje vremenskog okvira i obima</h3>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get deployment payments-api -n payments -o wide
+kubectl rollout history deployment/payments-api -n payments
+kubectl get replicasets,pods -n payments -l app=payments-api -o wide
+kubectl get events -n payments --sort-by='.metadata.creationTimestamp'</code></pre>
+
+<p><strong>Očekivani rezultat.</strong> Kontekst je <code>vks-prod-01</code>; prikazana je nova ReplicaSet generacija, Pod restartuje ili nije Ready, a događaji vremenski određuju početak rollout-a i probe/runtime simptom. Sačuvaj Deployment UID, revision, image digest/tag, Pod UID, node i interval sa najmanje pet minuta margine pre i posle prve greške.</p>
+
+<p><strong>Troubleshooting grana.</strong> Ako nema događaja, ne zaključuj da incident nije postojao: proveri centralnu kopiju i retenciju. Ako je kontekst pogrešan, prekini rad bez promene stanja. Ako je problem prisutan u više namespace-ova ili node-ova, proširi obim pre aplikativne analize.</p>
+
+<h3>Vežba 2 – aplikativni dokaz i prethodna instanca kontejnera</h3>
+
+<pre><code class="language-bash">POD_NAME='payments-api-7d8f6b7c9f-k2m4n'
+
+kubectl get pod "$POD_NAME" -n payments \
+  -o jsonpath='{range .status.containerStatuses[*]}{.name}{" restart="}{.restartCount}{" reason="}{.state.waiting.reason}{"\n"}{end}'
+
+kubectl logs "$POD_NAME" -n payments -c application \
+  --previous --since=30m --timestamps --tail=1000
+
+kubectl describe pod "$POD_NAME" -n payments</code></pre>
+
+<p><strong>Validacija.</strong> Log prethodne instance prikazuje prvi fatalni uzrok, na primer nedostajuću konfiguraciju ili timeout zavisnosti; <code>describe</code> potvrđuje image, probe, restart reason i događaje. Shell promenljiva je laboratorijska pogodnost i mora se zameniti stvarnim imenom. Komande su read-only.</p>
+
+<p><strong>Moguće greške.</strong> Poruka <code>previous terminated container not found</code> znači da nema prethodne instance ili da je dokaz nestao, ne da je aplikacija zdrava. <code>Forbidden</code> ukazuje na nedostajuće <code>pods/log</code> pravo; ne dodeljuj <code>cluster-admin</code>, već traži namensko pravo. Za više kontejnera potvrdi pravo ime pomoću <code>kubectl get pod ... -o jsonpath</code>.</p>
+
+<h3>Vežba 3 – audit potvrda identiteta i promene</h3>
+
+<p>U centralnom audit sistemu filtriraj tačan cluster, vremenski opseg, <code>objectRef.namespace=payments</code>, <code>objectRef.name=payments-api</code>, resurs <code>deployments</code> i verb <code>patch</code> ili <code>update</code>. Zabeleži <code>user.username</code>, grupe, <code>sourceIPs</code>, <code>userAgent</code>, auditID, stage i response code. Ako je nivo <code>Metadata</code>, sadržaj patch-a neće postojati; razlika željenog stanja potvrđuje se Git/change evidencijom i rollout istorijom.</p>
+
+<pre><code class="language-none">cluster = vks-prod-01
+time = 2026-07-14T08:07:00Z .. 2026-07-14T08:20:00Z
+objectRef.resource = deployments
+objectRef.namespace = payments
+objectRef.name = payments-api
+verb IN (patch, update)
+stage = ResponseComplete</code></pre>
+
+<p><strong>Očekivani rezultat.</strong> Pronađen je uspešan patch service account-a <code>system:serviceaccount:delivery:deployer</code> neposredno pre nove ReplicaSet revizije. To je neposredni API identitet. Dalje se u delivery sistemu proveravaju pipeline run, inicijator, commit i odobrenje. Ako audit zapis ne postoji, nalaz se vodi kao observability gap: proveravaju se audit konfiguracija, health forwarder-a, buffer, backend ingestion i retention, bez menjanja control plane-a tokom incidenta.</p>
+
+<h3>Vežba 4 – provera VKS, Supervisor i vSphere sloja</h3>
+
+<p>U vSphere Client-u proveri Supervisor i VKS health, relevantne alarme i Tasks and Events za isti interval. Traži VM restart/reconfigure, host problem, storage latency, mrežnu promenu ili lifecycle task. U centralnim logovima filtriraj <code>wcpsvc</code>, VKS/Cluster API kontrolere i vCenter događaje po imenu/UID klastera i vremenu. Ako nema infrastrukturnog odstupanja, taj negativni dokaz sužava incident na rollout/aplikativni sloj; ne dokazuje apsolutno zdravlje cele platforme.</p>
+
+<p><strong>Eskalacija.</strong> Ako je VKS cluster condition nezdrav ili WCP prijavljuje reconciliation grešku, prikuplja se podržani Supervisor/VKS support bundle pre restartovanja servisa. Bundle može sadržati osetljive podatke i deli se samo odobrenim kanalom. Ručno restartovanje vCenter/WCP servisa ili control plane VM-a nije deo ovog praktikuma.</p>
+
+<h3>Vežba 5 – formiranje uzročno-posledičnog lanca</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vreme UTC</th>
+      <th>Izvor</th>
+      <th>Dokaz</th>
+      <th>Tumačenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>08:12:11</td>
+      <td>Kubernetes audit</td>
+      <td>Service account patch-uje Deployment; HTTP 200</td>
+      <td>API je prihvatio promenu</td>
+    </tr>
+    <tr>
+      <td>08:12:13</td>
+      <td>Deployment/ReplicaSet</td>
+      <td>Nastaje nova revision</td>
+      <td>Kontroler sprovodi željeno stanje</td>
+    </tr>
+    <tr>
+      <td>08:13:02</td>
+      <td>Kubernetes Event</td>
+      <td>Readiness probe failed</td>
+      <td>Pod ne ulazi u Service endpoints</td>
+    </tr>
+    <tr>
+      <td>08:13:08</td>
+      <td>Aplikativni log</td>
+      <td>Konfiguracioni ključ nedostaje</td>
+      <td>Neposredni tehnički uzrok</td>
+    </tr>
+    <tr>
+      <td>08:13–08:18</td>
+      <td>vSphere/VKS health</td>
+      <td>Nema relevantnog infrastrukturnog alarma</td>
+      <td>Infrastrukturni uzrok nije potvrđen</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Zaključak dijagnostike.</strong> Simptom je HTTP 503, obim je nova verzija <code>payments-api</code>, neposredni uzrok je neispravna konfiguracija image-a ili Deployment-a, a osnovni uzrok je delivery kontrola koja je dozvolila neodobrenu promenu ili nije proverila obavezni ključ. Privremena mera je povratak na prethodnu dokazano dobru revision; trajne mere su admission/pipeline validacija, vezivanje promene za odobrenje i alarm za audit ili log ingestion prekid.</p>
+
+<h3>Vežba 6 – kontrolisan recovery i rollback</h3>
+
+<p>Pre rollback-a sačuvaj aktuelni Deployment YAML, auditID, revision i incident zapis. Sledeće komande menjaju stanje i izvršavaju se samo uz odobrenje:</p>
+
+<pre><code class="language-bash"># STATE-CHANGING: proveri tačan revision pre izvršavanja.
+kubectl rollout history deployment/payments-api -n payments
+kubectl rollout undo deployment/payments-api -n payments --to-revision=7
+
+# Read-only validacija oporavka
+kubectl rollout status deployment/payments-api -n payments --timeout=5m
+kubectl get pods -n payments -l app=payments-api -o wide
+kubectl get events -n payments --sort-by='.metadata.creationTimestamp'
+kubectl logs deployment/payments-api -n payments -c application \
+  --since=10m --timestamps --tail=300</code></pre>
+
+<p><strong>Očekivani rezultat.</strong> Deployment se vraća na poznatu revision 7, raspoložive replike dostižu željeni broj, readiness prolazi, funkcionalni health/smoke test vraća očekivani rezultat, a stopa 5xx se vraća na baznu liniju. <code>rollout undo</code> vraća pod template revision, ali ne vraća automatski spoljne Secret/ConfigMap, bazu ili migraciju šeme. Ako je incident uključio takve promene, koristi se poseban aplikativni recovery plan.</p>
+
+<p><strong>Rollback laboratorije.</strong> Ako je simulacija rađena u posebnom namespace-u, obriši samo eksplicitno imenovane test objekte nakon izvoza dokaza. Ne koristi wildcard niti brisanje produkcionog namespace-a. Kriterijum završetka je: stanje oporavljeno, dokazni paket sačuvan, osnovni uzrok odvojen od simptoma, privremena i trajna mera imaju vlasnika i rok.</p>
+
+<h3>Tipične greške u tumačenju</h3>
+
+<ul>
+  <li><strong>„Nema Event-a, nije se dogodilo.”</strong> Event je mogao isteći ili biti agregiran; proveravaju se audit i centralni logovi.</li>
+  <li><strong>„API je vratio 200, deploy je uspeo.”</strong> Prihvaćen zahtev nije isto što i uspešan reconciliation, rollout ili funkcionalna usluga.</li>
+  <li><strong>„Poslednja ERROR linija je uzrok.”</strong> Ona može biti posledica ranijeg DNS, storage, RBAC ili konfiguracionog problema.</li>
+  <li><strong>„Service account je krivac.”</strong> To je neposredni identitet; ljudski inicijator i odobrenje traže se u upstream sistemu.</li>
+  <li><strong>„Povećaćemo debug zauvek.”</strong> Time rastu trošak, I/O i rizik curenja podataka; debug mora imati rok i rollback.</li>
+  <li><strong>„Restart je dijagnostika.”</strong> Restart može uništiti dokaz i samo privremeno prikriti kvar; najpre se prikupljaju činjenice.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Održavaj katalog izvora logova sa vlasnikom, verzijom, formatom, retention politikom, klasifikacijom podataka i poslednjim testom prijema.</li>
+  <li>Standardizuj UTC vreme, NTP alarme, cluster/namespace/service/version polja i request/trace ID kroz aplikativni i infrastrukturni sloj.</li>
+  <li>Za kritične izvore uvedi alarm kada forwarder prestane da šalje ili backend prestane da prima podatke; odsustvo loga je samo po sebi signal.</li>
+  <li>Odvoji prava za pregled aplikativnih logova od prava za bezbednosni audit; primeni least privilege i evidentiraj pristup.</li>
+  <li>Redovno testiraj pretragu kroz kontrolisanu benignu promenu: poznat korisnik, vreme, objekat i očekivani zapis u svakom relevantnom sloju.</li>
+  <li>Čuvaj support bundle kao osetljiv dokaz, sa checksum-om, kontrolisanim pristupom i rokom brisanja prema politici.</li>
+  <li>Pri promeni verzije proveri nove nazive proizvoda, putanje logova, podržane pakete, audit mogućnosti i kompatibilnost parsera pre nadogradnje produkcije.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Nakon ove lekcije administrator mora biti sposoban da:</p>
+
+<ul>
+  <li>razlikuje komponentni log, Kubernetes Event, vSphere Task/Event i Kubernetes API audit događaj;</li>
+  <li>izabere primarni dokaz za vCenter, ESXi, Supervisor, VKS control plane, node i aplikaciju;</li>
+  <li>ograniči istragu preciznim UTC intervalom, UID/MoID vrednošću, korisnikom, objektom i korelacionim ID-em;</li>
+  <li>bez promene stanja prikupi Pod logove, prethodni container log, događaje, rollout istoriju i vSphere task podatke;</li>
+  <li>objasni audit nivoe, rizik <code>RequestResponse</code> zapisa i zašto se vendor-managed control plane ne menja nepodržanim postupkom;</li>
+  <li>rekonstruiše lanac od API promene do ReplicaSet-a, Event-a, aplikativne greške i infrastrukturne provere;</li>
+  <li>odvoji simptom, neposredni uzrok, osnovni uzrok, workaround, trajnu korekciju i dokaz oporavka;</li>
+  <li>izvede odobren rollback uz proveru rollout-a, funkcionalnog rezultata, metrika i logova.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Profesionalna dijagnostika Tanzu platforme nije pretraga jedne poruke o grešci, već disciplinovana rekonstrukcija događaja kroz slojeve. vSphere daje infrastrukturne task-ove i operativne tragove, Supervisor i VKS kontroleri objašnjavaju lifecycle i reconciliation, Kubernetes događaji prikazuju opažanja nad resursima, audit beleži API identitet i operaciju, a aplikativni log objašnjava poslovno ponašanje. Tek kada se ti dokazi povežu zajedničkim vremenom, objektom i korelacionim identifikatorom, administrator može razlikovati uzrok od posledice.</p>
+
+<p>Odgovornost administratora nije samo da pronađe grešku, već da sačuva integritet dokaza, zaštiti osetljive podatke, koristi najmanja potrebna prava, izbegne nepodržane promene upravljanih komponenti i potvrdi oporavak merljivim rezultatom. Dobro projektovan log i audit sistem skraćuje incident, ali još važnije — omogućava da organizacija dokaže šta se dogodilo i spreči ponavljanje.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom VMware Cloud Foundation, vSphere, vCenter Server, vSphere Supervisor i VKS administrativna, bezbednosna, audit, log, support bundle i troubleshooting dokumentacija; Broadcom Knowledge Base reference za vCenter logove, task/session korelaciju i izvorišne adrese; zvanična Kubernetes dokumentacija za observability, logging arhitekturu, sistemske logove, Events, API auditing i kubectl logs; VKS Standard Packages Fluent Bit reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+ 
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-43-monitoring-metrike-alarmi-i-kapacitet.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,775 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-14-yaml-i-deklarativne-promene.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>YAML manifesti – deklarativni opis Kubernetes resursa | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako YAML manifesti predstavljaju deklarativni opis Kubernetes resursa i kako se koriste za kreiranje, ažuriranje i održavanje objekata u vanilla Kubernetes klasteru.">
+
+  <meta name="keywords"
+        content="YAML manifesti, Kubernetes YAML, declarative configuration, Kubernetes manifest, kubectl apply, Pod YAML, Deployment YAML, Kubernetes resursi, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-14-yaml-i-deklarativne-promene.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="YAML manifesti – deklarativni opis Kubernetes resursa">
+
+  <meta property="og:description"
+        content="Upoznajte strukturu Kubernetes YAML manifesta i naučite kako se deklarativno definišu Pod-ovi, Deployment-i, Service-i i drugi Kubernetes objekti.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-14-yaml-i-deklarativne-promene.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-15-yaml-manifesti.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="YAML manifesti – deklarativni opis Kubernetes resursa">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-15-yaml-manifesti.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-15-yaml-manifesti.png"
+           alt="YAML manifesti – deklarativni opis Kubernetes resursa">
+
+    </a>
+ 
+       <div class="page-subtitle">
+III. Kubernetes API, kubectl i deklarativno upravljanje
+</div>
+    <div class="page-subtitle">
+14. YAML manifesti, apply, diff i delete – deklarativna promena, validacija i rollback
+</div>
+<p>
+  Kubernetes administrator ne upravlja klasterom samo izvršavanjem pojedinačnih komandi. U ozbiljnom okruženju stanje resursa opisuje se deklarativno, čuva u verzionisanom repozitorijumu, proverava pre primene i zatim kontrolisano prosleđuje Kubernetes API serveru. YAML manifest predstavlja čitljiv zapis željenog stanja jednog ili više Kubernetes objekata: administrator navodi šta treba da postoji, dok API server, admission mehanizmi, scheduler i odgovarajući kontroleri odlučuju kako će to stanje biti prihvaćeno i ostvareno.
+</p>
+<p>
+  Manifest nije skripta koja se izvršava red po red. Redosled polja kao što su <code>metadata</code>, <code>spec</code> i njihove unutrašnje osobine uglavnom nema izvršno značenje. Dokument se parsira u strukturirani objekat, proverava prema Kubernetes API šemi, autorizuje, eventualno menja kroz admission webhooks i čuva kao API resurs. Zbog toga sintaksno ispravan YAML nije nužno i validan Kubernetes manifest, a validan manifest ne mora automatski proizvesti funkcionalnu aplikaciju.
+</p>
+
+<h3>Deklarativni model i uloga YAML manifesta</h3>
+<p>
+  U imperativnom radu administrator zadaje operaciju: „napravi Deployment”, „promeni broj replika” ili „izloži servis”. U deklarativnom radu opisuje krajnje stanje: Deployment treba da ima tri replike, određenu sliku kontejnera, port, resurse, provere zdravlja i skup oznaka. Kubernetes kontroleri zatim neprekidno porede željeno stanje iz polja <code>spec</code> sa stvarnim stanjem i preduzimaju korektivne akcije.
+</p>
+<p>
+  Deklarativni model omogućava ponovljivost, reviziju promena, automatizovanu validaciju, GitOps pristup i kontrolisani povratak na prethodnu verziju. Isti manifest može biti pregledan, testiran i primenjen kroz razvojno, testno i produkciono okruženje, uz odgovarajuće upravljanje razlikama. Manifest ipak nije kompletan sistem upravljanja konfiguracijom: ne rešava samostalno generisanje tajni, izbor vrednosti za različita okruženja, redosled složenih migracija baze podataka ili upravljanje zavisnostima između više aplikacija.
+</p>
+<p>
+  YAML je samo jedan format za predstavljanje Kubernetes API objekata. API server razmenjuje JSON, dok <code>kubectl</code> prihvata YAML i pretvara ga u odgovarajuću strukturu zahteva. JSON je validan podskup YAML-a, ali se YAML u administratorskom radu češće koristi zbog bolje čitljivosti i jednostavnijeg uređivanja višelinijskih vrednosti.
+</p>
+
+<h3>Obavezna polja Kubernetes objekta</h3>
+<p>
+  Većina Kubernetes manifesta sadrži četiri osnovne celine: <code>apiVersion</code>, <code>kind</code>, <code>metadata</code> i <code>spec</code>. Tačna struktura zavisi od vrste resursa. Neki objekti, kao što je ConfigMap, nemaju klasično polje <code>spec</code>, već koriste polja poput <code>data</code> i <code>binaryData</code>.
+</p>
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  namespace: catalog-prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: catalog-api
+    spec:
+      containers:
+        - name: catalog-api
+          image: registry.example.com/platform/catalog-api:1.4.2</code></pre>
+<ul>
+  <li><strong>apiVersion</strong> određuje API grupu i verziju šeme koju API server koristi. Vrednost <code>apps/v1</code> označava grupu <code>apps</code> i verziju <code>v1</code>, dok osnovni resursi kao što su Pod, Service, ConfigMap i Secret koriste jezgro API-ja i vrednost <code>v1</code>.</li>
+  <li><strong>kind</strong> određuje vrstu objekta, na primer <code>Deployment</code>, <code>Service</code>, <code>ConfigMap</code> ili <code>Namespace</code>. Naziv je osetljiv na velika i mala slova.</li>
+  <li><strong>metadata</strong> sadrži identitet i opisne podatke objekta: ime, namespace, labels, annotations i podatke koje Kubernetes dodaje nakon kreiranja.</li>
+  <li><strong>spec</strong> opisuje željeno stanje. Njegova unutrašnja struktura zavisi od vrste i API verzije resursa.</li>
+</ul>
+<p>
+  Administrator ne treba da pogađa API verzije i dostupna polja. Podržane resurse proverava prema konkretnom klasteru:
+</p>
+<pre><code class="language-bash">kubectl api-resources
+kubectl api-versions
+kubectl explain deployment
+kubectl explain deployment.spec.template.spec.containers
+kubectl explain deployment.spec.strategy --recursive</code></pre>
+<p>
+  Komanda <code>kubectl explain</code> koristi OpenAPI šemu koju objavljuje API server. Zato je pouzdanija od kopiranja starog primera sa interneta. Verzija <code>kubectl</code> klijenta treba da bude u podržanom rasponu u odnosu na verziju API servera, jer velike razlike mogu izazvati neusklađenost mogućnosti, podrazumevanih vrednosti i validacije.
+</p>
+
+<h3>Metadata, imena, namespace, labels i annotations</h3>
+<p>
+  Polje <code>metadata.name</code> određuje stabilno ime objekta. Ime mora biti jedinstveno za istu vrstu resursa unutar odgovarajućeg namespace-a, odnosno na nivou klastera za cluster-scoped resurse. Alternativa je <code>generateName</code>, kada API server dodaje jedinstven sufiks, ali takav pristup nije pogodan za resurse koje drugi manifesti moraju predvidljivo referencirati.
+</p>
+<p>
+  Polje <code>metadata.namespace</code> mora odgovarati ciljnom okruženju. Izostavljanje ovog polja prepušta izbor namespace-a aktivnom kubeconfig kontekstu, što je rizično u automatizaciji. Produkcioni manifesti namespaced resursa zato uobičajeno eksplicitno navode namespace ili ga kontrolisano dodaju kroz alat za prilagođavanje konfiguracije.
+</p>
+<p>
+  Labels su kratki identifikacioni podaci namenjeni selekciji i grupisanju. Koriste ih Service selektori, Deployment selektori, NetworkPolicy pravila, upiti i brojni administrativni alati. Annotations čuvaju dodatne podatke koji nisu namenjeni selekciji: identifikator promene, vlasnika sistema, vezu ka dokumentaciji, kontrolni zbir ili instrukciju određenom kontroleru.
+</p>
+<pre><code class="language-yaml">metadata:
+  name: catalog-api
+  namespace: catalog-prod
+  labels:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/instance: catalog-api-prod
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: catalog-platform
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    change.example.com/ticket: CHG-2026-0715
+    operations.example.com/runbook: catalog-api</code></pre>
+<p>
+  Preporučene oznake sa prefiksom <code>app.kubernetes.io</code> nisu obavezne, ali olakšavaju standardizovano upravljanje. Organizacija treba da definiše sopstveni skup obaveznih oznaka, dozvoljene vrednosti i vlasništvo nad prefiksima. Prefiksi <code>kubernetes.io</code> i <code>k8s.io</code> rezervisani su za Kubernetes komponente i ne treba ih proizvoljno koristiti.
+</p>
+
+<h3>Spec, status i podaci kojima upravlja server</h3>
+<p>
+  Polje <code>spec</code> obično predstavlja administratorsku nameru, dok <code>status</code> predstavlja trenutno stanje koje prijavljuju kontroleri. Administrator u izvornom manifestu u pravilu ne upisuje <code>status</code>. API server i kontroleri takođe dodaju polja kao što su <code>metadata.uid</code>, <code>resourceVersion</code>, <code>generation</code>, <code>creationTimestamp</code> i <code>managedFields</code>.
+</p>
+<p>
+  Zbog toga rezultat komande <code>kubectl get deployment catalog-api -o yaml</code> nije pogodan za direktno čuvanje kao novi izvorni manifest bez čišćenja. Takav izvoz sadrži stanje klastera, podrazumevane vrednosti i metapodatke konkurentnosti. Posebno je opasno ručno vraćati stari <code>resourceVersion</code>, jer API server može odbiti izmenu zbog konflikta.
+</p>
+<p>
+  Polje <code>metadata.generation</code> menja se kada se promeni željena specifikacija, dok kontroler kroz <code>status.observedGeneration</code> pokazuje koju generaciju je obradio. Ako je <code>observedGeneration</code> manji od <code>generation</code>, kontroler još nije obradio poslednju promenu ili ima problem. Sama činjenica da je <code>kubectl apply</code> vratio poruku <code>configured</code> zato nije dokaz da je aplikacija uspešno pokrenuta.
+</p>
+
+<h3>YAML sintaksa koja utiče na pouzdanost manifesta</h3>
+<p>
+  YAML koristi uvlačenje razmacima za predstavljanje strukture. Tabulatori se ne smeju koristiti za uvlačenje. Dosledna praksa je dva razmaka po nivou. Mape predstavljaju parove ključ–vrednost, a liste se označavaju crticom. Greška u nivou uvlačenja može promeniti značenje dokumenta ili izazvati parsersku grešku.
+</p>
+<pre><code class="language-yaml">spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: catalog-api
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP</code></pre>
+<p>
+  Skalarne vrednosti mogu biti tekst, broj, logička vrednost ili null. Navodnici su preporučljivi kada vrednost može biti pogrešno protumačena, naročito za brojeve sa vodećim nulama, vrednosti nalik datumima i tekst <code>true</code>, <code>false</code>, <code>null</code>, <code>yes</code> ili <code>no</code>. Kubernetes alati koriste YAML biblioteku čije ponašanje ne mora u svim detaljima odgovarati očekivanjima iz YAML 1.2 specifikacije, pa eksplicitni navodnici smanjuju rizik.
+</p>
+<pre><code class="language-yaml">data:
+  LOG_LEVEL: "info"
+  FEATURE_ENABLED: "false"
+  RETRY_COUNT: "5"
+  application.yaml: |
+    server:
+      port: 8080
+    logging:
+      level: info</code></pre>
+<p>
+  Znak <code>|</code> čuva prelome redova višelinijskog teksta, dok <code>&gt;</code> prelama redove u jednu logičku liniju, osim praznih redova. Komentari počinju znakom <code>#</code>, ali nisu deo Kubernetes API objekta i gube se kada se dokument pošalje serveru. Operativno važne informacije zato treba čuvati u annotations, dokumentaciji i sistemu za upravljanje promenama, a ne samo u YAML komentarima.
+</p>
+
+<h3>Više resursa u jednom fajlu i njihove zavisnosti</h3>
+<p>
+  Jedan YAML fajl može sadržati više dokumenata razdvojenih linijom <code>---</code>. To je korisno kada Namespace, ConfigMap, Deployment i Service čine jednu funkcionalnu celinu. Ipak, zajednički fajl ne uspostavlja transakciju: ako se prvi objekti uspešno kreiraju, a kasniji dokument ne prođe validaciju, već kreirani objekti ostaju u klasteru.
+</p>
+<p>
+  Kubernetes takođe ne garantuje aplikacioni redosled spremnosti samo zato što je redosled dokumenata naveden u fajlu. Deployment može biti prihvaćen odmah nakon ConfigMap-a, ali Pod neće postati funkcionalan dok svi potrebni resursi, image registry, mreža i storage nisu dostupni. Custom Resource se ne može kreirati pre nego što odgovarajući CustomResourceDefinition bude uspostavljen i prihvaćen.
+</p>
+<p>
+  Za složene implementacije administrator koristi jasno razdvojene faze, <code>kubectl wait</code>, pipeline kontrole, Kustomize, Helm ili GitOps kontroler. Izbor alata ne menja osnovnu obavezu: krajnji manifesti moraju odgovarati API šemi i politici konkretnog klastera.
+</p>
+
+<h3>Validacija pre primene</h3>
+<p>
+  Provera treba da se obavi u više slojeva. Lokalni YAML linter može otkriti sintaksu i stil, ali ne poznaje nužno API šemu klastera. Klijentski dry-run obrađuje zahtev bez slanja na server, dok serverski dry-run šalje zahtev API serveru bez trajnog čuvanja. Serverski dry-run je vredniji jer uključuje autentikaciju, autorizaciju, API validaciju, podrazumevane vrednosti i admission obradu, pod uslovom da svi pozvani admission webhooks podržavaju dry-run.
+</p>
+<pre><code class="language-bash">kubectl apply --dry-run=client -f catalog-stack.yaml
+kubectl apply --dry-run=server -f catalog-stack.yaml
+kubectl diff -f catalog-stack.yaml</code></pre>
+<p>
+  <code>kubectl diff</code> prikazuje razliku između postojećeg objekta i rezultata koji bi server formirao. Izlazni kod 0 znači da nema razlike, 1 da razlike postoje, a vrednost veća od 1 označava grešku. Automatizacija zato ne sme svaki nenulti kod tretirati kao neuspeh.
+</p>
+<p>
+  Validacija polja može se kontrolisati opcijom <code>--validate=strict</code>. Stroga validacija treba da bude podrazumevana u pipeline-u jer nepoznato ili duplirano polje često znači tipografsku grešku. Međutim, ni stroga API validacija ne može dokazati da je URL tačan, da registry sadrži sliku, da aplikacija pravilno sluša na portu ili da Service selektor pronalazi odgovarajuće Podove.
+</p>
+
+<h3>Apply semantika, vlasništvo nad poljima i konflikti</h3>
+<p>
+  Komanda <code>kubectl apply -f</code> kreira objekat koji ne postoji ili izračunava izmenu postojećeg objekta. Ponovno slanje nepromenjene deklaracije ne treba da izazove novu funkcionalnu promenu. Rezultat ipak zavisi od apply mehanizma i od toga ko još menja ista polja: administrator, autoskaler, admission webhook, operator, Helm ili GitOps kontroler.
+</p>
+<pre><code class="language-bash">kubectl apply -f app.yaml
+kubectl apply -f manifests/
+kubectl apply -f -</code></pre>
+<p>
+  Tradicionalni client-side apply računa trostrano poređenje između lokalnog manifesta, živog objekta i prethodne deklaracije sačuvane u anotaciji <code>kubectl.kubernetes.io/last-applied-configuration</code>. Objekat prvobitno napravljen drugim postupkom nema nužno pouzdanu poslednju deklaraciju, pa se prelazak pod deklarativno upravljanje planira i proverava kroz diff.
+</p>
+<p>
+  Server-Side Apply (SSA) izračunava spajanje na API serveru i beleži vlasništvo nad poljima u <code>metadata.managedFields</code>. Svaki upravljač koristi stabilan identitet preko <code>--field-manager</code>. Ako drugi manager poseduje polje koje zahtev menja, server prijavljuje konflikt. Opcija <code>--force-conflicts</code> prenosi vlasništvo i sme se koristiti samo kada je novi manager dokazano autoritativan.
+</p>
+<pre><code class="language-bash">kubectl apply --server-side \
+  --field-manager=platform-admin \
+  -f app.yaml
+
+kubectl diff --server-side \
+  --field-manager=platform-admin \
+  -f app.yaml
+
+kubectl get deployment catalog-api -n catalog-prod \
+  -o jsonpath='{range .metadata.managedFields[*]}{.manager}{"\t"}{.operation}{"\t"}{.time}{"\n"}{end}'</code></pre>
+<p>
+  Za automatizaciju je SSA često jasniji jer eksplicitno modeluje field ownership, ali migracija sa client-side apply-a zahteva testiranje. Ne treba menjati polja operatora direktno niti koristiti različit field manager pri svakom izvršavanju. Managed fields su dijagnostički trag, ali nisu zamena za audit log i poslovno odobrenje.
+</p>
+
+<h3>Direktna izmena komandom kubectl edit</h3>
+<p>
+  <code>kubectl edit</code> preuzima aktuelnu reprezentaciju objekta, otvara je u editoru i nakon čuvanja šalje izmenu API serveru. Koristan je za malu, vremenski kritičnu i dokumentovanu intervenciju, ali nije deklarativni izvor istine: lokalni manifest i Git repozitorijum ostaju nepromenjeni, a GitOps kontroler može ručnu izmenu automatski poništiti.
+</p>
+<pre><code class="language-bash">export KUBE_EDITOR="vim"
+kubectl get deployment catalog-api -n catalog-prod -o yaml \
+  &gt; change-records/catalog-api-before.yaml
+kubectl edit deployment catalog-api -n catalog-prod</code></pre>
+<p>
+  Snimak dobijen komandom <code>get -o yaml</code> sadrži serverska polja i služi kao dokaz prethodnog stanja, ne kao čist manifest za ponovno slanje. U editoru se ne menjaju <code>status</code>, <code>uid</code>, <code>resourceVersion</code>, <code>creationTimestamp</code> ni <code>managedFields</code>. Ako je objekat u međuvremenu izmenjen, ponovo se čita sveže stanje i prenosi samo nameravana promena.
+</p>
+<p>
+  Posle hitne intervencije administrator potvrđuje konkretno polje, stanje kontrolera i funkcionalni rezultat, a zatim istu odluku unosi u autoritativni manifest. Incident se ne zatvara dok se drift ne ukloni ili formalno prihvati.
+</p>
+
+<h3>Delete, zavisni objekti, finalizatori i bezbedno uklanjanje</h3>
+<p>
+  <code>kubectl delete</code> šalje zahtev za uklanjanje objekta po imenu, manifestu ili selektoru. Brisanje po manifestu nije rollback: ono uklanja identifikovane objekte, ali ne vraća njihovu prethodnu specifikaciju. Pre brisanja proveravaju se kontekst, namespace, tačan skup pogođenih objekata, <code>ownerReferences</code>, finalizatori, persistent podaci i spoljne posledice operatora ili cloud kontrolera.
+</p>
+<pre><code class="language-bash">kubectl get deployment catalog-api -n catalog-prod \
+  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,OWNERS:.metadata.ownerReferences[*].name,FINALIZERS:.metadata.finalizers
+
+kubectl get pod -n catalog-prod -l app=catalog-api --show-labels
+kubectl delete deployment catalog-api -n catalog-prod --cascade=background --wait=true</code></pre>
+<p>
+  Podrazumevana politika <code>--cascade=background</code> dozvoljava da vlasnik nestane iz API-ja dok garbage collector u pozadini uklanja zavisne objekte. Sa <code>foreground</code> vlasnik ostaje u brisanju dok zavisni objekti ne budu uklonjeni, dok <code>orphan</code> ostavlja dependente bez vlasnika. Orphan može ostaviti aktivne resurse bez upravljača, a foreground može duže blokirati zahtev zbog zavisnosti ili finalizatora.
+</p>
+<pre><code class="language-bash">kubectl delete deployment catalog-api -n catalog-prod --cascade=foreground
+kubectl delete replicaset catalog-api-example -n catalog-prod --cascade=orphan</code></pre>
+<p>
+  Finalizer odlaže konačno uklanjanje dok odgovorni kontroler ne završi čišćenje. Objekat tada ima <code>deletionTimestamp</code> i ostaje vidljiv. Ručno uklanjanje finalizatora može ostaviti storage, mrežno pravilo ili cloud resurs bez vlasnika. Najpre se identifikuje finalizer, pregledaju stanje i logovi odgovornog kontrolera i otklanja osnovni uzrok.
+</p>
+<p>
+  Graceful termination daje aplikaciji vreme da završi zahteve i zatvori resurse. <code>--grace-period=0 --force</code> može ukloniti Pod zapis iz API-ja pre potvrde da je proces prestao na čvoru, pa nosi rizik duplog izvršavanja i gubitka podataka. Brisanje Poda kojim upravlja Deployment ili StatefulSet obično izaziva kreiranje zamene, a ne trajno smanjenje workload-a.
+</p>
+
+<h3>Rollback nije delete: izbor mehanizma oporavka</h3>
+<p>
+  Rollback znači vraćanje sistema na prethodno provereno stanje. Za deklarativnu konfiguraciju najpouzdaniji postupak je vraćanje prethodnog odobrenog commita ili artefakta, zatim server-side dry-run, diff, apply i puna validacija. Deployment podržava <code>kubectl rollout undo</code>, ali taj mehanizam vraća samo Pod template; ne vraća Service, ConfigMap, Secret, PVC, RBAC, migraciju baze ili spoljnu zavisnost.
+</p>
+<pre><code class="language-bash">kubectl rollout history deployment/catalog-api -n catalog-prod
+kubectl rollout undo deployment/catalog-api -n catalog-prod --to-revision=3
+kubectl rollout status deployment/catalog-api -n catalog-prod --timeout=180s</code></pre>
+<p>
+  Pre rollback-a čuvaju se diff, događaji, opis workload-a, trenutna slika i generacija kako se ne bi izgubili dokazi. Posle rollback-a proveravaju se <code>observedGeneration</code>, dostupne replike, EndpointSlice, logovi, metrički indikatori i poslovni smoke test. Ako je promena izmenila podatke ili šemu baze, infrastrukturni rollback može biti nedovoljan ili štetan.
+</p>
+
+<h3>Bezbednost i upravljanje osetljivim podacima</h3>
+<p>
+  Manifest je često trajni zapis koji se kopira u repozitorijume, CI logove, artefakte i rezervne kopije. Tajne se zato ne smeju čuvati kao otvoren tekst u običnim manifestima. Kubernetes Secret sa poljem <code>data</code> koristi Base64 kodiranje, a ne šifrovanje. Svako ko može pročitati Secret iz API-ja ili repozitorijuma sa manifestom može dekodirati vrednost.
+</p>
+<p>
+  Produkciono rešenje može koristiti eksterni sistem za tajne, CSI integraciju, kontroler za sinhronizaciju tajni, sealed/encrypted manifest ili drugi organizaciono odobren mehanizam. Istovremeno treba uključiti enkripciju Kubernetes podataka u mirovanju, ograničiti RBAC pristup i sprečiti ispis tajni u CI logovima. Referenca na Secret može biti deo Deployment manifesta, ali sama poverljiva vrednost ne treba da bude ugrađena u javni ili nezaštićeni YAML.
+</p>
+<p>
+  Bezbednosni kontekst, zahtevi i ograničenja resursa, read-only root filesystem i zabrana eskalacije privilegija treba da budu deo standardnog aplikacionog obrasca kada ih aplikacija podržava. Manifest koji prolazi API validaciju i dalje može biti odbijen organizacionom admission politikom ako ne ispunjava Pod Security ili druga interna pravila.
+</p>
+
+<h3>Integrisani praktikum: deklarativna implementacija internog kataloškog servisa</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Platformski tim priprema referentni obrazac za mali interni HTTP servis. Cilj nije testiranje poslovne aplikacije, već dokaz da administrator ume da iz jednog kontrolisanog YAML fajla kreira Namespace, konfiguraciju, Deployment i Service, proveri server-side validaciju, utvrdi razliku pre promene, potvrdi funkcionalnost i bezbedno ukloni resurse.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koristi se Kubernetes klaster sa najmanje jednim schedulable worker čvorom, funkcionalnim mrežnim dodatkom i pristupom javnom registry-ju <code>registry.k8s.io</code>. Aktivni kubeconfig kontekst mora pokazivati na laboratorijski ili odobreni testni klaster. Fajlovi se čuvaju u direktorijumu <code>~/vanilla-k8s/lesson-14</code>. Namespace je <code>catalog-lab</code>, Deployment i Service nose ime <code>catalog-api</code>, a ConfigMap ime <code>catalog-api-config</code>.
+</p>
+<p>
+  <strong>Potrebna prava.</strong> Korisnik mora imati pravo da pročita osnovno stanje klastera i da kreira, čita, menja i briše Namespace ili, u strože podeljenom okruženju, mora dobiti unapred kreiran namespace i odgovarajuća prava nad ConfigMap, Deployment, ReplicaSet, Pod i Service objektima. Minimalna prava proveravaju se komandom <code>kubectl auth can-i</code>; ClusterRoleBinding sa administratorskim pravima nije opravdan samo radi ovog zadatka.
+</p>
+<ol>
+  <li>
+    <strong>Potvrdite kontekst i pristup pre promene.</strong>
+    Najveći operativni rizik nije YAML sintaksa već primena ispravnog manifesta na pogrešan klaster. Zabeležite aktivni kontekst, server i identitet koji kubeconfig koristi.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s/lesson-14
+cd ~/vanilla-k8s/lesson-14
+
+kubectl config current-context
+kubectl config view --minify
+kubectl cluster-info
+kubectl get nodes</code></pre> <strong>Validacija:</strong> API server mora biti dostupan, a najmanje jedan worker čvor treba da bude u stanju <code>Ready</code>. Ako ime konteksta ili adresa servera ne odgovaraju odobrenom laboratorijskom klasteru, postupak se prekida pre bilo kakve izmene.
+
+  </li>
+  <li>
+    <strong>Proverite najmanji potreban skup ovlašćenja.</strong>
+    Sledeće provere ne menjaju klaster, već odgovaraju da li aktivni identitet ima potrebne dozvole.
+    <pre><code class="language-bash">kubectl auth can-i create namespaces
+kubectl auth can-i create configmaps --namespace=catalog-lab
+kubectl auth can-i create deployments.apps --namespace=catalog-lab
+kubectl auth can-i create services --namespace=catalog-lab
+kubectl auth can-i delete namespaces</code></pre>
+    <strong>Validacija:</strong> Za potpuni scenario odgovori treba da budu <code>yes</code>. Odgovor <code>no</code> nije tehnička greška manifesta, već ograničenje autorizacije. Administrator tada traži od vlasnika klastera da kreira namespace ili dodeli namensku Role i RoleBinding, umesto da zahteva trajni <code>cluster-admin</code>.
+  </li>
+  <li>
+    <strong>Kreirajte povezani manifest.</strong>
+    Fajl opisuje četiri resursa. ConfigMap sadrži bezopasnu konfiguraciju, Deployment pokreće dve replike testnog HTTP procesa, a Service bira Podove prema istoj stabilnoj oznaci. Probes koriste ugrađenu HTTP putanju <code>/healthz</code>.
+    <pre><code class="language-bash">cat &gt; catalog-stack.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: catalog-lab
+  labels:
+    app.kubernetes.io/part-of: catalog-platform
+    environment: lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-api-config
+  namespace: catalog-lab
+  labels:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/part-of: catalog-platform
+data:
+  ENVIRONMENT: "lab"
+  LOG_LEVEL: "info"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  namespace: catalog-lab
+  labels:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/instance: catalog-api-lab
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: catalog-platform
+  annotations:
+    change.example.com/ticket: "LAB-15"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-api
+      app.kubernetes.io/instance: catalog-api-lab
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: catalog-api
+        app.kubernetes.io/instance: catalog-api-lab
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: catalog-platform
+    spec:
+      containers:
+        - name: catalog-api
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          imagePullPolicy: IfNotPresent
+          args:
+            - netexec
+            - --http-port=8080
+          envFrom:
+            - configMapRef:
+                name: catalog-api-config
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-api
+  namespace: catalog-lab
+  labels:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/part-of: catalog-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/instance: catalog-api-lab
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+EOF</code></pre>
+    <strong>Validacija:</strong> Proverite da fajl postoji i pregledajte ga pre slanja. U realnom procesu pregled obavlja i drugi član tima kroz pull request.
+    <pre><code class="language-bash">test -s catalog-stack.yaml
+sed -n '1,260p' catalog-stack.yaml</code></pre>
+  </li>
+  <li>
+    <strong>Proverite sintaksu i serversku obradu bez trajne promene.</strong>
+    Klijentski dry-run otkriva osnovne probleme, a serverski dry-run proverava manifest prema stvarnom API serveru i admission pravilima.
+    <pre><code class="language-bash">kubectl apply --dry-run=client --validate=strict -f catalog-stack.yaml
+kubectl apply --dry-run=server --validate=strict -f catalog-stack.yaml</code></pre>
+    <strong>Očekivani rezultat:</strong> Za svaki dokument prikazuje se <code>created (dry run)</code>. Nijedan resurs ne sme ostati u klasteru.
+    <pre><code class="language-bash">kubectl get namespace catalog-lab</code></pre>
+    <strong>Validacija:</strong> Očekuje se <code>NotFound</code>. Ako serverski dry-run prijavi <code>Forbidden</code>, problem je RBAC. Ako prijavi nepoznato polje ili pogrešan tip, problem je API šema. Ako admission webhook odbije objekat, poruka treba da navede prekršenu politiku.
+  </li>
+  <li>
+    <strong>Pregledajte planiranu razliku.</strong>
+    Pošto resursi još ne postoje, diff ih prikazuje kao nove dokumente.
+    <pre><code class="language-bash">kubectl diff -f catalog-stack.yaml</code></pre>
+    <strong>Validacija:</strong> Izlazni kod 1 uz prikaz dodatih linija predstavlja očekivanu razliku, a ne neuspeh. Kod veći od 1 zahteva prekid i analizu greške. U CI sistemu ovo razlikovanje mora biti eksplicitno implementirano.
+  </li>
+  <li>
+    <strong>Primenite odobreni manifest.</strong>
+    Primena kreira namespace i namespaced resurse. Pošto postupak nije transakcija, izlaz svake stavke treba pregledati.
+    <pre><code class="language-bash">kubectl apply --validate=strict -f catalog-stack.yaml</code></pre>
+    <strong>Očekivani rezultat:</strong> Namespace, ConfigMap, Deployment i Service dobijaju status <code>created</code>. Odmah proverite da su objekti u ispravnom namespace-u.
+    <pre><code class="language-bash">kubectl get namespace catalog-lab
+kubectl get configmap,deployment,replicaset,pod,service -n catalog-lab -o wide</code></pre>
+  </li>
+  <li>
+    <strong>Sačekajte da Deployment ostvari željeno stanje.</strong>
+    Prihvatanje manifesta nije isto što i završena implementacija. Rollout čeka da kontroler i kubelet pokrenu dovoljan broj spremnih Podova.
+    <pre><code class="language-bash">kubectl rollout status deployment/catalog-api -n catalog-lab --timeout=120s
+kubectl wait --for=condition=Available deployment/catalog-api -n catalog-lab --timeout=120s</code></pre>
+    <strong>Validacija:</strong> Deployment mora imati dve željene, dve ažurirane, dve dostupne i dve spremne replike.
+    <pre><code class="language-bash">kubectl get deployment catalog-api -n catalog-lab
+kubectl get pods -n catalog-lab \
+  -l app.kubernetes.io/name=catalog-api \
+  -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount</code></pre>
+  </li>
+  <li>
+    <strong>Proverite vezu labels–selector–endpoints.</strong>
+    Service je funkcionalan samo ako njegov selektor pronalazi spremne Podove. Prazan EndpointSlice uz zdrave Podove najčešće ukazuje na neusklađene oznake ili pogrešan namespace.
+    <pre><code class="language-bash">kubectl get service catalog-api -n catalog-lab -o yaml
+kubectl get endpointslice -n catalog-lab \
+  -l kubernetes.io/service-name=catalog-api
+kubectl get pods -n catalog-lab \
+  -l 'app.kubernetes.io/name=catalog-api,app.kubernetes.io/instance=catalog-api-lab' \
+  --show-labels</code></pre>
+    <strong>Validacija:</strong> EndpointSlice treba da sadrži dve adrese spremnih Podova i port 8080. Service port 80 treba da koristi imenovani <code>targetPort: http</code>, koji se razrešava na kontejnerski port 8080.
+  </li>
+  <li>
+    <strong>Izvršite završnu funkcionalnu proveru.</strong>
+    Port-forward je privremeni administratorski tunel i ne predstavlja produkcioni ingress. Pogodan je za kontrolisanu proveru ClusterIP servisa sa radne stanice.
+    <pre><code class="language-bash">kubectl port-forward -n catalog-lab service/catalog-api 18080:80 &gt;port-forward.log 2&gt;&amp;1 &amp;
+PF_PID=$!
+sleep 3
+curl --fail --silent --show-error http://127.0.0.1:18080/healthz
+kill "$PF_PID"
+wait "$PF_PID" 2&gt;/dev/null || true
+cat port-forward.log</code></pre>
+    <strong>Očekivani rezultat:</strong> HTTP zahtev treba da završi izlaznim kodom 0 i vrati odgovor endpointa za zdravlje. Log <code>port-forward.log</code> služi za razlikovanje lokalnog konflikta porta, prekida tunela i greške povezivanja sa Podom.
+  </li>
+  <li>
+    <strong>Izvršite negativni test stroge validacije.</strong>
+    Napravite zaseban neispravan manifest sa tipografskom greškom <code>replica</code> umesto <code>replicas</code>. Ne menjajte odobreni fajl.
+    <pre><code class="language-bash">cat &gt; invalid-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invalid-catalog-api
+  namespace: catalog-lab
+spec:
+  replica: 2
+  selector:
+    matchLabels:
+      app: invalid-catalog-api
+  template:
+    metadata:
+      labels:
+        app: invalid-catalog-api
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+EOF
+
+kubectl apply --dry-run=server --validate=strict -f invalid-deployment.yaml</code></pre> <strong>Validacija:</strong> API server treba da odbije objekat zbog nepoznatog polja. Proverite da resurs nije kreiran. <pre><code class="language-bash">kubectl get deployment invalid-catalog-api -n catalog-lab</code></pre>
+Očekuje se <code>NotFound</code>. Ovaj test pokazuje vrednost stroge validacije, ali ne dokazuje da će svaki semantički pogrešan manifest biti odbijen.
+
+  </li>
+  <li>
+    <strong>Izmenite deklarativno stanje i pregledajte posledice.</strong>
+    Promenite broj replika sa dve na tri u izvornom manifestu. Prvo pregledajte diff, a tek zatim primenite promenu.
+    <pre><code class="language-bash">sed -i 's/replicas: 2/replicas: 3/' catalog-stack.yaml
+
+kubectl apply --dry-run=server --validate=strict -f catalog-stack.yaml
+kubectl diff -f catalog-stack.yaml
+kubectl apply -f catalog-stack.yaml
+kubectl rollout status deployment/catalog-api -n catalog-lab --timeout=120s</code></pre> <strong>Validacija:</strong> Diff treba da pokaže samo očekivanu promenu broja replika. Nakon primene Deployment mora imati tri dostupne replike, a EndpointSlice tri spremne adrese. <pre><code class="language-bash">kubectl get deployment catalog-api -n catalog-lab
+kubectl get pods -n catalog-lab -l app.kubernetes.io/name=catalog-api
+kubectl get endpointslice -n catalog-lab \
+  -l kubernetes.io/service-name=catalog-api</code></pre>
+
+  </li>
+  <li>
+    <strong>Simulirajte neuspešan rollout i izvedite deklarativni rollback.</strong>
+    Sačuvajte dobru verziju manifesta, zatim u radnoj kopiji zamenite image nepostojećom oznakom. Ovo je laboratorijska simulacija bez gubitka podataka; ne izvodi se u produkcionom namespace-u.
+    <pre><code class="language-bash">cp catalog-stack.yaml catalog-stack-good.yaml
+sed -i 's#agnhost:2.53#agnhost:nepostojeca-oznaka#' catalog-stack.yaml
+
+kubectl apply --dry-run=server --validate=strict -f catalog-stack.yaml
+kubectl diff -f catalog-stack.yaml
+kubectl apply -f catalog-stack.yaml
+kubectl rollout status deployment/catalog-api -n catalog-lab --timeout=60s</code></pre>
+    <strong>Očekivani simptom:</strong> API prihvata sintaksno i semantički validan naziv slike, ali rollout ne završava. Novi Pod prelazi u <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>. Ovo dokazuje granicu API validacije: postojanje image-a proverava kubelet tek tokom izvršavanja.
+    <pre><code class="language-bash">kubectl get pods -n catalog-lab -o wide
+kubectl describe pods -n catalog-lab -l app.kubernetes.io/name=catalog-api
+kubectl get events -n catalog-lab --sort-by=.metadata.creationTimestamp</code></pre>
+    <strong>Rollback:</strong> vratite odobreni manifest kao izvor istine, pregledajte obrnuti diff i ponovo ga primenite.
+    <pre><code class="language-bash">mv catalog-stack-good.yaml catalog-stack.yaml
+kubectl apply --dry-run=server --validate=strict -f catalog-stack.yaml
+kubectl diff -f catalog-stack.yaml
+kubectl apply -f catalog-stack.yaml
+kubectl rollout status deployment/catalog-api -n catalog-lab --timeout=120s</code></pre>
+    <strong>Kriterijum oporavka:</strong> Deployment ponovo koristi image <code>agnhost:2.53</code>, ima tri dostupne replike, broj restartovanja ne raste, EndpointSlice sadrži tri spremne adrese i HTTP test ponovo uspeva. U change zapisu ostaju simptom, dokaz uzroka, korektivna akcija i rezultat validacije.
+  </li>
+  <li>
+    <strong>Pregledajte događaje i logove relevantne za troubleshooting.</strong>
+    Aplikacioni stdout i stderr preuzimaju se kroz API, dok sistemski uzroci raspoređivanja i pokretanja često postoje u Events zapisima i opisima Podova.
+    <pre><code class="language-bash">kubectl get events -n catalog-lab --sort-by=.metadata.creationTimestamp
+kubectl describe deployment catalog-api -n catalog-lab
+kubectl describe pods -n catalog-lab -l app.kubernetes.io/name=catalog-api
+kubectl logs -n catalog-lab \
+  -l app.kubernetes.io/name=catalog-api \
+  --all-containers=true \
+  --prefix=true \
+  --tail=50</code></pre>
+    <strong>Tumačenje:</strong> <code>FailedScheduling</code> upućuje na kapacitet, taints, affinity ili ograničenja resursa; <code>ErrImagePull</code> i <code>ImagePullBackOff</code> na registry, naziv slike, mrežu ili kredencijale; neuspešna readiness provera ostavlja Pod pokrenutim ali ga uklanja iz spremnih endpointa; restartovanja uz <code>CrashLoopBackOff</code> zahtevaju pregled trenutnih i prethodnih logova komandom <code>kubectl logs --previous</code>.
+  </li>
+  <li>
+    <strong>Dokumentujte prihvatanje i stanje promene.</strong>
+    Sačuvajte izlaze koji dokazuju šta je primenjeno i kakvo je stanje ostvareno, ali ne izvozite tajne.
+    <pre><code class="language-bash">kubectl get deployment catalog-api -n catalog-lab -o wide &gt; acceptance-deployment.txt
+kubectl get service catalog-api -n catalog-lab -o wide &gt; acceptance-service.txt
+kubectl get endpointslice -n catalog-lab \
+  -l kubernetes.io/service-name=catalog-api \
+  -o wide &gt; acceptance-endpoints.txt
+kubectl get events -n catalog-lab \
+  --sort-by=.metadata.creationTimestamp &gt; acceptance-events.txt</code></pre>
+    <strong>Merljivi kriterijumi prihvatanja:</strong> serverski dry-run prolazi bez upozorenja; Deployment ima tri željene i tri dostupne replike; svi Podovi su <code>Running</code> i spremni; Service ima tri spremna endpointa; HTTP <code>/healthz</code> vraća uspešan odgovor; nema ponavljajućih upozorenja niti restartovanja kontejnera.
+  </li>
+  <li>
+    <strong>Izvršite cleanup nakon laboratorijske vežbe.</strong>
+    <strong>Upozorenje:</strong> brisanje namespace-a uklanja sve namespaced resurse u njemu. U produkciji se ova komanda ne koristi bez odobrenja, provere vlasništva, zaštite podataka i plana oporavka. Za ovaj izolovani lab namespace cleanup je očekivan.
+    <pre><code class="language-bash">kubectl delete -f catalog-stack.yaml --wait=true
+kubectl wait --for=delete namespace/catalog-lab --timeout=120s</code></pre>
+    <strong>Validacija:</strong> Namespace i svi resursi moraju nestati.
+    <pre><code class="language-bash">kubectl get namespace catalog-lab
+kubectl get all -n catalog-lab</code></pre>
+    Očekuje se <code>NotFound</code>. Ako namespace ostane u stanju <code>Terminating</code>, proveravaju se preostali resursi, finalizers i dostupnost kontrolera; finalizer se ne uklanja ručno bez razumevanja posledica.
+  </li>
+</ol>
+
+<h3>Tipične greške i način njihovog razlikovanja</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Najverovatnija oblast</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>YAML parser prijavljuje liniju i kolonu</td>
+      <td>Uvlačenje, navodnici ili neispravna struktura YAML-a</td>
+      <td><code>kubectl apply --dry-run=client -f fajl.yaml</code></td>
+    </tr>
+    <tr>
+      <td>Unknown field ili invalid value</td>
+      <td>Pogrešna API šema, naziv polja ili tip vrednosti</td>
+      <td><code>kubectl explain</code> i server-side dry-run</td>
+    </tr>
+    <tr>
+      <td>Forbidden</td>
+      <td>RBAC ili admission zabrana</td>
+      <td><code>kubectl auth can-i</code> i tekst odgovora API servera</td>
+    </tr>
+    <tr>
+      <td>Deployment postoji, ali nema dostupnih replika</td>
+      <td>Scheduling, image pull, probe, resursi ili aplikacija</td>
+      <td><code>kubectl describe pod</code>, Events i logs</td>
+    </tr>
+    <tr>
+      <td>Service nema endpointe</td>
+      <td>Neusklađeni selektori, oznake ili readiness</td>
+      <td>Uporediti Service selector, Pod labels i EndpointSlice</td>
+    </tr>
+    <tr>
+      <td>Apply stalno menja ista polja</td>
+      <td>Drugi field manager, webhook ili automatizacija</td>
+      <td><code>kubectl diff</code> i <code>metadata.managedFields</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Validacija svake promene pre primene.</strong> Za svaki merge ili change window izvršavaju se YAML lint, <code>kubectl apply --dry-run=server --validate=strict</code> i <code>kubectl diff</code> prema odgovarajućem klasteru. Nepoznato polje, neočekivano brisanje, promena selector-a ili promena bez odobrenog tiketa zahteva zaustavljanje. Prva reakcija je poređenje sa API referencom i prethodnom verzijom. Rezultat se čuva u CI evidenciji i change zapisu. Uspeh se meri procentom promena koje prolaze preprodukcijsku kontrolu bez naknadne hitne korekcije.</li>
+  <li><strong>Kontrola konfiguracionog odstupanja.</strong> Nakon svake ručne intervencije i najmanje jednom dnevno u GitOps okruženju poredi se željeno stanje iz repozitorijuma sa stanjem klastera. Koriste se GitOps status, <code>kubectl diff</code> ili organizacioni alat za drift. Neočekivana promena slike, replika, RBAC pravila, Service selektora ili bezbednosnog konteksta zahteva identifikovanje izvršioca i procenu uticaja. Dokumentuju se uzrok, vlasnik, vreme i odluka da se stanje vrati ili da se izmena uvede u izvorni manifest.</li>
+  <li><strong>Praćenje uspeha rollout-a.</strong> Posle svake izmene Pod template-a proveravaju se <code>kubectl rollout status</code>, Deployment conditions, broj dostupnih replika, restartovanja, Events i aplikacione metrike. Rollout koji prekorači odobreni vremenski prag ili poveća stopu grešaka zahteva pauziranje daljih promena i rollback prema odobrenom postupku. U change sistemu se beleže revizija slike, vreme početka, vreme stabilizacije i rezultat funkcionalnog testa.</li>
+  <li><strong>Upravljanje labels i annotations standardom.</strong> Pri svakom code review-u proveravaju se vlasništvo, aplikacija, komponenta, okruženje i identifikator promene. Nedostajuća oznaka koja remeti monitoring, troškovnu alokaciju, NetworkPolicy ili Service selekciju zahteva korekciju pre primene. Uspešnost se meri obuhvatom resursa obaveznim oznakama i brojem incidenata izazvanih neusklađenim selector-ima.</li>
+  <li><strong>Zaštita osetljivih podataka.</strong> Repozitorijumi i CI izlazi proveravaju se pri svakom commitu alatima za detekciju tajni. Svaka pronađena lozinka, token, privatni ključ ili kubeconfig zahteva trenutnu zabranu merge-a, opoziv kompromitovanog podatka i bezbednosnu prijavu. Dokumentuju se identifikator incidenta i rotirani kredencijal, ali ne i njegova vrednost. Uspeh se meri vremenom opoziva i odsustvom otvorenih tajni u istoriji repozitorijuma.</li>
+  <li><strong>Rezervna kopija izvora i stanja klastera.</strong> Izvorni manifesti, Kustomize ili Helm konfiguracija čuvaju se kontinuirano u verzionisanom i zaštićenom repozitorijumu. Za oporavak samog klastera pravi se redovan etcd snapshot ili koristi podržani mehanizam distributera, jer Git ne sadrži automatski sve runtime objekte, PersistentVolume podatke i tajne. Integritet se proverava alatima za snapshot i probnim restore-om u izolovanom okruženju prema definisanom RPO i RTO. Backup je upotrebljiv tek kada obnovljeni API server može pročitati očekivane resurse i kada se aplikacioni podaci potvrde nezavisnim funkcionalnim testom.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Aktivni kubeconfig kontekst i adresa API servera odgovaraju odobrenom ciljnom klasteru.</li>
+  <li><code>kubectl auth can-i</code> potvrđuje samo prava potrebna za planirane vrste resursa i namespace.</li>
+  <li>Svaki manifest koristi podržane <code>apiVersion</code> i <code>kind</code> vrednosti potvrđene komandama <code>kubectl api-resources</code> i <code>kubectl explain</code>.</li>
+  <li>Namespaced resursi imaju eksplicitno definisan ciljni namespace.</li>
+  <li>Deployment selector se tačno podudara sa oznakama Pod template-a, a Service selector pronalazi očekivane Podove.</li>
+  <li><code>kubectl apply --dry-run=server --validate=strict</code> završava bez greške.</li>
+  <li><code>kubectl diff</code> prikazuje samo odobrene izmene i nema neočekivanog brisanja ili zamene nepromenljivih polja.</li>
+  <li>Posle primene Deployment ima očekivan broj dostupnih replika, Podovi su spremni, a EndpointSlice sadrži očekivane adrese.</li>
+  <li>Funkcionalni HTTP test završava uspešno, Events ne sadrže ponavljajuća upozorenja, a broj restartovanja ne raste.</li>
+  <li>Manifest ne sadrži otvorene lozinke, tokene, privatne ključeve, sertifikate ili produkcione kubeconfig podatke.</li>
+  <li>Promena, validacioni izlazi, vlasnik, tiket i rezultat prihvatnog testa sačuvani su u verzionom i change sistemu.</li>
+  <li>Za rizičnu promenu postoji proverljiv rollback ili restore postupak usklađen sa ovlašćenjima administratora.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  YAML manifest je ugovor između administratora i Kubernetes API-ja: opisuje nameravano stanje, ali ne garantuje da će infrastruktura, aplikacija i sve spoljne zavisnosti to stanje uspešno ostvariti. Pouzdan rad zahteva razumevanje API grupa i verzija, strukture objekata, odnosa između labels i selector-a, razlike između <code>spec</code> i <code>status</code>, kao i podataka kojima upravlja server.
+</p>
+<p>
+  Nakon ove lekcije administrator treba da ume da izradi povezane manifeste, proveri ih prema stvarnom API serveru, pregleda planiranu razliku, primeni promenu i potvrdi rezultat kroz rollout, Events, logs, EndpointSlice i funkcionalni test. Takođe mora da razlikuje YAML sintaksnu grešku, API validacionu grešku, RBAC zabranu, admission odbijanje i runtime problem aplikacije.
+</p>
+<p>
+  Produkcioni rizik nastaje kada se manifest primenjuje na pogrešan kontekst, kada se tajne čuvaju u otvorenom obliku, kada se selector promeni bez procene posledica, kada se kopirani server-side metapodaci tretiraju kao izvor konfiguracije ili kada se poruka <code>configured</code> pogrešno smatra dokazom uspeha. Deklarativni model ne ukida potrebu za change kontrolom, backup-om, monitoringom, funkcionalnom proverom i jasnim vlasništvom.
+</p>
+<p>
+  Administrator sme menjati samo resurse i polja za koja ima poslovno odobrenje i tehničko ovlašćenje. Problemi sa politikama klastera, nepoznatim CRD resursima, konfliktima field manager-a, trajno zaglavljenim finalizer-ima, gubitkom podataka ili promenama koje zahtevaju cluster-scoped privilegije predstavljaju razlog za eskalaciju odgovornom platformskom, bezbednosnom ili aplikacionom timu. Kvalitet administratorskog rada meri se time da je promena ponovljiva, pregledana, proverljiva, reverzibilna i dokumentovana, a ne samo time da je API server prihvatio YAML dokument.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija o modelu API objekata, deklarativnom upravljanju i YAML manifestima; zvanične kubectl CLI reference za apply, diff, edit, delete, dry-run, explain, auth can-i, wait, rollout, logs i port-forward; generisana Kubernetes API i OpenAPI referenca, Server-Side Apply i field ownership dokumentacija, smernice za owner references, garbage collection, finalizatore i Pod termination, bezbedno upravljanje tajnama, Pod bezbednosne preporuke i primarna YAML specifikacija.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-13-get-describe-logs.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-15-namespace-labels-annotations.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

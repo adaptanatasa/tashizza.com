@@ -1,0 +1,3013 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-36-backup-i-restore.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Backup i restore – zaštita virtuelnih mašina i podataka | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte osnovne metode backup-a i restore-a u VMware okruženju i naučite kako se štite virtuelne mašine, konfiguracije i poslovni podaci.">
+
+  <meta name="keywords"
+        content="VMware backup, VMware restore, backup virtuelnih mašina, zaštita podataka, disaster recovery, snapshot, VADP, backup softver, Veeam, ESXi backup, vCenter backup, oporavak podataka, VMware administracija, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-36-backup-i-restore.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Backup i restore – zaštita virtuelnih mašina i podataka">
+
+  <meta property="og:description"
+        content="Saznajte kako se planiraju backup i restore procedure u VMware okruženju radi zaštite virtuelnih mašina i brzog oporavka nakon incidenta.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-36-backup-i-restore.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-36-backup-i-restore.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Backup i restore – zaštita virtuelnih mašina i podataka">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-36-backup-i-restore.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-36-backup-i-restore.png"
+           alt="Backup i restore – zaštita virtuelnih mašina i podataka">
+
+    </a>
+   <div class="page-subtitle">
+   VIII. Zaštita podataka, monitoring i sistematičan troubleshooting
+</div>
+
+<div class="page-subtitle">
+  36. Backup i restore – politike zaštite, RPO/RTO i obavezna provera oporavka
+</div>
+
+<p><strong>Zašto backup nije isto što i Disaster Recovery</strong></p>
+
+<p>
+Jedna od najčešćih grešaka novih VMware administratora jeste pretpostavka da su HA, DRS, vMotion i snapshot dovoljno dobra zaštita podataka. Nijedna od ovih tehnologija nije razvijena kao zamena za backup.
+</p>
+
+<p>
+vMotion obezbeđuje migraciju bez prekida rada. HA ponovo pokreće VM nakon otkaza hosta. DRS raspoređuje opterećenje između hostova. Snapshot privremeno čuva stanje VM-a radi kratkoročnog vraćanja tokom administrativnih promena.
+</p>
+
+<p>
+Ako administrator slučajno obriše bazu podataka, ransomware šifruje sadržaj, aplikacija korumpira podatke ili korisnik izbriše direktorijum pre sedam dana, nijedna od ovih funkcija neće vratiti izgubljene podatke.
+</p>
+
+<p>
+Backup predstavlja zaseban proces čiji je cilj očuvanje podataka nezavisno od trenutnog stanja produkcionog sistema. Restore predstavlja kontrolisan proces vraćanja tih podataka u operativno stanje.
+</p>
+
+<p>
+Enterprise administratori zbog toga razmišljaju o tri potpuno različita pitanja:
+</p>
+
+<ul>
+<li>kako sprečiti prekid rada;</li>
+<li>kako zaštititi podatke;</li>
+<li>kako vratiti sistem nakon incidenta.</li>
+</ul>
+
+<p>
+Ova tri pitanja imaju različite tehnologije, različite procedure i različite administrativne odgovornosti.
+</p>
+
+<hr>
+
+<p><strong>Šta se zapravo bekapuje u VMware okruženju</strong></p>
+
+<p>
+Backup VMware infrastrukture nije ograničen samo na VMDK datoteke. U realnom okruženju administrator štiti više slojeva sistema.
+</p>
+
+<table>
+<tr>
+<th>Komponenta</th>
+<th>Svrha backup-a</th>
+</tr>
+
+<tr>
+<td>Virtualna mašina</td>
+<td>operativni sistem, aplikacije i korisnički podaci</td>
+</tr>
+
+<tr>
+<td>VM konfiguracija</td>
+<td>CPU, RAM, mreže, uređaji, UUID, metadata</td>
+</tr>
+
+<tr>
+<td>vCenter Server Appliance</td>
+<td>inventar, dozvole, alarmi, cluster konfiguracija, certifikati, baze podataka</td>
+</tr>
+
+<tr>
+<td>ESXi konfiguracija</td>
+<td>host konfiguracija, mreža, storage, licence</td>
+</tr>
+
+<tr>
+<td>Distributed Switch konfiguracija</td>
+<td>port grupe, VLAN-ovi, uplink konfiguracija</td>
+</tr>
+
+<tr>
+<td>Content Library</td>
+<td>template-i i ISO slike</td>
+</tr>
+
+<tr>
+<td>Backup server</td>
+<td>backup politika, katalog i metapodaci</td>
+</tr>
+</table>
+
+<p>
+Najskuplji incidenti u praksi nastaju kada administrator redovno pravi backup virtuelnih mašina, ali zaboravi backup samog vCenter Server Appliance-a ili backup konfiguracije ESXi hostova.
+</p>
+
+<hr>
+
+<p><strong>Backup ciljevi — RPO i RTO</strong></p>
+
+<p>
+Svaka backup strategija projektuje se prema poslovnim zahtevima.
+</p>
+
+<p>
+Najvažniji parametri su:
+</p>
+
+<ul>
+<li>Recovery Point Objective (RPO);</li>
+<li>Recovery Time Objective (RTO).</li>
+</ul>
+
+<p>
+RPO određuje koliko podataka sme biti izgubljeno.
+</p>
+
+<p>
+Ako je RPO četiri sata, maksimalni dozvoljeni gubitak podataka iznosi četiri sata rada.
+</p>
+
+<p>
+RTO određuje koliko dugo sistem sme biti nedostupan.
+</p>
+
+<p>
+Ako je RTO trideset minuta, kompletan restore mora biti završen u tom vremenu.
+</p>
+
+<p>
+Ove vrednosti direktno utiču na:
+</p>
+
+<ul>
+<li>učestalost backup-a;</li>
+<li>vrstu backup-a;</li>
+<li>kapacitet storage sistema;</li>
+<li>mrežni protok;</li>
+<li>potrebne licence;</li>
+<li>izbor backup softvera;</li>
+<li>troškove infrastrukture.</li>
+</ul>
+
+<p>
+Administrator nikada ne određuje RPO i RTO proizvoljno. Ove vrednosti definiše poslovna analiza, a administrator projektuje infrastrukturu koja ih može ispuniti.
+</p>
+
+<hr>
+
+<p><strong>Arhitektura modernog VMware backup sistema</strong></p>
+
+<p>
+Savremeni enterprise backup proizvodi koriste VMware vStorage APIs for Data Protection (VADP). Ovaj API omogućava da backup aplikacija komunicira direktno sa vCenter Server-om ili ESXi hostom bez instalacije agenata unutar svake virtuelne mašine za osnovni image-level backup.
+</p>
+
+<p>
+Tipičan tok izgleda ovako:
+</p>
+
+<ol>
+<li>backup server zahteva snapshot VM-a;</li>
+<li>VMware kreira konzistentan snapshot;</li>
+<li>backup aplikacija čita VMDK preko VADP interfejsa;</li>
+<li>podaci se kopiraju na backup repozitorijum;</li>
+<li>snapshot se uklanja;</li>
+<li>Changed Block Tracking pamti promene za sledeći backup.</li>
+</ol>
+
+<p>
+Ovakav pristup značajno smanjuje opterećenje gostujućeg operativnog sistema jer nije potrebno pokretati backup proces unutar svake VM.
+</p>
+
+<hr>
+
+<p><strong>Changed Block Tracking (CBT)</strong></p>
+
+<p>
+Jedna od najvažnijih VMware tehnologija za backup jeste Changed Block Tracking.
+</p>
+
+<p>
+CBT vodi evidenciju blokova koji su promenjeni od prethodnog backup-a. Sledeći inkrementalni backup čita samo izmenjene blokove umesto kompletnog virtuelnog diska.
+</p>
+
+<p>
+Bez CBT-a, backup aplikacija bi morala da pročita čitav VMDK kako bi utvrdila koje su promene nastale.
+</p>
+
+<p>
+Prednosti CBT-a:
+</p>
+
+<ul>
+<li>znatno kraće vreme backup-a;</li>
+<li>manje I/O operacija;</li>
+<li>manje opterećenje storage sistema;</li>
+<li>kraći backup prozori;</li>
+<li>manji mrežni saobraćaj.</li>
+</ul>
+
+<p>
+Administrator mora imati u vidu da CBT nije backup.
+</p>
+
+<p>
+CBT predstavlja pomoćni mehanizam koji ubrzava inkrementalne backup operacije.
+</p>
+
+<hr>
+
+<p><strong>Vrste backup-a</strong></p>
+
+<p><strong>Full Backup</strong></p>
+
+<p>
+Kopira kompletan sadržaj virtuelne mašine.
+</p>
+
+<p>
+Prednosti:
+</p>
+
+<ul>
+<li>najjednostavniji restore;</li>
+<li>nezavisnost od prethodnih backup-a;</li>
+<li>najveća pouzdanost.</li>
+</ul>
+
+<p>
+Nedostaci:
+</p>
+
+<ul>
+<li>veliki storage prostor;</li>
+<li>dugo trajanje;</li>
+<li>velik mrežni saobraćaj.</li>
+</ul>
+
+<p><strong>Incremental Backup</strong></p>
+
+<p>
+Čuva samo promene nastale od prethodnog backup-a, koristeći CBT kada je dostupan.
+</p>
+
+<p>
+Prednosti:
+</p>
+
+<ul>
+<li>najmanje zauzeće prostora;</li>
+<li>najkraći backup prozor;</li>
+<li>najmanje opterećenje infrastrukture.</li>
+</ul>
+
+<p>
+Nedostatak predstavlja složeniji restore koji zavisi od integriteta celog lanca backup-a.
+</p>
+
+<p><strong>Synthetic Full</strong></p>
+
+<p>
+Moderni backup sistemi mogu konstruisati novi Full Backup kombinovanjem postojećih backup blokova bez ponovnog čitanja VM sa produkcionog storage-a.
+</p>
+
+<p>
+Na taj način rasterećuje se produkcioni sistem.
+</p>
+
+<hr>
+
+<p><strong>Image-level i Guest-level backup</strong></p>
+
+<p>
+Image-level backup predstavlja standardni pristup u VMware okruženju.
+</p>
+
+<p>
+Bekapuje se kompletna virtuelna mašina:
+</p>
+
+<ul>
+<li>VMDK;</li>
+<li>VMX;</li>
+<li>NVRAM;</li>
+<li>snapshot metadata kada postoji;</li>
+<li>ostali VMware objekti.</li>
+</ul>
+
+<p>
+Guest-level backup radi unutar operativnog sistema.
+</p>
+
+<p>
+Koristi se kada je potrebno:
+</p>
+
+<ul>
+<li>application-aware backup;</li>
+<li>Oracle;</li>
+<li>Microsoft SQL Server;</li>
+<li>Exchange;</li>
+<li>Active Directory;</li>
+<li>SAP HANA;</li>
+<li>specijalizovane baze podataka.</li>
+</ul>
+
+<p>
+U praksi enterprise sistemi često kombinuju oba pristupa.
+</p>
+
+<hr>
+
+<p><strong>Application Consistency</strong></p>
+
+<p>
+Snapshot nije dovoljan ukoliko aplikacija još uvek zapisuje podatke.
+</p>
+
+<p>
+Zbog toga backup aplikacije koriste VMware Tools zajedno sa mogućnostima gostujućeg operativnog sistema kako bi privremeno sinhronizovale upise i obezbedile konzistentno stanje aplikacije pre pravljenja snapshot-a.
+</p>
+
+<p>
+Bez application-consistent backup-a moguće je uspešno vratiti virtuelnu mašinu, ali ne i bazu podataka koja se nalazila usred transakcije.
+</p>
+
+<hr>
+
+<p><strong>Backup vCenter Server Appliance</strong></p>
+
+<p>
+vCenter predstavlja jednu od najvažnijih komponenti VMware infrastrukture.
+</p>
+
+<p>
+Broadcom preporučuje korišćenje ugrađenog File-Based Backup mehanizma kroz VAMI interfejs (https://&lt;vcenter&gt;:5480), uz mogućnost image-based zaštite kada je to deo šire strategije. Podržani su protokoli poput FTP/SFTP, HTTP(S), NFS ili SMB u zavisnosti od verzije i konfiguracije.
+</p>
+
+<p>
+File-Based Backup čuva:
+</p>
+
+<ul>
+<li>vCenter konfiguraciju;</li>
+<li>inventar;</li>
+<li>sertifikate;</li>
+<li>licence;</li>
+<li>alarmne politike;</li>
+<li>historiju događaja (po izboru);</li>
+<li>embedded PostgreSQL bazu.</li>
+</ul>
+
+<p>
+Važno ograničenje je da se restore podržano izvodi na novoraspoređenu appliance instancu iste kompatibilne verzije, kroz dvostepeni postupak obnove.
+</p>
+
+<hr>
+
+<p><strong>Backup ESXi konfiguracije</strong></p>
+
+<p>
+Iako se virtuelne mašine nalaze na datastore-u, konfiguracija ESXi hosta takođe predstavlja vredan resurs.
+</p>
+
+<p>
+Administrator čuva:
+</p>
+
+<ul>
+<li>vSwitch konfiguraciju;</li>
+<li>VMkernel mreže;</li>
+<li>storage adaptere;</li>
+<li>firewall pravila;</li>
+<li>NTP;</li>
+<li>DNS;</li>
+<li>certificate;</li>
+<li>host profile informacije kada se koriste.</li>
+</ul>
+
+<p>
+U manjim okruženjima ovo može značajno ubrzati oporavak nakon zamene fizičkog servera.
+</p>
+
+<hr>
+
+<p><strong>Snapshot nije backup</strong></p>
+
+<p>
+Jedna od najvažnijih administratorskih lekcija jeste pravilno razumevanje snapshot tehnologije.
+</p>
+
+<p>
+Snapshot:
+</p>
+
+<ul>
+<li>nije nezavisna kopija podataka;</li>
+<li>nalazi se na istom storage sistemu;</li>
+<li>zavisi od osnovnog VMDK;</li>
+<li>nije zaštita od otkaza storage sistema;</li>
+<li>nije zaštita od ransomware-a;</li>
+<li>nije dugoročna arhiva.</li>
+</ul>
+
+<p>
+Dugotrajni snapshot-i povećavaju potrošnju prostora, usporavaju performanse i komplikuju konsolidaciju diskova. Zbog toga ih treba koristiti privremeno, a ne kao zamenu za backup.
+</p>
+
+<hr>
+
+<p><strong>Najčešće administratorske odluke</strong></p>
+
+<p>
+Projektovanje backup sistema podrazumeva stalno balansiranje između:
+</p>
+
+<ul>
+<li>RPO zahteva i raspoloživog prostora;</li>
+<li>RTO zahteva i brzine storage sistema;</li>
+<li>opterećenja produkcije i trajanja backup prozora;</li>
+<li>granularnog i kompletnog restore-a;</li>
+<li>lokalnih i udaljenih kopija;</li>
+<li>troškova i nivoa zaštite.</li>
+</ul>
+
+<p>
+Dobar administrator ne pita samo „da li backup prolazi“, već:
+</p>
+
+<ul>
+<li>da li je konzistentan;</li>
+<li>da li može da se vrati;</li>
+<li>koliko traje oporavak;</li>
+<li>da li zadovoljava definisani RPO i RTO;</li>
+<li>da li je zaštićen od kompromitacije ili brisanja;</li>
+<li>da li postoji dokumentovan i testiran postupak restore-a.</li>
+</ul>
+
+<p>
+Upravo restore predstavlja konačnu proveru kvaliteta backup strategije. Backup koji nikada nije testiran kroz kontrolisani restore ne može se smatrati dokazano upotrebljivim u produkcionom okruženju.
+</p>
+
+<hr>
+
+<h3>Politika zaštite: od poslovnog zahteva do izvršivog plana</h3>
+
+<p>
+Politika zaštite nije samo raspored backup poslova. Ona povezuje poslovnu kritičnost, vlasništvo, dozvoljeni gubitak podataka, vreme oporavka, retention, lokacije kopija, način zaštite repozitorijuma, odgovornu osobu i dokaz da je restore testiran. RPO se meri od trenutka poslednje upotrebljive tačke oporavka do incidenta, dok RTO obuhvata ceo put od proglašenja incidenta do potvrđene dostupnosti usluge. Vreme prenosa podataka samo je jedan deo RTO-a; u njega ulaze detekcija, odobrenje, obezbeđivanje compute, mrežnih i storage resursa, restore, pokretanje, aplikaciona validacija i predaja vlasniku usluge.
+</p>
+
+<table>
+  <thead><tr><th>Element politike</th><th>Pitanje</th><th>Dokaz</th></tr></thead>
+  <tbody>
+    <tr><td>Obuhvat</td><td>Koje VM, aplikacije, baze, appliance komponente i konfiguracije se štite?</td><td>Inventar povezan sa vlasnikom, klasom i backup poslom</td></tr>
+    <tr><td>RPO</td><td>Koliki gubitak potvrđenih podataka je prihvatljiv?</td><td>Učestalost tačaka oporavka i upozorenje na prekoračenje</td></tr>
+    <tr><td>RTO</td><td>Za koliko vremena usluga mora ponovo biti funkcionalna?</td><td>Izmereno trajanje kompletne recovery vežbe</td></tr>
+    <tr><td>Retention</td><td>Koliko dugo i sa kojom granularnošću se kopije čuvaju?</td><td>Politika usklađena sa pravnim i poslovnim zahtevima</td></tr>
+    <tr><td>Bezbednost</td><td>Ko može da čita, briše, menja i vraća kopije?</td><td>RBAC, MFA gde je podržan, audit trag i revizija pristupa</td></tr>
+    <tr><td>Validacija</td><td>Kako dokazujemo integritet i funkcionalnost?</td><td>Automatska provera, kontrolna suma i dokumentovan restore test</td></tr>
+  </tbody>
+</table>
+
+<p>
+Praktičan dizajn često koristi princip <strong>3-2-1-1-0</strong>: najmanje tri kopije podataka, na najmanje dva različita tipa medija ili sistema, jedna kopija van primarne lokacije, jedna kopija nepromenljiva, zaključana ili fizički odvojena i nula neotkrivenih grešaka nakon verifikacije. To je projektni princip, a ne garancija: kopije moraju imati različite zone otkaza, nezavisne identitete i proverljiv put oporavka. Replika koja odmah prenese logičko brisanje ili ransomware enkripciju nije zamena za vremenski odvojenu backup kopiju.
+</p>
+
+<h3>Konzistentnost: crash-consistent nije isto što i application-consistent</h3>
+
+<p>
+Image-level kopija može biti <em>crash-consistent</em>, kao stanje diska posle nenadanog nestanka napajanja, ili <em>application-consistent</em>, kada su aplikacioni upisi i transakcioni logovi koordinisano dovedeni u stanje pogodno za oporavak. VMware snapshot daje stabilnu tačku iz koje backup proizvod čita virtuelne diskove, ali sam po sebi ne garantuje konzistentnost baze. Guest quiescing se oslanja na VMware Tools i mehanizme operativnog sistema, kao što je Microsoft VSS, dok baze poput Oracle-a, SAP HANA-e i drugih transakcionih sistema često zahtevaju aplikacioni plug-in, native backup ili koordinaciju sa njihovim recovery modelom.
+</p>
+
+<p>
+Zato test ne završava porukom da je VM pokrenuta. Potrebno je proveriti filesystem, servisne zavisnosti, integritet baze, mogućnost prijave, ključnu poslovnu transakciju i, kada se koriste log backup-i, oporavak do izabrane tačke u vremenu. VMware administrator obezbeđuje pouzdanu virtuelnu infrastrukturu i koordinaciju snapshot-a, ali vlasnik aplikacije potvrđuje da je vraćena usluga semantički ispravna.
+</p>
+
+<h3>Tok image-level backup-a i zone opterećenja</h3>
+
+<ol>
+  <li>Backup sistem autentikuje se prema vCenter-u ili ESXi hostu sa namenskim nalogom i potrebnim privilegijama.</li>
+  <li>Po potrebi koordinira guest quiescing i kreira privremeni VMware snapshot.</li>
+  <li>Čita osnovni VMDK iz stabilne snapshot tačke koristeći odgovarajući transportni režim proizvoda.</li>
+  <li>CBT omogućava da inkrementalni posao zatraži promenjene blokove u odnosu na prethodni change ID.</li>
+  <li>Podaci se kompresuju, deduplikuju ili šifruju prema mogućnostima proizvoda i upisuju u repozitorijum.</li>
+  <li>Snapshot se uklanja, delta se konsoliduje, a backup katalog registruje novu tačku oporavka.</li>
+  <li>Post-job validacija proverava status, integritet, starost kopije i odsustvo zaostalih snapshot-a.</li>
+</ol>
+
+<p>
+Performansni rizik nije ograničen na vreme čitanja VMDK-a. Snapshot kreiranje može kratko zaustaviti VM, aktivni delta disk raste tokom backup-a, a konsolidacija vraća promene u osnovni disk i može snažno opteretiti datastore. Backup prozor se zato planira prema zbirnom I/O profilu, raspoloživom prostoru, latenciji, broju paralelnih poslova i propusnosti mreže. Ako posao traje duže od perioda između dva pokretanja, problem se ne rešava samo dodatnim paralelizmom: prvo se utvrđuje da li je usko grlo source datastore, proxy/transport, mreža, repozitorijum, deduplikacija ili konsolidacija.
+</p>
+
+<h3>Restore modeli i njihove posledice</h3>
+
+<table>
+  <thead><tr><th>Model</th><th>Prednost</th><th>Glavni rizik i validacija</th></tr></thead>
+  <tbody>
+    <tr><td>Restore cele VM na novu lokaciju</td><td>Najbezbedniji test bez prepisivanja izvora</td><td>Izolovati mrežu, promeniti identitet po potrebi i izvršiti aplikacioni test</td></tr>
+    <tr><td>Restore preko postojeće VM</td><td>Direktan povratak produkcionog objekta</td><td>Može nepovratno prepisati novije stanje; zahteva odobrenje i potvrđenu tačku</td></tr>
+    <tr><td>Instant recovery</td><td>Brzo pokretanje workload-a iz backup storage-a</td><td>Privremene performanse i zavisnost od repozitorijuma; završna migracija je obavezna</td></tr>
+    <tr><td>File-level restore</td><td>Vraća pojedinačne datoteke bez pune obnove VM-a</td><td>Proveriti dozvole, vlasništvo i aplikacionu upotrebu datoteke</td></tr>
+    <tr><td>Application-item restore</td><td>Granularno vraćanje objekta aplikacije</td><td>Zavisi od plug-in-a, log lanca i podržane verzije</td></tr>
+  </tbody>
+</table>
+
+<p>
+Kod restore-a na novu lokaciju administrator eksplicitno bira cluster ili host, datastore, format diska, mrežno mapiranje i naziv VM-a. Produkcionu mrežu ne treba povezivati pre nego što se isključi konflikt IP adrese, DNS imena, UUID-a, aplikacionog identiteta i automatizovanih agenata. Izolovana port grupa bez uplink-a ili namenski recovery segment bez pristupa produkciji bezbedniji su od oslanjanja na brzo ručno isključivanje mrežnog adaptera.
+</p>
+
+<h3>Zaštita backup sistema od kompromitacije</h3>
+
+<p>
+Backup infrastruktura je privilegovana meta: njen nalog često može da čita sve VM-ove, kreira snapshot-e i vraća sadržaj. Management, proxy i repository uloge treba segmentirati kada obim i proizvod to omogućavaju; koristiti namenske servisne naloge, najmanje privilegije, odvojene administrativne identitete, šifrovanje u prenosu i mirovanju, kontrolu ključeva, nepromenljive ili zaključane kopije, udaljenu kopiju i audit pristupa. Backup konzola ne treba da deli svakodnevni administratorski nalog, autentikacioni domen i isti put kompromitacije sa produkcionim vCenter-om kad god se to može izbeći.
+</p>
+
+<p>
+Enkripcija štiti poverljivost, ali uvodi zavisnost od ključa. Kopija za koju ne postoji dostupan i testiran ključ nije oporavljiva. Dokumentacija mora navesti gde se čuvaju ključevi, ko odobrava pristup i kako se obnavljaju posle gubitka primarne lokacije. Retention lock ili immutable režim aktivira se tek nakon provere vremena, kapaciteta, pravnih zahteva i postupka za vanredne situacije, jer pogrešno zaključavanje može onemogućiti legitimno oslobađanje prostora.
+</p>
+
+<h3>Verzijski, licencni i proizvodni okvir</h3>
+
+<p>
+VADP, CBT i VMware snapshot pružaju platformsku osnovu, ali raspored poslova, transportni režimi, deduplikacija, application-aware obrada, nepromenljivost, instant recovery, granularni restore i automatska verifikacija zavise od konkretnog backup proizvoda, njegovog izdanja i licence. Nazive opcija i privilegije treba proveriti u matrici kompatibilnosti proizvoda za tačan vCenter, ESXi, guest OS, virtuelni hardver, datastore i aplikaciju. Lekcija zato ne propisuje vendor-specifičan čarobnjak za image-level backup; praktikum koristi zajedničke vSphere dokaze, a operacije proizvoda mapiraju se na njegovu zvaničnu dokumentaciju.
+</p>
+
+<p>
+Za vCenter Server Appliance ugrađeni file-based backup i restore ostaju poseban, podržan mehanizam. Restore se pokreće iz GUI instalera odgovarajućeg vCenter medijuma i odvija u dve faze: raspoređivanje nove appliance instance, zatim prenos backup podataka. Potrebno je sačuvati instalacioni ISO koji odgovara backup verziji i proveriti verzijska ograničenja pre incidenta. Podržani protokoli i sintaksa lokacije razlikuju se među izdanjima; VAMI za instaliranu verziju i njen zvanični vodič imaju prednost nad generičkim primerom. Backup vCenter-a nije backup ESXi hostova, VM-ova, spoljnog DNS/NTP sistema, KMS-a niti zavisnih mrežnih i storage uređaja.
+</p>
+
+<p>
+Konfiguracioni bundle ESXi hosta ima ograničenja restore-a u pogledu kompatibilnog builda i hardvera. U klasterima sa Host Profiles, vSphere Configuration Profiles ili declarative image pristupom deo željenog stanja može se ponovo primeniti iz centralne konfiguracije, ali i dalje treba zaštititi izvor te konfiguracije i dokumentovati host-specifične vrednosti. Komanda <code>Get-VMHostFirmware</code> pravi konfiguracioni bundle; ona ne kopira VM-ove, datastore podatke niti firmware fizičkog servera.
+</p>
+
+<h3>Operativni dokaz: šta znači uspešan backup</h3>
+
+<p>
+Status <code>Success</code> dokazuje samo da je određeni posao završio prema kriterijumu proizvoda. Dokaz zaštite čini lanac: objekat je obuhvaćen pravilnom politikom, najnovija tačka zadovoljava RPO, kopija je zaštićena i čitljiva, katalog i zavisni lanci su dostupni, nema zaostalog snapshot-a, restore je izveden u izolaciji, aplikacija je validirana, izmereni oporavak zadovoljava RTO, a nalaz je dokumentovan. Automatizovana health provera smanjuje rizik, ali periodični stvarni restore ostaje obavezan.
+</p>
+
+<h3>Praktikum – projektovanje, zaštita, validacija i oporavak</h3>
+
+<p><strong>Laboratorijski cilj i operativni okvir</strong></p>
+
+<p>
+U prvom delu praktikuma administrator priprema kontrolisano VMware backup okruženje, utvrđuje početno stanje, razvrstava objekte prema poslovnoj važnosti, proverava snapshot i Changed Block Tracking stanje, konfiguriše file-based backup vCenter Server Appliance-a, validira nastalu kopiju i pravi konfiguracioni backup ESXi hosta.
+</p>
+
+<p>
+Vežbe su organizovane tako da se najpre prikupe dokazi i definišu zahtevi, zatim izvrše standardne backup operacije, a tek potom analiziraju neuspešni poslovi. Nijedna promena ne sme se izvoditi pre nego što su sačuvani početno stanje, vreme promene, nalog koji je izvršio operaciju i očekivani rezultat.
+</p>
+
+<p><strong>Referentna laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Primer naziva</th>
+      <th>Uloga</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server Appliance</td>
+      <td>vcsa01.lab.local</td>
+      <td>centralno upravljanje, VAMI backup i evidencija događaja</td>
+    </tr>
+    <tr>
+      <td>Prvi ESXi host</td>
+      <td>esx01.lab.local</td>
+      <td>pokretanje test VM-a i konfiguracioni backup hosta</td>
+    </tr>
+    <tr>
+      <td>Drugi ESXi host</td>
+      <td>esx02.lab.local</td>
+      <td>opciona validacija klasterskog okruženja</td>
+    </tr>
+    <tr>
+      <td>Datastore</td>
+      <td>DS-LAB-01</td>
+      <td>smeštaj laboratorijskih virtuelnih mašina</td>
+    </tr>
+    <tr>
+      <td>Linux backup server</td>
+      <td>bkp01.lab.local</td>
+      <td>SFTP ili NFS odredište za VCSA file-based backup</td>
+    </tr>
+    <tr>
+      <td>Administratorska stanica</td>
+      <td>admin01.lab.local</td>
+      <td>vSphere Client, VAMI, PowerShell i VCF PowerCLI</td>
+    </tr>
+    <tr>
+      <td>Test virtuelna mašina</td>
+      <td>vm-backup-lab01</td>
+      <td>snapshot, CBT i kontrolne promene podataka</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Primeri naziva, IP adresa, putanja i korisničkih naloga moraju se prilagoditi stvarnom laboratorijskom okruženju. Lozinke se ne upisuju u skripte, komandnu istoriju, dokumentaciju niti nešifrovane tekstualne datoteke.
+</p>
+
+<p><strong>Minimalne privilegije i alati</strong></p>
+
+<ul>
+  <li>vSphere nalog sa pravom čitanja inventara, događaja, datastore-a, VM konfiguracije i snapshot stanja;</li>
+  <li>posebne privilegije za kreiranje i uklanjanje snapshot-a samo nad laboratorijskom VM;</li>
+  <li>root pristup VAMI interfejsu vCenter Server Appliance-a;</li>
+  <li>nalog na backup serveru sa pravom pisanja isključivo u namenski backup direktorijum;</li>
+  <li>PowerShell 7 i aktuelni VCF PowerCLI moduli na administratorskoj stanici;</li>
+  <li>SSH pristup ESXi hostu samo kada je predviđen vežbom i odobren politikom okruženja;</li>
+  <li>pristup DNS i NTP proverama za sve uključene sisteme.</li>
+</ul>
+
+<p>
+Aktuelna Broadcom dokumentacija vodi VMware PowerCLI kao VCF PowerCLI. U postojećim okruženjima i skriptama i dalje se često sreće naziv VMware PowerCLI. Cmdlet-i korišćeni u ovom praktikumu izvršavaju se kroz odgovarajuće PowerCLI module i treba ih proveriti prema verziji modula instaliranoj na administratorskoj stanici.
+</p>
+
+<hr>
+
+<p><strong>Vežba 1 – Prikupljanje početnog stanja i izrada backup inventara</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator pre bilo kakve promene napravi tehnički inventar objekata koji moraju biti zaštićeni, zabeleži njihovu lokaciju, veličinu, stanje, postojeće snapshot-e i osnovne zavisnosti. Rezultat vežbe nije samo spisak VM-ova, već osnova za kasnije definisanje backup politika i proveru obuhvata.
+</p>
+
+<p><strong>Poslovni kontekst</strong></p>
+
+<p>
+Infrastrukturni tim je dobio zahtev da uvede standardizovan backup za postojeći vSphere inventar. Dokumentacija je nepotpuna, nazivi VM-ova nisu dosledni, a nije poznato da li sve poslovne aplikacije imaju vlasnike, definisane RPO/RTO vrednosti i potvrđen postupak oporavka.
+</p>
+
+<p><strong>Preduslovi i početno stanje</strong></p>
+
+<ul>
+  <li>vCenter je dostupan preko FQDN-a i svi relevantni hostovi su u stanju Connected;</li>
+  <li>administratorska stanica može da razreši vCenter FQDN i uspostavi HTTPS vezu;</li>
+  <li>PowerCLI je instaliran;</li>
+  <li>postoji direktorijum za čuvanje inventara, na primer <code>/home/admin/vmware-backup-audit</code> ili <code>C:\Admin\VMware-Backup-Audit</code>;</li>
+  <li>nema planiranih masovnih migracija, preimenovanja ili brisanja VM-ova tokom prikupljanja početnog stanja.</li>
+</ul>
+
+<p><strong>Procena rizika</strong></p>
+
+<p>
+Vežba je read-only i ne menja stanje vSphere okruženja. Rizik ipak postoji ako se izvezeni inventar ostavi nezaštićen, jer može sadržati nazive servera, IP adrese, mrežne oznake, datastore lokacije i druge podatke korisne napadaču. Izveštaj se čuva u zaštićenom administratorskom repozitorijumu sa ograničenim pristupom.
+</p>
+
+<p><strong>GUI postupak</strong></p>
+
+<ol>
+  <li>Prijavite se u vSphere Client nalogom sa read-only ili odgovarajućim auditorskim privilegijama.</li>
+  <li>Otvorite <strong>Hosts and Clusters</strong> i proverite da li postoje hostovi u stanju Disconnected ili Not Responding.</li>
+  <li>Otvorite <strong>VMs and Templates</strong> i identifikujte produkcione, infrastrukturne, test i napuštene VM-ove.</li>
+  <li>Za svaku kritičnu VM proverite kartice <strong>Summary</strong>, <strong>Configure</strong>, <strong>Datastores</strong>, <strong>Networks</strong> i <strong>Snapshots</strong>.</li>
+  <li>Na nivou vCenter-a otvorite <strong>Monitor &gt; Tasks and Events</strong> i proverite da li postoje nedavni neuspešni snapshot, clone, export ili backup poslovi.</li>
+  <li>Otvorite <strong>Storage</strong> i zabeležite datastore kapacitet, slobodan prostor i alarmno stanje.</li>
+</ol>
+
+<p><strong>PowerCLI postupak</strong></p>
+
+<p>
+Komande se izvršavaju na administratorskoj stanici. Za ovu vežbu dovoljan je nalog sa pravom čitanja inventara.
+</p>
+
+<pre><code class="language-powershell">$vc = "vcsa01.lab.local"
+$outDir = "/home/admin/vmware-backup-audit"
+
+New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+
+Connect-VIServer -Server $vc
+
+Get-VMHost |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build,
+                  @{N="Cluster";E={$_.Parent.Name}} |
+    Export-Csv -Path "$outDir/vmhosts.csv" -NoTypeInformation -Encoding UTF8
+
+Get-Datastore |
+    Select-Object Name,
+                  Type,
+                  CapacityGB,
+                  FreeSpaceGB,
+                  @{N="FreePercent";E={
+                      if ($_.CapacityGB -gt 0) {
+                          [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+                      }
+                  }} |
+    Export-Csv -Path "$outDir/datastores.csv" -NoTypeInformation -Encoding UTF8
+
+Get-VM |
+    Select-Object Name,
+                  PowerState,
+                  NumCpu,
+                  MemoryGB,
+                  ProvisionedSpaceGB,
+                  UsedSpaceGB,
+                  @{N="Folder";E={$_.Folder.Name}},
+                  @{N="Host";E={$_.VMHost.Name}},
+                  @{N="Datastore";E={
+                      (Get-Datastore -VM $_ | Select-Object -ExpandProperty Name) -join ";"
+                  }},
+                  @{N="Network";E={
+                      (Get-NetworkAdapter -VM $_ |
+                          Select-Object -ExpandProperty NetworkName) -join ";"
+                  }},
+                  Notes |
+    Export-Csv -Path "$outDir/virtual-machines.csv" -NoTypeInformation -Encoding UTF8
+
+Get-VM |
+    Get-Snapshot |
+    Select-Object @{N="VM";E={$_.VM.Name}},
+                  Name,
+                  Description,
+                  Created,
+                  SizeGB,
+                  IsCurrent |
+    Export-Csv -Path "$outDir/snapshots.csv" -NoTypeInformation -Encoding UTF8
+
+Disconnect-VIServer -Server $vc -Confirm:$false</code></pre>
+
+<p>
+Komande čitaju inventar i ne menjaju objekte. Pozivi <code>Get-Datastore -VM</code> i <code>Get-NetworkAdapter -VM</code> mogu trajati duže u velikom okruženju. U produkciji sa hiljadama VM-ova prikupljanje treba ograničiti na datacenter, cluster, folder ili tag i izvršavati van perioda najvećeg opterećenja upravljačke ravni.
+</p>
+
+<p><strong>Dopuna inventara poslovnim podacima</strong></p>
+
+<p>
+Tehnički inventar se dopunjava sledećim kolonama:
+</p>
+
+<ul>
+  <li>vlasnik aplikacije;</li>
+  <li>tehnički vlasnik;</li>
+  <li>poslovna kritičnost;</li>
+  <li>dozvoljeni RPO;</li>
+  <li>dozvoljeni RTO;</li>
+  <li>zahtev za application-consistent backup;</li>
+  <li>period čuvanja;</li>
+  <li>zahtev za off-site ili immutable kopiju;</li>
+  <li>redosled pokretanja tokom oporavka;</li>
+  <li>zavisnosti od DNS-a, Active Directory-ja, baze, load balancer-a, mrežne zone i drugih servisa;</li>
+  <li>datum poslednjeg uspešnog restore testa.</li>
+</ul>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>
+Administrator raspolaže trenutnim inventarom hostova, datastore-a, VM-ova i snapshot-a. Svaka VM koja treba da bude obuhvaćena backup-om ima identifikovanog vlasnika ili je označena kao objekat sa nerešenim vlasništvom.
+</p>
+
+<p><strong>Provera uspeha</strong></p>
+
+<ol>
+  <li>Otvorite svaku CSV datoteku i proverite da nije prazna.</li>
+  <li>Uporedite ukupan broj VM-ova iz izveštaja sa brojem prikazanim u vSphere Client-u.</li>
+  <li>Proverite da li se VM može nalaziti na više datastore-a i da li su svi navedeni.</li>
+  <li>Ručno proverite najmanje tri nasumično odabrane VM u odnosu na GUI.</li>
+  <li>Izračunajte koliko VM-ova nema poslovnog vlasnika, RPO ili RTO.</li>
+</ol>
+
+<pre><code class="language-powershell">Import-Csv "$outDir/virtual-machines.csv" |
+    Measure-Object
+
+Import-Csv "$outDir/snapshots.csv" |
+    Sort-Object Created |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Moguće greške i troubleshooting</strong></p>
+
+<ul>
+  <li><strong>Connect-VIServer ne uspeva:</strong> proveriti DNS, vreme sistema, TCP 443, TLS sertifikat i nalog.</li>
+  <li><strong>Nedostaju VM-ovi:</strong> proveriti obim dodeljenih privilegija. vSphere prikazuje samo objekte nad kojima nalog ima odgovarajuću vidljivost.</li>
+  <li><strong>Datastore kolona je prazna:</strong> proveriti da li je VM orphaned, inaccessible, template ili objekat sa nedostupnim storage-om.</li>
+  <li><strong>Izveštaj traje predugo:</strong> ograničiti ulaz, na primer <code>Get-Cluster "LAB-Cluster" | Get-VM</code>, i ponovo izvršiti izvoz.</li>
+  <li><strong>CSV sadrži osetljive beleške:</strong> ukloniti kolonu Notes iz kopije namenjene širem timu, ali sačuvati original u zaštićenom repozitorijumu.</li>
+</ul>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Promene u vSphere okruženju nisu izvršene. Po potrebi se brišu samo lokalno generisane CSV datoteke, u skladu sa pravilima čuvanja auditorskih podataka.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada se broj i stanje objekata iz izveštaja podudaraju sa vSphere inventarom i kada su jasno izdvojeni objekti bez vlasnika, politike ili zahteva za oporavak.
+</p>
+
+<hr>
+
+<p><strong>Vežba 2 – Razvrstavanje VM-ova i izrada početne backup matrice</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da se tehnički inventar pretvori u primenljivu backup politiku. Administrator mora da odredi šta se štiti, kojom učestalošću, koliko dugo se kopije čuvaju, kakva konzistentnost je potrebna i koliko brzo sistem mora biti vraćen.
+</p>
+
+<p><strong>Kontekst</strong></p>
+
+<p>
+Jedinstvena politika „backup svih VM-ova jednom dnevno“ nije dovoljno precizna. Domain controller, baza podataka, stateless web server, testna VM i arhivski sistem nemaju isti profil promene, istu poslovnu vrednost ni isti postupak oporavka.
+</p>
+
+<p><strong>Početno stanje</strong></p>
+
+<p>
+Dostupan je inventar iz prethodne vežbe i potvrđeni su vlasnici najmanje kritičnih laboratorijskih sistema.
+</p>
+
+<p><strong>Postupak</strong></p>
+
+<p>
+Napravite backup matricu sa najmanje sledećim kolonama:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Polje</th>
+      <th>Primer</th>
+      <th>Administratorska odluka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>VM</td>
+      <td>db-prod-01</td>
+      <td>tačno ime objekta u vCenter-u</td>
+    </tr>
+    <tr>
+      <td>Klasa</td>
+      <td>Gold</td>
+      <td>nivo zaštite prema poslovnoj kritičnosti</td>
+    </tr>
+    <tr>
+      <td>RPO</td>
+      <td>1 sat</td>
+      <td>maksimalno prihvatljiv gubitak podataka</td>
+    </tr>
+    <tr>
+      <td>RTO</td>
+      <td>2 sata</td>
+      <td>maksimalno vreme do funkcionalnog oporavka</td>
+    </tr>
+    <tr>
+      <td>Tip zaštite</td>
+      <td>image-level + DB-native</td>
+      <td>kombinacija VM i aplikacionog backup-a</td>
+    </tr>
+    <tr>
+      <td>Konzistentnost</td>
+      <td>application-consistent</td>
+      <td>zahtev za koordinaciju sa aplikacijom</td>
+    </tr>
+    <tr>
+      <td>Učestalost</td>
+      <td>na 1 sat</td>
+      <td>mora biti usklađena sa RPO ciljem</td>
+    </tr>
+    <tr>
+      <td>Retention</td>
+      <td>30 dnevnih, 12 mesečnih</td>
+      <td>poslovni, bezbednosni i regulatorni zahtev</td>
+    </tr>
+    <tr>
+      <td>Off-site kopija</td>
+      <td>da</td>
+      <td>zaštita od gubitka primarne lokacije</td>
+    </tr>
+    <tr>
+      <td>Immutable kopija</td>
+      <td>da</td>
+      <td>zaštita od brisanja ili kompromitacije</td>
+    </tr>
+    <tr>
+      <td>Restore test</td>
+      <td>kvartalno</td>
+      <td>dokaz upotrebljivosti kopije</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Primer klasifikacije</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Klasa</th>
+      <th>Tipičan RPO</th>
+      <th>Tipičan RTO</th>
+      <th>Primer sistema</th>
+      <th>Napomena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Gold</td>
+      <td>15 minuta do 1 sat</td>
+      <td>do 2 sata</td>
+      <td>kritična baza ili transakcioni sistem</td>
+      <td>zahteva čestu zaštitu, aplikacionu konzistentnost i prioritetni restore</td>
+    </tr>
+    <tr>
+      <td>Silver</td>
+      <td>4 do 8 sati</td>
+      <td>4 do 8 sati</td>
+      <td>interni poslovni servis</td>
+      <td>standardna image-level zaštita uz proveru aplikacije</td>
+    </tr>
+    <tr>
+      <td>Bronze</td>
+      <td>24 sata</td>
+      <td>jedan radni dan</td>
+      <td>razvojni ili pomoćni sistem</td>
+      <td>niži prioritet i duži restore prozor</td>
+    </tr>
+    <tr>
+      <td>Rebuild</td>
+      <td>nije primenljivo</td>
+      <td>prema automatizaciji</td>
+      <td>stateless worker koji se ponovo kreira</td>
+      <td>štite se konfiguracija, kod i podaci, a ne nužno cela VM</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Navedene vrednosti su laboratorijski primeri, a ne univerzalna preporuka. Konačne RPO i RTO vrednosti odobravaju vlasnici poslovnih procesa, upravljanje kontinuitetom poslovanja i odgovorni IT timovi.
+</p>
+
+<p><strong>Tagovanje u vCenter-u</strong></p>
+
+<p>
+U okruženju koje koristi vCenter tagove, backup klasa može da se izrazi kategorijom koja dozvoljava jednu vrednost po objektu, na primer <code>Backup-Tier</code> sa tagovima <code>Gold</code>, <code>Silver</code>, <code>Bronze</code> i <code>Excluded-Approved</code>.
+</p>
+
+<p>
+Tag <code>Excluded-Approved</code> ne znači „zaboravljena VM“. On mora imati formalno odobrenje, vlasnika, razlog isključenja i datum revizije.
+</p>
+
+<p><strong>PowerCLI kreiranje kategorije i tagova</strong></p>
+
+<p>
+Sledeće komande menjaju vCenter inventar. Izvršava ih nalog sa privilegijama za upravljanje tagovima. Pre izvršavanja proveriti da kategorija i tagovi već ne postoje.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+$category = Get-TagCategory -Name "Backup-Tier" -ErrorAction SilentlyContinue
+
+if (-not $category) {
+    $category = New-TagCategory `
+        -Name "Backup-Tier" `
+        -Cardinality Single `
+        -EntityType VirtualMachine `
+        -Description "Odobrena klasa backup zaštite za virtuelne mašine"
+}
+
+foreach ($tagName in "Gold","Silver","Bronze","Excluded-Approved") {
+    if (-not (Get-Tag -Name $tagName -Category $category -ErrorAction SilentlyContinue)) {
+        New-Tag -Name $tagName -Category $category | Out-Null
+    }
+}
+
+Get-Tag -Category $category |
+    Select-Object Name, Category, Description</code></pre>
+
+<p><strong>Dodeljivanje taga laboratorijskoj VM</strong></p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-backup-lab01"
+$tag = Get-Tag -Name "Silver" -Category "Backup-Tier"
+
+New-TagAssignment -Entity $vm -Tag $tag</code></pre>
+
+<p>
+Komanda menja metadata objekta, ali ne menja guest OS niti virtuelni hardver. Rizik postoji ako backup softver koristi dinamičko uključivanje VM-ova prema tagovima. Pogrešna dodela može uključiti VM u pogrešnu politiku ili je izostaviti iz zaštite.
+</p>
+
+<p><strong>Validacija tagova</strong></p>
+
+<pre><code class="language-powershell">Get-VM |
+    ForEach-Object {
+        $assignment = Get-TagAssignment -Entity $_ -Category "Backup-Tier"
+        [pscustomobject]@{
+            VM         = $_.Name
+            BackupTier = ($assignment.Tag.Name -join ",")
+        }
+    } |
+    Sort-Object BackupTier, VM |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Provera nepotpunog obuhvata</strong></p>
+
+<pre><code class="language-powershell">$untagged = Get-VM | Where-Object {
+    -not (Get-TagAssignment -Entity $_ -Category "Backup-Tier" -ErrorAction SilentlyContinue)
+}
+
+$untagged |
+    Select-Object Name, PowerState, VMHost |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>
+Svaka VM ima jednu odobrenu backup klasu ili je evidentirana kao objekat čiji status još nije rešen. Kritične VM nisu automatski svrstane samo prema nazivu, operativnom sistemu ili veličini, već prema potvrđenoj poslovnoj funkciji.
+</p>
+
+<p><strong>Moguće greške</strong></p>
+
+<ul>
+  <li><strong>Kategorija dozvoljava više tagova:</strong> kreirana je sa pogrešnom kardinalnošću; za jednu backup klasu po VM treba koristiti Single.</li>
+  <li><strong>VM ima pogrešan tag:</strong> ukloniti samo netačnu dodelu, a zatim dodeliti odobreni tag.</li>
+  <li><strong>Backup proizvod ne vidi novu oznaku:</strong> proveriti interval sinhronizacije, nalog koji backup sistem koristi i obim njegovih privilegija.</li>
+  <li><strong>Tag je promenjen bez change zapisa:</strong> proveriti vCenter događaje i uskladiti tehničko stanje sa sistemom za upravljanje promenama.</li>
+</ul>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Za uklanjanje pogrešne dodele koristi se:
+</p>
+
+<pre><code class="language-powershell">Get-TagAssignment -Entity (Get-VM "vm-backup-lab01") -Category "Backup-Tier" |
+    Remove-TagAssignment -Confirm:$false</code></pre>
+
+<p>
+Brisanje cele kategorije nije odgovarajući rollback u okruženju u kome su tagovi već povezani sa backup poslovima. U tom slučaju uklanja se samo konkretna pogrešna dodela.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada postoji odobrena backup matrica, kada je laboratorijska VM pravilno klasifikovana i kada administrator može da izdvoji sve VM-ove bez dodeljene backup politike.
+</p>
+
+<hr>
+
+<p><strong>Vežba 3 – Snapshot audit i uklanjanje operativnog rizika</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator identifikuje stare, velike, zaboravljene ili neuspešno konsolidovane snapshot-e pre uvođenja backup poslova. Snapshot audit je važan jer image-level backup proizvodi često privremeno kreiraju VMware snapshot, pa postojeći problem može produžiti backup, povećati datastore potrošnju ili dovesti do neuspešne konsolidacije.
+</p>
+
+<p><strong>Upozorenje</strong></p>
+
+<p>
+Snapshot se ne briše samo zato što je star. Pre uklanjanja moraju se utvrditi vlasnik, razlog postojanja, zavisnost od trenutne promene i raspoloživi datastore kapacitet. Operacija uklanjanja može izazvati značajan storage I/O tokom konsolidacije. Ne pokretati masovno uklanjanje snapshot-a u periodu najvećeg opterećenja.
+</p>
+
+<p><strong>GUI audit</strong></p>
+
+<ol>
+  <li>U vSphere Client-u izaberite VM.</li>
+  <li>Otvorite <strong>Snapshots &gt; Manage Snapshots</strong>.</li>
+  <li>Zabeležite naziv, opis, vreme kreiranja i stablo snapshot-a.</li>
+  <li>Na kartici <strong>Datastores</strong> proverite slobodan prostor datastore-a.</li>
+  <li>Na kartici <strong>Monitor &gt; Tasks and Events</strong> proverite prethodne snapshot i consolidation događaje.</li>
+  <li>Na kartici <strong>Summary</strong> proverite da li je prikazano upozorenje da je potrebna konsolidacija diskova.</li>
+</ol>
+
+<p><strong>PowerCLI audit svih snapshot-a</strong></p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+$now = Get-Date
+
+$report = Get-VM |
+    Get-Snapshot |
+    Select-Object @{N="VM";E={$_.VM.Name}},
+                  Name,
+                  Description,
+                  Created,
+                  @{N="AgeDays";E={
+                      [math]::Round(($now - $_.Created).TotalDays, 1)
+                  }},
+                  @{N="SizeGB";E={
+                      [math]::Round($_.SizeGB, 2)
+                  }},
+                  IsCurrent
+
+$report |
+    Sort-Object AgeDays -Descending |
+    Format-Table -AutoSize
+
+$report |
+    Export-Csv "/home/admin/vmware-backup-audit/snapshot-audit.csv" `
+    -NoTypeInformation -Encoding UTF8</code></pre>
+
+<p>
+<code>Get-Snapshot</code> čita snapshot objekte dostupne kroz vCenter. <code>Remove-Snapshot</code> ih uklanja i predstavlja operaciju koja menja stanje VM-a i pokreće konsolidaciju podataka. Obe komande su deo aktuelne PowerCLI reference.
+</p>
+
+<p><strong>Izdvajanje snapshot-a starijih od laboratorijskog praga</strong></p>
+
+<pre><code class="language-powershell">$thresholdDays = 3
+
+Get-VM |
+    Get-Snapshot |
+    Where-Object {
+        $_.Created -lt (Get-Date).AddDays(-$thresholdDays)
+    } |
+    Select-Object @{N="VM";E={$_.VM.Name}},
+                  Name,
+                  Created,
+                  SizeGB,
+                  Description |
+    Sort-Object Created</code></pre>
+
+<p>
+Prag od tri dana koristi se samo u laboratoriji. Produkciona politika mora da definiše dozvoljeno trajanje prema vrsti promene, opterećenju, aplikaciji i pravilima organizacije.
+</p>
+
+<p><strong>Kontrolisano kreiranje snapshot-a laboratorijske VM</strong></p>
+
+<p>
+Sledeća operacija menja stanje VM-a. Izvodi se samo nad <code>vm-backup-lab01</code>, nakon provere slobodnog datastore prostora i odsustva postojećih snapshot-a.
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-backup-lab01"
+
+Get-Snapshot -VM $vm
+
+New-Snapshot `
+    -VM $vm `
+    -Name "LAB-Before-Backup-Test" `
+    -Description "Privremeni snapshot za laboratorijsku proveru; ukloniti po završetku vežbe" `
+    -Memory:$false `
+    -Quiesce:$false</code></pre>
+
+<p>
+Opcija <code>-Memory:$false</code> ne uključuje memorijsko stanje VM-a. Opcija <code>-Quiesce:$false</code> u ovoj vežbi namerno ne pokušava guest quiescing, jer se proverava osnovna snapshot procedura. Takav snapshot ne treba opisivati kao application-consistent backup.
+</p>
+
+<p><strong>Kontrolna promena u guest OS-u</strong></p>
+
+<p>
+Prijavite se u laboratorijsku VM i kreirajte jasno označenu test datoteku:
+</p>
+
+<pre><code class="language-bash">sudo mkdir -p /opt/backup-lab
+date --iso-8601=seconds | sudo tee /opt/backup-lab/created-after-snapshot.txt
+sync</code></pre>
+
+<p>
+Na Windows laboratorijskoj VM može se koristiti:
+</p>
+
+<pre><code class="language-powershell">New-Item -ItemType Directory -Path C:\BackupLab -Force
+Get-Date -Format o |
+    Set-Content C:\BackupLab\created-after-snapshot.txt</code></pre>
+
+<p><strong>Uklanjanje snapshot-a bez vraćanja VM-a unazad</strong></p>
+
+<p>
+U ovoj vežbi cilj nije revert, već bezbedno uklanjanje privremenog snapshot-a i konsolidacija promena u osnovni disk.
+</p>
+
+<pre><code class="language-powershell">$snapshot = Get-Snapshot `
+    -VM "vm-backup-lab01" `
+    -Name "LAB-Before-Backup-Test"
+
+$snapshot |
+    Remove-Snapshot -Confirm:$false</code></pre>
+
+<p>
+Ne koristiti <code>Set-VM -Snapshot</code> u ovoj vežbi. Ta operacija vraća VM na snapshot stanje i može odbaciti promene nastale posle snapshot-a. Aktuelna PowerCLI dokumentacija prikazuje <code>Set-VM -Snapshot</code> kao operaciju vraćanja VM-a na izabrani snapshot, zbog čega je to rizična komanda kada se koristi nad produkcionim sistemom.
+</p>
+
+<p><strong>Praćenje zadatka</strong></p>
+
+<pre><code class="language-powershell">Get-Task |
+    Where-Object {
+        $_.Name -match "snapshot|consolidat"
+    } |
+    Sort-Object StartTime -Descending |
+    Select-Object -First 10 Name, State, PercentComplete, StartTime, FinishTime</code></pre>
+
+<p><strong>Provera uspeha</strong></p>
+
+<ol>
+  <li><code>Get-Snapshot -VM "vm-backup-lab01"</code> ne vraća uklonjenu tačku.</li>
+  <li>Test datoteka kreirana posle snapshot-a i dalje postoji.</li>
+  <li>VM ostaje uključena i aplikaciona provera prolazi.</li>
+  <li>U vSphere Client-u nema poruke <strong>Virtual machine disks consolidation is needed</strong>.</li>
+  <li>Datastore slobodan prostor se stabilizuje nakon završene konsolidacije.</li>
+</ol>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<p><strong>Grana A – Remove Snapshot dugo traje</strong></p>
+
+<ol>
+  <li>Ne prekidati ESXi host, management agente ili storage vezu samo zato što procenat napretka dugo miruje.</li>
+  <li>Proveriti stanje zadatka u Recent Tasks.</li>
+  <li>Proveriti datastore latenciju i slobodan prostor.</li>
+  <li>Proveriti da li se VM intenzivno menja tokom konsolidacije.</li>
+  <li>Pregledati <code>/var/log/hostd.log</code> i <code>/var/log/vmkernel.log</code> na hostu koji pokreće VM.</li>
+</ol>
+
+<p><strong>Grana B – Potrebna je konsolidacija</strong></p>
+
+<ol>
+  <li>Potvrditi da aktivni backup posao više ne koristi snapshot.</li>
+  <li>Proveriti slobodan prostor na datastore-u.</li>
+  <li>U vSphere Client-u izabrati <strong>Snapshots &gt; Consolidate</strong>.</li>
+  <li>Pratiti zadatak i storage stanje.</li>
+  <li>Ne brisati ručno delta VMDK datoteke iz datastore browser-a.</li>
+</ol>
+
+<p><strong>Grana C – Datoteka posle snapshot-a je nestala</strong></p>
+
+<p>
+Najverovatnije je izvršen revert umesto uklanjanja snapshot-a. Simptom je gubitak promena nastalih nakon tačke snapshot-a. Neposredni uzrok je pogrešna administratorska operacija; osnovni uzrok može biti nejasna procedura, pogrešna komanda ili odsustvo peer review-a. Dalje promene treba zaustaviti, sačuvati događaje i proceniti mogućnost vraćanja podataka iz pravog backup-a ili aplikacionih logova.
+</p>
+
+<p><strong>Relevantni logovi</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Log</th>
+      <th>Lokacija</th>
+      <th>Šta se proverava</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>hostd</td>
+      <td>/var/log/hostd.log</td>
+      <td>VM zadaci, snapshot operacije i greške upravljanja</td>
+    </tr>
+    <tr>
+      <td>vmkernel</td>
+      <td>/var/log/vmkernel.log</td>
+      <td>storage I/O, adapteri, putanje i niskonivojske greške</td>
+    </tr>
+    <tr>
+      <td>vpxa</td>
+      <td>/var/log/vpxa.log</td>
+      <td>komunikacija ESXi hosta sa vCenter Server-om</td>
+    </tr>
+    <tr>
+      <td>vmware.log VM-a</td>
+      <td>direktorijum VM-a na datastore-u</td>
+      <td>VMX događaji povezani sa diskovima i snapshot operacijama</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Logove treba korelisati prema vremenu početka zadatka, VM nazivu, task identifikatoru i hostu na kojem se VM tada nalazila. Jedna poruka iz jednog loga nije dovoljna za zaključak o osnovnom uzroku.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Administrator je identifikovao postojeće snapshot-e, bezbedno napravio i uklonio laboratorijski snapshot, potvrdio očuvanje promena i zna da razlikuje snapshot removal od revert operacije.
+</p>
+
+<hr>
+
+<p><strong>Vežba 4 – Provera i dokumentovanje Changed Block Tracking stanja</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator utvrdi CBT stanje laboratorijske VM, razume šta sme da promeni i dokumentuje početno stanje pre povezivanja VM-a sa proizvodom za image-level backup.
+</p>
+
+<p><strong>Važno ograničenje</strong></p>
+
+<p>
+CBT ubrzava identifikovanje promenjenih blokova, ali ne predstavlja dokaz da je backup uspešan ili konzistentan. Njegovo uključivanje ne zamenjuje backup posao, restore test niti proveru aplikacije.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>VM koristi podržan virtuelni hardver i diskove koje izabrani backup proizvod može da obradi;</li>
+  <li>nema aktivnog snapshot, clone, relocate ili backup posla;</li>
+  <li>administrator je proverio dokumentaciju konkretnog backup proizvoda;</li>
+  <li>promena se prvo izvodi samo u laboratoriji.</li>
+</ul>
+
+<p><strong>Read-only provera kroz PowerCLI</strong></p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+$vm = Get-VM -Name "vm-backup-lab01"
+$view = Get-View -Id $vm.Id
+
+[pscustomobject]@{
+    VMName           = $vm.Name
+    PowerState       = $vm.PowerState
+    ChangeTracking   = $view.Config.ChangeTrackingEnabled
+    HardwareVersion  = $view.Config.Version
+    InstanceUuid     = $view.Config.InstanceUuid
+} | Format-List</code></pre>
+
+<p><strong>Provera naprednih parametara</strong></p>
+
+<pre><code class="language-powershell">Get-AdvancedSetting -Entity $vm |
+    Where-Object {
+        $_.Name -match "ctk"
+    } |
+    Select-Object Name, Value |
+    Format-Table -AutoSize</code></pre>
+
+<p>
+U zavisnosti od verzije, konfiguracije i istorije VM-a, pojedinačni CTK parametri mogu biti prikazani drugačije ili ne moraju postojati kao ručno definisana napredna podešavanja. Primarni dokaz je stanje konfiguracionog svojstva VM-a, zajedno sa uspešnim backup testom.
+</p>
+
+<p><strong>Uključivanje CBT-a u laboratoriji</strong></p>
+
+<p>
+Sledeća operacija menja konfiguraciju VM-a. Ne izvršavati je naslepo nad produkcionom VM. Proveriti zahtev konkretnog backup proizvoda, jer neki proizvodi sami upravljaju CBT stanjem.
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-backup-lab01"
+$spec = New-Object VMware.Vim.VirtualMachineConfigSpec
+$spec.ChangeTrackingEnabled = $true
+
+$taskMoRef = $vm.ExtensionData.ReconfigVM_Task($spec)
+$task = Get-Task -Id ("Task-$($taskMoRef.Value)")
+$task | Wait-Task</code></pre>
+
+<p>
+Ako je CBT uključen dok VM radi, konfiguraciona vrednost može biti sačuvana pre nego što praćenje postane aktivno na diskovima. Za inicijalizaciju je potreban power cycle ili kontrolisan ciklus kreiranja i brisanja snapshot-a, koji izaziva stun/unstun. U laboratoriji izabrati jednu od tih metoda, zatim proveriti CTK stanje i prvi backup; produkcionu VM ne restartovati i ne izlagati dodatnom snapshot stun-u bez odobrenog change prozora. Nakon promene ponovo pročitati konfiguraciju:
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-backup-lab01"
+$view = Get-View -Id $vm.Id
+
+$view.Config.ChangeTrackingEnabled</code></pre>
+
+<p>
+Broadcom dokumentacija opisuje CBT kao mehanizam za praćenje promenjenih blokova i naglašava njegovu ulogu u inkrementalnom backup-u. CBT stanje i njegovo resetovanje treba usklađivati sa dokumentacijom backup proizvoda, jer nepravilan reset može izazvati sledeći puni scan ili uticati na inkrementalni lanac.
+</p>
+
+<p><strong>Ne izvoditi proizvoljni CBT reset</strong></p>
+
+<p>
+Brisanje CTK datoteka, ručno menjanje više <code>ctkEnabled</code> parametara ili uključivanje i isključivanje CBT-a tokom aktivnog backup lanca nije rutinska administrativna operacija. Takav postupak se izvodi samo kada postoji potvrđen problem, dokumentovan postupak proizvođača backup softvera i odobren prozor promene.
+</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>
+VM prikazuje <code>ChangeTrackingEnabled = True</code>, nema neuspešnog reconfiguration zadatka i stanje je dokumentovano u backup inventaru.
+</p>
+
+<p><strong>Troubleshooting</strong></p>
+
+<ul>
+  <li><strong>NoPermission:</strong> nalogu nedostaje pravo za promenu VM konfiguracije.</li>
+  <li><strong>InvalidState:</strong> VM trenutno učestvuje u drugoj operaciji ili konfiguracija nije u stanju pogodnom za promenu.</li>
+  <li><strong>CBT je uključen, ali backup radi full scan:</strong> proveriti istoriju lanca, identitet VM-a, promenu diskova, restore ili clone događaje i logove backup proizvoda.</li>
+  <li><strong>Backup prijavljuje nevažeće CBT podatke:</strong> ne resetovati CBT automatski; prvo sačuvati logove i potvrditi preporučeni postupak za konkretnu verziju vSphere-a i backup proizvoda.</li>
+</ul>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+U laboratoriji se CBT može vratiti na početno stanje istim metodom, postavljanjem <code>ChangeTrackingEnabled = $false</code>, ali samo kada nema aktivnih backup poslova i kada je potvrđeno da se time ne remeti planirana naredna vežba.
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "vm-backup-lab01"
+$spec = New-Object VMware.Vim.VirtualMachineConfigSpec
+$spec.ChangeTrackingEnabled = $false
+
+$taskMoRef = $vm.ExtensionData.ReconfigVM_Task($spec)
+Get-Task -Id ("Task-$($taskMoRef.Value)") | Wait-Task</code></pre>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Administrator može da pročita CBT stanje, kontrolisano ga promeni u laboratoriji, potvrdi rezultat i objasni zašto CBT reset nije prvi troubleshooting korak.
+</p>
+
+<hr>
+
+<p><strong>Vežba 5 – Priprema bezbednog SFTP odredišta za vCenter file-based backup</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da se na odvojenom Linux sistemu pripremi namensko, najmanje privilegovano i proverljivo odredište za file-based backup vCenter Server Appliance-a.
+</p>
+
+<p><strong>Bezbednosni kontekst</strong></p>
+
+<p>
+Backup odredište ne treba da koristi administratorski nalog opšte namene. Nalog mora imati pravo pisanja samo u namenski direktorijum. Backup server treba da bude odvojen od produkcionog vCenter-a, nadziran, vremenski sinhronizovan i uključen u sopstveni plan zaštite.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Linux server <code>bkp01.lab.local</code> sa dovoljno slobodnog prostora;</li>
+  <li>DNS razrešavanje između VCSA i backup servera;</li>
+  <li>sinhronizovano vreme;</li>
+  <li>dozvoljen TCP 22 između VCSA i backup servera;</li>
+  <li>root ili sudo pristup backup serveru za početnu konfiguraciju;</li>
+  <li>definisana politika čuvanja i nadzora kapaciteta.</li>
+</ul>
+
+<p><strong>Provera početnog stanja backup servera</strong></p>
+
+<pre><code class="language-bash">hostnamectl
+timedatectl
+df -hT
+ss -lntp | grep ':22'
+systemctl status sshd --no-pager</code></pre>
+
+<p>
+Na distribucijama gde se servis zove <code>ssh</code> umesto <code>sshd</code>, koristi se:
+</p>
+
+<pre><code class="language-bash">systemctl status ssh --no-pager</code></pre>
+
+<p><strong>Kreiranje namenskog naloga i direktorijuma</strong></p>
+
+<pre><code class="language-bash">sudo useradd --create-home --shell /bin/bash vcsa_backup
+sudo passwd vcsa_backup
+
+sudo mkdir -p /srv/backup/vcenter/vcsa01
+sudo chown -R vcsa_backup:vcsa_backup /srv/backup/vcenter/vcsa01
+sudo chmod 750 /srv/backup/vcenter/vcsa01</code></pre>
+
+<p>
+Lozinka mora biti jedinstvena, dovoljno jaka i čuvana u odobrenom password vault-u. Ne koristiti primer lozinke iz dokumentacije.
+</p>
+
+<p><strong>Provera pisanja</strong></p>
+
+<pre><code class="language-bash">sudo -u vcsa_backup bash -c \
+'touch /srv/backup/vcenter/vcsa01/write-test &amp;&amp; rm /srv/backup/vcenter/vcsa01/write-test'
+
+echo $?</code></pre>
+
+<p>
+Povratna vrednost <code>0</code> potvrđuje da je test kreiranja i brisanja datoteke uspeo.
+</p>
+
+<p><strong>Provera kapaciteta</strong></p>
+
+<pre><code class="language-bash">df -h /srv/backup/vcenter/vcsa01
+du -sh /srv/backup/vcenter/vcsa01</code></pre>
+
+<p>
+Kapacitet se ne planira samo prema trenutnoj veličini jednog backup-a. Potrebno je uračunati retention, rast vCenter baze, opcionu statistiku i događaje, privremene datoteke, više vCenter instanci i sigurnosnu rezervu.
+</p>
+
+<p><strong>Test SFTP prijave sa administratorske stanice</strong></p>
+
+<pre><code class="language-bash">sftp vcsa_backup@bkp01.lab.local</code></pre>
+
+<p>
+U SFTP sesiji:
+</p>
+
+<pre><code class="language-none">cd /srv/backup/vcenter/vcsa01
+put /etc/hosts connectivity-test.txt
+ls -l
+rm connectivity-test.txt
+exit</code></pre>
+
+<p>
+Ovaj test potvrđuje DNS, autentikaciju, putanju i prava pisanja. Ne potvrđuje još da VCSA može da izvrši backup.
+</p>
+
+<p><strong>Firewall i mrežna validacija</strong></p>
+
+<p>
+Sa sistema koji ima dozvoljen pristup proveriti:
+</p>
+
+<pre><code class="language-bash">nc -vz bkp01.lab.local 22</code></pre>
+
+<p>
+Ako je SSH pristup VCSA shell-u omogućen u kontrolisanom laboratorijskom okruženju, mrežna dostupnost se može proveriti sa appliance-a. SSH se nakon provere isključuje ako nije potreban za dalji rad.
+</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>backup server razrešava svoj i VCSA FQDN;</li>
+  <li>TCP 22 je dostupan samo iz odobrenih izvora;</li>
+  <li>nalog <code>vcsa_backup</code> može da piše u namenski direktorijum;</li>
+  <li>nalog nema nepotrebne sudo privilegije;</li>
+  <li>postoji dovoljno slobodnog prostora za planirani retention;</li>
+  <li>test datoteke su uklonjene.</li>
+</ul>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<p><strong>Grana A – Connection timed out</strong></p>
+
+<ol>
+  <li>Proveriti DNS rezoluciju.</li>
+  <li>Proveriti routing i ACL između VCSA mreže i backup servera.</li>
+  <li>Proveriti da li SSH servis sluša na očekivanom interfejsu i portu.</li>
+  <li>Pregledati host firewall i mrežni firewall.</li>
+</ol>
+
+<p><strong>Grana B – Permission denied</strong></p>
+
+<ol>
+  <li>Potvrditi korisničko ime i lozinku.</li>
+  <li>Proveriti vlasnika i dozvole direktorijuma pomoću <code>namei -l</code>.</li>
+  <li>Proveriti SSH logove.</li>
+  <li>Na SELinux sistemu proveriti audit događaje i kontekst direktorijuma.</li>
+</ol>
+
+<pre><code class="language-bash">namei -l /srv/backup/vcenter/vcsa01
+sudo journalctl -u sshd --since "15 minutes ago"
+sudo tail -n 100 /var/log/secure</code></pre>
+
+<p>
+Na Debian/Ubuntu sistemima autentikacione poruke se najčešće proveravaju u:
+</p>
+
+<pre><code class="language-bash">sudo tail -n 100 /var/log/auth.log</code></pre>
+
+<p><strong>Grana C – No space left on device</strong></p>
+
+<ol>
+  <li>Proveriti prostor i inode potrošnju: <code>df -h</code> i <code>df -i</code>.</li>
+  <li>Ne brisati proizvoljno poslednju potvrđenu dobru kopiju.</li>
+  <li>Identifikovati kopije van retention politike.</li>
+  <li>Proširiti odredište ili kontrolisano ukloniti samo odobrene zastarele kopije.</li>
+  <li>Dodati alarm pre nego što slobodan prostor padne ispod operativnog praga.</li>
+</ol>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Ako se laboratorijsko odredište više ne koristi, nalog i direktorijum se uklanjaju tek nakon potvrde da ne sadrže potrebne backup kopije:
+</p>
+
+<pre><code class="language-bash">sudo userdel vcsa_backup
+sudo mkdir -p /srv/backup/quarantine
+sudo mv /srv/backup/vcenter/vcsa01 /srv/backup/quarantine/vcsa01-retired</code></pre>
+
+<p>
+Primer namerno premešta direktorijum u karantin umesto da briše podatke. Brisanje se razmatra tek posle isteka retention perioda, provere eksplicitne putanje, dvostrukog odobrenja i potvrde da kopija nije potrebna za restore, audit ili istragu.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada je SFTP odredište dostupno, ograničeno, provereno za pisanje i dokumentovano zajedno sa vlasnikom, kapacitetom i mrežnim pravilima.
+</p>
+
+<hr>
+
+<p><strong>Vežba 6 – Ručni file-based backup vCenter Server Appliance-a</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator kroz VAMI pokrene ručni file-based backup, prati izvršenje, proveri rezultat na odredištu i sačuva dokaze da je posao završen bez greške.
+</p>
+
+<p>
+Broadcom za vCenter Server 6.x, 7.x, 8.x i 9.x navodi file-based i image-based mogućnosti, pri čemu kao preporučeni postupak za appliance ističe backup i restore kroz VAMI na portu 5480.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>SFTP odredište iz prethodne vežbe je dostupno;</li>
+  <li>VCSA health stanje je zeleno ili je svako upozorenje analizirano;</li>
+  <li>vCenter nema aktivan update, upgrade ili restore posao;</li>
+  <li>DNS i NTP rade ispravno;</li>
+  <li>administrator poseduje root nalog za VAMI;</li>
+  <li>backup lokacija ima dovoljno prostora;</li>
+  <li>poznata je tačna putanja na backup serveru.</li>
+</ul>
+
+<p><strong>Pre-backup provera VCSA</strong></p>
+
+<ol>
+  <li>Otvorite <code>https://vcsa01.lab.local:5480</code>.</li>
+  <li>Prijavite se kao <code>root</code>.</li>
+  <li>Na kartici <strong>Summary</strong> proverite ukupno health stanje.</li>
+  <li>Na kartici <strong>Monitoring</strong> proverite CPU, memoriju, bazu i filesystem stanje.</li>
+  <li>Na kartici <strong>Time</strong> proverite sinhronizaciju vremena.</li>
+  <li>Na kartici <strong>Networking</strong> potvrdite FQDN, DNS servere i gateway.</li>
+  <li>Na kartici <strong>Backup</strong> proverite istoriju prethodnih poslova.</li>
+</ol>
+
+<p><strong>Pokretanje ručnog backup-a</strong></p>
+
+<ol>
+  <li>U VAMI interfejsu otvorite <strong>Backup</strong>.</li>
+  <li>Izaberite <strong>Backup Now</strong>.</li>
+  <li>Kao protokol izaberite <strong>SFTP</strong>.</li>
+  <li>Unesite backup lokaciju u formatu koji odgovara verziji VAMI interfejsa, na primer <code>bkp01.lab.local:/srv/backup/vcenter/vcsa01</code> ili format prikazan u samom polju.</li>
+  <li>Unesite namenski korisnički nalog <code>vcsa_backup</code> i njegovu lozinku.</li>
+  <li>Po potrebi izaberite da li se uključuju statistika, događaji i zadaci.</li>
+  <li>Unesite smislen komentar, na primer <code>LAB manual backup before restore exercises</code>.</li>
+  <li>Pažljivo proverite odredište i pokrenite posao.</li>
+</ol>
+
+<p>
+Uključivanje opcione istorijske statistike i događaja povećava veličinu i trajanje backup-a. Odluka mora biti usklađena sa ciljem oporavka. Konfiguracioni i inventarski podaci su obavezni za funkcionalni restore, dok izbor dodatnih istorijskih podataka zavisi od poslovnog i auditorskog zahteva.
+</p>
+
+<p><strong>Praćenje izvršenja</strong></p>
+
+<p>
+Ne zatvarajte VAMI samo zato što se procenat neko vreme ne menja. Pratite status do završetka. Zabeležite:
+</p>
+
+<ul>
+  <li>vreme početka;</li>
+  <li>vreme završetka;</li>
+  <li>trajanje;</li>
+  <li>status;</li>
+  <li>odredište;</li>
+  <li>veličinu kopije;</li>
+  <li>uključene skupove podataka;</li>
+  <li>eventualno upozorenje ili poruku greške.</li>
+</ul>
+
+<p><strong>Validacija na backup serveru</strong></p>
+
+<pre><code class="language-bash">sudo find /srv/backup/vcenter/vcsa01 \
+    -maxdepth 3 \
+    -type f \
+    -printf '%TY-%Tm-%Td %TH:%TM:%TS %s %p\n' |
+    sort
+
+sudo du -sh /srv/backup/vcenter/vcsa01/*
+sudo find /srv/backup/vcenter/vcsa01 -type f -size 0 -print</code></pre>
+
+<p>
+Očekuje se novi direktorijum ili skup datoteka sa vremenom koje odgovara upravo završenom poslu. Odsustvo praznih datoteka jeste korisna provera, ali samo po sebi nije dokaz da je kopija restorabilna.
+</p>
+
+<p><strong>Izrada kontrolnog manifesta</strong></p>
+
+<p>
+Na backup serveru se može napraviti odvojeni manifest kontrolnih suma. Manifest ne treba menjati sadržaj originalnog backup direktorijuma ako restore postupak očekuje određenu strukturu.
+</p>
+
+<pre><code class="language-bash">backup_dir="/srv/backup/vcenter/vcsa01/PUTANJA_DO_NOVE_KOPIJE"
+manifest="/srv/backup/vcenter/vcsa01-manifests/vcsa01-$(date +%F-%H%M%S).sha256"
+
+sudo mkdir -p /srv/backup/vcenter/vcsa01-manifests
+
+sudo find "$backup_dir" -type f -print0 |
+    sudo sort -z |
+    sudo xargs -0 sha256sum |
+    sudo tee "$manifest" &gt; /dev/null
+
+sudo wc -l "$manifest"
+sudo ls -lh "$manifest"</code></pre>
+
+<p>
+Kontrolne sume omogućavaju kasnije otkrivanje nenamerne promene datoteka. Ne potvrđuju semantičku ispravnost baze niti uspešan restore.
+</p>
+
+<p><strong>Relevantni VCSA logovi</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Log</th>
+      <th>Svrha</th>
+      <th>Način analize</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>/var/log/vmware/applmgmt/backup.log</td>
+      <td>izvršenje konkretnog file-based backup posla</td>
+      <td>filtrirati prema vremenu početka, grešci, protokolu i odredištu</td>
+    </tr>
+    <tr>
+      <td>/var/log/vmware/applmgmt/backupScheduler.log</td>
+      <td>zakazani poslovi i scheduler problemi</td>
+      <td>relevantan posebno kada ručni backup radi, a zakazani ne radi</td>
+    </tr>
+    <tr>
+      <td>VAMI health i monitoring</td>
+      <td>stanje servisa, filesystem-a i baze</td>
+      <td>povezati health upozorenja sa vremenom neuspeha</td>
+    </tr>
+    <tr>
+      <td>SSH/SFTP log backup servera</td>
+      <td>autentikacija, prekid sesije i prava pristupa</td>
+      <td>korelisati izvornu adresu VCSA i vreme pokušaja</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Za pregled sa VCSA shell-a, kada je pristup odobren:
+</p>
+
+<pre><code class="language-bash">tail -n 200 /var/log/vmware/applmgmt/backup.log
+
+grep -Ei "error|fail|warning|sftp|permission|space" \
+    /var/log/vmware/applmgmt/backup.log |
+    tail -n 100</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>VAMI prikazuje uspešno završen posao;</li>
+  <li>na odredištu postoji nova, vremenski odgovarajuća kopija;</li>
+  <li>veličina nije nula i struktura sadrži očekivane datoteke;</li>
+  <li>backup log ne sadrži završnu grešku;</li>
+  <li>sačuvani su datum, trajanje, veličina i rezultat;</li>
+  <li>vCenter usluge ostaju funkcionalne.</li>
+</ul>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<p><strong>Grana A – URL ili putanja nisu prihvaćeni</strong></p>
+
+<ol>
+  <li>Proveriti format koji VAMI prikazuje kao primer za izabrani protokol.</li>
+  <li>Proveriti da li je uneta apsolutna putanja dostupna korisniku.</li>
+  <li>Testirati istu putanju kroz SFTP klijent.</li>
+  <li>Proveriti da putanja ne sadrži nedozvoljene ili pogrešno kodirane znakove.</li>
+</ol>
+
+<p><strong>Grana B – Autentikacija ne uspeva</strong></p>
+
+<ol>
+  <li>Potvrditi da nalog nije zaključan i da lozinka nije istekla.</li>
+  <li>Pregledati SSH log backup servera u istom vremenskom intervalu.</li>
+  <li>Proveriti da SSH politika dozvoljava izabrani metod autentikacije.</li>
+  <li>Ne menjati globalno SSH bezbednosno podešavanje pre potvrde osnovnog uzroka.</li>
+</ol>
+
+<p><strong>Grana C – Backup se prekida zbog prostora</strong></p>
+
+<ol>
+  <li>Proveriti filesystem prostor i inode-e.</li>
+  <li>Proveriti da li je backup direktorijum na očekivanom mount point-u ili je sadržaj slučajno pisan na root filesystem.</li>
+  <li>Ne pokretati novi posao dok se kapacitet ne stabilizuje.</li>
+  <li>Dokumentovati nepotpunu kopiju i ukloniti je samo prema odobrenoj proceduri.</li>
+</ol>
+
+<p><strong>Grana D – Backup job failed to start due to server validation failure</strong></p>
+
+<p>
+Kod pojedinih aktuelnih vCenter 8.0 Update 3 buildova Broadcom je dokumentovao problem pri kome file-based backup ne započinje i prijavljuje server validation failure. Pre primene bilo kakvog workaround-a treba proveriti tačan vCenter build i odgovarajući Broadcom KB, jer postupak zavisi od pogođene verzije.
+</p>
+
+<p><strong>Grana E – SMB odredište sa domenskim DFS namespace-om ne radi</strong></p>
+
+<p>
+Broadcom je dokumentovao ograničenja određenih SMB/DFS i Kerberos scenarija u vCenter 7.0.3 i 8.0 okruženjima. Ako direktna SMB putanja radi, a domenski DFS namespace ne radi, problem ne treba automatski pripisati lozinki. Proveravaju se verzija, DNS, tip namespace-a i relevantni KB.
+</p>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Uspešan backup se ne briše kao deo rollback-a. Ako je posao neuspešan i ostavio nepotpun direktorijum, prvo se čuvaju logovi i beleži incident. Nepotpuna kopija se zatim označava kao neupotrebljiva i uklanja tek kada je potvrđeno da nije potrebna za analizu.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada VAMI, backup odredište i logovi međusobno potvrđuju isti uspešan posao i kada je rezultat unet u evidenciju backup operacija.
+</p>
+
+<hr>
+
+<p><strong>Vežba 7 – Konfigurisanje zakazanog VCSA backup-a i operativnog nadzora</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator pretvori uspešan ručni backup u kontrolisani raspored, bez pretpostavke da će zakazani posao raditi samo zato što je ručni test uspeo.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>najmanje jedan ručni backup je uspešno završen;</li>
+  <li>prosečno trajanje i veličina backup-a su poznati;</li>
+  <li>backup odredište ima kapacitet za planirani retention;</li>
+  <li>izabran je termin koji se ne preklapa sa patching-om, velikim migracijama ili intenzivnim poslovima;</li>
+  <li>definisan je odgovorni tim za reagovanje na neuspeh.</li>
+</ul>
+
+<p><strong>Konfigurisanje rasporeda kroz VAMI</strong></p>
+
+<ol>
+  <li>Prijavite se na <code>https://vcsa01.lab.local:5480</code> kao <code>root</code>.</li>
+  <li>Otvorite <strong>Backup</strong>.</li>
+  <li>U delu za raspored izaberite <strong>Configure</strong> ili <strong>Edit</strong>, u zavisnosti od verzije.</li>
+  <li>Unesite isto provereno SFTP odredište.</li>
+  <li>Unesite namenski backup nalog.</li>
+  <li>Izaberite učestalost i vreme izvršenja.</li>
+  <li>Podesite retention prema politici, a ne samo prema raspoloživom prostoru.</li>
+  <li>Izaberite da li se uključuju statistika, događaji i zadaci.</li>
+  <li>Sačuvajte raspored.</li>
+</ol>
+
+<p>
+Ako se više vCenter instanci bekapuje na isti server, njihove početke treba razmaknuti. Broadcom je 2026. dokumentovao scenario periodičnih neuspeha i preporučio pomeranje vremena početka pojedinačnih vCenter backup poslova za najmanje pet do deset minuta, umesto simultanog pokretanja.
+</p>
+
+<p><strong>Primer rasporeda</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>vCenter</th>
+      <th>Početak</th>
+      <th>Odredište</th>
+      <th>Razlog razmaka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vcsa01</td>
+      <td>01:00</td>
+      <td>/srv/backup/vcenter/vcsa01</td>
+      <td>prvi posao</td>
+    </tr>
+    <tr>
+      <td>vcsa02</td>
+      <td>01:10</td>
+      <td>/srv/backup/vcenter/vcsa02</td>
+      <td>smanjenje konkurentnog opterećenja</td>
+    </tr>
+    <tr>
+      <td>vcsa03</td>
+      <td>01:20</td>
+      <td>/srv/backup/vcenter/vcsa03</td>
+      <td>lakše razlikovanje događaja i logova</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Operativni nadzor</strong></p>
+
+<p>
+Za svaki raspored treba definisati najmanje sledeće kontrole:
+</p>
+
+<ul>
+  <li>alarm ako poslednji uspešan backup prelazi dozvoljenu starost;</li>
+  <li>alarm ako odredište padne ispod definisanog procenta ili apsolutnog prostora;</li>
+  <li>provera naglog odstupanja veličine backup-a;</li>
+  <li>provera trajanja u odnosu na uobičajeni interval;</li>
+  <li>provera neuspešnih autentikacija;</li>
+  <li>periodična provera kontrolnih suma;</li>
+  <li>evidencija poslednjeg restore testa.</li>
+</ul>
+
+<p><strong>Primer lokalne provere starosti poslednje kopije</strong></p>
+
+<pre><code class="language-bash">backup_root="/srv/backup/vcenter/vcsa01"
+max_age_hours=30
+
+latest_epoch=$(
+  find "$backup_root" -mindepth 1 -maxdepth 1 -type d \
+    -printf '%T@ %p\n' |
+  sort -nr |
+  head -n 1 |
+  awk '{print int($1)}'
+)
+
+now_epoch=$(date +%s)
+
+if [ -z "$latest_epoch" ]; then
+  echo "CRITICAL: Nije pronađen nijedan VCSA backup direktorijum."
+  exit 2
+fi
+
+age_hours=$(( (now_epoch - latest_epoch) / 3600 ))
+
+if [ "$age_hours" -gt "$max_age_hours" ]; then
+  echo "CRITICAL: Poslednja VCSA kopija je stara ${age_hours}h."
+  exit 2
+else
+  echo "OK: Poslednja VCSA kopija je stara ${age_hours}h."
+  exit 0
+fi</code></pre>
+
+<p>
+Skripta je primer lokalne kontrole i mora se prilagoditi stvarnoj strukturi direktorijuma. Ne treba je smatrati zamenom za proveru statusa posla u VAMI-ju, centralni monitoring i restore test.
+</p>
+
+<p><strong>Provera zakazanog posla</strong></p>
+
+<ol>
+  <li>Sačekajte prvo planirano izvršenje u laboratorijskom prozoru.</li>
+  <li>Proverite VAMI istoriju.</li>
+  <li>Proverite vreme kreiranja direktorijuma na backup serveru.</li>
+  <li>Proverite <code>backupScheduler.log</code>.</li>
+  <li>Uporedite trajanje i veličinu sa ručnim backup-om.</li>
+  <li>Potvrdite da retention nije uklonio više kopija nego što je očekivano.</li>
+</ol>
+
+<p><strong>Scenario – Ručni backup radi, zakazani ne radi</strong></p>
+
+<p>
+Ovo je važan troubleshooting obrazac. Pošto ista lokacija i kredencijali rade ručno, mreža i osnovna prava nisu prvi osumnjičeni. Fokus se premešta na scheduler, sačuvane kredencijale, stanje VAMI servisa, vreme sistema i poznate probleme verzije.
+</p>
+
+<p>
+Broadcom za jedan takav scenario navodi proveru datoteke <code>/var/log/vmware/applmgmt/backupScheduler.log</code>.
+</p>
+
+<pre><code class="language-bash">tail -n 250 /var/log/vmware/applmgmt/backupScheduler.log
+
+grep -Ei "error|fail|auth|schedule|credential" \
+    /var/log/vmware/applmgmt/backupScheduler.log |
+    tail -n 100</code></pre>
+
+<p><strong>Sistematičan postupak</strong></p>
+
+<ol>
+  <li>Potvrditi tačno vreme kada je posao trebalo da počne.</li>
+  <li>Proveriti da li je raspored omogućen.</li>
+  <li>Proveriti vremensku zonu i sistemsko vreme VCSA.</li>
+  <li>Pregledati VAMI istoriju i scheduler log.</li>
+  <li>Proveriti da li je ručni backup i dalje uspešan sa istim odredištem.</li>
+  <li>Proveriti tačan vCenter build i poznate probleme.</li>
+  <li>Sačuvati logove pre restartovanja servisa ili izmene konfiguracije.</li>
+  <li>Primeniti najmanje invazivnu potvrđenu korektivnu meru.</li>
+  <li>Sačekati ili kontrolisano pokrenuti sledeću validaciju.</li>
+  <li>Dokumentovati osnovni uzrok i sprečavanje ponavljanja.</li>
+</ol>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Ako je raspored pogrešno podešen, on se isključuje ili ispravlja kroz VAMI. Ne brišu se već potvrđene dobre kopije. Promena rasporeda se evidentira sa starom i novom vrednošću.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada je najmanje jedan zakazani posao uspešno izvršen, kada monitoring može da otkrije prestaru kopiju i kada je poznata lokacija scheduler loga.
+</p>
+
+<hr>
+
+<p><strong>Vežba 8 – Backup konfiguracije ESXi hosta pomoću PowerCLI-ja</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da administrator sačuva konfiguracioni bundle laboratorijskog ESXi hosta, potvrdi da je datoteka preuzeta i dokumentuje uslove pod kojima se ona kasnije može koristiti.
+</p>
+
+<p><strong>Šta ova kopija štiti</strong></p>
+
+<p>
+Konfiguracioni backup hosta može ubrzati oporavak podešavanja hosta, ali ne sadrži virtuelne mašine niti podatke sa datastore-a. Ne zamenjuje host profile, deklarativnu konfiguraciju, dokumentaciju mreže, backup vCenter-a ni backup VM-ova.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>host je Connected i upravljiv kroz vCenter;</li>
+  <li>administrator ima privilegiju <code>Host.Config.Firmware</code>;</li>
+  <li>na administratorskoj stanici postoji zaštićen direktorijum za bundle;</li>
+  <li>poznati su ESXi verzija, build, hardware model i serijski broj;</li>
+  <li>nema aktivnog host upgrade ili remediation posla.</li>
+</ul>
+
+<p>
+Aktuelna PowerCLI referenca navodi da <code>Get-VMHostFirmware</code> zahteva privilegiju <code>Host.Config.Firmware</code>. Stari backup način kroz <code>Set-VMHostFirmware -BackupConfiguration</code> označen je kao deprecated, pa se za nove skripte koristi <code>Get-VMHostFirmware</code>.
+</p>
+
+<p><strong>Prikupljanje identiteta hosta</strong></p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+$hostName = "esx01.lab.local"
+$vmhost = Get-VMHost -Name $hostName
+
+$vmhost |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  Version,
+                  Build,
+                  Manufacturer,
+                  Model |
+    Format-List
+
+Get-VMHostHardware -VMHost $vmhost |
+    Format-List VMHost,
+                Manufacturer,
+                Model,
+                SerialNumber,
+                BiosVersion</code></pre>
+
+<p><strong>Kreiranje backup direktorijuma</strong></p>
+
+<pre><code class="language-powershell">$destination = "/home/admin/esxi-config-backups"
+
+New-Item -ItemType Directory `
+    -Path $destination `
+    -Force |
+    Out-Null</code></pre>
+
+<p><strong>Izvoz konfiguracionog bundle-a</strong></p>
+
+<pre><code class="language-powershell">Get-VMHostFirmware `
+    -VMHost $vmhost `
+    -BackupConfiguration `
+    -DestinationPath $destination</code></pre>
+
+<p>
+Komanda ne stavlja host u maintenance mode i ne menja njegovu konfiguraciju. Preuzima konfiguracioni bundle na administratorsku stanicu. Restore je znatno rizičnija operacija i obrađuje se odvojeno, u kontrolisanoj laboratoriji.
+</p>
+
+<p><strong>Provera rezultata</strong></p>
+
+<pre><code class="language-powershell">Get-ChildItem -Path $destination |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 10 Name,
+                            Length,
+                            LastWriteTime,
+                            FullName |
+    Format-Table -AutoSize</code></pre>
+
+<p><strong>Kontrolna suma</strong></p>
+
+<pre><code class="language-powershell">$latest = Get-ChildItem -Path $destination |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+Get-FileHash `
+    -Path $latest.FullName `
+    -Algorithm SHA256</code></pre>
+
+<p><strong>Izrada metadata zapisa</strong></p>
+
+<pre><code class="language-powershell">$hardware = Get-VMHostHardware -VMHost $vmhost
+
+$metadata = [pscustomobject]@{
+    BackupTime       = Get-Date -Format o
+    VCenter          = "vcsa01.lab.local"
+    HostName         = $vmhost.Name
+    ESXiVersion      = $vmhost.Version
+    ESXiBuild        = $vmhost.Build
+    Manufacturer     = $hardware.Manufacturer
+    Model            = $hardware.Model
+    SerialNumber     = $hardware.SerialNumber
+    BundleFile       = $latest.Name
+    SHA256           = (Get-FileHash $latest.FullName -Algorithm SHA256).Hash
+}
+
+$metadata |
+    ConvertTo-Json |
+    Set-Content "$($latest.FullName).metadata.json" -Encoding UTF8</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>PowerCLI komanda završava bez greške;</li>
+  <li>u odredišnom direktorijumu postoji nova konfiguraciona arhiva;</li>
+  <li>sačuvana je SHA-256 kontrolna suma;</li>
+  <li>metadata zapis sadrži host, verziju, build, hardverski identitet i vreme;</li>
+  <li>bundle je prenet u zaštićeni backup repozitorijum, a ne ostavljen samo na laptopu administratora.</li>
+</ul>
+
+<p><strong>Moguće greške</strong></p>
+
+<p><strong>NoPermission</strong></p>
+
+<p>
+Nalog nema <code>Host.Config.Firmware</code>. Ne rešavati problem dodelom globalne Administrator role ako je dovoljna ciljna privilegija nad konkretnim hostom ili odgovarajućim folderom.
+</p>
+
+<p><strong>Host nije dostupan</strong></p>
+
+<p>
+Proveriti ConnectionState, management mrežu, DNS, certifikat i vCenter komunikaciju. Backup konfiguracije ne treba pokušavati kao način „popravke“ hosta koji je već Not Responding.
+</p>
+
+<p><strong>DestinationPath ne postoji ili nije upisiv</strong></p>
+
+<p>
+Komanda piše na sistem gde se izvršava PowerCLI. Proveriti lokalnu putanju, dozvole i slobodan prostor, a ne datastore putanju.
+</p>
+
+<p><strong>Bundle postoji, ali je neobično mali</strong></p>
+
+<p>
+Uporediti veličinu sa prethodnim kopijama istog hosta, proveriti da komanda nije vratila grešku i potvrditi sadržaj kroz podržanu proceduru. Ne menjati arhivu ručno.
+</p>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Backup operacija ne menja host, pa rollback nije potreban. Ako je bundle napravljen u pogrešnom lokalnom direktorijumu, prvo se bezbedno kopira u odobren repozitorijum, potvrdi kontrolna suma, a zatim se lokalna kopija uklanja prema politici.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada postoji proverljiv konfiguracioni bundle hosta sa metadata zapisom i kontrolnom sumom, a administrator može da objasni da bundle ne sadrži VM podatke.
+</p>
+
+<hr>
+
+<p><strong>Vežba 9 – Prva integrisana validacija backup spremnosti</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj je da se rezultati prethodnih vežbi objedine u jednu operativnu proveru. Administrator treba da utvrdi da li je okruženje spremno za redovne backup poslove ili postoje blokirajući rizici.
+</p>
+
+<p><strong>Kontrolna lista pre početka redovne zaštite</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kontrola</th>
+      <th>Dokaz</th>
+      <th>Blokirajući nalaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Inventar VM-ova</td>
+      <td>aktuelni CSV i potvrda vlasnika</td>
+      <td>kritična VM nije evidentirana</td>
+    </tr>
+    <tr>
+      <td>Backup klasa</td>
+      <td>matrica ili vCenter tag</td>
+      <td>VM nema odobrenu politiku</td>
+    </tr>
+    <tr>
+      <td>Snapshot stanje</td>
+      <td>audit izveštaj i vSphere pregled</td>
+      <td>stari snapshot ili potrebna konsolidacija bez plana</td>
+    </tr>
+    <tr>
+      <td>Datastore prostor</td>
+      <td>kapacitet i trend</td>
+      <td>nema rezerve za snapshot delta i konsolidaciju</td>
+    </tr>
+    <tr>
+      <td>CBT stanje</td>
+      <td>PowerCLI izveštaj</td>
+      <td>nepoznato stanje uz aktivan inkrementalni lanac</td>
+    </tr>
+    <tr>
+      <td>VCSA backup</td>
+      <td>uspešan ručni i zakazani posao</td>
+      <td>kopija postoji samo po pretpostavci</td>
+    </tr>
+    <tr>
+      <td>Backup odredište</td>
+      <td>prostor, prava i monitoring</td>
+      <td>preširoke privilegije ili nedostatak kapaciteta</td>
+    </tr>
+    <tr>
+      <td>ESXi konfiguracija</td>
+      <td>bundle, metadata i hash</td>
+      <td>bundle nije iznet sa administratorske stanice</td>
+    </tr>
+    <tr>
+      <td>Restore odgovornost</td>
+      <td>imenovan vlasnik i postupak eskalacije</td>
+      <td>niko nije odgovoran za test oporavka</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>PowerCLI zbirni pregled</strong></p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+$thresholdDays = 3
+
+$vmSummary = Get-VM | ForEach-Object {
+    $vm = $_
+    $tier = Get-TagAssignment `
+        -Entity $vm `
+        -Category "Backup-Tier" `
+        -ErrorAction SilentlyContinue
+
+    $snapshots = Get-Snapshot -VM $vm -ErrorAction SilentlyContinue
+    $oldSnapshots = $snapshots | Where-Object {
+        $_.Created -lt (Get-Date).AddDays(-$thresholdDays)
+    }
+
+    $view = Get-View -Id $vm.Id
+
+    [pscustomobject]@{
+        VM               = $vm.Name
+        PowerState       = $vm.PowerState
+        BackupTier       = ($tier.Tag.Name -join ",")
+        SnapshotCount    = @($snapshots).Count
+        OldSnapshotCount = @($oldSnapshots).Count
+        CBTEnabled       = $view.Config.ChangeTrackingEnabled
+        ProvisionedGB    = [math]::Round($vm.ProvisionedSpaceGB, 2)
+        UsedGB           = [math]::Round($vm.UsedSpaceGB, 2)
+    }
+}
+
+$vmSummary |
+    Sort-Object BackupTier, VM |
+    Format-Table -AutoSize
+
+$vmSummary |
+    Export-Csv "/home/admin/vmware-backup-audit/backup-readiness.csv" `
+    -NoTypeInformation -Encoding UTF8</code></pre>
+
+<p><strong>Automatsko izdvajanje nalaza za proveru</strong></p>
+
+<pre><code class="language-powershell">$findings = $vmSummary | Where-Object {
+    [string]::IsNullOrWhiteSpace($_.BackupTier) -or
+    $_.OldSnapshotCount -gt 0
+}
+
+$findings |
+    Format-Table VM,
+                 BackupTier,
+                 OldSnapshotCount,
+                 CBTEnabled,
+                 ProvisionedGB -AutoSize</code></pre>
+
+<p>
+Ovaj filter ne proglašava automatski svaki nalaz incidentom. On izdvaja objekte koje administrator mora da pregleda. Na primer, <code>CBTEnabled = False</code> nije nužno greška ako VM nije namenjena CBT backup-u ili backup proizvod koristi drugačiji pristup.
+</p>
+
+<p><strong>Simulacija prvog troubleshooting incidenta – Backup nije obuhvatio VM</strong></p>
+
+<p>
+Simptom je da se <code>vm-backup-lab01</code> ne pojavljuje u očekivanom backup poslu zasnovanom na tagovima.
+</p>
+
+<p><strong>Redosled provera</strong></p>
+
+<ol>
+  <li>Potvrditi da VM zaista nedostaje u izveštaju backup proizvoda.</li>
+  <li>Proveriti tačno ime VM-a, vCenter i folder.</li>
+  <li>Proveriti <code>Backup-Tier</code> tag.</li>
+  <li>Proveriti da li posao uključuje tag ili koristi statički spisak objekata.</li>
+  <li>Proveriti da li postoji eksplicitno exclusion pravilo.</li>
+  <li>Proveriti nalog backup sistema i vidljivost objekta.</li>
+  <li>Proveriti poslednju sinhronizaciju inventara.</li>
+  <li>Pregledati audit događaje za promenu taga ili premeštanje VM-a.</li>
+  <li>Tek nakon potvrđenog uzroka ispraviti tag, scope ili privilegiju.</li>
+  <li>Pokrenuti kontrolni posao i potvrditi da je VM obuhvaćena.</li>
+</ol>
+
+<p><strong>Razdvajanje nalaza</strong></p>
+
+<ul>
+  <li><strong>Simptom:</strong> VM nije prisutna u backup job-u.</li>
+  <li><strong>Neposredni uzrok:</strong> VM nema tag koji posao koristi.</li>
+  <li><strong>Osnovni uzrok:</strong> promena taga izvršena je bez kontrole obuhvata ili bez automatskog izveštaja za netagovane VM-ove.</li>
+  <li><strong>Posledica:</strong> VM nema novu tačku oporavka i RPO više nije ispunjen.</li>
+  <li><strong>Privremena mera:</strong> ručno uključivanje VM-a u kontrolni backup posao.</li>
+  <li><strong>Trajna mera:</strong> automatski dnevni izveštaj o VM-ovima bez backup klase i change kontrola za izmene tagova.</li>
+</ul>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>
+Administrator dobija listu objekata spremnih za zaštitu i odvojenu listu nalaza koji zahtevaju akciju. Nijedan nalaz se ne zatvara bez dokaza da je korektivna mera dovela do očekivanog obuhvata ili uspešnog posla.
+</p>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Vežba je uglavnom read-only. Ako je tokom provere ispravljen pogrešan tag, promena se vraća samo ako je utvrđeno da je prethodno stanje bilo odobreno. Ne vraćati poznato pogrešnu konfiguraciju samo radi formalnog rollback-a.
+</p>
+
+<p><strong>Kriterijum završetka</strong></p>
+
+<p>
+Vežba je završena kada administrator može da pokaže koje su VM spremne, koje nisu, zašto nisu i koji dokaz će potvrditi da je svaka korektivna mera uspešna.
+</p>
+
+<hr>
+
+<p><strong>Kontrolna tačka nakon prvog dela praktikuma</strong></p>
+
+<p>
+Administrator je uspešno završio prvi deo praktikuma ako može samostalno da:
+</p>
+
+<ul>
+  <li>prikupi inventar ESXi hostova, datastore-a, virtuelnih mašina, mrežnih veza i snapshot-a bez menjanja stanja sistema;</li>
+  <li>zaštiti izvezeni infrastrukturni inventar od neovlašćenog pristupa;</li>
+  <li>uporedi PowerCLI izveštaj sa stvarnim vSphere inventarom i prepozna nedostajuće objekte;</li>
+  <li>napravi backup matricu koja povezuje poslovnu kritičnost, RPO, RTO, konzistentnost, retention i restore test;</li>
+  <li>kreira jednoznačnu vCenter kategoriju za backup klase i pravilno dodeli tag laboratorijskoj VM;</li>
+  <li>pronađe VM-ove koje nemaju odobrenu backup klasu;</li>
+  <li>izvrši snapshot audit i izdvoji stare ili potencijalno rizične snapshot-e;</li>
+  <li>proveri datastore prostor i aktivne zadatke pre snapshot operacije;</li>
+  <li>napravi i ukloni privremeni snapshot laboratorijske VM bez pogrešnog vraćanja VM-a unazad;</li>
+  <li>objasni razliku između uklanjanja snapshot-a, konsolidacije i revert operacije;</li>
+  <li>pronađe <code>hostd.log</code>, <code>vmkernel.log</code>, <code>vpxa.log</code> i VM <code>vmware.log</code> i objasni njihovu ulogu u analizi snapshot problema;</li>
+  <li>pročita CBT stanje virtuelne mašine kroz PowerCLI i vSphere API objekat;</li>
+  <li>kontrolisano uključi ili isključi CBT u laboratoriji i potvrdi završetak reconfiguration zadatka;</li>
+  <li>prepozna da CBT nije backup i da se njegov reset ne koristi kao prvi troubleshooting korak;</li>
+  <li>pripremi namensko SFTP odredište sa najmanjim potrebnim privilegijama;</li>
+  <li>proveri DNS, TCP dostupnost, autentikaciju, prava pisanja, prostor i inode kapacitet backup servera;</li>
+  <li>pokrene ručni file-based backup vCenter Server Appliance-a kroz VAMI;</li>
+  <li>potvrdi uspeh VCSA backup-a kroz VAMI status, odredišne datoteke i <code>backup.log</code>;</li>
+  <li>napravi odvojeni manifest SHA-256 kontrolnih suma bez menjanja originalne backup strukture;</li>
+  <li>konfiguriše zakazani VCSA backup i razmakne početke poslova za više vCenter instanci;</li>
+  <li>otkrije da je poslednja kopija starija od dozvoljenog praga;</li>
+  <li>koristi <code>backupScheduler.log</code> kada ručni backup radi, a zakazani posao ne radi;</li>
+  <li>razlikuje problem mreže, autentikacije, putanje, kapaciteta, scheduler-a i poznatog problema konkretnog vCenter builda;</li>
+  <li>napravi konfiguracioni backup ESXi hosta pomoću <code>Get-VMHostFirmware</code>;</li>
+  <li>sačuva metadata zapis i kontrolnu sumu ESXi konfiguracionog bundle-a;</li>
+  <li>objasni zašto ESXi konfiguracioni bundle ne sadrži virtuelne mašine ni datastore podatke;</li>
+  <li>objedini inventar, tagove, snapshot stanje, CBT, VCSA backup i ESXi bundle u proverljiv izveštaj backup spremnosti;</li>
+  <li>sistematično dijagnostikuje zašto VM nije obuhvaćena backup politikom, bez nasumične promene konfiguracije;</li>
+  <li>dokumentuje simptom, neposredni uzrok, osnovni uzrok, posledicu, privremenu meru i trajnu korektivnu akciju.</li>
+</ul>
+
+
+<h3>Praktikum – restore, incidenti i završna validacija</h3>
+
+<hr>
+
+<p><strong>Vežba 10 – Validacija image-level backup-a kroz kontrolisani restore virtuelne mašine</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>
+Cilj ove vežbe nije da se proveri da li backup postoji, već da se dokaže da se iz njega može uspešno vratiti funkcionalna virtuelna mašina. U enterprise okruženju restore predstavlja jedini pouzdan dokaz da je backup zaista upotrebljiv.
+</p>
+
+<p><strong>Poslovni kontekst</strong></p>
+
+<p>
+Noćni backup poslovi već nekoliko meseci prolaze bez greške. Interna revizija zahteva dokaz da se jedna kritična VM može vratiti u rad u okviru definisanog RTO vremena bez ugrožavanja produkcije.
+</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+<li>postoji uspešan image-level backup laboratorijske VM;</li>
+<li>restore se izvodi isključivo u laboratorijskoj ili izolovanoj mreži;</li>
+<li>postoji dovoljno prostora na datastore-u;</li>
+<li>restore neće prepisati produkcionu VM;</li>
+<li>poznata je tačka oporavka koja se koristi.</li>
+</ul>
+
+<p><strong>Procena rizika</strong></p>
+
+<p>
+Restore nikada ne treba raditi direktno preko aktivne produkcione VM osim ako procedura oporavka to izričito zahteva i postoji odobren incidentni postupak. U laboratoriji se koristi novo ime, druga mrežna zona ili izolovana port grupa kako bi se sprečili konflikti IP adresa, hostname-a i Active Directory identiteta.
+</p>
+
+<p><strong>GUI postupak</strong></p>
+
+<ol>
+<li>Otvoriti konzolu backup proizvoda.</li>
+<li>Pronaći poslednju uspešnu tačku oporavka.</li>
+<li>Izabrati <strong>Restore entire VM</strong>.</li>
+<li>Kao odredište koristiti laboratorijski datastore.</li>
+<li>Virtuelnu mašinu vratiti pod novim nazivom, na primer <code>vm-backup-lab01-restore</code>.</li>
+<li>Povezati je na izolovanu port grupu.</li>
+<li>Pokrenuti restore.</li>
+<li>Sačekati završetak svih restore zadataka.</li>
+</ol>
+
+<p><strong>PowerCLI validacija nakon restore-a</strong></p>
+
+<pre><code class="language-powershell">Get-VM "vm-backup-lab01-restore" |
+Select Name,
+       PowerState,
+       NumCpu,
+       MemoryGB,
+       ProvisionedSpaceGB,
+       VMHost,
+       @{N="Datastore";E={(Get-Datastore -VM $_).Name}}</code></pre>
+
+<p><strong>Provera funkcionalnosti</strong></p>
+
+<ul>
+<li>pokretanje operativnog sistema;</li>
+<li>prijava lokalnim administratorskim nalogom;</li>
+<li>provera sistemskog vremena;</li>
+<li>provera VMware Tools statusa;</li>
+<li>provera aplikacionih servisa;</li>
+<li>provera kontrolnih datoteka korišćenih tokom prve polovine praktikuma.</li>
+</ul>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>
+Restore VM prolazi POST fazu, operativni sistem se podiže bez greške, VMware Tools prijavljuju normalno stanje, a kontrolna datoteka postoji u sadržaju VM.
+</p>
+
+<p><strong>Relevantni događaji i logovi</strong></p>
+
+<ul>
+<li>vCenter Tasks and Events;</li>
+<li>backup server restore log;</li>
+<li>hostd.log ukoliko se restore izvršava preko ESXi hosta;</li>
+<li>vmware.log vraćene VM.</li>
+</ul>
+
+<p><strong>Troubleshooting</strong></p>
+
+<p><strong>Simptom</strong></p>
+
+<p>
+Restore je završen, ali VM ne može da se podigne.
+</p>
+
+<p><strong>Neposredni uzrok</strong></p>
+
+<p>
+Nedostaje jedan od restore-ovanih VMDK fajlova ili je restore prekinut.
+</p>
+
+<p><strong>Osnovni uzrok</strong></p>
+
+<p>
+Backup posao nije validiran nakon završetka ili je storage izgubio deo podataka.
+</p>
+
+<p><strong>Privremena mera</strong></p>
+
+<p>
+Koristiti prethodnu restore tačku.
+</p>
+
+<p><strong>Trajna mera</strong></p>
+
+<p>
+Uvesti periodične restore testove i automatsku validaciju uspešnosti backup poslova.
+</p>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Restore laboratorijske VM može se bezbedno obrisati nakon završetka validacije. Produkciona VM ostaje nepromenjena.
+</p>
+
+<hr>
+
+<p><strong>Vežba 11 – Granularni restore pojedinačne datoteke</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Administrator treba da vrati samo jednu obrisanu datoteku bez vraćanja cele virtuelne mašine.
+</p>
+
+<p><strong>Kontekst</strong></p>
+
+<p>
+Korisnik je slučajno obrisao konfiguracioni fajl aplikacije. Produkcija normalno radi i nije prihvatljivo vraćati kompletnu VM.
+</p>
+
+<p><strong>Postupak</strong></p>
+
+<ol>
+<li>Otvoriti backup konzolu.</li>
+<li>Izabrati odgovarajuću restore tačku.</li>
+<li>Otvoriti File Level Restore.</li>
+<li>Pronaći potrebnu datoteku.</li>
+<li>Restore izvršiti u privremeni direktorijum.</li>
+<li>Uporediti checksum stare i nove verzije.</li>
+<li>Tek zatim vratiti datoteku na produkcionu lokaciju.</li>
+</ol>
+
+<p><strong>Validacija</strong></p>
+
+<ul>
+<li>aplikacija uspešno učitava konfiguraciju;</li>
+<li>servis se normalno pokreće;</li>
+<li>nije izgubljen ostatak sadržaja VM.</li>
+</ul>
+
+<p><strong>Važna administratorska odluka</strong></p>
+
+<p>
+Granularni restore je gotovo uvek bezbedniji od vraćanja cele VM kada problem obuhvata samo nekoliko datoteka.
+</p>
+
+<hr>
+
+<p><strong>Vežba 12 – Simulacija pogrešne backup konfiguracije</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Administrator treba sistematično da pronađe razlog zbog kojeg VM nije uključena u backup politiku.
+</p>
+
+<p><strong>Laboratorijska simulacija</strong></p>
+
+<p>
+Sa laboratorijske VM uklonjen je Backup-Tier tag definisan u prvom delu praktikuma.
+</p>
+
+<p><strong>Simptom</strong></p>
+
+<p>
+VM se više ne pojavljuje u sledećem backup poslu.
+</p>
+
+<p><strong>Postupak dijagnostike</strong></p>
+
+<ol>
+<li>potvrditi da VM nije obrađena;</li>
+<li>proveriti Backup-Tier tag;</li>
+<li>proveriti backup scope;</li>
+<li>proveriti exclusion pravila;</li>
+<li>proveriti privilegije backup naloga;</li>
+<li>proveriti sinhronizaciju inventara;</li>
+<li>proveriti vCenter događaje.</li>
+</ol>
+
+<p><strong>Bezbedna korektivna akcija</strong></p>
+
+<p>
+Vratiti odgovarajući Backup-Tier tag i ponovo izvršiti inventarizaciju backup proizvoda.
+</p>
+
+<p><strong>Rollback</strong></p>
+
+<p>
+Rollback predstavlja vraćanje prethodno dokumentovanog taga.
+</p>
+
+<hr>
+
+<p><strong>Vežba 13 – Simulacija neuspešne autentikacije backup servera</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Vežba prikazuje kako administrator razlikuje mrežni problem od problema autentikacije.
+</p>
+
+<p><strong>Bezbedna laboratorijska simulacija</strong></p>
+
+<p>
+Na backup serveru privremeno se unosi pogrešna lozinka za namenski laboratorijski nalog ili se koristi test nalog sa pogrešnim kredencijalima. Produkcioni nalog se ne menja.
+</p>
+
+<p><strong>Simptom</strong></p>
+
+<p>
+Backup posao odmah završava greškom.
+</p>
+
+<p><strong>Provere</strong></p>
+
+<ul>
+<li>backup.log;</li>
+<li>backupScheduler.log;</li>
+<li>SSH logovi backup servera;</li>
+<li>journalctl -u sshd;</li>
+<li>auth.log ili secure log.</li>
+</ul>
+
+<p><strong>Osnovni uzrok</strong></p>
+
+<p>
+Neispravni kredencijali.
+</p>
+
+<p><strong>Trajna korektivna mera</strong></p>
+
+<p>
+Korišćenje password vault sistema i periodična provera isteka administratorskih lozinki.
+</p>
+
+<hr>
+
+<p><strong>Vežba 14 – Simulacija nedostatka prostora na backup odredištu</strong></p>
+
+<p><strong>Napomena</strong></p>
+
+<p>
+Vežba se izvodi isključivo u laboratoriji korišćenjem test particije ili ograničene virtualne disk slike. Ne popunjavati produkcioni backup storage.
+</p>
+
+<p><strong>Simptom</strong></p>
+
+<p>
+Backup se prekida pri kraju izvršavanja.
+</p>
+
+<p><strong>Postupak</strong></p>
+
+<ol>
+<li>potvrditi slobodan prostor;</li>
+<li>proveriti inode iskorišćenost;</li>
+<li>pregledati backup.log;</li>
+<li>identifikovati retention politiku;</li>
+<li>proveriti da li postoje zastarele kopije;</li>
+<li>proširiti kapacitet ili ukloniti istekle kopije prema politici.</li>
+</ol>
+
+<p><strong>Nikada ne raditi</strong></p>
+
+<ul>
+<li>brisanje poslednje potvrđene dobre kopije;</li>
+<li>ručno uklanjanje datoteka iz aktivnog backup lanca;</li>
+<li>prekid backup procesa bez analize.</li>
+</ul>
+
+<hr>
+
+<p><strong>Vežba 15 – Incident response nakon ransomware napada (laboratorijski scenario)</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Administrator vežba donošenje pravilnih odluka nakon prijavljenog ransomware incidenta.
+</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>
+SOC prijavljuje da je jedna laboratorijska VM kompromitovana.
+</p>
+
+<p><strong>Ispravan redosled</strong></p>
+
+<ol>
+<li>potvrditi incident;</li>
+<li>izolovati VM iz mreže;</li>
+<li>ne gasiti sistem bez potrebe;</li>
+<li>sačuvati dokaze;</li>
+<li>proveriti da li backup repozitorijum nije kompromitovan;</li>
+<li>identifikovati poslednju čistu restore tačku;</li>
+<li>vratiti sistem u izolovanu mrežu;</li>
+<li>potvrditi odsustvo kompromitacije;</li>
+<li>tek tada vratiti sistem u produkciju.</li>
+</ol>
+
+<p><strong>Pogrešna reakcija</strong></p>
+
+<p>
+Odmah vratiti VM iz backup-a bez utvrđivanja kada je kompromitacija zapravo nastala.
+</p>
+
+<hr>
+
+<p><strong>Vežba 16 – Automatizovana provera backup spremnosti većeg broja VM-ova</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Administrator treba jednim PowerCLI izveštajem da pronađe VM koje predstavljaju potencijalni rizik.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa01.lab.local
+
+Get-VM |
+ForEach-Object {
+
+    $snap=Get-Snapshot -VM $_ -ErrorAction SilentlyContinue
+
+    [PSCustomObject]@{
+
+        VM=$_.Name
+
+        PowerState=$_.PowerState
+
+        CBT=(Get-View $_.Id).Config.ChangeTrackingEnabled
+
+        SnapshotCount=@($snap).Count
+
+        Datastore=((Get-Datastore -VM $_).Name -join ",")
+
+        BackupTier=(Get-TagAssignment -Entity $_ -Category "Backup-Tier" -ErrorAction SilentlyContinue |
+                    Select -Expand Tag |
+                    Select -Expand Name)
+
+    }
+
+} |
+Export-Csv backup-readiness-final.csv -NoTypeInformation</code></pre>
+
+<p><strong>Administrator proverava:</strong></p>
+
+<ul>
+<li>VM bez Backup-Tier taga;</li>
+<li>VM sa velikim brojem snapshot-a;</li>
+<li>VM bez CBT-a kada je potreban;</li>
+<li>neočekivane datastore promene;</li>
+<li>VM koje nisu uključene u standardnu politiku.</li>
+</ul>
+
+<hr>
+
+<p><strong>Vežba 17 – Recovery validacija nakon restore-a</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Dokazati da restore nije samo tehnički uspešan već i funkcionalno upotrebljiv.
+</p>
+
+<p><strong>Kontrolna lista</strong></p>
+
+<ul>
+<li>VM se pokreće;</li>
+<li>VMware Tools rade;</li>
+<li>DNS funkcioniše;</li>
+<li>NTP je sinhronizovan;</li>
+<li>aplikacioni servisi rade;</li>
+<li>korisnici mogu da se prijave;</li>
+<li>logovi ne prijavljuju kritične greške;</li>
+<li>monitoring vidi novi sistem;</li>
+<li>backup agent (ako postoji) radi;</li>
+<li>novi backup može uspešno da se izvrši.</li>
+</ul>
+
+<p>
+Restore nije završen dok aplikacioni vlasnik ne potvrdi funkcionalnost sistema.
+</p>
+
+<hr>
+
+<p><strong>Vežba 18 – Završni laboratorijski audit</strong></p>
+
+<p><strong>Cilj</strong></p>
+
+<p>
+Na kraju kompletne laboratorije administrator proverava da li postoji dokaz za svaku kritičnu komponentu backup procesa.
+</p>
+
+<table>
+<tr>
+<th>Komponenta</th>
+<th>Dokaz</th>
+</tr>
+
+<tr>
+<td>Inventar</td>
+<td>CSV izveštaj</td>
+</tr>
+
+<tr>
+<td>Backup politika</td>
+<td>Backup-Tier matrica</td>
+</tr>
+
+<tr>
+<td>Snapshot audit</td>
+<td>Snapshot report</td>
+</tr>
+
+<tr>
+<td>CBT</td>
+<td>PowerCLI validacija</td>
+</tr>
+
+<tr>
+<td>VCSA backup</td>
+<td>Uspešan backup i log</td>
+</tr>
+
+<tr>
+<td>ESXi konfiguracija</td>
+<td>Firmware bundle</td>
+</tr>
+
+<tr>
+<td>Restore</td>
+<td>Uspešna laboratorijska VM</td>
+</tr>
+
+<tr>
+<td>Restore test</td>
+<td>Zapisnik</td>
+</tr>
+
+<tr>
+<td>Kontrolne sume</td>
+<td>SHA-256 manifest</td>
+</tr>
+
+<tr>
+<td>Incident dokumentacija</td>
+<td>Troubleshooting zapis</td>
+</tr>
+
+</table>
+
+<hr>
+
+<p><strong>Administratorske prakse</strong></p>
+
+<ul>
+<li>backup politiku projektovati prema poslovnom RPO i RTO, a ne prema veličini VM;</li>
+<li>svaka kritična VM mora imati imenovanog poslovnog vlasnika;</li>
+<li>snapshot koristiti samo privremeno i periodično proveravati njihovu starost;</li>
+<li>backup server držati odvojeno od produkcione infrastrukture i ograničiti administratorske privilegije;</li>
+<li>redovno pratiti iskorišćenost backup storage-a i alarm postaviti pre dostizanja kritičnog praga;</li>
+<li>voditi evidenciju poslednjeg uspešnog backup-a i poslednjeg uspešnog restore testa;</li>
+<li>restore testirati najmanje periodično prema kritičnosti sistema, a rezultate dokumentovati;</li>
+<li>kontrolne sume koristiti za proveru integriteta backup datoteka;</li>
+<li>backup logove redovno analizirati i povezivati sa vCenter događajima i alarmima;</li>
+<li>svaku neuspešnu backup operaciju analizirati kroz dokaz, a ne pretpostavku;</li>
+<li>backup procedure uključiti u change management proces;</li>
+<li>pre svakog većeg patching-a potvrditi postojanje validnog backup-a;</li>
+<li>periodično proveravati mogućnost restore-a vCenter Server Appliance-a;</li>
+<li>ESXi konfiguracione bundle-ove čuvati zajedno sa informacijama o verziji, buildu i hardveru;</li>
+<li>automatizovati inventar, proveru Backup-Tier oznaka, snapshot audit i izveštavanje;</li>
+<li>periodično proveravati da li postoje VM koje nisu obuhvaćene backup politikom;</li>
+<li>backup repozitorijum uključiti u bezbednosni monitoring i reviziju pristupa;</li>
+<li>nakon svakog restore incidenta dokumentovati naučene lekcije i unaprediti proceduru.</li>
+</ul>
+
+<hr>
+
+<p><strong>Završna kontrolna tačka</strong></p>
+
+<p>
+Administrator je uspešno savladao ovu lekciju ako može samostalno da:
+</p>
+
+<ul>
+<li>projektuje backup strategiju prema RPO i RTO zahtevima;</li>
+<li>identifikuje objekte koji moraju biti zaštićeni;</li>
+<li>napravi i validira backup inventar;</li>
+<li>proveri CBT stanje i objasni njegovu ulogu;</li>
+<li>prepozna nepravilnu upotrebu snapshot-a;</li>
+<li>konfiguriše i proveri file-based backup vCenter Server Appliance-a;</li>
+<li>napravi konfiguracioni backup ESXi hosta;</li>
+<li>proveri logove povezane sa backup operacijama;</li>
+<li>razlikuje problem mreže, storage-a, autentikacije i konfiguracije;</li>
+<li>sistematično dijagnostikuje neuspešan backup posao;</li>
+<li>bezbedno izvrši restore cele virtuelne mašine;</li>
+<li>izvrši granularni restore pojedinačne datoteke;</li>
+<li>validira funkcionalnost vraćenog sistema;</li>
+<li>pronađe osnovni uzrok backup incidenta koristeći događaje, alarme i logove;</li>
+<li>primeni odgovarajući rollback ili recovery postupak;</li>
+<li>automatizuje proveru većeg broja VM korišćenjem PowerCLI-ja;</li>
+<li>prepozna VM koje nisu obuhvaćene backup politikom;</li>
+<li>dokumentuje kompletan backup i restore postupak;</li>
+<li>objasni razliku između uspešnog backup-a i uspešnog restore-a;</li>
+<li>proceni operativnu spremnost VMware okruženja za incident oporavka.</li>
+</ul>
+
+<hr>
+
+<p><strong>Zaključak</strong></p>
+
+<p>
+Backup predstavlja samo prvi deo procesa zaštite podataka. Prava vrednost backup sistema dokazuje se tek kada administrator može pouzdano, bezbedno i u predviđenom vremenu da vrati funkcionalan sistem. Zbog toga se uspešan administrator ne oslanja na činjenicu da je backup posao završio bez greške, već redovno proverava restore, validira aplikacionu ispravnost, prati logove, dokumentuje rezultate i unapređuje procedure na osnovu stvarnih incidenata.
+</p>
+
+<p>
+Nakon ove lekcije administrator je sposoban da projektuje osnovnu backup strategiju za VMware okruženje, proveri njenu ispravnost, automatizuje rutinske kontrole, sistematično dijagnostikuje najčešće probleme i bezbedno sprovede postupke oporavka uz minimalan rizik po produkciono okruženje.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    lekcija je zasnovana na aktuelnoj Broadcom VMware vSphere dokumentaciji za zaštitu virtuelnih mašina, vCenter Server Appliance File-Based Backup i Restore, vStorage APIs for Data Protection (VADP), Changed Block Tracking (CBT), ESXi konfiguracioni backup, zvaničnim VCF PowerCLI referencama, Broadcom Knowledge Base člancima za backup, restore, scheduler, snapshot i CBT scenarije, kao i zvaničnim administrativnim, bezbednosnim i troubleshooting vodičima za vSphere okruženje.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+  
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-35-sigurnost.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-37-monitoring-i-logovi.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

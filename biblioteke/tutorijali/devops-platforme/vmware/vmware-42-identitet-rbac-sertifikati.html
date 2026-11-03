@@ -1,0 +1,689 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-42-identitet-rbac-sertifikati.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Identitet, SSO, RBAC i sertifikati – pouzdana autentikacija i kontrola pristupa | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Pouzdano upravljanje identitetom, vCenter Single Sign-On servisom, RBAC dozvolama i sertifikatima u VMware vSphere okruženju.">
+
+  <meta name="keywords"
+        content="VMware identitet, vCenter SSO, RBAC, VMware sertifikati, autentikacija, autorizacija, najmanje privilegije, vSphere, kontrola pristupa, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-42-identitet-rbac-sertifikati.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Identitet, SSO, RBAC i sertifikati – pouzdana autentikacija i kontrola pristupa">
+
+  <meta property="og:description"
+        content="Pouzdano upravljanje identitetom, vCenter Single Sign-On servisom, RBAC dozvolama i sertifikatima u VMware vSphere okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-42-identitet-rbac-sertifikati.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-42-identitet-rbac-sertifikati.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Identitet, SSO, RBAC i sertifikati – pouzdana autentikacija i kontrola pristupa">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-42-identitet-rbac-sertifikati.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-42-identitet-rbac-sertifikati.png"
+           alt="Identitet, SSO, RBAC i sertifikati – pouzdana autentikacija i kontrola pristupa">
+
+    </a>
+<div class="page-subtitle">
+  X. Lifecycle, identitet i napredna zaštita platforme
+</div>
+
+<div class="page-subtitle">
+  42. Identitet, SSO, RBAC i sertifikati – pouzdana autentikacija i kontrola pristupa
+</div>
+
+<p>
+  Nadograđen i tehnički usklađen vSphere sistem nije bezbedan samo zato što su binarne komponente aktuelne. On postaje upravljiv tek kada administrator može pouzdano da odgovori na četiri pitanja: ko se prijavio, ko je potvrdio njegov identitet, šta mu je dozvoljeno i kojim kriptografskim identitetom servis dokazuje da je zaista onaj kome se korisnik ili druga komponenta obraća. U vSphere okruženju te odgovore zajedno daju vCenter Single Sign-On, izvori identiteta i federisani identity provider-i, model privilegija, uloga i dozvola, kao i infrastruktura sertifikata koju čine VMware Certificate Authority i VMware Endpoint Certificate Store.
+</p>
+
+<p>
+  Ova lekcija se nastavlja na kontrolisani lifecycle iz prethodne lekcije: nadogradnja vCenter Server-a može promeniti podržane identity provider-e, tokove prijave, API ponašanje i sertifikatske zavisnosti, pa se identitet i pristup moraju uključiti u pre-check i post-check. Istovremeno, ovde se postavlja osnova za narednu lekciju o hardening-u, enkripciji i audit dokazima. Cilj nije da jedan nalog „može sve”, već da svaki čovek i servis dobije tačno potreban pristup, u poznatom vremenskom okviru, uz proverljiv trag i održiv način oporavka.
+</p>
+
+<div class="note">
+  <p><strong>Verzijski okvir.</strong> Glavni operativni model u lekciji odnosi se na vCenter Server 8.x i ESXi 8.x. vSphere 7.x deli veliki deo SSO, RBAC, VMCA i VECS arhitekture, ali se podržani federacioni scenariji i detalji interfejsa razlikuju po update izdanju. vSphere/VCF 9.x uvodi širi VCF Identity Broker model i ne treba automatski prenositi njegove procedure na vSphere 8. Pre promene proveravaju se tačan build, interoperability matrica, aktuelni Product Documentation i odgovarajući Broadcom Knowledge Base članak.</p>
+</div>
+
+<h3>1. Identitet, autentikacija i autorizacija nisu ista kontrola</h3>
+
+<p>
+  <strong>Identitet</strong> je digitalna reprezentacija čoveka, grupe, aplikacije ili servisa. <strong>Autentikacija</strong> dokazuje da je subjekt zaista taj identitet, na primer lozinkom, sertifikatom ili procesom kod spoljašnjeg identity provider-a. <strong>Autorizacija</strong> se izvršava nakon uspešne autentikacije i određuje koje operacije identitet sme da izvrši nad kojim objektima. <strong>Accounting i audit</strong> beleže šta je urađeno, kada, sa koje sesije i nad kojim objektom. TLS sertifikat ima još jednu ulogu: omogućava klijentu ili servisu da proveri identitet druge strane i uspostavi šifrovan kanal.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Sloj</th><th>Administratorsko pitanje</th><th>vSphere primer</th><th>Dokaz</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Identity proofing</td><td>Ko je vlasnik naloga?</td><td>HR proces i AD/Entra nalog vezan za konkretnu osobu</td><td>odobren zahtev, vlasnik, rok važenja</td></tr>
+    <tr><td>Autentikacija</td><td>Kako je identitet potvrđen?</td><td>SSO lozinka, LDAPS ili OIDC prijava sa MFA kod IdP-a</td><td>IdP i SSO događaji, uspešna sesija</td></tr>
+    <tr><td>Autorizacija</td><td>Šta sme i gde?</td><td>AD grupa + prilagođena vCenter uloga + dozvola na folderu</td><td>izvoz uloga i permissions matrica</td></tr>
+    <tr><td>Transportno poverenje</td><td>Da li je servis autentičan?</td><td>Machine SSL sertifikat čiji SAN sadrži vCenter FQDN</td><td>validan lanac, rok, SAN i fingerprint</td></tr>
+    <tr><td>Audit</td><td>Šta se stvarno dogodilo?</td><td>task/event za promenu dozvole ili operaciju nad VM-om</td><td>vCenter događaj, log, SIEM zapis i change ID</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Uspešna prijava ne dokazuje da je autorizacija dobra, a pravilno podešena uloga ne pomaže ako je identity source nedostupan. Sertifikat koji je još u roku može biti neupotrebljiv ako mu nedostaje odgovarajući SAN, ako privatni ključ ne odgovara sertifikatu ili ako klijent nema kompletan trust chain. Zato se incident ne opisuje samo kao „SSO ne radi”: razdvajaju se dohvat identiteta, provera kredencijala, izdavanje tokena, evaluacija dozvole, dostupnost ciljnog servisa i TLS poverenje.
+</p>
+
+<h3>2. Arhitektura vCenter Single Sign-On sistema</h3>
+
+<p>
+  vCenter Single Sign-On je autentikaciona infrastruktura vCenter Server-a. U savremenom appliance modelu Platform Services Controller je ugrađen u vCenter Server; istorijske topologije sa spoljnim PSC-om ne treba koristiti kao projekat nove implementacije. SSO domen, često inicijalno nazvan <code>vsphere.local</code>, nije DNS ni Active Directory domen. To je administrativna granica u kojoj postoje lokalni korisnici i grupe, identity source konfiguracija, registracije servisa, rešenja i poverenje potrebno za izdavanje i proveru tokena.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Komponenta</th><th>Uloga</th><th>Kritična zavisnost</th><th>Tipična posledica kvara</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>VMware Directory Service, vmdir</td><td>čuva SSO podatke i replikuje ih između čvorova istog domena</td><td>DNS, vreme, konzistentnost partnera</td><td>problem prijave, replikacije ili Lookup Service registracija</td></tr>
+    <tr><td>Security Token Service, STS</td><td>izdaje potpisane tokene nakon autentikacije</td><td>važeći STS signing certificate</td><td>servisi i prijava otkazuju iako je lozinka ispravna</td></tr>
+    <tr><td>Identity Management Service</td><td>obrađuje korisnike, grupe i izvore identiteta</td><td>dostupan LDAP/IdP i poverenje</td><td>korisnik ili grupa se ne pronalaze</td></tr>
+    <tr><td>Lookup Service</td><td>omogućava registraciju i pronalaženje servisnih endpoint-a</td><td>ispravne registracije i sertifikati</td><td>„Could not connect to one or more vCenter Server systems”</td></tr>
+    <tr><td>VMware Identity Services</td><td>posreduje kod podržane spoljne federacije i SCIM provisioninga</td><td>OIDC/SCIM konektivnost i hosting čvor</td><td>federisani login ne radi dok lokalni SSO može ostati dostupan</td></tr>
+  </tbody>
+</table>
+
+<h4>SSO domen, site i Enhanced Linked Mode</h4>
+
+<p>
+  Više vCenter Server instanci može pripadati istom SSO domenu i raditi u Enhanced Linked Mode topologiji. Tada se dele ili replikuju određeni SSO podaci, kao što su identity source i globalne permission konfiguracije, a administrator dobija objedinjeni pogled. To nije samo pogodnost: kvar zajedničkog tokena, nekonzistentna vmdir replika ili pogrešna promena identity provider-a može imati širi blast radius. STS signing certificate je zajednička SSO zavisnost; njegova zamena mora se planirati za celu ELM topologiju, uz provere svih partnera.
+</p>
+
+<p>
+  Kod vSphere 8 federacije u ELM-u, vCenter čvor koji hostuje VMware Identity Services mora biti dostupan ostalim povezanim čvorovima. Ako nije, federisane prijave mogu otkazati i na vCenter instancama koje su inače zdrave. Lokalni SSO break-glass nalog ostaje neophodan, a produkcioni dizajn razmatra dostupnost hosting čvora i dokumentovan oporavak. VCF 9 može koristiti drugačiji Identity Broker deployment model; to je verzijska razlika, ne procedura za vSphere 8.
+</p>
+
+<h4>Vreme, DNS i mreža kao bezbednosne zavisnosti</h4>
+
+<p>
+  Kerberos, OIDC tokeni, STS tokeni i X.509 sertifikati zavise od vremena. Značajan clock skew može izgledati kao pogrešna lozinka ili nevažeći token. Forward i reverse DNS, stabilan vCenter PNID/FQDN i odgovarajući SAN u sertifikatu nisu kozmetika. Pre svake SSO ili sertifikatske intervencije proveravaju se NTP izvori, DNS rezolucija iz pravca vCenter-a i klijenata, portovi do LDAP/LDAPS i IdP endpoint-a, proxy pravila i TLS trust chain.
+</p>
+
+<h3>3. Izvori identiteta i federacija</h3>
+
+<p>
+  vCenter uvek ima lokalni SSO identity source. Spoljni direktorijum omogućava centralni lifecycle korisnika i grupa, dok federacija premešta interaktivnu autentikaciju ka podržanom IdP-u. Izbor nije samo pitanje komfora prijave: utiče na MFA, mrežne tokove, dostupnost, provisioning i recovery. Produkcioni cilj je koristiti grupe iz enterprise direktorijuma za redovan pristup, a lokalne SSO naloge ograničiti na kontrolisanu administraciju i oporavak.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Model</th><th>Primena</th><th>Prednost</th><th>Ograničenje/rizik</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Lokalni SSO domen</td><td>break-glass, servisna administracija SSO-a</td><td>ne zavisi od spoljnog direktorijuma</td><td>odvojen lifecycle i bez nativnog MFA za lokalne SSO korisnike u vSphere 8</td></tr>
+    <tr><td>Active Directory over LDAP/LDAPS</td><td>pretraga AD korisnika i grupa</td><td>centralne grupe; nije potrebno domain-join oslanjanje</td><td>bind nalog, sertifikati DC-ova, Base DN i dostupnost LDAP servisa</td></tr>
+    <tr><td>OpenLDAP</td><td>organizacije bez AD-a</td><td>standardni direktorijum</td><td>šema, mapiranje atributa i TLS poverenje moraju odgovarati podržanoj konfiguraciji</td></tr>
+    <tr><td>Integrated Windows Authentication</td><td>istorijske/domain-joined implementacije</td><td>ranije jednostavna AD integracija</td><td>deprecated u novijim vSphere izdanjima; ne projektovati kao novi ciljni model</td></tr>
+    <tr><td>Federacija sa podržanim IdP-om</td><td>centralna autentikacija, MFA i conditional access</td><td>lozinka i dodatni faktor obrađuju se kod IdP-a</td><td>verzijski specifična podrška, OIDC/SCIM zavisnosti i jedan konfigurisan spoljni IdP u vCenter 8.x modelu</td></tr>
+  </tbody>
+</table>
+
+<h4>LDAPS kao preporučeni direktorijumski kanal</h4>
+
+<p>
+  Nešifrovani LDAP izlaže bind i direktorijumski saobraćaj mrežnom riziku. LDAPS obezbeđuje šifrovanje i proveru identiteta domain controller-a, ali samo ako vCenter veruje izdavačkom lancu i ako se povezuje imenom koje sertifikat pokriva. Bind nalog treba da bude namenski, bez interaktivne prijave i bez administrativnih privilegija; njegova lozinka se čuva u kontrolisanom secrets procesu i rotira uz prethodno testiranje. Base DN treba suziti koliko organizacioni model dopušta, jer pogrešan opseg povećava mogućnost dvosmislenih naloga i nepotrebnog pretraživanja.
+</p>
+
+<ul>
+  <li>Koristiti najmanje dva pouzdana LDAP server endpoint-a kada podržani dijalog to omogućava i potvrditi da sertifikati svih servera imaju odgovarajući SAN.</li>
+  <li>Uvesti kompletan root/intermediate lanac, ne samo slučajno preuzet leaf sertifikat; planirati obnovu pre isteka.</li>
+  <li>Ne uklanjati stari identity source dok se novi ne validira iz odvojene administratorske sesije.</li>
+  <li>U ELM okruženju tretirati promenu kao SSO-domain promenu: konfiguracija se replikuje, pa se ne ponavlja nasumično na svakom čvoru.</li>
+</ul>
+
+<h4>Federacija, OIDC, SCIM i MFA</h4>
+
+<p>
+  Kod federacije, browser se preusmerava ka spoljašnjem identity provider-u, koji autentikuje korisnika i vraća rezultat kroz OpenID Connect tok. Provisioning korisnika i grupa u VMware Identity Services može koristiti SCIM 2.0. Autentikacija i provisioning su povezani, ali nisu isto: OIDC uspeh ne garantuje da vCenter može da mapira autentikovanog subjekta na provisioned korisnika ili grupu. Zato incident „IdP kaže success, vCenter kaže access denied” prvo vodi ka proveri SCIM sinhronizacije, immutable identifikatora, group push-a i dodeljene vCenter dozvole.
+</p>
+
+<p>
+  Za vCenter 8.x zvanično podržani federacioni izbor zavisi od update izdanja; dokumentacija obuhvata Microsoft Entra ID, Okta i PingFederate u odgovarajućim verzijama. Ne pretpostavlja se da bilo koji generički OIDC ili SAML provider radi samo zato što implementira standard. AD FS podrška pripada određenim starijim federacionim putevima i integracijama; pre dizajna proverava se tačna matrica za build i povezane proizvode. MFA se kod vSphere 8 federacije sprovodi na IdP strani. „Dodavanje MFA” lokalnom <code>administrator@vsphere.local</code> nalogu nije podržani nativni model.
+</p>
+
+<div class="warning">
+  <p><strong>Recovery obaveza.</strong> Pre federacione promene potvrdi prijavu lokalnim SSO break-glass nalogom, ali njegovu lozinku nemoj držati u skripti, browser password store-u ili običnom dokumentu. Čuvaj je u kontrolisanom vault-u, testiraj po proceduri i alarmiraj svaku upotrebu. Federaciju ne aktiviraj bez unapred definisanog povratka na lokalni SSO pristup.</p>
+</div>
+
+<h3>4. RBAC: privilegija, uloga i dozvola</h3>
+
+<p>
+  vSphere RBAC se razume kroz preciznu formulu: <strong>permission = principal + role + inventory object + propagation</strong>. Principal je korisnik ili grupa. Role je skup privilegija. Inventory object određuje opseg, a propagation odlučuje da li se dozvola nasleđuje na potomke. Privilegija je atomsko pravo, na primer uključivanje VM-a ili menjanje mrežne konfiguracije; sama uloga ne daje pristup dok nije uparena sa principal-om na objektu.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Pojam</th><th>Značenje</th><th>Česta greška</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Privilege</td><td>pojedinačno pravo za određenu operaciju</td><td>dodeliti široku privilegiju jer naziv deluje bezazleno</td></tr>
+    <tr><td>Role</td><td>imenovani skup privilegija</td><td>menjati ugrađenu ili zajedničku ulogu bez impact analize</td></tr>
+    <tr><td>Permission</td><td>veza principal-a, uloge i objekta</td><td>pretpostaviti da uloga sama važi svuda</td></tr>
+    <tr><td>Propagation</td><td>nasleđivanje ka potomcima</td><td>dodeliti na root-u i nenamerno obuhvatiti buduće objekte</td></tr>
+    <tr><td>Global permission</td><td>prava kroz globalni root i solution hijerarhije</td><td>koristiti kao prečicu za lokalni operativni zahtev</td></tr>
+  </tbody>
+</table>
+
+<h4>Hijerarhija, nasleđivanje i No Access</h4>
+
+<p>
+  Dozvola postavljena na datacenter, folder, cluster ili drugi roditeljski objekat može se propagirati. Direktna dozvola na potomku može promeniti efektivni rezultat, a članstvo istog korisnika u više grupa može proizvesti zbir privilegija. <code>No Access</code> nije univerzalna „deny uvek pobeđuje” kontrola koju treba primenjivati bez modelovanja; vSphere objekti, naročito VM i vApp, mogu učestvovati u različitim propagation lancima. Efektivni pristup se zato proverava konkretnim test nalogom i konkretnom operacijom, ne samo vizuelnim pregledom jedne permission stavke.
+</p>
+
+<p>
+  Za organizacionu skalabilnost, VM-ove i druge objekte treba grupisati u foldere koji predstavljaju stabilne administrativne granice, a dozvole dodeljivati AD/IdP grupama na najnižem zajedničkom objektu koji ispunjava zahtev. Dodeljivanje pojedinačnim korisnicima otežava offboarding i audit. Dodela na vCenter root-u sa propagacijom je velika promena i mora imati eksplicitno poslovno opravdanje.
+</p>
+
+<h4>Sistemske i prilagođene uloge</h4>
+
+<p>
+  Ugrađene sistemske uloge, uključujući <code>Administrator</code>, <code>Read-only</code> i <code>No access</code>, imaju posebno ponašanje i nisu zamena za dobro projektovane operativne role. Produkcione role se grade po personama: VM operator, backup servis, monitoring, mrežni administrator, storage administrator ili automation service account. Svaka uloga dobija opis, vlasnika, change ID, datum pregleda i testirani use case. Naziv „VM Admin” nije dovoljan dokaz šta uloga sadrži.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Persona</th><th>Tipičan opseg</th><th>Dozvoliti</th><th>Ne uključivati bez posebnog zahteva</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>NOC/monitoring</td><td>datacenter ili namenski folder</td><td>view, alarm acknowledgement po proceduri</td><td>power, reconfiguration i permissions</td></tr>
+    <tr><td>VM operator</td><td>aplikativni VM folder</td><td>console, power i definisane guest operacije</td><td>host, datastore i mrežna administracija</td></tr>
+    <tr><td>Backup servis</td><td>zaštićeni VM folderi i neophodna infrastruktura</td><td>vendor-dokumentovan minimum za snapshot, read i restore</td><td>globalni Administrator kao trajno rešenje</td></tr>
+    <tr><td>Automation nalog</td><td>tačno ciljani folderi/cluster-i</td><td>operacije koje pipeline stvarno izvršava</td><td>interaktivna prijava i neograničeno trajanje tajne</td></tr>
+    <tr><td>Break-glass administrator</td><td>SSO/vCenter recovery</td><td>pun pristup samo za incident</td><td>svakodnevni rad</td></tr>
+  </tbody>
+</table>
+
+<h4>Tagovi, Content Library i druga odvojena prava</h4>
+
+<p>
+  Inventory RBAC nije jedina permission površina. Tag kategorije i tagovi imaju posebne privilegije i dodele; Content Library, vSphere Namespaces, kriptografske operacije i povezana rešenja mogu zahtevati zasebna prava. Korisnik može videti VM, ali ne i tag koji automatizacija očekuje, ili može imati pravo nad namespace-om koje se ne vidi iz klasičnog VM folder modela. Zato se matrica pristupa vodi po resursu i funkciji, a ne samo po vCenter ulozi.
+</p>
+
+<h3>5. Projektovanje najmanjih privilegija i lifecycle pristupa</h3>
+
+<p>
+  Najmanje privilegije nisu jednokratno uklanjanje prava nego lifecycle: zahtev, odobrenje vlasnika resursa, dodela grupi, tehnička validacija, nadzor korišćenja, periodična recertifikacija i povlačenje. Privremeni pristup mora imati datum isteka izvan vCenter-a ako sama platforma ne sprovodi željeni JIT model. Segregation of duties odvaja osobu koja traži, odobrava, implementira i proverava privilegovanu promenu kad god organizaciona veličina to dopušta.
+</p>
+
+<ol>
+  <li><strong>Definiši posao:</strong> napiši dozvoljene operacije i zabranjene posledice, ne samo naziv tima.</li>
+  <li><strong>Mapiraj objekte:</strong> utvrdi folder, cluster, datastore, network, tag ili namespace koji operacija dodiruje.</li>
+  <li><strong>Prikupi required privilege dokaz:</strong> koristi zvaničnu dokumentaciju, test u laboratoriji i PowerCLI privilege report gde je primenljivo.</li>
+  <li><strong>Kreiraj grupu i ulogu:</strong> pristup dodeli grupi, a ulogu verzioniši opisom i izvozom.</li>
+  <li><strong>Testiraj pozitivno i negativno:</strong> dozvoljena operacija mora uspeti, a najmanje jedna kritična nedozvoljena mora biti odbijena.</li>
+  <li><strong>Prati i recertifikuj:</strong> orphaned principals, direktne user dodele i široke root/global permissions tretiraj kao nalaze.</li>
+</ol>
+
+<h4>Service account i automatizacija</h4>
+
+<p>
+  Servisni nalog mora imati jednog poslovnog i jednog tehničkog vlasnika, namenu, opseg, metod čuvanja i rotacije tajne, očekivane izvore konekcije i plan povlačenja. Ne koristi lični nalog u backup proizvodu ili CI/CD pipeline-u. Ako integracija podržava token, OAuth2 client ili sertifikatski identitet, proveri da li je to podržani i bezbedniji model za konkretnu verziju; ne pretpostavljaj da svaka vSphere integracija koristi isti auth mehanizam.
+</p>
+
+<p>
+  PowerCLI skripte ne treba da sadrže plaintext lozinku. Interaktivni <code>Get-Credential</code> je prihvatljiv za laboratoriju i ad hoc administraciju, dok produkciona automatizacija koristi enterprise secrets manager i kratkotrajne kredencijale gde je moguće. <code>Set-PowerCLIConfiguration -InvalidCertificateAction Ignore</code> nije popravka sertifikata; njime se gubi dokaz identiteta servera i ne treba ga ostaviti kao globalnu produkcionu konfiguraciju.
+</p>
+
+<h3>6. Sertifikatska arhitektura: VMCA, VECS i STS</h3>
+
+<p>
+  VMware Certificate Authority, VMCA, izdaje sertifikate za vSphere komponente. VMware Endpoint Certificate Store, VECS, čuva sertifikate i privatne ključeve u imenovanim store-ovima. Machine SSL sertifikat predstavlja vCenter endpoint klijentima i servisima. Solution User sertifikati omogućavaju autentikaciju internih vCenter rešenja prema SSO-u; tipični store-ovi obuhvataju <code>machine</code>, <code>vpxd</code>, <code>vpxd-extension</code> i <code>vsphere-webclient</code>, a dodatne komponente mogu imati svoje store-ove. STS signing certificate potpisuje tokene i nije isto što i Machine SSL sertifikat.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Sertifikat/store</th><th>Predstavlja</th><th>Provera</th><th>Posledica isteka/kvara</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>MACHINE_SSL_CERT</td><td>vCenter TLS endpoint</td><td>SAN, chain, rok, key match</td><td>browser/API trust greške; servisi mogu izgubiti konekciju</td></tr>
+    <tr><td>Solution User</td><td>interni vCenter servis ili rešenje</td><td>VECS store i VMCA chain</td><td>određene usluge ne mogu da se autentikuju</td></tr>
+    <tr><td>STS signing</td><td>potpis SSO tokena</td><td>rok i konzistentnost SSO domena</td><td>širok otkaz prijave i pokretanja servisa</td></tr>
+    <tr><td>TRUSTED_ROOTS</td><td>pouzdani CA lanci</td><td>aktuelni root/intermediate, bez nepotrebnih duplikata</td><td>chain validation ili registracioni problemi</td></tr>
+    <tr><td>ESXi host sertifikat</td><td>identitet host management endpoint-a</td><td>status hosta, issuer i lifecycle režim</td><td>host trust i management greške</td></tr>
+    <tr><td>LDAPS/IdP sertifikat</td><td>spoljni direktorijum ili federacioni endpoint</td><td>hostname, chain, expiry, TLS handshake</td><td>spoljna autentikacija ili provisioning otkazuju</td></tr>
+  </tbody>
+</table>
+
+<h4>Modeli upravljanja sertifikatima</h4>
+
+<p>
+  Najjednostavniji podržani model koristi VMCA kao root CA. Interni servisi rade bez ručnog izdavanja, ali browseri i enterprise klijenti po pravilu ne veruju VMCA root-u dok se on kontrolisano ne distribuira. Čest produkcioni kompromis je da Machine SSL sertifikat bude potpisan enterprise CA-om, dok solution user sertifikate održava VMCA. Model u kome je VMCA subordinate CA ima širi PKI uticaj i mora ga odobriti PKI tim; privatni ključ i policy posledice zahtevaju strogu procenu. Potpuno custom upravljanje svim sertifikatima povećava operativni trošak i rizik isteka.
+</p>
+
+<p>
+  Sertifikat se izdaje za stabilni FQDN/PNID, sa SAN vrednostima koje odgovaraju podržanom pristupu. Dodavanje IP adresa ili alias-a „za svaki slučaj” širi identitet i komplikuje lifecycle. Wildcard sertifikati nisu dobar podrazumevani izbor za infrastrukturni management plane. Private key se generiše i čuva kontrolisano, a PKCS#8/PEM format, redosled chain-a i key match potvrđuju se pre importa.
+</p>
+
+<h4>Bezbedan lifecycle i redosled promene</h4>
+
+<ol>
+  <li>Inventariši sve relevantne sertifikate, izdavače, SAN, rokove, store-ove i vlasnike.</li>
+  <li>Proveri health vCenter-a, file-based backup i mogućnost restore-a. Snapshot samog appliance-a nije zamena za podržani backup; u ELM-u nekonzistentni online snapshot-i mogu pogoršati stanje.</li>
+  <li>Proveri DNS, NTP, PNID, ELM partnere, vmdir replikaciju i servisno stanje.</li>
+  <li>Generiši CSR i key prema zvaničnoj proceduri za tačan build; PKI tim vraća leaf i kompletan chain.</li>
+  <li>Pre importa proveri subject/SAN, EKU, rok, chain i podudaranje javnog i privatnog ključa.</li>
+  <li>Izvrši podržanu zamenu pomoću vSphere Client-a, <code>certificate-manager</code> ili zvanično preporučenog <code>vCert</code> alata za konkretan slučaj.</li>
+  <li>Validiraj UI, API, PowerCLI, backup/monitoring integracije, ELM pogled i solution servise; dokumentuj nove fingerprint-e i rokove.</li>
+</ol>
+
+<div class="warning">
+  <p><strong>Ne koristiti „reset all certificates” kao rutinsku obnovu.</strong> Opcija resetovanja menja veliki broj identiteta i ima širok blast radius. Koristi se samo kada je odgovarajuća zvanična recovery procedura za dokazano stanje, uz backup, ELM plan i post-validaciju svih integracija. Ručno brisanje VECS store-ova, direktno uređivanje vmdir-a ili nasumično ponavljanje certificate-manager opcija može pretvoriti ograničen problem u potpuni outage.</p>
+</div>
+
+<h3>7. Inventar, nadzor i read-only provere</h3>
+
+<p>
+  Sledeće komande se izvršavaju preko SSH sesije na vCenter Server Appliance-u sa odgovarajućim administrativnim ovlašćenjem. One čitaju stanje. SSH pristup treba uključiti samo po odobrenoj proceduri i ponovo ograničiti nakon rada. Izlaz može sadržati interne identifikatore i ne objavljuje se nekontrolisano.
+</p>
+
+<pre><code class="language-bash"># Prikaži VECS store-ove; read-only.
+/usr/lib/vmware-vmafd/bin/vecs-cli store list
+
+# Prikaži alias-e u Machine SSL store-u; read-only.
+/usr/lib/vmware-vmafd/bin/vecs-cli entry list \
+  --store MACHINE_SSL_CERT
+
+# Prikaži sertifikat bez privatnog ključa; read-only.
+/usr/lib/vmware-vmafd/bin/vecs-cli entry getcert \
+  --store MACHINE_SSL_CERT \
+  --alias __MACHINE_CERT \
+  | openssl x509 -noout -subject -issuer -serial -dates \
+      -fingerprint -sha256 -ext subjectAltName</code></pre>
+
+<p>
+  Očekuje se jedan aktivan Machine SSL identitet čiji SAN obuhvata vCenter FQDN, čiji rok nije blizu isteka i čiji issuer odgovara planiranom modelu. Ako verzija OpenSSL-a ne podržava prikaz ekstenzije navedenim parametrom, sertifikat se može pregledati sa <code>openssl x509 -noout -text</code>; to ne menja stanje.
+</p>
+
+<pre><code class="language-bash"># Provera sertifikata koji endpoint zaista prezentuje; read-only.
+openssl s_client -connect vcsa01.example.test:443 \
+  -servername vcsa01.example.test -showcerts &lt;/dev/null 2&gt;/dev/null \
+  | openssl x509 -noout -subject -issuer -dates \
+      -fingerprint -sha256 -ext subjectAltName</code></pre>
+
+<p>
+  Ova provera se izvršava sa administratorske radne stanice ili dijagnostičkog Linux sistema. Ona dokazuje šta klijent vidi na mreži, što može biti različito od očekivanog store-a ako između postoji proxy ili load balancer. Bez <code>-servername</code> SNI scenario može vratiti pogrešan sertifikat.
+</p>
+
+<h4>PowerCLI inventar dozvola</h4>
+
+<p>
+  Sledeći PowerCLI primer je read-only nakon uspostavljanja sesije. Izvršava se sa administratorske radne stanice, nalogom koji ima pravo čitanja dozvola na pregledanom opsegu. Izvoz predstavlja osetljiv bezbednosni artefakt i mora se zaštititi.
+</p>
+
+<pre><code class="language-powershell">$server = "vcsa01.example.test"
+$credential = Get-Credential
+$vi = Connect-VIServer -Server $server -Credential $credential
+
+$permissions = Get-VIPermission |
+  Select-Object @{N="Entity";E={$_.Entity.Name}},
+                Principal,
+                Role,
+                Propagate,
+                IsGroup
+
+$permissions | Sort-Object Entity, Principal |
+  Export-Csv -Path "./vcenter-permissions.csv" -NoTypeInformation -Encoding UTF8
+
+Disconnect-VIServer -Server $vi -Confirm:$false</code></pre>
+
+<p>
+  CSV se upoređuje sa odobrenom access matricom. Posebno se traže direktne user dodele, nepoznati principal-i, <code>Administrator</code> na širokom opsegu, root/global permissions i <code>Propagate = True</code> tamo gde nije namerno. <code>Get-VIPermission</code> prikazuje definisane dodele; efektivni pristup može zahtevati dodatnu analizu grupnog članstva i više propagation putanja.
+</p>
+
+<h3>8. Logovi, događaji i sistematična dijagnostika</h3>
+
+<table>
+  <thead>
+    <tr><th>Lokacija/izvor</th><th>Komponenta</th><th>Šta se traži</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/var/log/vmware/sso/websso.log</code></td><td>Web SSO</td><td>login tok, identity source i token greške</td></tr>
+    <tr><td><code>/var/log/vmware/sso/vmware-identity-sts.log</code></td><td>STS/identity</td><td>izdavanje i validacija tokena, signing problem</td></tr>
+    <tr><td><code>/var/log/vmware/vmdird/vmdird-syslog.log</code></td><td>vmdir</td><td>directory i replication greške</td></tr>
+    <tr><td><code>/var/log/vmware/vc-ws1a-broker/federation-service.log</code></td><td>federacioni broker</td><td>OIDC, TLS i user mapping problem</td></tr>
+    <tr><td><code>/var/log/vmware/trustmanagement-svcs/</code></td><td>trust management</td><td>IdP i trust konfiguracija, stale provider-i</td></tr>
+    <tr><td><code>/var/log/vmware/vpxd/vpxd.log</code></td><td>vCenter service</td><td>authorization i operativne greške povezane sa zadatkom</td></tr>
+    <tr><td>vSphere Client Tasks and Events</td><td>vCenter audit trag</td><td>ko je menjao role/permissions i kada</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Tačna imena i lokacije mogu se menjati između build-ova; proverava se zvanični „Location and Contents of vCenter Server log files” dokument. Debug logging se uključuje samo privremeno prema KB proceduri jer povećava količinu podataka i može zabeležiti osetljiv kontekst. Najpre se beleže UTC i lokalno vreme incidenta, korisnički principal, vCenter FQDN, client IP, IdP request/correlation ID i poslednja promena. Tek zatim se korelišu logovi u istom vremenskom prozoru.
+</p>
+
+<pre><code class="language-bash"># Read-only pretraga ograničena na relevantne obrasce i poslednjih 300 linija.
+tail -n 300 /var/log/vmware/sso/websso.log \
+  | grep -Ei 'error|exception|certificate|ldap|authentication|token'
+
+tail -n 300 /var/log/vmware/vc-ws1a-broker/federation-service.log \
+  | grep -Ei 'error|oidc|tls|user_not_found|denied'</code></pre>
+
+<p>
+  Jedna reč <code>error</code> nije root cause. Nalaz se povezuje sa timestamp-om, konkretnim request-om, prethodnim i narednim linijama, stanjem IdP-a i mrežnim/TLS dokazom. Log se prvo kopira ili support bundle čuva prema incident proceduri; rotirani logovi se ne brišu da bi se „oslobodio prostor” bez provere filesystem-a i retention politike.
+</p>
+
+<h4>Troubleshooting matrica</h4>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Prva hipoteza/provera</th><th>Bezbedna korekcija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Lokalni SSO radi, AD korisnik ne radi</td><td>identity source, LDAPS TLS, bind nalog, Base DN, user lockout</td><td>obnovi trust/bind prema proceduri; ne briši source pre izvoza konfiguracije</td></tr>
+    <tr><td>IdP MFA uspe, vCenter odbija pristup</td><td>SCIM provisioning, user/group mapping i vCenter permission</td><td>sinhronizuj ciljani principal i dodeli grupnu dozvolu</td></tr>
+    <tr><td>Svi login-i i servisi otkazuju</td><td>STS/Machine SSL/Solution User expiry, vreme, servis health</td><td>pokreni zvanični vCert/certificate recovery tok za dokazani uzrok</td></tr>
+    <tr><td>Jedan korisnik vidi previše objekata</td><td>grupna članstva, root/global permission i propagation</td><td>ukloni najširu pogrešnu dodelu kroz odobrenu promenu; testiraj regresiju</td></tr>
+    <tr><td>PowerCLI javlja certificate error</td><td>endpoint chain, hostname/SAN i lokalni trust store</td><td>ispravi sertifikat ili trust; ne ostavljaj Ignore kao workaround</td></tr>
+    <tr><td>ELM prikazuje parcijalne greške</td><td>vmdir replika, STS konzistentnost, Lookup Service endpoint-i</td><td>prikupi dokaze i koristi KB alat/proceduru; ne vrši ručno čišćenje registracija</td></tr>
+  </tbody>
+</table>
+
+<h3>9. Praktikum: od identity source-a do dokazive najmanje privilegije</h3>
+
+<h4>Laboratorijska topologija, preduslovi i rizik</h4>
+
+<p>
+  Laboratorija koristi <code>vcsa01.example.test</code>, jedan ESXi host, datacenter <code>LAB-DC</code>, VM folder <code>App-Team-A</code>, LDAPS direktorijum <code>ad01.example.test</code>, grupu <code>GG-vSphere-AppA-Operators</code> i test korisnika koji je član samo te grupe. Potrebni su lokalni SSO administrator, direktorijumski nalog za kreiranje/test grupe, PowerCLI na administratorskoj stanici, važeći CA lanac za LDAPS i sinhronizovan NTP.
+</p>
+
+<p>
+  Vežba menja identity source i RBAC stanje. U produkciji zahteva change odobrenje, file-based vCenter backup, zabeleženo početno stanje i potvrđen break-glass pristup. Bezbedna laboratorijska simulacija koristi novu test grupu i folder, ne postojeću produkcionu ulogu. Kriterijum završetka je: korisnik se autentikuje, može da izvrši dozvoljenu power operaciju samo nad VM-om u folderu, ne može da menja permissions niti host networking, a sve dodele su izvezene kao dokaz.
+</p>
+
+<h4>Vežba 1: pre-check identiteta, DNS-a, vremena i TLS-a</h4>
+
+<ol>
+  <li>Prijavi se lokalnim SSO break-glass test nalogom u odvojenom privatnom browser prozoru. Ne zatvaraj tu sesiju dok spoljna prijava nije potvrđena.</li>
+  <li>U vSphere Client-u zabeleži verziju/build i idi na <code>Administration → Single Sign On → Configuration</code>. Izvezi ili snimi postojeći spisak identity source-a bez prikazivanja tajni.</li>
+  <li>Sa dijagnostičke stanice proveri forward DNS za vCenter i oba LDAP endpoint-a, zatim proveri TCP/TLS konekciju i sertifikat.</li>
+</ol>
+
+<pre><code class="language-bash">getent hosts vcsa01.example.test
+getent hosts ad01.example.test
+
+openssl s_client -connect ad01.example.test:636 \
+  -servername ad01.example.test -showcerts &lt;/dev/null</code></pre>
+
+<p>
+  Komande su read-only. Očekuje se rezolucija na planirane adrese i TLS handshake bez hostname/chain greške kada se koristi odgovarajući CA trust. Proveri <code>notAfter</code>, SAN i ceo lanac. Ako handshake ne uspe, ne nastavljaj konfiguraciju: ispravi DNS, firewall ili sertifikat sa vlasnikom direktorijuma. Ne zaobilazi validaciju prelaskom na plaintext LDAP.
+</p>
+
+<h4>Vežba 2: dodavanje AD over LDAPS identity source-a</h4>
+
+<ol>
+  <li>U <code>Administration → Single Sign On → Configuration → Identity Provider/Identity Sources</code> izaberi dodavanje <code>Active Directory over LDAP</code>. Nazivi menija mogu se neznatno razlikovati po 8.x update-u.</li>
+  <li>Unesi tačan domain name, Base DN za korisnike i grupe, primary i secondary URL u obliku <code>ldaps://fqdn:636</code>, namenski bind principal i njegovu tajnu.</li>
+  <li>Uvezi potreban pouzdani CA lanac prema dijalogu i zvaničnoj proceduri. Ne koristi leaf sertifikat kao trajnu zamenu za pravilno poverenje u izdavača ako PKI model očekuje rotaciju DC sertifikata.</li>
+  <li>Sačuvaj konfiguraciju, pronađi test grupu i izvrši prijavu test korisnikom u novom browser prozoru.</li>
+</ol>
+
+<p>
+  Očekivani rezultat je da vCenter može da pretraži grupu i autentikuje korisnika. Ako pretraga radi, a prijava ne, proveri format principal-a, user lockout i SSO logove. Ako ništa ne može da se pronađe, proveri Base DN i bind prava. Ako je TLS greška, potvrdi koji sertifikat endpoint zaista prezentuje i da li je njegov chain importovan. Rollback je uklanjanje samo novog laboratorijskog source-a nakon što je potvrđen lokalni SSO pristup i sačuvan dokaz greške.
+</p>
+
+<h4>Vežba 3: prilagođena uloga i dodela grupi</h4>
+
+<p>
+  Kreiraj ulogu <code>TASHIZZA-LAB-VM-Power-Operator</code> sa minimumom privilegija potrebnim za pregled i kontrolisane power operacije nad VM-ovima. Tačan skup utvrdi pomoću vSphere Client opisa privilegija i laboratorijskog testa; ne kopiraj slepo ulogu iz druge verzije ili proizvoda. Zatim dodeli grupi ulogu na folderu <code>App-Team-A</code> sa propagacijom.
+</p>
+
+<pre><code class="language-powershell"># State-changing: izvršiti samo u laboratoriji nakon pregleda promenljivih.
+$server = "vcsa01.example.test"
+$folderName = "App-Team-A"
+$roleName = "TASHIZZA-LAB-VM-Power-Operator"
+$principal = "EXAMPLE\GG-vSphere-AppA-Operators"
+
+$vi = Connect-VIServer -Server $server -Credential (Get-Credential)
+$folder = Get-Folder -Name $folderName -Type VM
+
+# Primer privilegija mora se potvrditi za konkretan use case i build.
+$privilegeIds = @(
+  "System.Anonymous",
+  "System.Read",
+  "System.View",
+  "VirtualMachine.Interact.PowerOn",
+  "VirtualMachine.Interact.PowerOff",
+  "VirtualMachine.Interact.ConsoleInteract"
+)
+
+$privileges = Get-VIPrivilege | Where-Object { $_.Id -in $privilegeIds }
+if ($privileges.Count -ne $privilegeIds.Count) {
+  throw "Nisu pronađene sve planirane privilegije; promena je prekinuta."
+}
+
+$role = Get-VIRole -Name $roleName -ErrorAction SilentlyContinue
+if (-not $role) {
+  $role = New-VIRole -Name $roleName -Privilege $privileges
+}
+
+$existing = Get-VIPermission -Entity $folder |
+  Where-Object { $_.Principal -eq $principal -and $_.Role -eq $roleName }
+
+if (-not $existing) {
+  New-VIPermission -Entity $folder -Principal $principal \
+    -Role $role -Propagate:$true
+}</code></pre>
+
+<p>
+  Blok menja stanje i zato se prvo pregleda identitet servera, principal, folder i privilege ID. Idempotentna provera sprečava duplu dodelu, ali ne dokazuje da postojeća uloga ima očekivani sadržaj; to se posebno upoređuje. Ako <code>Get-VIPrivilege</code> ne vrati sve ID vrednosti, skripta prekida promenu umesto da kreira nepotpunu ulogu. U produkciji se uloga kreira kroz verzionisanu automatizaciju ili kontrolisan GUI change.
+</p>
+
+<h4>Vežba 4: pozitivni i negativni authorization test</h4>
+
+<ol>
+  <li>Prijavi se test korisnikom i proveri da vidi VM u folderu <code>App-Team-A</code>.</li>
+  <li>Izvrši dozvoljenu operaciju nad bezbednom test VM, na primer power on ako je VM namenjena vežbi. Zabeleži task ID, vreme i rezultat.</li>
+  <li>Pokušaj read-only pregled objekta izvan foldera; očekivanje zavisi od namerno dodeljenih view prava. Ne širi ulogu samo da bi UI izgledao „lepše”.</li>
+  <li>Pokušaj da otvoriš uređivanje permissions ili host networking. Operacija mora biti nedostupna ili odbijena. Ne pokušavaj destruktivnu radnju samo radi testa.</li>
+  <li>Administrator proverava <code>Tasks and Events</code> i PowerCLI izvoz da principal, objekat, uloga i propagation odgovaraju planu.</li>
+</ol>
+
+<p>
+  Ako dozvoljena power operacija ne uspe, pročitaj poruku o nedostajućoj privilegiji i proveri da li operacija dodiruje dodatni objekat. Dodaj samo dokazano potrebnu privilegiju, ponovi test i dokumentuj razlog. Ako negativni test uspe, to je bezbednosni incident u laboratorijskom smislu: odmah identifikuj dodatno grupno članstvo, inherited/global permission ili drugu direktnu dodelu pre bilo kakvog nasumičnog uklanjanja.
+</p>
+
+<h4>Vežba 5: incident – LDAPS sertifikat je istekao</h4>
+
+<p>
+  Bez stvarnog obaranja produkcionog direktorijuma, instruktor daje kopiju isteka sertifikata ili menja laboratorijski LDAPS endpoint na sertifikat kome vCenter ne veruje. Simptom je da lokalni SSO login radi, dok AD korisnici ne mogu da se prijave. Obim je spoljni identity source; posledica je gubitak redovnog administratorskog pristupa, ali ne i potpuni vCenter outage.
+</p>
+
+<ol>
+  <li>Ne menjaj identity source. Zabeleži vreme, korisnika, poruku i poslednju PKI/DC promenu.</li>
+  <li>Potvrdi lokalni SSO pristup i proveri vCenter service health.</li>
+  <li>Sa vCenter mrežnog pravca proveri DNS, port 636 i endpoint chain; u <code>websso.log</code> traži certificate path ili handshake grešku u istom intervalu.</li>
+  <li>Formuliši hipotezu: vCenter ne veruje novom LDAPS leaf/intermediate lancu ili se hostname ne poklapa.</li>
+  <li>Privremeni workaround je kontrolisani lokalni SSO pristup za nužnu administraciju, ne plaintext LDAP i ne globalno isključivanje TLS validacije.</li>
+  <li>Trajna mera je obnova direktorijumskog sertifikata/trust-a prema Broadcom KB proceduri za tačan build, uz potvrdu svih DC endpoint-a i ponovnu prijavu test korisnika.</li>
+</ol>
+
+<p>
+  Recovery je završen tek kada spoljašnji korisnik može da se prijavi, group lookup radi, oba LDAPS endpoint-a prolaze proveru, u logu nema novih handshake grešaka i postoji evidentiran novi datum isteka. Root cause nije „vCenter bug”, već neusklađen lifecycle LDAPS sertifikata i vCenter trust konfiguracije. Preventivna mera je zajednički certificate inventory i alarm znatno pre isteka.
+</p>
+
+<h4>Vežba 6: sertifikatski health check i plan obnove</h4>
+
+<p>
+  Ova vežba je read-only: izlistaj VECS store-ove i sertifikate, proveri endpoint sertifikat sa klijentske stanice i napravi tabelu: komponenta, store, subject, issuer, SAN, serial, SHA-256 fingerprint, <code>notAfter</code>, vlasnik i plan obnove. Ne izvoziti privatne ključeve. Za ELM dodaj svaki čvor i zajedničke SSO zavisnosti.
+</p>
+
+<p>
+  Kriterijum završetka nije samo „nijedan nije istekao”. Svi sertifikati moraju pripadati očekivanom trust modelu, endpoint mora prezentovati planirani leaf i chain, SAN mora odgovarati FQDN-u, a svaki rok mora imati vlasnika i promenu zakazanu pre incidentnog perioda. Ako se pronađe sertifikat blizu isteka, vežba proizvodi change plan sa backup-om, alatom, redosledom, post-check integracijama i rollback/recovery odlukom; sama zamena nije deo read-only provere.
+</p>
+
+<h4>Rollback laboratorije</h4>
+
+<pre><code class="language-powershell"># State-changing rollback: pregledati rezultat pre potvrde.
+$permission = Get-VIPermission -Entity (Get-Folder -Name "App-Team-A" -Type VM) |
+  Where-Object { $_.Principal -eq "EXAMPLE\GG-vSphere-AppA-Operators" }
+
+$permission | Format-Table Principal, Role, Entity, Propagate
+$permission | Remove-VIPermission -Confirm:$true
+
+$role = Get-VIRole -Name "TASHIZZA-LAB-VM-Power-Operator" \
+  -ErrorAction SilentlyContinue
+if ($role) {
+  Remove-VIRole -Role $role -Confirm:$true
+}</code></pre>
+
+<p>
+  Pre uklanjanja proveri da uloga nije korišćena drugde i da filter vraća isključivo laboratorijsku dodelu. Identity source ukloni kroz GUI samo ako je napravljen isključivo za vežbu i ako je lokalni SSO pristup potvrđen. Test grupu briše vlasnik direktorijuma po svojoj proceduri. Završno stanje se dokazuje novim PowerCLI izvozom i odsustvom laboratorijske role i permission stavke.
+</p>
+
+<h3>10. Administratorske prakse</h3>
+
+<ul>
+  <li>Za redovan rad koristi imenovane naloge i direktorijumske grupe; lokalni SSO Administrator rezerviši za SSO administraciju i break-glass.</li>
+  <li>Za svaki privilegovani pristup vodi vlasnika, razlog, opseg, odobrenje, datum pregleda i uslov povlačenja.</li>
+  <li>Uloge projektuj po poslu i testiraj pozitivnim i negativnim slučajem; ne kloniraj široku ulogu bez privilege analize.</li>
+  <li>Root i global permissions pregledaj češće od lokalnih dodela jer imaju najveći blast radius.</li>
+  <li>Direktne user permissions, nepoznate principal-e i servisne naloge bez vlasnika tretiraj kao nalaze za korekciju.</li>
+  <li>SSO, LDAPS, IdP, VMCA, STS i endpoint sertifikate vodi u jedinstvenom inventory-ju sa alarmima i planom obnove.</li>
+  <li>Pre sertifikatske intervencije obezbedi podržani vCenter file-based backup i proveru restore preduslova; u ELM-u planiraj celu topologiju.</li>
+  <li>Nikada ne rešavaj TLS problem trajnim isključivanjem certificate validation-a u browser-u, PowerCLI-ju, backup alatu ili skripti.</li>
+  <li>Koreliraj vCenter Tasks/Events, SSO/IdP logove i change evidenciju u SIEM-u; čuvaj vreme sistema usklađenim.</li>
+  <li>Posle nadogradnje proveri lokalni i spoljašnji login, group lookup, ključne service account integracije, ELM i certificate health.</li>
+</ul>
+
+<h3>11. Završna kontrolna tačka</h3>
+
+<p>Administrator je završio lekciju kada može dokazivo da:</p>
+
+<ul>
+  <li>razdvoji identity source, autentikaciju, STS token, autorizaciju i TLS poverenje u incidentnom toku;</li>
+  <li>objasni SSO domen, vmdir, STS, Lookup Service, ELM i VMware Identity Services zavisnosti;</li>
+  <li>izabere između lokalnog SSO-a, LDAPS direktorijuma i podržane federacije prema dostupnosti, MFA i recovery zahtevima;</li>
+  <li>projektuje permission kao principal + role + object + propagation i proveri efektivni pristup;</li>
+  <li>napravi prilagođenu ulogu sa najmanjim privilegijama, dodeli je grupi i sprovede pozitivni i negativni test;</li>
+  <li>inventariše Machine SSL, Solution User, STS, trusted root i spoljne LDAPS/IdP sertifikate bez izvoza privatnih ključeva;</li>
+  <li>prepozna razliku između VMCA root, hybrid i custom PKI modela i njihov operativni trošak;</li>
+  <li>prikupi SSO, federation, vmdir, vpxd i Tasks/Events dokaze pre promene stanja;</li>
+  <li>dijagnostikuje LDAPS trust, OIDC/SCIM mapping, permission inheritance i certificate expiry od najmanje invazivne provere;</li>
+  <li>izradi bezbedan change, rollback i recovery plan koji obuhvata backup, ELM partnere i post-check svih integracija.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Pouzdana kontrola pristupa u vSphere-u nastaje tek kada su identitet, token, dozvola i sertifikatsko poverenje projektovani kao jedan sistem. SSO omogućava zajedničku autentikacionu osnovu, ali njegova dostupnost zavisi od direktorijuma, vremena, DNS-a, STS-a i zdravlja replike. RBAC ograničava posledice kompromitovanog ili pogrešno korišćenog naloga samo ako su uloge uske, dodeljene grupama na ispravnom objektu i proverene stvarnim negativnim testom. Sertifikati štite servisne identitete i komunikaciju samo ako njihov lifecycle obuhvata trust chain, SAN, privatni ključ, vlasnika, alarm i testiranu obnovu.
+</p>
+
+<p>
+  Odgovoran administrator zato ne počinje incident resetovanjem sertifikata niti širenjem uloge na Administrator. On najpre čuva dokaze, određuje obim, proverava poslednju promenu i razdvaja autentikaciju od autorizacije. Zatim primenjuje najmanju bezbednu korekciju, validira i dozvoljene i zabranjene ishode i ostavlja trag iz kog sledeći administrator može da razume odluku. Takav identitetski temelj omogućava da hardening, enkripcija i audit iz naredne lekcije budu proverljive kontrole, a ne skup nepovezanih opcija.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere 8 Authentication i vSphere Security administrativna i arhitektonska dokumentacija; zvanične reference za vCenter Single Sign-On, identity source i identity provider federaciju, Enhanced Linked Mode, role, privilegije i permissions; vSphere Certificate Management, VMCA, VECS i STS vodiči; Broadcom Knowledge Base procedure za LDAPS, istek i zamenu sertifikata, SSO i ELM troubleshooting; zvanična VMware PowerCLI referenca
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-41-instalacija-nadogradnja-lifecycle.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-43-hardening-enkripcija-audit.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,646 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-18-konverzija-template.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Konverzija u template – priprema standardnih serverskih slika | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako se VMware virtuelna mašina konvertuje u template i kako se pripremaju standardne serverske slike za brzo, dosledno i pouzdano kreiranje novih sistema.">
+
+  <meta name="keywords"
+        content="konverzija u template, VMware template, virtuelna mašina, VM, serverska slika, standardizacija servera, clone to template, convert to template, vCenter, vSphere, ESXi, deployment, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-18-konverzija-template.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Konverzija u template – priprema standardnih serverskih slika">
+
+  <meta property="og:description"
+        content="Upoznajte proces pretvaranja VMware virtuelne mašine u template i pripremu standardizovanih serverskih slika za brzo kreiranje novih sistema.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-18-konverzija-template.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-18-konverzija-template.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Konverzija u template – priprema standardnih serverskih slika">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-18-konverzija-template.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-18-konverzija-template.png"
+           alt="Konverzija u template – priprema standardnih serverskih slika">
+
+    </a>
+
+     <div class="page-subtitle">
+  IV. Svakodnevna administracija i prvi troubleshooting
+</div>
+
+<div class="page-subtitle">
+  18. Konverzija u template – priprema i održavanje standardnih serverskih slika
+</div>
+
+<p>
+  U prethodnim lekcijama upoznali smo svakodnevne power operacije i snapshot kao kratkotrajnu tačku povratka. Sada prelazimo sa upravljanja pojedinačnim VM-om na kontrolisano umnožavanje standarda. Kada se svaki novi server ručno instalira, razlike u zakrpama, drajverima, bezbednosnim postavkama i agentskom softveru brzo stvaraju konfiguracioni drift. VMware template omogućava da administrator jednom pripremi i proveri referentnu virtuelnu mašinu, a zatim iz nje dosledno implementira nove VM-ove.
+</p>
+
+<p>
+  Template, međutim, nije samo „ugašena kopija servera”. Njegov kvalitet određuje kvalitet svakog budućeg sistema koji iz njega nastane. Pogrešan DNS, statička IP adresa, iste SSH host ključeve, preostale tajne ili zastarele zakrpe template može preneti na desetine servera. Zato konverzija mora biti završni korak dokumentovanog procesa izrade, generalizacije, bezbednosne provere i validacije serverske slike.
+</p>
+
+<h3>Šta je VMware template i šta nije?</h3>
+
+<p>
+  Klasični <strong>VM template</strong> u vCenter inventaru jeste master kopija konfiguracije i virtuelnih diskova VM-a namenjena implementaciji novih virtuelnih mašina. Posle operacije <em>Convert to Template</em> objekat više nije VM koji se uključuje i koristi za workload. Da bi se njegov sadržaj menjao, klasični template se prvo vraća u VM, održava i testira, a zatim ponovo konvertuje. Ovim objektom upravlja vCenter Server; lokalni ESXi Shell nije odgovarajući interfejs za konverziju inventarnog objekta.
+</p>
+
+<p>
+  Izraz <strong>Golden Image</strong> označava organizaciono odobrenu referentnu sliku, a ne poseban tehnički tip VMware objekta. Svaki Golden Image može biti template, ali svaki template nije automatski „zlatan”: taj status mora zaslužiti dokumentovanim sastavom, vlasništvom, bezbednosnim baseline-om, testovima i pravilima održavanja. Template takođe nije backup. Greška ili kompromitovan sadržaj u njemu prenose se na potomke, a njegovo postojanje ne obezbeđuje RPO, retention, nezavisnu kopiju niti dokazano vraćanje podataka.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam ili objekat</th>
+      <th>Primarna svrha</th>
+      <th>Važno ograničenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Klasični template u inventaru</td>
+      <td>Lokalno, ponovljivo kreiranje VM-ova pod upravljanjem vCenter Servera</td>
+      <td>Za izmenu se obično konvertuje nazad u VM; nema ugrađenu verzijsku istoriju sadržaja</td>
+    </tr>
+    <tr>
+      <td>VM template u Content Library-ju</td>
+      <td>Centralizovano upravljanje i verzionisanje VM template-a</td>
+      <td>Operacije i interoperabilnost zavise od verzije vSphere-a; VM template check-out/check-in lifecycle dostupan je u vSphere 7.0 i novijim izdanjima</td>
+    </tr>
+    <tr>
+      <td>OVF/OVA template</td>
+      <td>Prenosiv paket virtuelnog sistema između kompatibilnih okruženja</td>
+      <td>Nije isto što i nativni VM template; podržane operacije i fidelitet konfiguracije mogu se razlikovati</td>
+    </tr>
+    <tr>
+      <td>Snapshot</td>
+      <td>Kratkotrajna tačka povratka tokom kontrolisane promene</td>
+      <td>Nije standardna slika, klon ni backup; dugotrajno čuvanje povećava operativni rizik</td>
+    </tr>
+    <tr>
+      <td>Clone</td>
+      <td>Nezavisna kopija VM-a ili template-a</td>
+      <td>Bez guest customization-a kopira i identitet i konfiguracione greške izvora</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Poslovna i tehnička vrednost standardne slike</h3>
+
+<p>
+  Dobro održavan template skraćuje vreme implementacije, smanjuje ručne greške i omogućava da bezbednosni i operativni minimum budu prisutni od prvog pokretanja. On olakšava automatizaciju kroz vSphere Client, VCF PowerCLI i vSphere API, ali ne ukida potrebu za konfiguracionim menadžmentom. Template obezbeđuje početno stanje; alati kao što su Ansible, Salt ili drugi sistemi za upravljanje konfiguracijom održavaju željeno stanje tokom životnog ciklusa servera.
+</p>
+
+<p>
+  Organizacija obično održava odvojene slike po podržanoj verziji operativnog sistema, nameni i bezbednosnom profilu, na primer Windows Server 2025, Ubuntu Server 24.04 LTS ili odobrena RHEL verzija. Broj slika ipak treba držati pod kontrolom: previše aplikaciono specifičnih template-a povećava trošak zakrpa, testiranja i povlačenja iz upotrebe. U praksi je često bolji tanji OS baseline, dok se aplikacije i promenljive uloge dodaju automatizacijom posle implementacije.
+</p>
+
+<h3>Arhitektura procesa i podela odgovornosti</h3>
+
+<p>
+  Pouzdan image pipeline ima najmanje četiri kontrolne tačke: izgradnju, generalizaciju, objavljivanje i proveru potomka. Tim za operativni sistem odgovara za patch nivo i guest konfiguraciju; VMware tim za virtuelni hardver, VMware Tools, kompatibilnost i smeštaj; bezbednosni tim za hardening i proveru tajni; vlasnik usluge za kriterijume prihvatanja. U manjim okruženjima jedna osoba može obavljati više uloga, ali evidencija odobrenja i dalje mora postojati.
+</p>
+
+<ol>
+  <li><strong>Izgradnja:</strong> instalacija iz pouzdanog izvora, podešavanje virtuelnog hardvera, zakrpa, VMware Tools/open-vm-tools i odobrenih agenata.</li>
+  <li><strong>Validacija baseline-a:</strong> servisni status, bezbednosna provera, ranjivosti, kompatibilnost i odsustvo neželjenih podataka.</li>
+  <li><strong>Generalizacija:</strong> uklanjanje ili priprema regeneracije identiteta specifičnog za instancu.</li>
+  <li><strong>Objavljivanje:</strong> gašenje, konverzija ili check-in, imenovanje, verzija, vlasnik i datum isteka.</li>
+  <li><strong>Test implementacija:</strong> stvarno kreiranje VM-a, customization i dokaz da je potomak jedinstven, dostupan i usklađen.</li>
+</ol>
+
+<h3>Projektovanje referentne virtuelne mašine</h3>
+
+<h4>Virtuelni hardver i firmware</h4>
+
+<p>
+  Pre izgradnje treba izabrati najmanju kompatibilnu verziju virtuelnog hardvera koja ispunjava zahteve ciljnog vSphere okruženja. Najnovija verzija nije automatski najbolja ako template mora da se implementira na starije hostove ili u drugi vCenter. Firmware, UEFI Secure Boot, virtuelni TPM, tip disk kontrolera i mrežni adapter moraju odgovarati podržanom guest OS-u i ciljnoj bezbednosnoj politici. vTPM i enkriptovani VM zahtevaju KMS/native key provider i odgovarajuće privilegije; takvu sliku ne treba uvoditi bez provere prenosivosti i procesa oporavka ključeva.
+</p>
+
+<p>
+  CPU i memorija u template-u predstavljaju početnu konfiguraciju, a ne univerzalni sizing. Prevelik baseline rasipa resurse, dok premali može onemogućiti prvi boot, zakrpe ili agentski softver. Diskove treba razdvojiti samo kada to donosi operativnu vrednost. Izbor thin ili thick provisioning-a zavisi od storage politike i kasnijeg kapaciteta; template ne štiti datastore od overcommit-a.
+</p>
+
+<h4>Mreža i identitet</h4>
+
+<p>
+  Build VM se priključuje samo mreži potrebnoj za izgradnju i testiranje. Produkcionu statičku IP adresu, DNS registraciju i trajno domensko članstvo ne treba „upeći” u opštu sliku. Ciljna port grupa mora postojati i biti dostupna na izabranom hostu ili klasteru. Mapiranje mreže tokom deployment-a i guest customization IP podešavanje dve su različite stvari: prvo povezuje vNIC sa virtuelnom mrežom, a drugo podešava TCP/IP unutar gosta.
+</p>
+
+<h4>VMware Tools i guest alati</h4>
+
+<p>
+  VMware Tools, odnosno za podržane Linux distribucije najčešće vendor-isporučeni <code>open-vm-tools</code>, omogućava vCenter-u pouzdaniju vidljivost guest podataka i izvršavanje customization toka. Verziju i running status treba proveriti pre objavljivanja. Monitoring, EDR i backup agent mogu pripadati baseline-u samo ako njihov proizvođač podržava kloniranje i ako se identitet agenta regeneriše pri prvom pokretanju; u suprotnom više servera može biti prikazano kao isti endpoint.
+</p>
+
+<h3>Priprema Windows serverske slike</h3>
+
+<p>
+  Windows slika mora imati završene zakrpe bez pending reboot-a, ispravne VMware Tools, usklađen bezbednosni baseline i provereno aktiviranje. Pre generalizacije uklanjaju se lokalni korisnički podaci, instalacioni ostaci, istorije i tajne. Ne treba ručno klonirati računar koji je ostao sa identitetom izvora: kloniranje kopira sistemsko stanje, uključujući Computer SID. Broadcom dokumentacija navodi dve kontrolisane mogućnosti: generalizaciju izvora pomoću Microsoft Sysprep-a pre konverzije ili generisanje novog SID-a kroz Windows VM Customization Specification prilikom implementacije.
+</p>
+
+<p>
+  Kada se Sysprep pokreće ručno u referentnom VM-u, naredna komanda menja guest stanje i mora se izvršiti iz administratorskog Command Prompt-a tek pošto su svi testovi završeni:
+</p>
+
+<pre><code class="language-none">C:\Windows\System32\Sysprep\Sysprep.exe /generalize /oobe /shutdown</code></pre>
+
+<p>
+  Opcija <code>/generalize</code> uklanja informacije specifične za instalaciju, <code>/oobe</code> priprema sledeće pokretanje za odgovarajući setup tok, a <code>/shutdown</code> bezbedno gasi sistem. Posle uspešnog gašenja referentni VM se <strong>ne uključuje ponovo</strong> pre konverzije, jer bi se proces specijalizacije pokrenuo na izvoru. Neuspeh Sysprep-a dijagnostikuje se prvenstveno u <code>%WINDIR%\System32\Sysprep\Panther\setupact.log</code> i <code>setuperr.log</code>. Komponenta, AppX paket ili pending operacija koja blokira Sysprep mora se rešiti u skladu sa Microsoft podrškom; ponavljanje bez analize loga nije dijagnostika.
+</p>
+
+<p>
+  Ako se generalizacija prepušta vSphere customization specifikaciji, specifikacija mora eksplicitno generisati novi SID i biti odabrana tokom deployment-a. Ne treba bez dokaza primenjivati oba toka na način koji proizvodi neočekivani OOBE ili iscrpljuje dozvoljeni broj Sysprep rearm operacija. Izbor se dokumentuje i testira na potomku.
+</p>
+
+<h3>Priprema Linux serverske slike</h3>
+
+<p>
+  Linux nema jedan univerzalni ekvivalent Sysprep-a. Tačan postupak zavisi od distribucije, init sistema, NetworkManager-a, cloud-init-a i pravila dobavljača agentskog softvera. Cilj nije nasumično brisanje fajlova, već obezbeđivanje da se identitet instance generiše pri prvom boot-u. Posebno se proveravaju <code>/etc/machine-id</code>, SSH host ključevi, DHCP lease-ovi, trajna mrežna pravila, cloud-init stanje, subscription identitet, logske istorije i identifikatori monitoring/backup/EDR agenata.
+</p>
+
+<p>
+  Sledeći primer je laboratorijski obrazac za systemd distribuciju. Komande menjaju stanje i izvršavaju se sa <code>sudo</code> neposredno pre gašenja; pre produkcije moraju se uskladiti sa dokumentacijom konkretne distribucije. Brisanje celog <code>/var/log</code> stabla nije preporučeno: može ukloniti direktorijume, vlasništva i audit trag potreban za istragu.
+</p>
+
+<pre><code class="language-bash"># Provera pre promene
+cat /etc/machine-id
+systemctl is-active vmtoolsd 2&gt;/dev/null || systemctl is-active open-vm-tools
+
+# Promena stanja: priprema regeneracije machine-id vrednosti
+sudo truncate -s 0 /etc/machine-id
+if [ -e /var/lib/dbus/machine-id ] &amp;&amp; [ ! -L /var/lib/dbus/machine-id ]; then
+  sudo rm -f /var/lib/dbus/machine-id
+fi
+sudo ln -sfn /etc/machine-id /var/lib/dbus/machine-id
+
+# Promena stanja: uklanjanje host ključeva samo ako ih distribucija
+# automatski regeneriše pri sledećem pokretanju
+sudo rm -f /etc/ssh/ssh_host_*
+
+# Bezbedno gašenje posle završene generalizacije
+sudo shutdown -h now</code></pre>
+
+<p>
+  Ako se koristi cloud-init, njegova podržana cleanup komanda ima prednost nad ručnim brisanjem keša. Dostupne opcije zavise od verzije; zato se najpre izvršava read-only provera <code>cloud-init clean --help</code>. Primer ispod menja stanje i prikladan je samo kada je cloud-init stvarno deo dizajna prvog pokretanja:
+</p>
+
+<pre><code class="language-bash">cloud-init --version
+cloud-init clean --help
+sudo cloud-init clean --logs --machine-id</code></pre>
+
+<p>
+  Pre uklanjanja SSH host ključeva administrator mora dokazati da ih izabrana distribucija ili cloud-init ponovo stvara. Posle deployment-a novi fingerprint se upoređuje sa izvorom. Subscription/entitlement identitet RHEL sistema, <code>waagent</code>, cloud provider alati i treći agentski softver čiste se isključivo vendor-podržanim postupkom.
+</p>
+
+<h3>Podaci koji nikada ne pripadaju opštem template-u</h3>
+
+<ul>
+  <li>privatni ključevi korisnika, API tokeni, cloud credentials i lozinke u skriptama;</li>
+  <li>produkcioni sertifikati sa privatnim ključem, osim kada postoji strogo odobren specifičan slučaj;</li>
+  <li>statička IP adresa, hostname i DNS registracija izvornog servera;</li>
+  <li>jedinstveni agent ID, backup identitet ili hardkodovani CMDB identifikator;</li>
+  <li>osetljivi logovi, shell istorija, privremeni export-i baza i korisnički podaci;</li>
+  <li>aktivno domensko članstvo izvora, osim ako Microsoft-ov i organizacioni proces izričito podržava takav image workflow.</li>
+</ul>
+
+<h3>Preduslovi i privilegije za konverziju</h3>
+
+<p>
+  Klasična konverzija zahteva da je VM ugašen, da se njime upravlja kroz vCenter Server i da nalog ima odgovarajuće privilegije nad izvornim VM-om i ciljnim folderom. Tačna RBAC prava zavise od operacije i verzije, pa se u produkciji koristi namenski role sa najmanjim privilegijama, a ne trajni administratorski nalog. Pre promene proveravaju se tekući taskovi, snapshot-i, backup poslovi, alarmi, datastore kapacitet, VMware Tools status i vlasništvo nad slikom.
+</p>
+
+<p>
+  Template zadržava virtuelne diskove na datastore-u; konverzija sama po sebi nije migracija niti dodatna zaštitna kopija. Ako je izvor šifrovan, koristi vTPM ili storage politiku, ciljna infrastruktura mora moći da čita njegove ključeve i zadovolji politiku. Budući deployment zahteva kapacitet, kompatibilan host, dostupnu mrežu i pravo dodele resursa.
+</p>
+
+<h3>Konverzija klasičnog VM-a u template</h3>
+
+<ol>
+  <li>Potvrditi da je build završen, da nema pending reboot-a i da je odobren zapis o verziji.</li>
+  <li>Prikupiti dokaze: guest OS/build, patch datum, Tools status, virtuelni hardver, mrežu, diskove, alarme i rezultate bezbednosnog skena.</li>
+  <li>Izvršiti podržanu guest generalizaciju i bezbedno ugasiti VM.</li>
+  <li>U vSphere Client-u izabrati ugašeni VM, zatim <strong>Actions &gt; Template &gt; Convert to Template</strong>. Naziv menija može se neznatno razlikovati između izdanja klijenta.</li>
+  <li>Pratiti <strong>Recent Tasks</strong> i Events, potvrditi uspešan završetak i da je objekat prikazan kao template.</li>
+  <li>Odmah sprovesti test deployment u izolovanu mrežu. Sama promena ikonice nije dokaz da je serverska slika ispravna.</li>
+</ol>
+
+<p>
+  <strong>Važno:</strong> in-place konverzija menja tip inventarnog objekta. Ako je neophodno zadržati build VM radi paralelnog testiranja ili brze zamene verzije, razmotriti <em>Clone to Template</em> umesto konverzije, uz dovoljan datastore kapacitet i jasno upravljanje dvema kopijama.
+</p>
+
+<h3>Deployment VM-a i Guest OS Customization Specification</h3>
+
+<p>
+  U vSphere Client-u se nad template-om bira <strong>New VM from This Template</strong>. Čarobnjak određuje ime i inventory lokaciju, compute resurs, datastore/storage policy, mrežu i opcije kloniranja. CPU, memorija i diskovi mogu se prilagoditi kada workflow i kompatibilnost to dozvoljavaju. Ako se odabere <strong>Customize the operating system</strong>, vCenter primenjuje postojeću VM Customization Specification.
+</p>
+
+<p>
+  Specifikacija može automatizovati hostname, mrežne parametre, DNS, vremensku zonu i, prema guest OS-u, Windows identitet i domain/workgroup parametre. VMware Tools u gostu učestvuje u customization toku. Lozinke i domain credentials ne treba ugrađivati u dokumentaciju ili skripte; koriste se zaštićeni mehanizmi i najmanje privilegovan nalog namenjen domain join-u. Pre masovne upotrebe specifikacija se testira za tačnu verziju gosta i proverava da li statički IP pool, DNS i port grupa odgovaraju ciljnom segmentu.
+</p>
+
+<p>
+  Status se proverava u vCenter taskovima i događajima, kroz VMware Tools podatke i unutar gosta. Korisni guest logovi zavise od OS-a i Tools verzije; na Linux-u treba pregledati <code>/var/log/vmware-imc/toolsDeployPkg.log</code> kada postoji, kao i cloud-init journal/logove, dok Windows troubleshooting uključuje VMware customization i Sysprep logove. Uvek se korelišu isti vremenski period, vCenter task i prvi boot potomka.
+</p>
+
+<h3>Održavanje i verzionisanje template-a</h3>
+
+<p>
+  Klasični template se ažurira tako što se konvertuje u VM, priključi kontrolisanoj maintenance mreži, pokrene, zakrpi, testira, ponovo generalizuje i konvertuje. Direktno „krpljenje” bez test deployment-a nije završen lifecycle. Bezbedniji produkcioni obrazac je <strong>immutable image</strong>: iz poznatog izvora izgraditi novu verziju, testirati je, objaviti paralelno sa prethodnom, preusmeriti nove deployment-e, a staru povući tek po isteku rollback perioda.
+</p>
+
+<p>
+  Naziv treba da bude stabilan i mašinski čitljiv, na primer <code>tmpl-rhel9-web-2026.07.1</code>, dok annotations/tags ili CMDB čuvaju owner-a, build pipeline, OS build, patch datum, Tools verziju, hardening profil, datum isteka i status <code>candidate</code>, <code>approved</code>, <code>deprecated</code> ili <code>retired</code>. Ne oslanjati se samo na naziv. Period održavanja zavisi od politike ranjivosti i vendor patch ciklusa; kritična ranjivost može zahtevati vanrednu novu verziju.
+</p>
+
+<h4>Content Library VM template</h4>
+
+<p>
+  U vSphere 7.0 i novijim izdanjima VM template u Content Library-ju podržava check-out, izmenu i check-in nove verzije. Time se dobija kontrolisanija istorija od klasičnog inventory template-a. Check-out stvara radni VM; administrator menja i validira sadržaj, a check-in objavljuje novu verziju sa opisom promene. I dalje su potrebni testovi, kontrola privilegija, kapacitet biblioteke i plan za sinhronizaciju. Subscribed Content Library može distribuirati sadržaj, ali kompatibilnost, storage i mrežno mapiranje na odredištu moraju se zasebno potvrditi.
+</p>
+
+<h3>VCF PowerCLI administracija</h3>
+
+<p>
+  VMware PowerCLI cmdlet-i danas se isporučuju u okviru VCF PowerCLI porodice modula; postojeće <code>VMware.VimAutomation.Core</code> komande i dalje se koriste za vSphere operacije. Sledeće komande izvršavaju se iz PowerShell sesije sa instaliranim odgovarajućim modulom. Povezivanje i read-only inventarne provere ne menjaju VM, dok <code>Set-VM</code>, <code>Set-Template</code> i <code>New-VM</code> menjaju stanje.
+</p>
+
+<pre><code class="language-powershell"># Interaktivno povezivanje; u automatizaciji koristiti bezbedan credential store
+Connect-VIServer -Server 'vcsa.lab.local'
+
+# Read-only: pronalaženje tačno jednog izvornog VM-a i provera stanja
+$sourceVm = Get-VM -Name 'build-ubuntu-2404'
+$sourceVm | Select-Object Name, PowerState, NumCpu, MemoryGB, Version
+Get-Snapshot -VM $sourceVm -ErrorAction SilentlyContinue
+Get-VMGuest -VM $sourceVm | Select-Object State, OSFullName, HostName
+
+# State-changing: dozvoliti samo za ugašen i jednoznačno pronađen VM
+if ($sourceVm.PowerState -ne 'PoweredOff') {
+    throw 'VM mora biti ugašen pre konverzije u template.'
+}
+
+$template = Set-VM -VM $sourceVm -ToTemplate -Confirm:$true
+$template | Select-Object Name, Id</code></pre>
+
+<p>
+  Interaktivni <code>-Confirm:$true</code> čuva kontrolnu tačku. U pipeline-u potvrda se može isključiti tek kada su pre-check, approval i audit trag automatizovani. Za vraćanje template-a u VM koristi se state-changing cmdlet:
+</p>
+
+<pre><code class="language-powershell">$template = Get-Template -Name 'tmpl-ubuntu-2404-2026.07.1'
+$maintenanceHost = Get-VMHost -Name 'esxi01.lab.local'
+
+$maintenanceVm = Set-Template -Template $template `
+    -ToVM `
+    -VMHost $maintenanceHost `
+    -Confirm:$true
+
+$maintenanceVm | Select-Object Name, PowerState, VMHost</code></pre>
+
+<p>
+  Novi VM iz template-a kreira se sa eksplicitno razrešenim objektima, čime se izbegava slučajno podudaranje imena. Primer menja stanje, troši datastore kapacitet i još ne uključuje guest customization:
+</p>
+
+<pre><code class="language-powershell">$template = Get-Template -Name 'tmpl-ubuntu-2404-2026.07.1'
+$vmHost = Get-VMHost -Name 'esxi01.lab.local'
+$datastore = Get-Datastore -Name 'Datastore01'
+$portGroup = Get-VirtualPortGroup -Name 'LAB-SERVER' -VMHost $vmHost
+
+$newVm = New-VM -Name 'lab-web01' `
+    -Template $template `
+    -VMHost $vmHost `
+    -Datastore $datastore `
+    -DiskStorageFormat Thin `
+    -Confirm:$true
+
+Get-NetworkAdapter -VM $newVm | Set-NetworkAdapter `
+    -Portgroup $portGroup `
+    -StartConnected:$true `
+    -Confirm:$true
+
+Start-VM -VM $newVm -Confirm:$true
+Get-VM -Name 'lab-web01' | Select-Object Name, PowerState, VMHost</code></pre>
+
+<p>
+  Pregled svih template-a je read-only operacija:
+</p>
+
+<pre><code class="language-powershell">Get-Template |
+    Sort-Object Name |
+    Select-Object Name, Id, @{N='Datastore';E={($_ | Get-Datastore).Name}}</code></pre>
+
+<p>
+  Komanda <code>Get-VM | Select-Object Name, Version</code> ne dokazuje iz kog je template-a VM nastao; polje <code>Version</code> označava verziju virtuelnog hardvera. Ako je lineage potreban, upisati tag, custom attribute ili CMDB zapis u samom deployment workflow-u. To je važna ispravka česte, ali pogrešne pretpostavke.
+</p>
+
+<h3>vSphere API i automatizacija</h3>
+
+<p>
+  Za veću skalu koriste se podržani vSphere Automation API/SDK i idempotentan pipeline: resolve objekata, validacija, kreiranje taska, praćenje stanja, timeout, obrada greške i post-check. API poziv koji vrati HTTP uspeh ili task ID nije završni dokaz; task mora dostići uspešno terminalno stanje, a zatim se proveravaju inventar i testni VM. Tajne se preuzimaju iz secret manager-a, servisni nalog ima minimalna prava, a svaki build dobija korelacioni ID i audit zapis.
+</p>
+
+<h3>Najčešći kvarovi i sistematična dijagnostika</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatna oblast uzroka</th>
+      <th>Dokaz i bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Opcija Convert to Template nije dostupna</td>
+      <td>VM je uključen, objekat nije pod odgovarajućim vCenter upravljanjem, task je aktivan ili nedostaje privilegija</td>
+      <td>Proveriti PowerState, Recent Tasks, upravljački endpoint i effective permissions; ne menjati prava naslepo</td>
+    </tr>
+    <tr>
+      <td>Deployment ne može da izabere host ili datastore</td>
+      <td>Nekompatibilan virtuelni hardver, nedostupna storage politika, nedovoljno prostora ili encryption/key provider problem</td>
+      <td>Pročitati compatibility poruku i task event; proveriti kapacitet, policy compliance i dostupnost ključeva</td>
+    </tr>
+    <tr>
+      <td>VM se kreira, ali customization ostaje pending ili failed</td>
+      <td>VMware Tools ne radi, specifikacija ne odgovara guest OS-u, mreža/DNS nisu dostupni ili Sysprep/cloud-init nije uspeo</td>
+      <td>Korelirati vCenter Events sa Tools, Sysprep, toolsDeployPkg i cloud-init logovima; prvo ispraviti uzrok, zatim ponoviti na novom testnom klonu</td>
+    </tr>
+    <tr>
+      <td>Dva potomka imaju isti identitet ili SSH fingerprint</td>
+      <td>Izostavljena ili neuspešna generalizacija</td>
+      <td>Izolovati pogođene VM-ove, regenerisati identitet vendor-podržanim postupkom i trajno popraviti image pipeline</td>
+    </tr>
+    <tr>
+      <td>Novi VM nema mrežu</td>
+      <td>Pogrešna port grupa/VLAN, adapter nije connected ili guest IP specifikacija ne odgovara segmentu</td>
+      <td>Odvojeno proveriti vNIC mapiranje i guest TCP/IP; ne menjati oba sloja istovremeno bez hipoteze</td>
+    </tr>
+    <tr>
+      <td>Agent prikazuje više VM-ova kao jedan endpoint</td>
+      <td>Jedinstveni ID agenta kloniran iz template-a</td>
+      <td>Izolovati potomke prema proceni rizika, primeniti vendor cleanup/re-registration i dodati test jedinstvenosti u pipeline</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Dijagnostika počinje određivanjem simptoma, obima i posledice: da li je problem u samoj konverziji, kloniranju, prvom boot-u, guest customization-u ili aplikacionom bootstrap-u. Zatim se čuvaju vCenter task ID, Events, vreme operacije, korišćeni template i customization spec. Tek posle toga formira se hipoteza i proveravaju guest logovi. Privremeni workaround može biti ručna mrežna konfiguracija izolovanog testnog VM-a, ali trajna mera mora ispraviti template ili pipeline; ručno popravljanje svakog potomka samo prikriva osnovni uzrok.
+</p>
+
+<h3>Praktikum – izrada, konverzija, implementacija i održavanje template-a</h3>
+
+<h4>Laboratorijska topologija i početno stanje</h4>
+
+<pre><code class="language-none">vCenter:     vcsa.lab.local
+ESXi host:   esxi01.lab.local
+Datastore:   Datastore01
+Port grupa:  LAB-SERVER (izolovana ili neprodukciona)
+Build VM:    build-ubuntu-2404
+Template:    tmpl-ubuntu-2404-2026.07.1
+Test VM:     lab-web01</code></pre>
+
+<p>
+  Potreban je vCenter nalog sa pravima za pregled, konverziju, kreiranje VM-a, dodelu mreže i power operacije, guest administratorski nalog, PowerShell sa VCF PowerCLI modulima i konzolni pristup. Rizik je srednji: generalizacija menja identitet build VM-a, konverzija menja tip objekta, a deployment troši storage. Vežba se izvodi samo u laboratorijskoj ili odobrenoj maintenance zoni. Pre početka evidentirati postojeći snapshot/backup status i slobodan kapacitet; snapshot se ne koristi kao zamena za backup.
+</p>
+
+<h4>Vežba 1 – inventar i pre-flight validacija</h4>
+
+<p>
+  <strong>Cilj:</strong> dokazati da je izvor spreman pre bilo kakve promene. U vSphere Client-u otvoriti Summary, Monitor &gt; Tasks and Events, Snapshots i Edit Settings. Zabeležiti guest OS, Tools status, hardware version, firmware, kontrolere, mrežu, diskove i storage policy. Potvrditi da nema aktivnog backup-a, konsolidacije ili reconfiguration taska.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+$vm = Get-VM -Name 'build-ubuntu-2404'
+
+$vm | Select-Object Name, PowerState, NumCpu, MemoryGB, Version, VMHost
+Get-VMGuest -VM $vm | Select-Object State, OSFullName, HostName, IPAddress
+Get-NetworkAdapter -VM $vm | Select-Object Name, NetworkName, ConnectionState
+Get-HardDisk -VM $vm | Select-Object Name, CapacityGB, StorageFormat
+Get-Snapshot -VM $vm -ErrorAction SilentlyContinue
+Get-VIEvent -Entity $vm -MaxSamples 30 |
+    Select-Object CreatedTime, UserName, FullFormattedMessage</code></pre>
+
+<p>
+  Sve komande su read-only. Očekivani rezultat je tačno jedan build VM, poznata konfiguracija i odsustvo neočekivanih snapshot-a ili aktivnih grešaka. Ako ime vraća više objekata ili je Tools status nepoznat, vežba se zaustavlja: prvo se jednoznačno određuje objekat i popravlja vidljivost.
+</p>
+
+<h4>Vežba 2 – generalizacija i konverzija</h4>
+
+<p>
+  <strong>Cilj:</strong> pripremiti Linux instancu da na sledećem boot-u dobije jedinstven identitet. U guest-u proveriti politike distribucije za machine-id, SSH i cloud-init, zatim primeniti samo odgovarajući cleanup iz ranijeg odeljka. Zabeležiti originalni machine-id i SSH fingerprint u laboratorijsku evidenciju, ali ih ne objavljivati kao tajnu van kontrolisanog sistema.
+</p>
+
+<pre><code class="language-bash">cat /etc/os-release
+cat /etc/machine-id
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+systemctl status vmtoolsd --no-pager 2&gt;/dev/null || true
+cloud-init status --long 2&gt;/dev/null || true</code></pre>
+
+<p>
+  Posle odobrenog cleanup-a ugasiti VM. U vSphere Client-u primeniti <strong>Actions &gt; Template &gt; Convert to Template</strong> ili izvršiti PowerCLI blok sa <code>Set-VM -ToTemplate</code>. Očekivani rezultat je uspešan task i template objekat koji nije moguće uključiti kao običan VM. Ako task ne uspe, sačuvati poruku i task ID; ne ponavljati promenu pre provere PowerState-a, prava i konkurentnih taskova.
+</p>
+
+<h4>Vežba 3 – testni deployment i dokaz jedinstvenosti</h4>
+
+<p>
+  <strong>Cilj:</strong> dokazati da template proizvodi funkcionalan i jedinstven VM, a ne samo da se može klonirati. Implementirati <code>lab-web01</code> na <code>Datastore01</code> i <code>LAB-SERVER</code>, po potrebi uz prethodno testiranu Linux customization specifikaciju. Uključiti VM i pratiti Tasks/Events, Tools status i prvi boot.
+</p>
+
+<pre><code class="language-bash"># Izvršava se u novom testnom VM-u
+hostnamectl
+cat /etc/machine-id
+ip -brief address
+ip route
+getent hosts vcsa.lab.local
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+systemctl is-active vmtoolsd 2&gt;/dev/null || systemctl is-active open-vm-tools
+cloud-init status --long 2&gt;/dev/null || true</code></pre>
+
+<p>
+  Kriterijum uspeha je: novi hostname i mrežni identitet odgovaraju planu; machine-id i SSH fingerprint razlikuju se od izvora; VMware Tools radi; DNS i gateway test prolaze; nema customization greške u vCenter Events i relevantnim guest logovima. Ako nema SSH host ključa, koristiti konzolu, potvrditi da li servis/distribucija treba da ga generiše i primeniti vendor-podržanu regeneraciju; ne kopirati ključ iz template-a.
+</p>
+
+<h4>Vežba 4 – kontrolisana greška i troubleshooting</h4>
+
+<p>
+  <strong>Cilj:</strong> naučiti razdvajanje virtuelne mreže od guest customization-a. Bez menjanja template-a, na testnom klonu isključiti opciju <strong>Connected</strong> na vNIC-u ili ga povezati na laboratorijsku port grupu bez uplink-a. Ovo je reverzibilna laboratorijska simulacija; ne koristiti produkcioni VLAN.
+</p>
+
+<ol>
+  <li>Zabeležiti simptom: nema mrežne veze; obim: samo <code>lab-web01</code>; posledica: nedostupan testni servis.</li>
+  <li>U Events proveriti vreme poslednje reconfiguration operacije i ko ju je izvršio.</li>
+  <li>Read-only proverom <code>Get-NetworkAdapter -VM 'lab-web01'</code> utvrditi port grupu i connection state.</li>
+  <li>U guest konzoli proveriti <code>ip -brief address</code> i <code>ip route</code>. Time se potvrđuje da li je kvar ispod ili unutar gosta.</li>
+  <li>Vratiti adapter na <code>LAB-SERVER</code>, uključiti <strong>Connected</strong> i <strong>Connect at power on</strong>, zatim ponoviti DNS i gateway test.</li>
+</ol>
+
+<p>
+  Neposredni uzrok je pogrešno stanje/mapiranje vNIC-a; osnovni uzrok u realnom incidentu može biti pogrešan deployment parametar ili nedovoljna validacija pipeline-a. Privremena korekcija je vraćanje adaptera, a trajna mera validacija dozvoljenih port grupa pre kreiranja VM-a. Kriterijum završetka je obnovljena veza i dokumentovan Events trag promene.
+</p>
+
+<h4>Vežba 5 – održavanje i rollback nove verzije</h4>
+
+<p>
+  <strong>Cilj:</strong> simulirati bezbedan mesečni image lifecycle. Klasični template konvertovati u maintenance VM ili, za Content Library VM template, izvršiti check-out. Primeniti jednu bezbednu laboratorijsku zakrpu, ponovo sprovesti pre-check i generalizaciju, a zatim objaviti novu verziju <code>tmpl-ubuntu-2404-2026.07.2</code>. Staru verziju ne brisati dok nova ne prođe test deployment i dogovoreni rollback period.
+</p>
+
+<p>
+  Ako nova verzija ne prođe test, zaustaviti njenu upotrebu, označiti je kao <code>rejected</code> i nastaviti deployment sa prethodno odobrenom verzijom. To je rollback na nivou image kataloga; ne pokušava se „vraćanje” već kreiranih produkcionih servera konverzijom template-a. Posle uspeha ukloniti laboratorijski <code>lab-web01</code> kroz vCenter uz potvrdu da nije produkcioni objekat, vratiti privremene mrežne izmene i zatvoriti change zapis.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Template tretirati kao verzionisan proizvod sa vlasnikom, odobrenjem, datumom isteka i dokazima testiranja.</li>
+  <li>Graditi novu verziju iz pouzdanih izvora; ne održavati beskonačan lanac ručnih izmena bez reproduktivnog zapisa.</li>
+  <li>Odvojiti OS baseline od aplikacione konfiguracije kada time smanjujemo broj slika i konfiguracioni drift.</li>
+  <li>Koristiti najmanje privilegije, izolovanu build mrežu, secret manager i auditabilne servisne naloge.</li>
+  <li>Ne unositi jedinstvene identitete, statičke adrese, privatne ključeve i agentske ID vrednosti u opšti template.</li>
+  <li>Svaku verziju proveriti stvarnim deployment-om; uspešna konverzija nije test operativnog sistema.</li>
+  <li>Meriti starost zakrpa, prolaznost deployment-a, vreme izrade i broj povučenih slika; alarmirati na istek ili kritičnu ranjivost.</li>
+  <li>Čuvati prethodnu odobrenu verziju tokom rollback perioda i povlačiti stare verzije kontrolisano, uz proveru zavisnih pipeline-a.</li>
+  <li>Lineage potomka upisivati u tag/custom attribute/CMDB tokom deployment-a; ne zaključivati ga iz hardware version polja.</li>
+  <li>Za Content Library proveravati sinhronizaciju, verziju vSphere-a, dostupnost sadržaja i kompatibilnost ciljnog okruženja.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je savladana kada administrator može da:
+</p>
+
+<ul>
+  <li>razlikuje klasični inventory template, Content Library VM template, OVF/OVA, clone, snapshot i Golden Image;</li>
+  <li>projektuje minimalan, kompatibilan i bezbedan OS baseline bez jedinstvenih podataka instance;</li>
+  <li>objasni i bezbedno sprovede Windows ili Linux generalizaciju uz odgovarajuće logove i rollback plan;</li>
+  <li>konvertuje VM u template kroz vSphere Client ili PowerCLI i dokaže uspeh taskom i inventarnim stanjem;</li>
+  <li>implementira testni VM, mapira mrežu, primeni guest customization i dokaže jedinstvenost identiteta;</li>
+  <li>razdvoji kvar konverzije, kloniranja, virtuelne mreže, VMware Tools-a, Sysprep/cloud-init-a i aplikacionog bootstrap-a;</li>
+  <li>održava verzije slike, zadrži proverenu prethodnu verziju i izvrši kontrolisano povlačenje zastarelog template-a;</li>
+  <li>dokumentuje lineage, vlasništvo, patch nivo, bezbednosni status i rezultate prihvatnih testova.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Konverzija u template tehnički je kratka operacija, ali pouzdana standardna serverska slika nastaje kroz mnogo širi lifecycle: kontrolisanu izgradnju, kompatibilan virtuelni hardver, zakrpe, VMware Tools, bezbednosni baseline, generalizaciju, zaštitu tajni, objavljivanje verzije i obavezni test potomka. Template ubrzava implementaciju samo kada je njegov sadržaj pouzdan; u suprotnom ubrzava širenje greške.
+</p>
+
+<p>
+  Odgovoran administrator zato ne pita samo „da li je VM pretvoren u template”, već „iz kog izvora je slika izgrađena, ko ju je odobrio, kako dokazujemo jedinstvenost potomka, kada ističe i na koju proverenu verziju se vraćamo”. Takav način razmišljanja priprema nas za sledeću lekciju, u kojoj VM premeštamo između resursa i proveravamo kompatibilnost pre migracije.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Virtual Machine Administration i Content Libraries dokumentacija; Broadcom Knowledge Base za Windows SID, guest customization i troubleshooting; VCF PowerCLI cmdlet reference; vSphere Automation API i VMware Tools/open-vm-tools reference; Microsoft Sysprep i dokumentacija podržanih Linux distribucija za machine-id, SSH i cloud-init lifecycle
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-17-snapshot.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-19-migracija-vm.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

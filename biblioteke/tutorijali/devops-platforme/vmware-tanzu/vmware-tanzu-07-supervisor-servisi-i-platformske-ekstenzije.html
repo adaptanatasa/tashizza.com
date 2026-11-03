@@ -1,0 +1,614 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Supervisor servisi i platformske ekstenzije – proširivanje mogućnosti platforme | TASHIZZA</title>
+
+  <!-- SEO -->
+
+<meta name="description"
+     content="Supervisor servisi i platformske ekstenzije – arhitektura, namena, životni ciklus i administracija servisa koji proširuju mogućnosti VMware Tanzu platforme.">
+
+<meta name="keywords"
+     content="VMware Tanzu, Supervisor servisi, Supervisor Services, platformske ekstenzije, vSphere Supervisor, vSphere Kubernetes Service, VKS, Kubernetes, platform services, DevOps, TASHIZZA">
+
+<meta name="author"
+     content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+<meta property="og:site_name"
+     content="TASHIZZA">
+
+<meta property="og:locale"
+     content="sr_RS">
+
+<meta property="og:type"
+     content="article">
+
+<meta property="og:title"
+     content="Supervisor servisi i platformske ekstenzije – proširivanje mogućnosti platforme">
+
+<meta property="og:description"
+     content="Sedma lekcija VMware &amp; Tanzu tutorijala – arhitektura, namena, životni ciklus i administracija Supervisor servisa i platformskih ekstenzija.">
+
+<meta property="og:url"
+     content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.html">
+
+<meta property="og:image"
+     content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.png">
+
+<meta property="og:image:type"
+     content="image/png">
+
+<meta property="og:image:width"
+     content="1200">
+
+<meta property="og:image:height"
+     content="630">
+
+<meta property="og:image:alt"
+     content="Supervisor servisi i platformske ekstenzije – proširivanje mogućnosti platforme">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+ 
+<h1>VMware &amp; Tanzu</h1>
+
+<div class="page-subtitle">
+  Prvi deo: Arhitektura, izbor platforme i infrastrukturni preduslovi
+</div>
+
+<!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+<a class="chapter-og-link"
+   href="./og-galerija.html?img=og-vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.png"
+   target="_blank"
+   rel="noopener">
+
+  <img class="chapter-og-image"
+       src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-07-supervisor-servisi-i-platformske-ekstenzije.png"
+       alt="Supervisor servisi i platformske ekstenzije – proširivanje mogućnosti platforme">
+
+</a>
+
+<div class="page-subtitle">
+  II. Supervisor, VKS i upravljačke ravni
+</div>
+
+<div class="page-subtitle">
+  7. Supervisor servisi i platformske ekstenzije – proširivanje mogućnosti platforme
+</div>
+
+<p>Prethodna lekcija prikazala je VKS klaster kao zaseban workload klaster čiji se control plane, worker čvorovi i životni ciklus ostvaruju deklarativno, preko Cluster API-ja i servisa koji radi na Supervisor-u. Ova lekcija pomera pažnju jedan nivo naviše: na mehanizam kojim se sam Supervisor proširuje sertifikovanim operatorima i dodatnim API resursima. Cilj nije da se Supervisor pretvori u opšti aplikacioni klaster, već da platformskom timu omogući kontrolisano uvođenje infrastrukturnih i platformskih sposobnosti koje su tesno povezane sa vSphere okruženjem.</p>
+
+<p>Termin <em>Supervisor Service</em> u aktuelnoj dokumentaciji označava vSphere-sertifikovan Kubernetes operator, zajedno sa deklaracijama, verzijama, zavisnostima i pravilima životnog ciklusa potrebnim da se servis instalira na jedan ili više Supervisor-a. Servis može uvesti nove CustomResourceDefinition objekte, kontrolere, webhook-ove, servisne naloge, uloge i workload komponente. Korisnik zatim, kada mu politika to dozvoli, kreira instance objavljenih API resursa u svom vSphere Namespace-u, dok operator usklađuje željeno i stvarno stanje.</p>
+
+<p>Ovo je administratorska tema, a ne katalog proizvoda. Platformski servis utiče na upravljačku ravan, mrežu, skladištenje, identitet, bezbednosne granice i plan nadogradnje. Zbog toga se ne uvodi samo zato što je tehnički dostupan. Pre instalacije mora postojati vlasnik servisa, podržana matrica verzija, plan kapaciteta, definisan način izlaganja tenantima, kriterijumi zdravlja, backup i recovery pretpostavke, kao i postupak povlačenja servisa iz upotrebe.</p>
+
+<h3>1. Šta Supervisor Service jeste, a šta nije</h3>
+
+<p>Supervisor Service je ekstenzija upravljačke ravni Supervisor-a. vCenter čuva katalog servisa i njihovih verzija, a administrator bira na kom Supervisor-u će određena verzija biti instalirana. Na Kubernetes strani operator posmatra resurse za koje je nadležan i periodično ih usklađuje. Takav model je deklarativan: upis željenog stanja nije dokaz uspeha; uspeh postoji tek kada status objekta, događaji, podovi, endpoint-i i zavisne infrastrukturne komponente potvrde da je reconciliation završen.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam</th>
+      <th>Gde radi</th>
+      <th>Ko upravlja životnim ciklusom</th>
+      <th>Tipična namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ugrađena Supervisor sposobnost</td>
+      <td>Supervisor i vSphere infrastruktura</td>
+      <td>vSphere/VCF platforma</td>
+      <td>Osnovne mogućnosti kao što su Namespace, VM, VKS, mrežni i volume API-ji, u zavisnosti od izdanja</td>
+    </tr>
+    <tr>
+      <td>Supervisor Service</td>
+      <td>Na izabranom Supervisor-u; operator i povezane komponente mogu koristiti vSphere Pods ili druge podržane resurse</td>
+      <td>vCenter katalog, Supervisor Service framework i operator servisa</td>
+      <td>Proširenje Supervisor API-ja i platformskih funkcija</td>
+    </tr>
+    <tr>
+      <td>VKS package ili add-on</td>
+      <td>Unutar konkretnog VKS workload klastera</td>
+      <td>Package management mehanizam tog klastera i njegov platformski vlasnik</td>
+      <td>Ingress, certifikati, observability, backup agenti i druge funkcije potrebne aplikacijama u VKS klasteru</td>
+    </tr>
+    <tr>
+      <td>Helm release ili običan Kubernetes operator</td>
+      <td>U klasteru u koji je eksplicitno instaliran</td>
+      <td>Tim koji ga je instalirao i izabrani alat</td>
+      <td>Aplikacioni ili generički platformski softver bez Supervisor Service integracije</td>
+    </tr>
+    <tr>
+      <td>Spoljni SaaS ili management servis</td>
+      <td>Van Supervisor-a</td>
+      <td>Dobavljač ili zaseban operativni tim</td>
+      <td>Centralno upravljanje, katalog, observability ili politika preko više okruženja</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Najvažnija posledica ove podele jeste da servis instaliran na Supervisor-u nije automatski instaliran u VKS klasterima. Na primer, Contour na Supervisor-u može obezbediti ingress za workload-e koji rade neposredno na Supervisor nivou, ali VKS klaster ne nasleđuje tu instancu; njemu je potreban sopstveni podržani ingress paket ili druga odabrana implementacija. Isto pravilo primenjuje se na agente, CRD objekte, service account-e i politike: granica Kubernetes klastera ostaje stvarna granica.</p>
+
+<div class="important-note">
+  <p><strong>Administratorska granica:</strong> Supervisor nije opšti tenant klaster. Nemojte na njega instalirati proizvoljan Helm chart ili upstream operator samo zato što poseduje Kubernetes API. Koristite samo sposobnosti i Supervisor Service pakete koje podržava konkretna vSphere/VCF verzija i dobavljač servisa.</p>
+</div>
+
+<h3>2. Arhitektura i tok usklađivanja željenog stanja</h3>
+
+<p>Životni ciklus ima dve povezane, ali različite ravni. U upravljačkoj ravni vCenter-a administrator registruje definiciju servisa i raspoložive verzije, bira Supervisor i prosleđuje konfiguracione vrednosti. U Kubernetes ravni Supervisor prihvata željeno stanje, kreira potrebne namespace-ove i resurse, a operator servisa izvršava reconciliation. Ako servis objavljuje API tenantima, ovlašćeni korisnik u vSphere Namespace-u kreira custom resource; operator ga pretvara u konkretne podove, virtuelne mašine, load balancer konfiguraciju, volume-e ili druge zavisne objekte.</p>
+
+<ol>
+  <li><strong>Nabavka i verifikacija:</strong> platform administrator preuzima paket iz ovlašćenog izvora, proverava verziju, integritet, entitlement, podržanu matricu i release notes.</li>
+  <li><strong>Registracija:</strong> definicija servisa i njegova verzija unose se u vCenter katalog. Registracija još ne znači da servis radi na bilo kom Supervisor-u.</li>
+  <li><strong>Instalacija:</strong> verzija se dodeljuje konkretnom Supervisor-u, uz potrebne konfiguracione vrednosti.</li>
+  <li><strong>Reconciliation:</strong> sistem kreira operatorske i zavisne resurse; status prelazi u zdrav tek kada su uslovi potvrđeni.</li>
+  <li><strong>Izlaganje:</strong> odgovarajući CRD/API i RBAC mogu biti dostupni korisnicima određenih vSphere Namespace objekata.</li>
+  <li><strong>Instanciranje:</strong> korisnik kreira željeni objekat; servis ga realizuje i vodi njegov status.</li>
+  <li><strong>Nadogradnja ili uklanjanje:</strong> administrator menja verziju ili deinstalira servis tek nakon provere zavisnih instanci, kompatibilnosti i plana povratka.</li>
+</ol>
+
+<p>Operator ne izvršava jednokratnu skriptu. On stalno poredi željeno i stvarno stanje. Ručno menjanje podova, Deployment objekata ili tajni koje operator poseduje obično nije trajna korekcija: sledeći reconciliation može vratiti prethodnu vrednost. Zato se kvar otklanja na izvoru željenog stanja, u podržanoj konfiguraciji ili kroz zvaničan postupak, a ne „popravkom” generisanog objekta.</p>
+
+<h3>3. Vrste servisa i platformska vrednost</h3>
+
+<p>Tačan katalog zavisi od verzije i izdanja. U različitim generacijama dokumentacije i proizvoda mogu se pojaviti VKS/TKG Service, Velero vSphere Operator, Contour, Harbor, Tanzu/VCF platform services i partnerske ekstenzije. U VCF 9.x ponuda je proširena servisnim okvirom i dodatnim servisima, ali sama činjenica da naziv postoji u novijoj dokumentaciji ne čini ga dostupnim ili podržanim na vSphere 8.0 instalaciji.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kategorija</th>
+      <th>Vrednost</th>
+      <th>Ključne zavisnosti</th>
+      <th>Tipičan pogrešan zaključak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lifecycle workload klastera</td>
+      <td>Deklarativno kreiranje i nadogradnja VKS klastera</td>
+      <td>Kompatibilna Supervisor/VKS verzija, content library ili aktuelni image mehanizam, mreža i storage</td>
+      <td>„VKS servis i VKS klaster su isti objekat.”</td>
+    </tr>
+    <tr>
+      <td>Registry i supply chain</td>
+      <td>Kontrolisano čuvanje i distribucija image-a</td>
+      <td>DNS, TLS, kapacitet storage-a, backup, skeniranje i identitet</td>
+      <td>„Registry automatski obezbeđuje potpis, politiku i backup.”</td>
+    </tr>
+    <tr>
+      <td>Ingress i load balancing</td>
+      <td>Ulazni saobraćaj i L7 rutiranje za podržani scope</td>
+      <td>IP pool, load balancer, DNS, sertifikati i mrežne politike</td>
+      <td>„Jedna Supervisor instanca služi svim VKS klasterima.”</td>
+    </tr>
+    <tr>
+      <td>Backup i recovery operator</td>
+      <td>Orkestracija zaštite podržanih Kubernetes resursa</td>
+      <td>Objektni storage, plug-in verzije, credentials, politike zadržavanja i test restore-a</td>
+      <td>„Installed znači da postoji upotrebljiv backup.”</td>
+    </tr>
+    <tr>
+      <td>AI, data i partnerski servisi</td>
+      <td>Specijalizovani API resursi i automatizacija</td>
+      <td>Licenca, hardver, driver-i, mreža, storage, kompatibilnost i poseban operativni model</td>
+      <td>„CRD potvrđuje da je ceo data plane spreman.”</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4. Verzije, licenciranje i podržanost</h3>
+
+<p>Supervisor Services API postoji od vSphere Automation API 7.0 Update 3, ali mogućnosti nisu jednake u svim izdanjima. U vSphere 8.0 Update 3 VKS komponente su razdvojene od vCenter Server-a i isporučuju se kao Supervisor Service, što omogućava nezavisniji lifecycle. VCF 9.0 i novije generacije dalje menjaju pakovanje, katalog i opseg servisa; vSphere Supervisor 9.0 pripada VCF/VVF ponudi i ne treba njegove procedure nekritički prenositi na samostalna vSphere 8 okruženja.</p>
+
+<p>Pre svake promene zabeležite najmanje: build vCenter Server-a, ESXi build-ove, Supervisor Kubernetes verziju, mrežni model, verziju servisa, izdanje/licencu, entitlement naloga za preuzimanje, podržane putanje nadogradnje i poznate probleme. Kompatibilnost mora da bude potvrđena iz release notes i matrice za tačan build, ne samo po glavnoj oznaci „8.0” ili „9.0”.</p>
+
+<ul>
+  <li><strong>Dostupno</strong> ne znači <strong>licencirano</strong>.</li>
+  <li><strong>Može da se registruje</strong> ne znači <strong>kompatibilno sa Supervisor-om</strong>.</li>
+  <li><strong>Instalirano</strong> ne znači <strong>zdravo</strong>.</li>
+  <li><strong>Zdravo</strong> ne znači <strong>spremno za tenant upotrebu</strong> bez RBAC-a, kvota, mreže, storage-a i operativnog vlasnika.</li>
+  <li><strong>Tehnički moguće uklanjanje</strong> ne znači <strong>bezbedno uklanjanje</strong> dok postoje instance i podaci kojima servis upravlja.</li>
+</ul>
+
+<h3>5. Projektovanje: zavisnosti, kapacitet i blast radius</h3>
+
+<p>Svaki servis mora dobiti mali arhitektonski dosije. U njemu se beleže control-plane i data-plane komponente, mesta čuvanja podataka, DNS imena, portovi, sertifikati, service account-i, potrebne privilegije, namespace-ovi, CRD objekti, PersistentVolume zahtevi, load balancer adrese, spoljne zavisnosti, RPO/RTO i vlasnici eskalacije. Bez tog dosijea incident lako postaje nasumično pregledanje podova.</p>
+
+<h4>Kapacitet i dostupnost</h4>
+
+<p>Operatorski pod može biti mali, ali servis koji operator kreira ne mora biti. Registry troši trajni storage i mrežni protok; ingress troši IP adrese i load balancer kapacitet; backup servis troši objektni storage i egress; data ili AI servis može zahtevati velike VM klase, GPU i poseban storage. Plan kapaciteta zato obuhvata i kontrolere i sve instance koje će korisnici moći da zatraže.</p>
+
+<p>High availability mora biti proverena po komponenti. Više replika ne pomaže ako sve zavise od jednog endpoint-a, jednog datastore-a, jednog DNS servera ili jedne neusaglašene tajne. Pod anti-affinity, topology spread i vSphere placement pravila vrede samo ako infrastruktura ima dovoljno failure domain-a. Recovery se ne dokazuje prikazom „Running”, nego testom kontrolisanog gubitka podržane komponente i potvrdom da se usluga oporavila u definisanom vremenu.</p>
+
+<h4>Mreža, DNS i sertifikati</h4>
+
+<p>Pre instalacije mapirajte svaki tok: vCenter prema Supervisor-u, operatorski pod prema API serveru, servis prema registry-ju i spoljnim endpoint-ima, korisnik prema objavljenom FQDN-u, kao i povratni put. Proverite forward i reverse DNS gde je potreban, NTP, MTU, firewall pravila, proxy/no-proxy opseg i dostupnost load balancer IP pool-a. TLS sertifikat mora odgovarati FQDN-u, imati potpun chain i biti obnovljen pre isteka; za webhook servise proverava se i unutrašnji CA bundle.</p>
+
+<h4>Storage i podaci</h4>
+
+<p>CRD je metapodatak, a poslovni podaci mogu živeti na PersistentVolume-u, u objektnoj memoriji ili u spoljnoj bazi. Brisanje custom resource-a može pokrenuti brisanje zavisnih podataka ako operator koristi finalizer i takvu politiku. Pre uklanjanja saznajte politiku reclaim-a, način snapshot/backup zaštite, podržani restore redosled i šta se dešava sa podacima ako operator više nije prisutan.</p>
+
+<h3>6. Bezbednost i model odgovornosti</h3>
+
+<p>Supervisor Service dobija privilegije da posmatra i menja deo platforme. Njegov paket zato treba tretirati kao privilegovani softverski artefakt. Izvor, checksum ili potpis kada su dostupni, release notes i SBOM/provenance politika organizacije proveravaju se pre uvoza. Paket se čuva u kontrolisanom repozitorijumu, a promena prolazi kroz change management.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kontrola</th>
+      <th>Pitanje koje administrator mora zatvoriti</th>
+      <th>Dokaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>RBAC</td>
+      <td>Ko registruje servis, ko ga instalira i ko kreira instance?</td>
+      <td>vCenter role/permission pregled i Kubernetes RoleBinding/ClusterRoleBinding inventar</td>
+    </tr>
+    <tr>
+      <td>Service account</td>
+      <td>Da li operator ima samo neophodna ovlašćenja?</td>
+      <td>ClusterRole pravila, audit događaji i dokumentovana potreba za svakim cluster-scope glagolom</td>
+    </tr>
+    <tr>
+      <td>Secrets</td>
+      <td>Gde su credentials, ko ih rotira i da li se pojavljuju u manifestu ili logu?</td>
+      <td>Secret reference, politika rotacije i test sa novim credential-om</td>
+    </tr>
+    <tr>
+      <td>Network policy</td>
+      <td>Koji ingress i egress su zaista potrebni?</td>
+      <td>Dokumentovana matrica tokova i test dozvoljenog i zabranjenog saobraćaja</td>
+    </tr>
+    <tr>
+      <td>Supply chain</td>
+      <td>Odakle dolaze package i image artefakti?</td>
+      <td>Ovlašćen izvor, digest, sken, odobrenje i sačuvana verzija</td>
+    </tr>
+    <tr>
+      <td>Audit</td>
+      <td>Može li se povezati korisnička promena sa operatorskom akcijom?</td>
+      <td>vCenter task/event, Kubernetes audit trag, event-i i logovi sa usaglašenim vremenom</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Najmanje privilegije primenjuju se i na administratore. Nalog koji samo proverava stanje ne treba da poseduje pravo registracije ili uklanjanja servisa. Break-glass pristup mora biti vremenski ograničen, auditovan i korišćen tek kada je standardni put nedostupan.</p>
+
+<h3>7. Upravljanje životnim ciklusom</h3>
+
+<h4>Registracija i instalacija</h4>
+
+<p>U vSphere Client-u tok se, zavisno od izdanja, nalazi u oblasti <em>Workload Management</em>, odnosno <em>Supervisors &gt; Services</em>. Administrator bira dodavanje novog servisa, učitava zvaničnu definiciju i registruje verziju. Zatim kroz <em>Manage Service</em> bira ciljni Supervisor i unosi dokumentovane konfiguracione vrednosti. Nazivi menija se razlikuju između vSphere 8 i VCF 9 interfejsa; status i objekti su pouzdaniji dokaz od memorisanog položaja dugmeta.</p>
+
+<div class="warning-note">
+  <p><strong>Promena stanja:</strong> učitavanje neproverene YAML definicije ili instalacija na produkcioni Supervisor može kreirati cluster-scope resurse i privilegovane kontrolere. Operaciju prvo izvedite u laboratoriji sa istim build-om, a u produkciji koristite odobren paket i održavanje sa definisanim rollback kriterijumom.</p>
+</div>
+
+<h4>Nadogradnja</h4>
+
+<p>Nadogradnja počinje proverom putanje, kompatibilnosti Supervisor-a, Kubernetes verzije i postojećih custom resource instanci. Napravite inventar CRD verzija i conversion webhook zavisnosti. Ako nova verzija uklanja API verziju, postojeći objekti moraju biti migrirani pre nego što se stara verzija ugasi. Tokom promene pratite vCenter task/event, status servisa, Deployment rollout, pod readiness, događaje i funkcionalni probe.</p>
+
+<p>Rollback nije uvek prost izbor prethodne verzije. CRD schema ili podaci mogu biti migrirani nepovratno, a novija verzija može promeniti finalizer ili format tajni. Zbog toga se pre promene eksplicitno utvrđuje da li dobavljač podržava downgrade; ako ne, recovery plan je restore podržanih podataka i ponovna instalacija, a ne improvizovani downgrade.</p>
+
+<h4>Uklanjanje</h4>
+
+<p>Pre deinstalacije pronađite sve instance kojima servis upravlja, zavisne workload-e, PersistentVolume objekte, load balancer adrese, DNS zapise i finalizer-e. Najpre se kontrolisano gase tenant instance po dokumentovanom redosledu, potvrđuje zaštita podataka, zatim se servis uklanja sa Supervisor-a. Brisanje verzije iz kataloga dolazi tek kada je više nijedan Supervisor ne koristi i kada je rollback prozor zatvoren.</p>
+
+<p>Nemojte nasilno uklanjati finalizer samo da bi objekat nestao iz API-ja. Finalizer je signal da kontroler još treba da očisti spoljni resurs. Ručno uklanjanje može ostaviti disk, load balancer, DNS ili cloud objekat bez vlasnika. Takva intervencija je poslednja, vendor-odobrena mera, nakon snimanja objekta i inventara spoljnih resursa.</p>
+
+<h3>8. Posmatranje i dokazivanje zdravlja</h3>
+
+<p>Zdravlje se dokazuje slojevito. vCenter prikazuje deklarisani status instalacije; Kubernetes pokazuje da li su operatorski resursi raspoređeni; custom resource status pokazuje rezultat reconciliation-a; aplikacioni probe potvrđuje da servis stvarno izvršava poslovnu funkciju. Nijedan sloj sam za sebe nije dovoljan.</p>
+
+<p>Sledeće komande su <strong>read-only</strong> i izvršavaju se sa administratorske radne stanice na kojoj je <code>kubectl</code> prijavljen u Supervisor kontekst. Vidljivost sistemskih namespace-ova zavisi od dodeljenih privilegija i podržanog servisnog postupka.</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get namespaces
+kubectl get deployments,statefulsets,daemonsets -A
+kubectl get pods -A -o wide
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>Ne filtrirajte odmah samo na <code>Error</code>. Reconciliation problem često prvo ostavlja <code>Warning</code> događaj, neuspešan readiness probe, pending PVC ili ponovljeno restartovanje. Vremenski opseg korelišite sa vCenter task-om i poslednjom promenom.</p>
+
+<pre><code class="language-bash">kubectl get crd
+kubectl api-resources
+kubectl get crd &lt;ime-crd-objekta&gt; -o yaml
+kubectl auth can-i --list -n &lt;vSphere-namespace&gt;</code></pre>
+
+<p><code>kubectl api-resources</code> potvrđuje discovery, ali ne i zdravlje kontrolera. <code>kubectl auth can-i</code> proverava efektivna ovlašćenja trenutno prijavljenog identiteta; ne menja RBAC. Za konkretan servis uvek koristite tačne group/version/kind vrednosti iz njegove zvanične dokumentacije.</p>
+
+<pre><code class="language-bash">kubectl get &lt;resource&gt; -n &lt;vSphere-namespace&gt;
+kubectl describe &lt;resource&gt; &lt;ime&gt; -n &lt;vSphere-namespace&gt;
+kubectl get &lt;resource&gt; &lt;ime&gt; -n &lt;vSphere-namespace&gt; -o yaml</code></pre>
+
+<p>U statusu tražite <code>conditions</code>, <code>observedGeneration</code>, razlog i poruku. Kada je <code>metadata.generation</code> veći od <code>status.observedGeneration</code>, kontroler još nije obradio poslednju specifikaciju ili je reconciliation blokiran. To je jači dokaz od same starosti pod-a.</p>
+
+<pre><code class="language-bash">kubectl logs -n &lt;service-namespace&gt; deployment/&lt;operator-deployment&gt; \
+  --since=30m --timestamps
+
+kubectl logs -n &lt;service-namespace&gt; &lt;pod&gt; \
+  --previous --timestamps</code></pre>
+
+<p>Prva komanda čita aktuelne logove operatora u poslednjih 30 minuta; druga čita prethodnu instancu kontejnera posle restarta. Ako pod ima više kontejnera, dodaje se <code>-c &lt;container&gt;</code>. Logovi mogu sadržati identifikatore i osetljive vrednosti, pa ih pre slanja podršci sanitizujte bez uklanjanja timestamp-a, correlation ID-ja i relevantnog konteksta.</p>
+
+<p>Na vCenter Server Appliance-u ključni trag za Workload Control Plane je <code>/var/log/vmware/wcp/wcpsvc.log</code>. Pregled se obavlja samo kroz odobreni administratorski/support pristup. U logu se traže reconcile greške, neusaglašena verzija, API komunikacija, sertifikati i zavisnosti, u vremenu koje odgovara vCenter task-u. Supervisor control plane VM logovi i SSH pristup koriste se tek prema zvaničnom KB/support postupku; nisu prvi korak niti mesto za ručno menjanje sistemskih manifesta.</p>
+
+<h3>9. Sistematična dijagnostika tipičnih kvarova</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prva hipoteza</th>
+      <th>Najmanje invazivan dokaz</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Servis ostaje u stanju Configuring</td>
+      <td>Verzijska ograničenja, nedostupan image, neuspeo webhook ili osnovna Supervisor zavisnost</td>
+      <td>vCenter task/event, service status, događaji, podovi i <code>wcpsvc.log</code> u istom intervalu</td>
+      <td>Ispraviti potvrđenu zavisnost; ne ponavljati instalaciju bez razumevanja prethodnog reconciliation-a</td>
+    </tr>
+    <tr>
+      <td>Operator pod je Pending</td>
+      <td>Nema resursa, placement uslova, PVC-a ili mrežne pripreme</td>
+      <td><code>kubectl describe pod</code>, događaji, PVC i kvote</td>
+      <td>Obezbediti tačno nedostajući kapacitet ili ispraviti podržanu konfiguraciju</td>
+    </tr>
+    <tr>
+      <td>CrashLoopBackOff</td>
+      <td>Pogrešna konfiguracija, tajna, sertifikat ili nedostupna zavisnost</td>
+      <td><code>kubectl logs --previous</code>, last state i events</td>
+      <td>Ispraviti izvor konfiguracije/credential; ne editovati generisani pod</td>
+    </tr>
+    <tr>
+      <td>CRD postoji, ali instanca nema Ready condition</td>
+      <td>Operator ne radi ili data-plane zavisnost nije ostvarena</td>
+      <td>Generation/observedGeneration, conditions, operator log i zavisni resursi</td>
+      <td>Otkloniti prvi potvrđeni blokirajući condition</td>
+    </tr>
+    <tr>
+      <td>Korisnik dobija Forbidden</td>
+      <td>Nedostaje vCenter ili Kubernetes ovlašćenje, odnosno resurs nije izložen tom namespace-u</td>
+      <td><code>kubectl auth can-i</code>, role binding i vCenter permission</td>
+      <td>Dodeliti najmanju dokumentovanu privilegiju; ne koristiti cluster-admin kao trajno rešenje</td>
+    </tr>
+    <tr>
+      <td>Webhook timeout ili TLS greška</td>
+      <td>Service endpoint, DNS/mreža, istekli certifikat ili pogrešan CA bundle</td>
+      <td>Webhook konfiguracija, endpoint-i, pod readiness, events i vreme sertifikata</td>
+      <td>Obnoviti podržanim mehanizmom i potvrditi chain i dostupnost</td>
+    </tr>
+    <tr>
+      <td>Objekat ostaje Terminating</td>
+      <td>Finalizer čeka operator ili spoljni resurs</td>
+      <td>YAML objekta, finalizer, operator log i inventar spoljnog resursa</td>
+      <td>Vratiti operator/zavisnost i omogućiti kontrolisano čišćenje</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>U incidentu razdvojite: <strong>simptom</strong> (na primer, servis Configuring), <strong>obim</strong> (jedan servis, jedan Supervisor ili cela upravljačka ravan), <strong>posledicu</strong> (nove instance ne nastaju, postojeće i dalje rade), <strong>neposredni uzrok</strong> (operator ne može da povuče image) i <strong>osnovni uzrok</strong> (proxy/no-proxy promena nije obuhvatila registry). Privremeni workaround može biti vraćanje prethodne mrežne konfiguracije; trajna mera je kontrolisana korekcija proxy politike, test i promena runbook-a.</p>
+
+<h3>10. Praktikum – procena, instalacija, validacija i incident response</h3>
+
+<p><strong>Cilj:</strong> u laboratorijskom vSphere/VCF okruženju obraditi životni ciklus jednog zvanično podržanog Supervisor Service paketa, bez izmišljanja vendor-specifičnog manifesta. Vežba koristi paket i data-values primer koji odgovaraju tačnom build-u laboratorije. Ako takav paket nije dostupan, izvedite faze inventara i validacije nad već instaliranim servisom, bez promene stanja.</p>
+
+<p><strong>Topologija:</strong> jedan vCenter Server, jedan zdrav Supervisor, najmanje jedan laboratorijski vSphere Namespace, administratorska Linux radna stanica sa <code>kubectl</code> i vSphere CLI plug-in-om, DNS/NTP i mrežne zavisnosti servisa. Za servis sa trajnim podacima potreban je laboratorijski storage policy; za servis sa spoljnim endpoint-om i odgovarajući load balancer/IP pool.</p>
+
+<p><strong>Nalozi i privilegije:</strong> poseban vCenter nalog sa pravima potrebnim za upravljanje Supervisor servisima; poseban namespace korisnik za tenant test; pristup VCSA logovima samo ako je odobren. Ne koristite lični globalni administrator nalog za svakodnevni test.</p>
+
+<p><strong>Rizik:</strong> instalacija menja Supervisor i može kreirati cluster-scope objekte. Vežba je namenjena laboratoriji. Pre početka zabeležite konfiguraciju, postojeće servise i custom resource instance. Nemojte praviti nepodržani snapshot Supervisor control plane VM-ova kao zamenu za backup ili rollback.</p>
+
+<h4>Vežba 1 – početni inventar i go/no-go odluka</h4>
+
+<ol>
+  <li>U vSphere Client-u zabeležite vCenter build, Supervisor verziju i health, mrežni model, storage policy-je i raspoloživi kapacitet.</li>
+  <li>U katalogu servisa zabeležite ime, postojeće verzije, ciljane Supervisor-e i status. Snimite vCenter task/event listu za poslednjih 24 sata.</li>
+  <li>Iz release notes i compatibility dokumentacije potvrdite da je izabrana verzija podržana. Zabeležite zahtevane portove, image registry-je, DNS, sertifikate, storage i load balancer.</li>
+  <li>Prijavite se u Supervisor kontekst i napravite read-only inventar:</li>
+</ol>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+kubectl get namespaces
+kubectl get crd
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p><strong>Očekivani rezultat:</strong> Supervisor je zdrav, API dostupan, nema nerešenog incidenta i sve zavisnosti servisa imaju vlasnika. <strong>Kriterijum završetka:</strong> popunjena je go/no-go kontrola; bilo koji neusaglašen build, nedostupan registry, nevažeći sertifikat, manjak IP/storage kapaciteta ili postojeći control-plane incident znači <strong>no-go</strong>.</p>
+
+<h4>Vežba 2 – registracija i kontrolisana instalacija</h4>
+
+<ol>
+  <li>Preuzmite tačan Supervisor Service manifest i, ako servis zahteva, data-values šablon iz ovlašćenog Broadcom/dobavljačkog izvora. Sačuvajte original, checksum/potpis kada je objavljen i release notes.</li>
+  <li>Napravite radnu kopiju data-values fajla. Tajne ne upisujte u Git niti u shell history. Popunite samo dokumentovane ključeve.</li>
+  <li>U vSphere Client-u otvorite katalog Supervisor servisa, izaberite dodavanje servisa i učitajte zvanični manifest. Proverite prikazano ime i verziju pre potvrde.</li>
+  <li>Izaberite <em>Manage Service</em>, samo laboratorijski Supervisor i odgovarajuću verziju. Unesite validirane vrednosti i pokrenite instalaciju.</li>
+  <li>Zabeležite početak promene, task ID i očekivani timeout. Ne pokrećite drugu instalaciju dok je reconciliation u toku.</li>
+</ol>
+
+<p><strong>Validacija:</strong> status u vCenter-u mora preći u Running/Configured ili ekvivalentno zdravo stanje koje dokumentuje servis. Na Kubernetes strani pronađite namespace i operatorske workload-e na osnovu zvanične dokumentacije, ne nagađanjem imena.</p>
+
+<pre><code class="language-bash">kubectl get pods -A -o wide
+kubectl get deployments,statefulsets -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+kubectl api-resources</code></pre>
+
+<p>Potvrdite da su podovi Ready, da rollout nema nedostupnih replika, da su potrebni CRD resursi discoverable i da nema ponavljanih Warning događaja. Zatim izvršite servisno-specifičan funkcionalni test: na primer, prijavu na registry, kreiranje test ingress-a ili proveru backup lokacije — tačno prema dokumentaciji izabranog servisa.</p>
+
+<h4>Vežba 3 – RBAC i tenant instanca</h4>
+
+<p>Ovu vežbu izvodite samo ako servis zvanično izlaže namespaced API korisnicima. Administrator najpre proverava koja minimalna uloga i koji resource verb su potrebni. Zatim se tenant korisnik prijavljuje u laboratorijski vSphere Namespace i proverava ovlašćenje:</p>
+
+<pre><code class="language-bash">kubectl auth can-i create &lt;resource&gt; -n &lt;lab-namespace&gt;
+kubectl api-resources --namespaced=true
+kubectl get resourcequota -n &lt;lab-namespace&gt;</code></pre>
+
+<p>Manifest instance mora doći iz dokumentacije konkretne verzije. Sledeći primer je samo bezbedan obrazac strukture i <strong>nije</strong> stvarni API bilo kog Supervisor servisa:</p>
+
+<pre><code class="language-yaml">apiVersion: service.example.invalid/v1alpha1
+kind: ExampleServiceInstance
+metadata:
+  name: lab-instance
+  namespace: lab-namespace
+spec:
+  serviceClass: small
+  storageClass: lab-storage-policy</code></pre>
+
+<div class="important-note">
+  <p>Domen <code>example.invalid</code> namerno ne može biti stvaran. Nemojte primenjivati ovaj manifest. Zamenite ga zvaničnim primerom za instaliranu verziju, pregledajte ga sa <code>kubectl apply --dry-run=server -f</code>, a tek zatim, u laboratoriji, izvršite promenu.</p>
+</div>
+
+<pre><code class="language-bash">kubectl apply --dry-run=server -f &lt;zvanicni-lab-manifest.yaml&gt;
+kubectl apply -f &lt;zvanicni-lab-manifest.yaml&gt;
+kubectl get &lt;resource&gt; &lt;ime&gt; -n &lt;lab-namespace&gt; -o yaml
+kubectl describe &lt;resource&gt; &lt;ime&gt; -n &lt;lab-namespace&gt;</code></pre>
+
+<p>Prva komanda je server-side validacija bez čuvanja objekta; druga <strong>menja stanje</strong>. Uspeh zahteva usklađen <code>observedGeneration</code>, pozitivan Ready condition kada ga API definiše, zdrave zavisne resurse i prolazak funkcionalnog testa. Sam izlaz <code>created</code> nije dovoljan.</p>
+
+<h4>Vežba 4 – bezbedna simulacija incidenta</h4>
+
+<p>Ne gasite control plane VM i ne brišite operatorski pod na produkciji. U laboratoriji simulirajte bezbedniju grešku tako što ćete u test custom resource uneti dokumentovanu, reverzibilno nevažeću vrednost — na primer nepostojeću laboratorijsku storage class — samo ako schema dozvoljava upis. Pre promene sačuvajte originalni manifest.</p>
+
+<pre><code class="language-bash">kubectl get &lt;resource&gt; &lt;ime&gt; -n &lt;lab-namespace&gt; -o yaml \
+  &gt; lab-instance-before-incident.yaml
+
+kubectl describe &lt;resource&gt; &lt;ime&gt; -n &lt;lab-namespace&gt;
+kubectl get events -n &lt;lab-namespace&gt; --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>Nakon kontrolisane izmene zabeležite simptom, vreme, generation, conditions, događaje i operatorski log. Potvrdite hipotezu da tačno izmenjena zavisnost sprečava reconciliation. Ne menjajte više promenljivih odjednom.</p>
+
+<p><strong>Recovery:</strong> vratite originalnu dokumentovanu vrednost kroz isti deklarativni objekat. Pratite novi generation, observedGeneration, events i funkcionalni probe. Incident je završen tek kada je servis funkcionalan, nema nove ponavljane greške, a nalaz sadrži neposredni i osnovni uzrok.</p>
+
+<h4>Vežba 5 – rollback i čišćenje laboratorije</h4>
+
+<p>Ako je kreirana samo test instanca, izbrišite je podržanim API postupkom i posmatrajte finalizer do završetka:</p>
+
+<pre><code class="language-bash">kubectl delete -f &lt;zvanicni-lab-manifest.yaml&gt;
+kubectl get &lt;resource&gt; &lt;ime&gt; -n &lt;lab-namespace&gt; -o yaml
+kubectl get events -n &lt;lab-namespace&gt; --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p><code>kubectl delete</code> menja stanje i može pokrenuti brisanje zavisnih podataka. Pre izvršenja proverite retention/reclaim pravila. Ne uklanjajte finalizer ručno. Potvrdite da su nestali zavisni podovi, PVC/load balancer objekti samo kada je to očekivana politika i da nije ostao spoljni resurs bez vlasnika.</p>
+
+<p>Deinstalaciju celog servisa izvedite samo ako je laboratorija namenjena tome, nema preostalih instanci i dobavljač je dokumentovao redosled. Uklonite servis sa laboratorijskog Supervisor-a kroz vSphere Client, pratite task, events i namespace resurse. Verziju iz kataloga obrišite tek posle potvrde da je nijedan Supervisor ne koristi. Ako deinstalacija ne uspe, zaustavite se, sačuvajte dokaze i koristite zvanični KB/support postupak; ne čistite CRD i namespace objekte nasumično.</p>
+
+<h3>11. Administratorske prakse</h3>
+
+<ul>
+  <li>Vodite katalog: vlasnik, svrha, verzija, ciljni Supervisor-i, CRD/API grupe, zavisnosti, podaci, RPO/RTO, datum obnove sertifikata i end-of-support.</li>
+  <li>Odvojite registraciju paketa, instalaciju na Supervisor i tenant instanciranje u različite change/RBAC korake.</li>
+  <li>Pre nadogradnje inventarišite instance i sačuvajte status, ne samo spec; potvrdite CRD migraciju i podršku za downgrade.</li>
+  <li>Za monitoring koristite četiri dokaza: vCenter status, Kubernetes workload health, custom resource conditions i funkcionalni probe.</li>
+  <li>Usaglasite NTP i korelišite vCenter task/event, Kubernetes events, audit i operatorske logove po vremenu i identifikatoru.</li>
+  <li>Ne menjajte resurse koje operator generiše. Menjajte podržani izvor željenog stanja.</li>
+  <li>Ne koristite „restart svega” kao dijagnostiku. Prvo prikupite dokaze i formirajte proverljivu hipotezu.</li>
+  <li>Testirajte uklanjanje i restore u laboratoriji; instalacioni uspeh nije dokaz operativne spremnosti.</li>
+  <li>Planirajte servis kao deo blast radius-a upravljačke ravni i odredite prozor održavanja prema njegovom stvarnom uticaju.</li>
+</ul>
+
+<h3>12. Završna kontrolna tačka</h3>
+
+<p>Lekcija je savladana kada administrator može da:</p>
+
+<ul>
+  <li>precizno razlikuje Supervisor Service, ugrađenu Supervisor sposobnost, VKS package/add-on i običan Helm/operator deployment;</li>
+  <li>objasni dvostepeni model registracije u vCenter katalogu i instalacije na konkretan Supervisor;</li>
+  <li>mapira operator, CRD, custom resource, zavisne infrastrukturne objekte i statusni tok;</li>
+  <li>donese go/no-go odluku na osnovu build-a, kompatibilnosti, licence, mreže, storage-a, kapaciteta i recovery zahteva;</li>
+  <li>primeni najmanje privilegije i dokaže efektivni pristup bez trajnog dodeljivanja cluster-admin uloge;</li>
+  <li>validira servis kroz vCenter, Kubernetes workload, conditions/events/logove i funkcionalni test;</li>
+  <li>razdvoji simptom, obim, posledicu, neposredni i osnovni uzrok, workaround i trajnu meru;</li>
+  <li>bezbedno planira nadogradnju ili uklanjanje bez nasilnog brisanja finalizer-a i gubitka podataka;</li>
+  <li>dokumentuje promenu, dokaz oporavka i preostali rizik.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Supervisor servisi pretvaraju Supervisor iz zatvorenog skupa ugrađenih mogućnosti u kontrolisano proširivu platformu. Njihova snaga dolazi iz deklarativnog API-ja i operatorskog reconciliation-a, ali isti mehanizam povećava privilegije, zavisnosti i blast radius upravljačke ravni. Zreo administrator zato ne meri uspeh time što je YAML prihvaćen ili pod pokrenut, već dokazima da je podržana verzija pravilno instalirana, bezbedno izložena, operativno nadgledana i obnovljiva.</p>
+
+<p>Ovo razumevanje priprema čitaoca za sledeću lekciju, u kojoj će se jasnije razdvojiti uloge vCenter-a, Supervisor API-ja i Kubernetes API-ja. Tada će biti lakše pratiti gde zahtev nastaje, kroz koju upravljačku ravan prolazi i na kom mestu treba tražiti autoritativan status kada se željeno i stvarno stanje raziđu.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom vSphere Supervisor 8.0 i VMware Cloud Foundation 9.x arhitektonska i administrativna dokumentacija; vodiči za Supervisor Services i VKS lifecycle; vSphere Automation API reference; zvanične release notes, matrice kompatibilnosti i Knowledge Base procedure za Workload Control Plane, control plane VM, mrežne, sertifikatske i reconciliation kvarove; Kubernetes API, RBAC, events i operator troubleshooting reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+
+<div class="chapter-actions">
+
+  <a class="close-btn"
+     href="vmware-tanzu-06-vks-klaster-arhitektura.html">
+    ← Prethodna lekcija
+  </a>
+
+  <a class="close-btn"
+     href="vmware-tanzu.html">
+    Povratak na sadržaj
+  </a>
+
+  <a class="close-btn"
+     href="vmware-tanzu-08-vcenter-supervisor-i-kubernetes-api.html">
+    Sledeća lekcija →
+  </a>
+
+</div>
+ 
+
+  </main>
+
+</body>
+
+</html>
+

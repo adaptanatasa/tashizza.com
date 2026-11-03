@@ -1,0 +1,509 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-24-node-pool-topologija-i-skaliranje.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Node Pool – grupisanje radnih čvorova prema ulozi i opterećenju | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Node Pool u VMware Tanzu okruženju – organizacija Kubernetes radnih čvorova prema ulozi, performansama, dostupnosti i opterećenju aplikacija.">
+
+  <meta name="keywords"
+        content="Node Pool, VMware Tanzu, Tanzu Kubernetes Grid, TKG, Kubernetes, worker node, node group, workload cluster, scaling, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-24-node-pool-topologija-i-skaliranje.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Node Pool – grupisanje radnih čvorova prema ulozi i opterećenju">
+
+  <meta property="og:description"
+        content="Devetnaesta lekcija VMware & Tanzu tutorijala – organizacija Kubernetes radnih čvorova pomoću Node Pool mehanizma.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-24-node-pool-topologija-i-skaliranje.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-24-node-pool.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Node Pool – grupisanje radnih čvorova prema ulozi i opterećenju">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware & Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-24-node-pool.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-24-node-pool.png"
+           alt="Node Pool – grupisanje radnih čvorova prema ulozi i opterećenju">
+
+    </a>
+ <div class="page-subtitle">
+  VI. Kreiranje i lifecycle VKS klastera
+</div>
+<div class="page-subtitle">
+  24. Node pool, topologija i skaliranje – prilagođavanje radnih čvorova workload-u
+</div>
+
+<p>
+  VKS klaster može da izvršava aplikacije na jednoj homogenoj grupi worker čvorova, ali takav model brzo postaje ograničavajući kada workload-i imaju različite zahteve za procesorom, memorijom, skladištem, dostupnošću, operativnim sistemom ili specijalizovanim uređajima. Analitički servis može zahtevati memorijski bogate virtuelne mašine, aplikacioni API čvorove opšte namene, a platformske komponente rezervisan kapacitet koji korisnički Pod-ovi ne mogu nekontrolisano da zauzmu. U vSphere Kubernetes Service-u (VKS) takve grupe worker mašina predstavljaju se kao <strong>node pool-ovi</strong>, odnosno Cluster API <code>MachineDeployment</code> topologije kojima Supervisor upravlja deklarativno.
+</p>
+<p>
+  Node pool nije Kubernetes namespace, Deployment niti samostalna bezbednosna granica. On je infrastrukturna grupa mašina unutar istog klastera. Supervisor i Cluster API kontroleri usklađuju željeni broj i konfiguraciju VM-ova, dok Kubernetes scheduler, na osnovu labela, taint-ova, toleration pravila, affinity-ja, zahteva za resursima i topoloških ograničenja, odlučuje gde Pod može da radi. Uspešan dizajn zato povezuje dva različita nivoa: <strong>lifecycle mašina</strong> i <strong>scheduling aplikacija</strong>.
+</p>
+
+<h3>Node pool u VKS i Cluster API arhitekturi</h3>
+<p>
+  U aktuelnom ClusterClass zasnovanom VKS modelu izvor istine je <code>Cluster</code> objekat u Supervisor Namespace-u. Worker grupa se definiše u <code>spec.topology.workers.machineDeployments</code>. Svaka stavka ima stabilno topološko ime <code>name</code>, referencu <code>class</code> na worker klasu koju izlaže ClusterClass, željeni broj <code>replicas</code> i, kada konkretna ClusterClass to podržava, varijable, failure domain, labele i druge dozvoljene izmene. Topology kontroler iz te deklaracije generiše i održava <code>MachineDeployment</code>, a on preko <code>MachineSet</code> i <code>Machine</code> objekata upravlja pojedinačnim VM-ovima.
+</p>
+<ul>
+  <li><strong>VKS Cluster</strong> obuhvata control plane, worker grupe, Kubernetes API, mrežu i klasterske servise.</li>
+  <li><strong>MachineDeployment topologija</strong> predstavlja node pool i željeni lifecycle homogenog skupa worker mašina.</li>
+  <li><strong>Machine</strong> je infrastrukturna deklaracija jedne mašine; njen odgovarajući <strong>Node</strong> je izvršni objekat registrovan u workload klasteru.</li>
+  <li><strong>Pod</strong> je aplikaciona jedinica koju scheduler smešta na Node koji zadovoljava sve hard i soft uslove.</li>
+</ul>
+<p>
+  Terminologija zavisi od izdanja. Noviji VKS koristi upstream Cluster API <code>Cluster</code> i ClusterClass model. Stariji vSphere with Tanzu/TKG Service klasteri mogu koristiti sada zastareli <code>TanzuKubernetesCluster</code> (<code>tkc</code>) API i putanju <code>spec.topology.workers</code> drugačijeg oblika. Standalone Tanzu Kubernetes Grid koristi management klaster i Tanzu CLI postupke kao što je <code>tanzu cluster node-pool</code>; ti primeri nisu neposredno primenljivi na VKS kojim upravlja Supervisor. Administrator prvo utvrđuje stvarni API i verziju, a tek zatim bira proceduru.
+</p>
+<pre><code class="language-bash"># Read-only; izvršava se u Supervisor kontekstu i ciljnom namespace-u.
+kubectl api-resources | grep -E '(^|[[:space:]])(clusters|tanzukubernetesclusters)[[:space:]]'
+kubectl get cluster,tanzukubernetescluster -n &lt;VKS_NAMESPACE&gt;</code></pre>
+<p>
+  Ako postoji <code>Cluster</code> resurs za ciljni klaster, koristi se Cluster API procedura ove lekcije. Ako postoji samo <code>TanzuKubernetesCluster</code>, koristi se dokumentacija tačno za instaliranu vSphere verziju; manifest iz jednog modela ne prepisuje se u drugi. Nazivi worker klasa, promenljivih i dozvoljenih patch-eva nisu univerzalni: određuje ih ClusterClass koju platforma objavljuje.
+</p>
+
+<h3>Zašto se worker čvorovi grupišu</h3>
+<p>
+  Više pool-ova služi kontroli kapaciteta, troška, rizika i predvidivosti schedulera, a ne estetskom uređivanju inventara. Jedan pool sa veoma velikim čvorovima pojednostavljuje upravljanje, ali povećava blast radius kvara i može rasipati skupe resurse. Mnogo specijalizovanih pool-ova preciznije prati potrebe aplikacija, ali povećava broj konfiguracija, monitoring signala i mogućnost da stroga scheduling pravila ostave Pod bez odgovarajućeg čvora.
+</p>
+<table>
+  <thead><tr><th>Razlog</th><th>Primer pool-a</th><th>Posledica i kontrola</th></tr></thead>
+  <tbody>
+    <tr><td>Različit odnos CPU-a i memorije</td><td><code>md-memory</code></td><td>Prava VM klasa smanjuje rasipanje; requests i allocatable potvrđuju stvarni kapacitet.</td></tr>
+    <tr><td>Specijalizovan hardver</td><td><code>md-gpu</code></td><td>Labela privlači odgovarajući workload, a taint štiti oskudan uređaj od drugih Pod-ova.</td></tr>
+    <tr><td>Failure domain</td><td>pool-ovi po zonama</td><td>Infrastrukturni placement i aplikacioni topology spread zajedno smanjuju zajednički kvar.</td></tr>
+    <tr><td>Operativno rezervisan kapacitet</td><td><code>md-platform</code></td><td>Ingress, observability ili drugi servisi zadržavaju kapacitet uz odgovarajući taint, priority i PDB.</td></tr>
+    <tr><td>Različit OS</td><td><code>md-windows</code></td><td>Windows workload koristi kompatibilan image i OS-specifična scheduling pravila; podrška je verzijski uslovljena.</td></tr>
+    <tr><td>Promenljiv batch kapacitet</td><td><code>md-batch</code></td><td>Pool se skalira nezavisno, uz poznato vreme provisioning-a i kontrolu scale-in prekida.</td></tr>
+  </tbody>
+</table>
+<p>
+  Node pool nije dobro rešenje kada su potrebni zaseban control plane, nezavisan upgrade prozor, klasterski odvojene mrežne i admission politike, zaseban blast radius ili stroga administrativna separacija. U tim slučajevima zaseban VKS klaster predstavlja jasniju granicu. Svi pool-ovi u jednom klasteru dele Kubernetes API, control plane i ključne klasterske servise.
+</p>
+
+<h3>Od VM klase i failure domain-a do Kubernetes scheduling-a</h3>
+<p>
+  VM klasa određuje infrastrukturni profil worker VM-a. Guaranteed klase rezervišu resurse i daju veću predvidivost, ali mogu brzo iscrpeti vSphere kapacitet; best-effort klase lakše se uklapaju u zajednički kapacitet, ali ne pružaju istu garanciju pod infrastrukturnim pritiskom. Klasa mora biti povezana sa Supervisor Namespace-om i dozvoljena ClusterClass modelom. StorageClass, image/release, mreža, Content Library i raspoložive IP adrese takođe moraju važiti za novu mašinu.
+</p>
+<p>
+  Failure domain je logička infrastrukturalna zona, ali labela <code>topology.kubernetes.io/zone</code> ima vrednost samo ako je platforma dosledno propagira na Node i ako zone zaista predstavljaju nezavisne domene kvara. Različita imena Node-ova ne dokazuju da su njihove VM mašine na različitim ESXi hostovima. Broadcom za scenarije u kojima DRS smesti više worker VM-ova istog pool-a na isti host dokumentuje proveru i, kada dizajn to zahteva, vSphere VM/Host anti-affinity pravilo. Takvo pravilo mora biti usklađeno sa DRS licencom, kapacitetom i pravilima podrške; previše strogo pravilo može blokirati provisioning ili vMotion.
+</p>
+<p>
+  Scheduler ne bira čvor po imenu MachineDeployment-a. Trajna infrastrukturna namena mora se preneti u Node labele/taint-ove podržanim ClusterClass ili platformskim mehanizmom. Ručno dodata labela može nestati pri zameni mašine. Labela, na primer <code>workload.platform.example.com/class=memory</code>, opisuje čvor, ali sama ne odbija druge Pod-ove. Taint <code>workload.platform.example.com/dedicated=memory:NoSchedule</code> odbija novi Pod bez odgovarajućeg toleration-a. Toleration samo uklanja zabranu; ne privlači Pod na taj pool. Namenski pool zato obično zahteva i taint i required node affinity ili <code>nodeSelector</code>.
+</p>
+<ul>
+  <li><code>NoSchedule</code> sprečava novo raspoređivanje netolerantnih Pod-ova, ali ne izbacuje postojeće.</li>
+  <li><code>PreferNoSchedule</code> je meka zabrana koju scheduler može prekršiti.</li>
+  <li><code>NoExecute</code> može izbaciti postojeće Pod-ove i zahteva plan za prekid, tolerationSeconds i oporavak.</li>
+</ul>
+<p>
+  Za dostupnost replika koriste se <code>topologySpreadConstraints</code> ili pažljivo projektovan Pod anti-affinity. Ograničenje po <code>kubernetes.io/hostname</code> raspoređuje replike između Node-ova; ograničenje po <code>topology.kubernetes.io/zone</code> raspoređuje ih između zona samo kada dovoljan broj pogodnih zona postoji. PVC može imati sopstveni topology/node affinity, pa Pod koji zadovoljava pool labelu ipak može ostati <code>Pending</code> ako volumen nije dostupan u istoj zoni.
+</p>
+
+<h3>Kapacitet, horizontalno i vertikalno skaliranje</h3>
+<p>
+  Broj worker mašina nije jednak broju aplikacionih replika koje pool može pouzdano da primi. Od VM kapaciteta odbijaju se operativni sistem, kubelet, container runtime, CNI, CSI, log i monitoring agenti i svi DaemonSet Pod-ovi. Scheduler koristi <code>Allocatable</code> i resource <code>requests</code>, ne fizički zbir vCPU/RAM niti trenutnu prosečnu potrošnju. Produkcioni proračun mora dokazati da posle gubitka jednog planiranog failure domain-a preostali pogodni čvorovi mogu prihvatiti kritične Pod-ove.
+</p>
+<p>
+  <strong>Horizontalno skaliranje</strong> menja <code>replicas</code>. Scale-out nije trenutan: obuhvata kreiranje VM-a, bootstrap, mrežnu dostupnost, registraciju kubelet-a i spremnost CNI/CSI agenata. Scale-in je rizičniji jer izbor mašine za uklanjanje nije nužno pod kontrolom obične promene broja replika. PDB, lokalni podaci, statički Pod-ovi, nedostupan volumen ili nedovoljan slobodan kapacitet mogu odložiti ili učiniti prekid vidljivim.
+</p>
+<p>
+  <strong>Vertikalna promena</strong> VM klase obično rotira worker mašine kroz novi template; nije ručna hot-add promena pojedinačnih VM-ova. Redosled, surge ponašanje i dostupne strategije zavise od VKS/Cluster API verzije i ClusterClass politike. Pre promene treba potvrditi dodatni privremeni kapacitet za staru i novu generaciju mašina, PDB ponašanje i storage topologiju. Direktno menjanje CPU-a, memorije, diska ili mreže na Cluster API VM-u stvara drift i nije podržani izvor istine.
+</p>
+<p>
+  Cluster Autoscaler može automatski menjati veličinu podržanih MachineDeployment pool-ova, ali se ne uključuje implicitno. Njegove minimalne i maksimalne granice, ownership polja <code>replicas</code>, verzijska podrška i instalacioni model moraju biti provereni u dokumentaciji konkretnog VKS izdanja. Ručno i automatsko upravljanje istim poljem bez jasnog vlasništva izaziva stalno prepisivanje željenog stanja.
+</p>
+
+<h3>Preduslovi i bezbedna priprema promene</h3>
+<ul>
+  <li>Supervisor, ciljni Namespace i VKS klaster su zdravi; ne traje upgrade, attach ili druga topološka reconciliacija.</li>
+  <li>Potvrđeni su Cluster API verzija, ClusterClass, Kubernetes release/image i podržana polja worker topologije.</li>
+  <li>VM klasa i StorageClass povezane su sa Namespace-om; vSphere ima CPU, memoriju, datastore prostor i dovoljan broj slobodnih IP adresa.</li>
+  <li>DNS, NTP, rute, firewall, proxy/registry i API endpoint dostupni su iz mreže novih VM-ova.</li>
+  <li>Provereni su DRS/failure-domain placement, topology labele i eventualna VM anti-affinity pravila.</li>
+  <li>Identitet operatora sme da čita i patch-uje ciljni <code>Cluster</code>; servisni identitet platforme ima samo potrebna vSphere prava.</li>
+  <li>Sačuvani su deklaracija pre promene, događaji, kapacitet i zavisni workload-i; definisani su change prozor, abort uslov i rollback.</li>
+</ul>
+<p>
+  Pre uređivanja objekta obavezno se izvozi aktuelna deklaracija. Server-side dry run potvrđuje API i admission validaciju, ali ne rezerviše vSphere kapacitet i ne dokazuje da će VM ili Pod moći da se pokrene. Produkciona promena mora proći peer review; <code>kubectl edit</code> je pogodan za hitnu interaktivnu korekciju, ali je patch ili verzionisani manifest bolji audit trag.
+</p>
+
+<h3>Integrisani praktikum: memory pool, scale-out i scheduling dokaz</h3>
+<p>
+  <strong>Kontekst i cilj.</strong> VKS klaster <code>vks-prod01</code> u Supervisor Namespace-u <code>team-a</code> ima postojeći opšti worker pool. Potrebno je dodati topologiju <code>md-memory</code> sa tri čvora, zatim dokazati da aplikacija <code>document-indexer</code> radi samo na tim čvorovima i da Pod bez toleration-a ne može da koristi rezervisani kapacitet. Primer koristi Cluster API <code>Cluster</code>; nazivi <code>class</code>, VM klase i promenljivih su primeri i moraju se zameniti vrednostima koje izlaže konkretna ClusterClass.
+</p>
+<p>
+  <strong>Prava, alati i rizik.</strong> Komande se izvršavaju sa administratorske radne stanice, najpre u Supervisor, zatim u workload kubeconfig kontekstu. Potrebni su <code>kubectl</code>, pravo izmene ciljnog Cluster objekta i pravo upravljanja workload objektima u <code>document-services</code>. Dodavanje tri VM-a menja stanje i troši kvotu; pogrešan patch može pokrenuti neželjenu reconciliaciju. Ne primenjuje se dok dry run, diff i peer review ne prođu.
+</p>
+<ol>
+  <li>
+    <strong>Potvrdi kontekst, API i početno zdravlje.</strong>
+    <pre><code class="language-bash"># Read-only: Supervisor kubeconfig/kontekst.
+kubectl config current-context
+kubectl auth can-i get clusters.cluster.x-k8s.io -n team-a
+kubectl auth can-i patch clusters.cluster.x-k8s.io -n team-a
+kubectl get cluster -n team-a vks-prod01 -o wide
+kubectl describe cluster -n team-a vks-prod01
+kubectl get machinedeployment,machineset,machine -n team-a \
+  -l cluster.x-k8s.io/cluster-name=vks-prod01</code></pre>
+    <p><strong>Očekivani rezultat:</strong> cilj je pravi Supervisor kontekst, <code>Cluster</code> je spreman, a Machine objekti nisu u neuspešnoj reconciliaciji. Ako pravo za patch nije odobreno, promena se ne zaobilazi višim deljenim nalogom već se eskalira vlasniku platforme.</p>
+  </li>
+  <li>
+    <strong>Izvezi izvor istine i otkrij šemu.</strong>
+    <pre><code class="language-bash"># Read-only osim lokalnog zapisivanja fajlova.
+mkdir -p ~/vks-lab/lesson-24
+cd ~/vks-lab/lesson-24
+kubectl get cluster -n team-a vks-prod01 -o yaml &gt; cluster-before.yaml
+kubectl get clusterclass -n team-a -o wide
+kubectl get cluster -n team-a vks-prod01 \
+  -o jsonpath='{.spec.topology.class}{"\n"}'</code></pre>
+    <p>Odgovarajući ClusterClass se zatim čita sa <code>kubectl get clusterclass -n team-a &lt;CLASS_NAME&gt; -o yaml</code>. Proveravaju se <code>workers.machineDeployments.classes</code>, promenljive i patch-evi. Ako je ClusterClass cluster-scoped ili smeštena u drugom dozvoljenom namespace-u, koristi se stvarni scope koji pokaže <code>kubectl api-resources</code>.</p>
+  </li>
+  <li>
+    <strong>Pripremi minimalni JSON patch za novu topologiju.</strong>
+    <p>Primer pretpostavlja da ClusterClass već ima worker klasu <code>node-pool</code> i da promenljiva <code>vmClass</code> može biti override-ovana na nivou MachineDeployment-a. To nije univerzalna šema; patch mora biti prilagođen potvrđenoj ClusterClass.</p>
+    <pre><code class="language-json">[
+  {
+    "op": "add",
+    "path": "/spec/topology/workers/machineDeployments/-",
+    "value": {
+      "class": "node-pool",
+      "name": "md-memory",
+      "replicas": 3,
+      "variables": {
+        "overrides": [
+          {
+            "name": "vmClass",
+            "value": "best-effort-large"
+          }
+        ]
+      }
+    }
+  }
+]</code></pre>
+    <p>Fajl se čuva kao <code>add-md-memory.json</code>. Ako ClusterClass ne izlaže <code>vmClass</code> override ili koristi drugi oblik, ova deklaracija mora biti odbijena i prepravljena prema šemi; polja se ne izmišljaju.</p>
+  </li>
+  <li>
+    <strong>Validiraj i primeni infrastrukturnu promenu.</strong>
+    <pre><code class="language-bash"># Prve dve komande ne čuvaju promenu; treća menja stanje.
+kubectl patch cluster -n team-a vks-prod01 --type=json \
+  --patch-file add-md-memory.json --dry-run=server -o yaml &gt; cluster-dry-run.yaml
+
+kubectl diff -n team-a -f cluster-dry-run.yaml
+
+kubectl patch cluster -n team-a vks-prod01 --type=json \
+  --patch-file add-md-memory.json</code></pre>
+    <p><strong>Validacija:</strong> dry run mora proći, diff mora pokazati samo nameravanu novu worker topologiju, a primena mora vratiti uspešno patch-ovan Cluster. <code>kubectl diff</code> može vratiti status 1 kada razlika postoji; to samo po sebi nije greška sadržaja.</p>
+  </li>
+  <li>
+    <strong>Prati reconciliaciju od topologije do Node-a.</strong>
+    <pre><code class="language-bash"># Read-only praćenje u Supervisor kontekstu.
+kubectl get cluster,machinedeployment,machineset,machine -n team-a \
+  -l cluster.x-k8s.io/cluster-name=vks-prod01 -w</code></pre>
+    <p>Posle pojave novog MachineDeployment-a koristi se <code>kubectl describe machinedeployment -n team-a &lt;MD_NAME&gt;</code> i odgovarajući Machine objekti. Očekuju se tri željene i tri raspoložive replike. Ako VM nije kreiran, problem je pre workload schedulera: proveravaju se događaji, VM klasa, kvota, rezervacije, Content Library/image, datastore, mreža i vSphere dozvole.</p>
+  </li>
+  <li>
+    <strong>Potvrdi tri nova zdrava Node-a u workload klasteru.</strong>
+    <pre><code class="language-bash"># Read-only: prebaciti se na kubeconfig/kontekst vks-prod01.
+kubectl config use-context vks-prod01-admin@vks-prod01
+kubectl get nodes -o wide
+kubectl get nodes \
+  -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,CPU:.status.allocatable.cpu,MEMORY:.status.allocatable.memory,ZONE:.metadata.labels.topology\.kubernetes\.io/zone'</code></pre>
+    <p>Mapiranje MachineDeployment-a na Node potvrđuje se kroz Machine labele/providerID i Node <code>spec.providerID</code>, ne pogađanjem po imenu. Svi novi Node-ovi moraju imati <code>Ready=True</code>, ispravnu zonu kada se koristi i zdrave CNI/CSI DaemonSet Pod-ove.</p>
+  </li>
+  <li>
+    <strong>Primeni trajne scheduling metapodatke podržanim putem.</strong>
+    <p>U referentnom laboratorijskom scenariju pretpostavlja se da je platformskim ClusterClass patch-em već obezbeđena propagacija sledeće labele i taint-a na <code>md-memory</code>. Ako platforma to ne podržava, ne koristi se ručni <code>kubectl label/taint node</code> kao trajno rešenje; platform tim dopunjava odobrenu ClusterClass ili drugi vendor-podržani mehanizam.</p>
+    <pre><code class="language-bash"># Read-only dokaz očekivanog krajnjeg stanja.
+kubectl get nodes -l workload.platform.example.com/class=memory \
+  -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
+
+kubectl get nodes -l workload.platform.example.com/class=memory \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.taints}{"\n"}{end}'</code></pre>
+    <p><strong>Kriterijum:</strong> tačno tri Node-a imaju labelu <code>class=memory</code>, <code>Ready=True</code> i taint <code>dedicated=memory:NoSchedule</code>.</p>
+  </li>
+  <li>
+    <strong>Implementiraj aplikaciju sa affinity, toleration i topology spread pravilom.</strong>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: document-services
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-indexer
+  namespace: document-services
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: document-indexer
+  template:
+    metadata:
+      labels:
+        app: document-indexer
+    spec:
+      tolerations:
+        - key: workload.platform.example.com/dedicated
+          operator: Equal
+          value: memory
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload.platform.example.com/class
+                    operator: In
+                    values: [memory]
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: document-indexer
+      containers:
+        - name: indexer
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 4Gi
+            limits:
+              cpu: "1"
+              memory: 4Gi</code></pre>
+    <p>Manifest se čuva kao <code>document-indexer.yaml</code>, a zatim validira i primenjuje:</p>
+    <pre><code class="language-bash">kubectl apply --server-side --dry-run=server -f document-indexer.yaml
+kubectl apply -f document-indexer.yaml
+kubectl -n document-services rollout status deployment/document-indexer --timeout=5m
+kubectl -n document-services get pods -l app=document-indexer -o wide</code></pre>
+    <p><strong>Očekivani rezultat:</strong> tri replike su dostupne i raspoređene na tri različita memory Node-a. Dry run potvrđuje API/admission ispravnost, ali tek rollout i Node mapiranje dokazuju scheduling i kapacitet.</p>
+  </li>
+  <li>
+    <strong>Izvrši negativni test taint zaštite.</strong>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-without-toleration
+  namespace: document-services
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    workload.platform.example.com/class: memory
+  containers:
+    - name: test
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi</code></pre>
+    <pre><code class="language-bash">kubectl apply -f negative-test.yaml
+kubectl -n document-services get pod memory-without-toleration
+kubectl -n document-services describe pod memory-without-toleration</code></pre>
+    <p><strong>Očekivani rezultat:</strong> Pod ostaje <code>Pending</code>, a Events navodi netolerisani taint. To je dokaz kontrole, ne kvar. Test se uklanja komandom <code>kubectl -n document-services delete pod memory-without-toleration</code>.</p>
+  </li>
+  <li>
+    <strong>Kontrolisano scale-out testiranje.</strong>
+    <p>Pre skaliranja proveravaju se kvota i trenutni zbir requests. Promena sa tri na četiri čvora je state-changing operacija:</p>
+    <pre><code class="language-bash"># Supervisor kontekst.
+kubectl config use-context &lt;SUPERVISOR_CONTEXT&gt;
+kubectl patch cluster -n team-a vks-prod01 --type=json \
+  -p='[{"op":"replace","path":"/spec/topology/workers/machineDeployments/1/replicas","value":4}]'</code></pre>
+    <p><strong>Važno:</strong> indeks <code>1</code> je bezbedan samo ako je neposredno pre promene dokazano da upravo ta stavka ima <code>name: md-memory</code>. U produkciji je sigurnije generisati i pregledati ceo verzionisani manifest ili automatizacijom pronaći tačan indeks. Završetak se potvrđuje tek kada MachineDeployment ima četiri dostupne replike, četvrti Node je <code>Ready</code>, sistemski DaemonSet-i su zdravi i kapacitet je vidljiv scheduler-u.</p>
+  </li>
+</ol>
+
+<h3>Dijagnostika: od simptoma do osnovnog uzroka</h3>
+<p>
+  Pre korekcije treba sačuvati vreme incidenta, poslednju promenu, deklaraciju, Events i statuse. Provere se rade od najmanje invazivnih ka rizičnijim. Brisanje Machine objekta, uklanjanje finalizer-a ili ručna intervencija u VM-u nisu početna dijagnostika.
+</p>
+<table>
+  <thead><tr><th>Simptom</th><th>Nivo i neposredna provera</th><th>Tipičan osnovni uzrok i trajna mera</th></tr></thead>
+  <tbody>
+    <tr><td>Patch odbijen</td><td>API/admission; <code>kubectl describe cluster</code> i server dry run</td><td>Pogrešna putanja, class ili variable schema; uskladiti manifest sa ClusterClass i verzijom.</td></tr>
+    <tr><td>MachineDeployment postoji, Machine ne napreduje</td><td>Supervisor Cluster API objekti i Events</td><td>Kvota, VM klasa, image, datastore, mreža ili dozvole; otkloniti infrastrukturnu zavisnost.</td></tr>
+    <tr><td>VM postoji, Node se ne registruje</td><td>Machine conditions, bootstrap i kubelet putanja</td><td>DNS/NTP/firewall/API endpoint, bootstrap ili guest customization; popraviti uzrok pa dozvoliti kontroleru da reconcile-uje.</td></tr>
+    <tr><td>Node je <code>NotReady</code></td><td><code>kubectl describe node</code>, kubelet/runtime, CNI/CSI</td><td>Mrežni plugin, disk/mount, runtime ili sertifikati; korigovati komponentu, ne scheduler pravilo.</td></tr>
+    <tr><td>Node je Ready, Pod je Pending</td><td>Pod Events, requests, affinity, taint, PVC i topology spread</td><td>Nema pogodnog kapaciteta ili pravila imaju prazan presek; ispraviti kapacitet ili deklaraciju uz očuvanje nameravane izolacije.</td></tr>
+  </tbody>
+</table>
+<pre><code class="language-bash"># Supervisor kontekst, read-only.
+kubectl describe cluster -n team-a vks-prod01
+kubectl get events -n team-a --sort-by=.metadata.creationTimestamp
+kubectl describe machinedeployment -n team-a &lt;MD_NAME&gt;
+kubectl describe machine -n team-a &lt;MACHINE_NAME&gt;
+
+# Workload kontekst, read-only.
+kubectl describe node &lt;NODE_NAME&gt;
+kubectl -n document-services describe pod &lt;POD_NAME&gt;
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+<p>
+  Kada politika dozvoljava pristup Linux worker OS-u, <code>journalctl -u kubelet --since "30 minutes ago"</code>, container runtime logovi i <code>/var/log/cloud-init-output.log</code> mogu potvrditi bootstrap ili registracioni problem. Direktan SSH je eskalacioni korak: pristup se evidentira, prvo se čita stanje i ne prave se ručne promene koje će sledeća rotacija mašine izgubiti. U Supervisor-u se relevantni controller Deployment-i najpre otkrivaju, jer njihovi namespace-ovi i nazivi zavise od izdanja:
+</p>
+<pre><code class="language-bash">kubectl get deployments,pods -A | grep -E 'capi|capv|bootstrap|control-plane'
+kubectl logs -n &lt;CONTROLLER_NAMESPACE&gt; deployment/&lt;CONTROLLER_NAME&gt; \
+  --since=30m --prefix</code></pre>
+<p>
+  Privremeno zaobilazno rešenje može biti zadržavanje postojećeg pool-a ili odlaganje scale-in-a. Trajna mera mora ispraviti deklaraciju, kapacitet ili infrastrukturnu zavisnost. Incident se zatvara tek kada su Cluster/Machine conditions zdravi, Node <code>Ready</code>, workload dostupan i nova deklaracija sačuvana u izvoru istine.
+</p>
+
+<h3>Scale-in, uklanjanje pool-a i rollback</h3>
+<p>
+  Pre smanjenja ili uklanjanja pool-a identifikuju se svi Pod-ovi na njegovim Node-ovima, PDB objekti, required affinity, lokalni podaci, PVC topologija i alternativni kapacitet. Obično smanjenje <code>replicas</code> ne garantuje koju će Machine kontroler izabrati. Broadcom dokumentuje verzijski zavisne postupke za izbor određene Machine pri scale-in-u; anotacija <code>cluster.x-k8s.io/delete-machine</code> koristi se samo kada odgovara instaliranoj verziji i tačnoj vendor proceduri, nikada naslepo.
+</p>
+<p>
+  Najbezbedniji rollback neposredno posle neuspešnog dodavanja jeste vraćanje prethodne verzionisane <code>Cluster</code> deklaracije, ali samo nakon pregleda diff-a: ceo stari eksport sadrži server-managed polja i ne primenjuje se slepo. Za laboratoriju u kojoj nema zavisnih workload-a, uklanja se aplikacija, a zatim tačno topološka stavka <code>md-memory</code> deklarativnim patch-em. <strong>Upozorenje:</strong> uklanjanje pool-a briše njegove worker VM-ove; prethodno se potvrđuje da nema jedinih kopija workload-a ili lokalnih podataka.
+</p>
+<pre><code class="language-bash"># Workload kontekst: uklanja laboratorijsku aplikaciju.
+kubectl delete -f document-indexer.yaml
+
+# Supervisor kontekst: prvo pronaći i proveriti indeks md-memory, zatim dry run.
+kubectl get cluster -n team-a vks-prod01 \
+  -o jsonpath='{range $i,$v := .spec.topology.workers.machineDeployments}{"index="}{$i}{" name="}{$v.name}{" replicas="}{$v.replicas}{"\n"}{end}'
+
+kubectl patch cluster -n team-a vks-prod01 --type=json \
+  -p='[{"op":"remove","path":"/spec/topology/workers/machineDeployments/1"}]' \
+  --dry-run=server -o yaml</code></pre>
+<p>
+  Posle odobrenja ponavlja se poslednja komanda bez <code>--dry-run=server -o yaml</code>. Rollback je završen kada pool više nije u Cluster topologiji, njegovi MachineDeployment/Machine/Node i VM objekti su kontrolisano uklonjeni, ostali Node-ovi i Pod-ovi su zdravi i nema zaostalih grešaka. Finalizer se ne uklanja ručno bez vendor procedure i potvrde da neće nastati orphan VM, curenje resursa ili gubitak vlasništva kontrolera.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Zdravlje i kapacitet.</strong> Kontinuirano upoređivati željene, aktuelne i dostupne MachineDeployment replike sa brojem <code>Ready</code> Node-ova; pratiti allocatable, zbir requests, Pending Pod-ove i prostor za gubitak jednog čvora ili zone.</li>
+  <li><strong>Topološki dokaz.</strong> Posle kreiranja, skaliranja i rotacije proveriti zone, ESXi placement i aplikacioni topology spread. Imena VM-ova nisu dokaz fizičke nezavisnosti.</li>
+  <li><strong>Audit labela i taint-ova.</strong> Posle zamene mašine dokazati da su metapodaci ponovo propagirani iz podržanog izvora istine. Ručna korekcija Node-a je samo vremenski ograničena incident mera.</li>
+  <li><strong>Pozitivni i negativni scheduling test.</strong> Pod sa affinity/toleration pravilima mora raditi u ciljnom pool-u; Pod bez toleration-a mora biti odbijen. Oba rezultata prilažu se change zapisu.</li>
+  <li><strong>Kontrola drifta.</strong> Porediti Git deklaraciju, Cluster topologiju, Machine objekte, Node metapodatke i vSphere VM konfiguraciju. Ručne VM izmene vraćati podržanim deklarativnim procesom.</li>
+  <li><strong>Least privilege i audit.</strong> Platform operator menja odobrene Cluster objekte; aplikacioni tim upravlja svojim workload namespace-om. Deljeni administratorski nalozi i nepotrebno pravo menjanja Node/Machine objekata nisu prihvatljivi.</li>
+  <li><strong>Oporavak.</strong> Verzionisati Cluster/ClusterClass deklaracije, kompatibilne verzije i infrastrukturne zavisnosti; backup management stanja smatrati upotrebljivim tek posle probnog restore-a i uspešne reconciliacije testnog resursa.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Administrator razlikuje moderni VKS <code>Cluster</code>, legacy <code>TanzuKubernetesCluster</code> i standalone TKG node-pool postupak.</li>
+  <li>Može da pronađe ClusterClass worker klase i promenljive bez pretpostavljanja YAML polja.</li>
+  <li>Može da izračuna pool prema allocatable/requests kapacitetu, failure-domain riziku i privremenom kapacitetu za rotaciju.</li>
+  <li>Može bezbedno da izvrši server-side dry run, diff, deklarativno dodavanje i horizontalno skaliranje pool-a.</li>
+  <li>Može da prati tok Cluster → MachineDeployment → Machine → VM → Node i utvrdi nivo na kojem je provisioning zaustavljen.</li>
+  <li>Može da poveže trajne labele i taint-ove sa affinity, toleration i topology spread pravilima i dokaže ih pozitivnim i negativnim testom.</li>
+  <li>Može da planira scale-in uz PDB, PVC topologiju, lokalne podatke, alternativni kapacitet, rollback i potpunu završnu validaciju.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Node pool povezuje infrastrukturni lifecycle worker mašina sa Kubernetes raspoređivanjem, ali ta dva sloja nisu ista. VKS i Cluster API stvaraju i rotiraju VM-ove prema Cluster topologiji; tek labele, taint-ovi, toleration, affinity, requests, volumenska topologija i topology spread određuju gde aplikacija zaista može da radi. Zbog toga ni zdrav MachineDeployment nije dovoljan dokaz aplikacione dostupnosti, niti je <code>Running</code> Pod dokaz da je završio u nameravanom failure domain-u.
+</p>
+<p>
+  Odgovoran administrator prvo proverava API model, ClusterClass šemu, kvotu i zavisnosti, zatim menja mali i pregledan deo izvora istine, prati reconciliaciju kroz sve slojeve i validira rezultat dokazima. Pogrešna VM klasa može iscrpeti rezervacije, strogo placement pravilo blokirati provisioning, pogrešan taint zaustaviti aplikaciju, a uklanjanje poslednjeg pogodnog pool-a izazvati prekid. Node pool zato nije samo komanda za skaliranje, već odluka o kapacitetu, dostupnosti, trošku, održavanju i oporavku.
+</p>
+<p>
+  Promene ClusterClass dizajna, novih vSphere privilegija, unsupported failure-domain topologije, finalizer intervencije ili orphan resursa eskaliraju se platformskom arhitekti, vSphere administratoru ili Broadcom podršci. Granica dobrog upravljanja je jasna: svaki pool ima dokumentovanu namenu i vlasnika, podržanu deklaraciju, merljiv kapacitet, poznat blast radius i proverljiv rollback pre nego što primi produkcioni workload.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom dokumentacija za vSphere Kubernetes Service, ClusterClass zasnovane VKS klastere, VM klase, worker node pool-ove, skaliranje i failure-domain/DRS raspored; Broadcom Knowledge Base članci za VKS provisioning, scale-in, placement i NotReady incidente; zvanična Cluster API dokumentacija za managed topology, MachineDeployment i lifecycle kontrolere; zvanična Kubernetes dokumentacija za Node objekte, labele, taint i toleration, node affinity, topology spread, resource requests, PodDisruptionBudget, događaje i dijagnostiku schedulera.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-23-verzije-images-i-kubernetes-release.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-25-upgrade-i-uklanjanje-vks-klastera.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

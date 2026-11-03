@@ -1,0 +1,807 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-29-network-policy-debug-mreze.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Network Policy – kontrola mrežne komunikacije između podova | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes Network Policy omogućava kontrolu dolazne i odlazne mrežne komunikacije između Pod-ova, namespace-ova i drugih mrežnih odredišta unutar klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes Network Policy, mrežna politika Kubernetes, kontrola komunikacije između Pod-ova, ingress pravila, egress pravila, podSelector, namespaceSelector, ipBlock, Kubernetes bezbednost, mrežna segmentacija, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-29-network-policy-debug-mreze.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Network Policy – kontrola mrežne komunikacije između podova">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes Network Policy mehanizam za definisanje ingress i egress pravila, mrežnu izolaciju Pod-ova i kontrolu komunikacije između aplikacija.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-29-network-policy-debug-mreze.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-24-network-policy.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Network Policy – kontrola mrežne komunikacije između podova">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-24-network-policy.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-24-network-policy.png"
+           alt="Network Policy – kontrola mrežne komunikacije između podova">
+
+    </a>
+
+
+<div class="page-subtitle">
+  VI. Mreža, DNS i pristup aplikacijama
+</div>
+   <div class="page-subtitle">
+29. NetworkPolicy i dijagnostika mreže – segmentacija, testovi konektivnosti i dokaz uzroka
+</div>
+<p>
+  Kubernetes mrežni model podrazumevano omogućava neposrednu IP komunikaciju između podova bez obzira na to na kom se worker čvoru nalaze. Takav model pojednostavljuje povezivanje distribuiranih aplikacija, ali istovremeno znači da namespace, Service i RBAC sami po sebi ne sprečavaju jedan pod da uspostavi mrežnu vezu sa drugim podom. Namespace obezbeđuje logički opseg Kubernetes objekata, Service stabilnu adresu aplikacije, a RBAC kontroliše pristup Kubernetes API-ju; nijedan od tih mehanizama ne predstavlja mrežni firewall između workload-a.
+</p>
+<p>
+  Resurs <strong>NetworkPolicy</strong> omogućava administratoru da deklarativno odredi koji je dolazni i odlazni saobraćaj dozvoljen za izabrane podove. Standardna Kubernetes politika radi prvenstveno na trećem i četvrtom sloju mrežnog modela: bira izvore i odredišta prema labelama, namespace-ovima ili IP opsezima, a zatim ograničava protokole i portove. Njena najvažnija produkciona uloga jeste segmentacija aplikacija, smanjenje lateralnog kretanja napadača i sprovođenje principa najmanjih privilegija.
+</p>
+<p>
+  Samo postojanje NetworkPolicy objekta ne znači da se pravila zaista primenjuju. Kubernetes API čuva deklaraciju, ali stvarno filtriranje paketa mora da obezbedi instalirani mrežni dodatak, najčešće CNI komponenta sa podrškom za NetworkPolicy. Zbog toga administrator pre svake implementacije mora potvrditi ne samo da API prihvata objekat već i da mrežni sloj klastera podržava i izvršava zahtevanu vrstu politike.
+</p>
+<h3>Uloga NetworkPolicy resursa u Kubernetes mrežnom modelu</h3>
+<p>
+  NetworkPolicy je namespaced resurs iz API grupe <code>networking.k8s.io/v1</code>. Polje <code>spec.podSelector</code> određuje podove na koje se politika odnosi, dok <code>policyTypes</code> navodi da li politika kontroliše dolazni saobraćaj, odlazni saobraćaj ili oba smera. Pravila u sekcijama <code>ingress</code> i <code>egress</code> predstavljaju dozvole. Standardni Kubernetes NetworkPolicy ne koristi eksplicitna pravila tipa „deny”; zabrana nastaje tako što se pod izoluje, a zatim se navedu samo dozvoljeni tokovi.
+</p>
+<p>
+  Pod koji nije izabran nijednom politikom za određeni smer smatra se neizolovanim u tom smeru. Na primer, pod bez ingress politike podrazumevano prihvata dolazni saobraćaj koji mreža može da mu isporuči. Kada ga makar jedna NetworkPolicy izabere za ingress, on postaje ingress-isolated i dozvoljeni su samo tokovi koje dopušta zbir svih ingress politika koje ga biraju. Isto pravilo nezavisno važi za egress.
+</p>
+<p>
+  Politike su <strong>aditivne</strong>. Redosled njihovog kreiranja nije važan, ne postoji prioritet standardnih Kubernetes NetworkPolicy objekata i jedna politika ne može da poništi dozvolu koju daje druga politika. Efektivni skup dozvoljenih konekcija predstavlja uniju pravila svih politika koje biraju pod u datom smeru. Zbog toga naizgled ispravna restriktivna politika može ostati bez efekta ako druga, šira politika već dozvoljava isti tok.
+</p>
+<p>
+  Za uspešnu vezu između dva izolovana poda moraju biti zadovoljena oba kraja komunikacije: egress pravila izvornog poda moraju dozvoliti izlaz, a ingress pravila odredišnog poda moraju dozvoliti ulaz. Dovoljno je da jedan od ta dva uslova nije ispunjen pa da konekcija ne uspe. Ova osobina je naročito važna tokom dijagnostike, jer simptom na klijentu ne pokazuje automatski na kojoj je strani paket blokiran.
+</p>
+<h3>Selektori podova i namespace-ova</h3>
+<p>
+  <code>podSelector</code> u glavnom delu specifikacije bira podove samo unutar namespace-a u kome je NetworkPolicy kreirana. Prazan selektor <code>podSelector: {}</code> bira sve podove tog namespace-a. To je osnova za podrazumevane politike zabrane, ali predstavlja i visokorizičnu promenu ako se primeni bez prethodnog popisa stvarnih komunikacionih tokova.
+</p>
+<p>
+  Unutar ingress i egress pravila izvor ili odredište mogu se definisati pomoću <code>podSelector</code>, <code>namespaceSelector</code>, njihovom kombinacijom ili pomoću <code>ipBlock</code>. Samostalni <code>podSelector</code> odnosi se na podove u istom namespace-u kao politika. Samostalni <code>namespaceSelector</code> bira odgovarajuće namespace-ove i podrazumevano sve podove u njima. Kombinacija oba selektora u istoj stavci bira samo podove sa traženim labelama unutar izabranih namespace-ova.
+</p>
+<p>
+  Važno je razlikovati kombinaciju selektora od dve odvojene stavke liste. Jedna stavka koja sadrži i <code>namespaceSelector</code> i <code>podSelector</code> predstavlja logičko „AND”. Dve stavke, od kojih jedna sadrži namespace selektor, a druga pod selektor, predstavljaju „OR” i mogu dozvoliti znatno širi pristup nego što je administrator nameravao.
+</p>
+<pre><code class="language-yaml">from:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: shop-prod
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: frontend</code></pre>
+<p>
+  Prethodno pravilo dozvoljava samo podove sa labelom <code>app.kubernetes.io/name=frontend</code> koji se nalaze u namespace-u <code>shop-prod</code>. Pouzdana ugrađena labela <code>kubernetes.io/metadata.name</code> olakšava izbor namespace-a po imenu, ali organizacije često dodaju i sopstvene labele kao što su <code>environment=production</code>, <code>tenant=finance</code> ili <code>network-zone=trusted</code>. Takve labele moraju biti kontrolisane procesom upravljanja promenama, jer korisnik koji sme da ih menja potencijalno može promeniti i mrežni pristup.
+</p>
+<h3>Ingress, egress i izolacija podova</h3>
+<p>
+  Ingress u NetworkPolicy terminologiji označava saobraćaj koji ulazi u izabrane podove. Ne treba ga mešati sa Kubernetes Ingress objektom, koji usmerava HTTP i HTTPS zahteve prema servisima. NetworkPolicy ingress može kontrolisati TCP, UDP i SCTP tokove koje podržavaju Kubernetes API i mrežni dodatak, bez obzira na to da li saobraćaj dolazi preko Service-a, Ingress kontrolera, Gateway-a ili direktne pod IP adrese.
+</p>
+<p>
+  Egress pravila kontrolišu veze koje izabrani podovi iniciraju prema drugim podovima, internim servisima ili spoljnim adresama. Uvođenje egress izolacije često otkriva skrivene zavisnosti: DNS rezoluciju, NTP, interne registre, sisteme identiteta, baze podataka, servise za slanje elektronske pošte, proxy servere, telemetry kolektore i spoljne API-je. Zbog toga je egress politika operativno zahtevnija od jednostavne ingress segmentacije.
+</p>
+<p>
+  Politika koja bira sve podove, navodi određeni <code>policyTypes</code>, a nema odgovarajuća pravila predstavlja podrazumevanu zabranu za taj smer:
+</p>
+<pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress-egress
+  namespace: shop-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress</code></pre>
+<p>
+  Nakon primene ove politike svi podovi u namespace-u postaju izolovani u oba smera. Komunikacija se zatim vraća preciznim allow politikama. Ovaj pristup odgovara modelu „default deny, explicit allow”, ali se ne sme uvoditi naslepo u produkciju. Pre promene moraju biti evidentirani tokovi, vlasnici aplikacija, zavisnosti, portovi, protokoli, DNS zahtevi, health provere, monitoring i putanja ulaznog saobraćaja.
+</p>
+<h3>Portovi, protokoli i IP opsezi</h3>
+<p>
+  Polje <code>ports</code> ograničava dozvolu na određeni protokol i port. Ako se protokol izostavi, podrazumeva se TCP. Port može biti numerički ili imenovani port kontejnera, pod uslovom da implementacija mrežnog dodatka pravilno podržava tu semantiku. Numerički portovi su lakši za neposrednu analizu, dok imenovani portovi mogu smanjiti vezivanje politike za konkretnu vrednost kada se aplikacioni manifesti i politike upravljaju koordinisano.
+</p>
+<p>
+  Standardni NetworkPolicy nije aplikacioni proxy i ne razume HTTP putanje, metode, korisničke identitete, SQL operacije ili sadržaj zahteva. Dozvola za TCP port 8080 znači da je mrežna veza prema tom portu dozvoljena; ne znači da je dozvoljen samo određeni REST endpoint. Za Layer 7 kontrolu potrebne su dodatne mogućnosti mrežnog dodatka, service mesh, API gateway ili aplikaciona autorizacija.
+</p>
+<p>
+  <code>ipBlock</code> omogućava definisanje CIDR opsega i opcionih izuzetaka pomoću polja <code>except</code>. Namenjen je prvenstveno adresama izvan klastera. Korišćenje pod IP opsega kroz <code>ipBlock</code> uglavnom nije dobar način identifikacije workload-a, jer su pod adrese dinamične, a ponašanje u prisustvu NAT-a, Service prevođenja adresa i različitih mrežnih implementacija može se razlikovati. Administrator mora proveriti da li politika vidi originalnu ili prevedenu adresu pre nego što na IP identitetu zasnuje bezbednosnu odluku.
+</p>
+<pre><code class="language-yaml">to:
+  - ipBlock:
+      cidr: 203.0.113.0/24
+      except:
+        - 203.0.113.128/25
+  ports:
+    - protocol: TCP
+      port: 443</code></pre>
+<p>
+  Ovaj primer dozvoljava HTTPS egress prema prvoj polovini dokumentacionog opsega <code>203.0.113.0/24</code>, dok izuzima <code>203.0.113.128/25</code>. U stvarnom okruženju dozvoljeni CIDR mora poticati iz zvaničnog inventara mreža. Domen se ne može pouzdano zameniti statičkim IP pravilom ako servis koristi promenljive cloud adrese, CDN ili više lokacija.
+</p>
+<h3>Zavisnost od CNI dodatka i granice standarda</h3>
+<p>
+  Kubernetes definiše API i semantiku NetworkPolicy resursa, ali ne implementira samostalno filtriranje paketa. CNI ili druga mrežna komponenta mora nadgledati NetworkPolicy objekte i prevesti ih u pravila na čvorovima, virtuelnim interfejsima ili eBPF dataplane-u. Implementacije se razlikuju po arhitekturi, vidljivosti, logovanju, performansama, podršci za Windows čvorove i dodatnim funkcijama koje prevazilaze standardni API.
+</p>
+<p>
+  Prva administratorska provera jeste identifikacija aktivnog mrežnog dodatka:
+</p>
+<pre><code class="language-bash">kubectl get pods -n kube-system -o wide
+kubectl get daemonsets -n kube-system
+kubectl get customresourcedefinitions | grep -Ei 'calico|cilium|antrea|network'
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.operatingSystem}{"\n"}{end}'</code></pre>
+<p>
+  Naziv sistemskih podova i prisustvo CRD objekata mogu pomoći u identifikaciji proizvoda, ali konačnu potvrdu treba tražiti u dokumentovanoj arhitekturi klastera i instalacionoj konfiguraciji. Čak i kada dodatak podržava politike, treba proveriti da li je funkcija uključena, da li svi čvorovi imaju zdrav agent i da li postoje poznata ograničenja za korišćenu verziju.
+</p>
+<p>
+  Standardni NetworkPolicy ne rešava sve bezbednosne potrebe. Ne kontroliše pristup Kubernetes API-ju, ne zamenjuje TLS, autentikaciju i autorizaciju aplikacije, ne štiti podatke u mirovanju i ne garantuje identitet procesa unutar kompromitovanog poda. Saobraćaj između kontejnera u istom podu odvija se preko zajedničkog mrežnog prostora i <code>localhost</code> interfejsa, pa standardna pod-orijentisana politika nije granica između tih kontejnera.
+</p>
+<p>
+  Takođe treba računati na specifičnosti saobraćaja koji potiče sa node-a ili se prevodi pre evaluacije pravila. Health provere load balancera, NodePort putanje, <code>hostNetwork</code> podovi, lokalni sistemski agenti i SNAT mogu se ponašati drugačije u zavisnosti od mrežnog dodatka. Takvi tokovi zahtevaju testiranje na stvarnoj platformi, a ne samo proveru validnosti YAML manifesta.
+</p>
+<h3>Planiranje politike u produkcionom okruženju</h3>
+<p>
+  Dobra politika nastaje iz matrice komunikacija, a ne iz nagađanja. Za svaki workload treba evidentirati izvor, odredište, namespace, labele, protokol, port, smer iniciranja veze, poslovnu svrhu i vlasnika. Posebno se evidentiraju infrastrukturne zavisnosti: DNS, monitoring, logovanje, registry, admission i security agenti, backup, upravljanje tajnama i pristup spoljnim servisima.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Izvor</th>
+      <th>Odredište</th>
+      <th>Protokol/port</th>
+      <th>Svrha</th>
+      <th>Očekivana odluka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>frontend</td>
+      <td>backend</td>
+      <td>TCP/8080</td>
+      <td>Aplikacioni API</td>
+      <td>Dozvoli</td>
+    </tr>
+    <tr>
+      <td>backend</td>
+      <td>database</td>
+      <td>TCP/5432</td>
+      <td>PostgreSQL sesija</td>
+      <td>Dozvoli</td>
+    </tr>
+    <tr>
+      <td>svi aplikacioni podovi</td>
+      <td>klasterski DNS</td>
+      <td>UDP i TCP/53</td>
+      <td>DNS rezolucija</td>
+      <td>Dozvoli</td>
+    </tr>
+    <tr>
+      <td>frontend</td>
+      <td>database</td>
+      <td>TCP/5432</td>
+      <td>Neposredan pristup bazi</td>
+      <td>Zabrani</td>
+    </tr>
+    <tr>
+      <td>neautorizovan namespace</td>
+      <td>backend</td>
+      <td>TCP/8080</td>
+      <td>Lateralni pristup</td>
+      <td>Zabrani</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Pre produkcione primene YAML treba proveriti klijentski i serverski, pregledati generisanu razliku i sačuvati postojeće stanje. <code>kubectl diff</code> može vratiti izlazni kod koji označava da razlika postoji, što nije isto što i greška validacije. Promena se prvo testira u reprezentativnom neprodukcijskom okruženju, a zatim uvodi kroz kontrolisani prozor uz spreman rollback i aktivan nadzor aplikacionih grešaka.
+</p>
+<h3>Dijagnostički model: od simptoma do dokaza uzroka</h3>
+<p>
+  Mrežni incident ne treba započeti promenom politike, već reprodukcijom zahteva iz istog mrežnog konteksta iz kog ga aplikacija zaista šalje. Test sa administratorske radne stanice, control-plane čvora ili drugog namespace-a može pratiti drugu DNS, NAT, routing i policy putanju. Zato se najpre beleže izvorni pod i čvor, odredišno ime, Service i port, vreme testa, očekivani odgovor i tačan simptom, a zatim se proverava po jedan sloj.
+</p>
+<table>
+  <thead><tr><th>Simptom</th><th>Najverovatniji sloj</th><th>Prvi dokaz</th></tr></thead>
+  <tbody>
+    <tr><td><code>NXDOMAIN</code> ili ime ne postoji</td><td>Naziv, namespace, Service ili DNS zapis</td><td><code>nslookup</code> punog imena i <code>kubectl get svc</code></td></tr>
+    <tr><td>DNS upit ističe</td><td>DNS egress, DNS Service, CoreDNS ili mrežna putanja</td><td><code>/etc/resolv.conf</code>, UDP i TCP/53 test i stanje CoreDNS-a</td></tr>
+    <tr><td><code>Connection refused</code></td><td>Odredište je dostižno, ali port ne sluša ili je pogrešno mapiran</td><td>Direktan Pod IP test, container port i log aplikacije</td></tr>
+    <tr><td>TCP timeout</td><td>NetworkPolicy, CNI, routing, firewall, MTU ili neispravan čvor</td><td>Poređenje Pod IP/ClusterIP testa i pozitivnog/negativnog policy testa</td></tr>
+    <tr><td>HTTP 4xx ili 5xx</td><td>Mrežna veza postoji; problem je u aplikaciji, autorizaciji ili zavisnosti</td><td>Status, zaglavlja, correlation ID i aplikacioni log</td></tr>
+    <tr><td>Kvar samo na jednom čvoru</td><td>CNI agent, ruta, interfejs, MTU ili dataplane tog čvora</td><td>Raspored podova po čvorovima i log/health mrežnog agenta</td></tr>
+  </tbody>
+</table>
+<p>
+  Redosled provera ide od najmanje invazivnih ka privilegovanim: stanje poda i readiness, DNS ime, Service i EndpointSlice, direktan Pod IP i aplikacioni port, sve politike koje biraju izvor ili odredište, pa tek onda CNI agent, servisni proxy, rute, interfejsi, conntrack, MTU i firewall čvora. Ako Pod IP radi, a ClusterIP ne radi, fokus je na Service selektoru, <code>targetPort</code>, EndpointSlice-u i implementaciji Service VIP-a. Ako ne rade ni Pod IP ni ClusterIP, proveravaju se proces, port, politike i pod-mreža. Uspešan HTTP odgovor dokazuje više od samog ICMP testa: standard NetworkPolicy definiše ponašanje za TCP, UDP i opciono SCTP, dok ponašanje ICMP-a i drugih protokola nije jednoobrazno propisano između dodataka.
+</p>
+<pre><code class="language-bash">kubectl get pod -n shop-prod -o wide --show-labels
+kubectl get svc,endpointslice -n shop-prod
+kubectl get networkpolicy -n shop-prod
+kubectl describe networkpolicy -n shop-prod
+kubectl get events -n shop-prod --sort-by=.metadata.creationTimestamp
+kubectl logs -n shop-prod deployment/backend --since=15m --timestamps</code></pre>
+<p>
+  Ove komande su read-only i bezbedne su za početnu produkcionu trijažu ako nalog već ima odgovarajuća prava. <code>kubectl describe networkpolicy</code> prikazuje deklaraciju i selektore, ali ne dokazuje da je dataplane pravilo programirano. Standardni API nema prenosiv status koji potvrđuje završetak enforcement-a; posle kreiranja ili izmene politike postoji period eventualne konvergencije, pa se vreme promene koreliše sa funkcionalnim testovima i logovima konkretnog CNI dodatka.
+</p>
+<p>
+  Privremeno brisanje svih politika radi „provere” nije prihvatljiv produkcioni test: može otvoriti lateralno kretanje i ukloniti bezbednosnu granicu šire nego što incident zahteva. Bezbednija korekcija je vremenski ograničena, usko selektovana allow politika kroz odobrenu promenu, uz neposredan pozitivan test dozvoljenog toka i negativan test toka koji mora ostati blokiran. Osnovni uzrok se zatim dokumentuje odvojeno od privremenog zaobilaznog rešenja.
+</p>
+<h3>Integrisani praktikum: segmentacija troslojne aplikacije</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Produkciona aplikacija internet prodavnice koristi namespace <code>shop-prod</code> i tri sloja: <code>frontend</code>, <code>backend</code> i PostgreSQL pod <code>database</code>. Bez mrežnih politika svaki pod koji može da rutira do baze može pokušati vezu na port 5432. Cilj promene je da frontend pristupa samo backend servisu na TCP portu 8080, backend bazi na TCP portu 5432, a svi aplikacioni podovi klasterskom DNS servisu. Direktan frontend pristup bazi i pristup iz test namespace-a moraju biti blokirani.
+</p>
+<p>
+  <strong>Referentno okruženje i preduslovi.</strong> Klaster koristi Linux worker čvorove, funkcionalan CoreDNS ili kompatibilan DNS servis i CNI dodatak koji izvršava Kubernetes NetworkPolicy. Administrator koristi direktorijum <code>~/vanilla-k8s-lab/29-network-policy</code>. Potrebna su prava za čitanje namespace-a, podova, servisa, endpoint-a i politika, kao i za kreiranje, izmenu i brisanje objekata u namespace-ovima <code>shop-prod</code> i <code>shop-test</code>. Promena CNI konfiguracije nije deo praktikuma i zahteva odvojena klasterska ovlašćenja.
+</p>
+<ol>
+  <li>
+    <strong>Proveriti identitet, kontekst i prava pristupa.</strong>
+    Pogrešan kubeconfig kontekst može primeniti restriktivnu politiku na pogrešan klaster. Administrator prvo beleži aktivni kontekst i proverava najmanji skup potrebnih ovlašćenja.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl auth can-i get pods -n shop-prod
+kubectl auth can-i create networkpolicies.networking.k8s.io -n shop-prod
+kubectl auth can-i delete networkpolicies.networking.k8s.io -n shop-prod
+kubectl auth can-i create deployments.apps -n shop-prod
+kubectl auth can-i create services -n shop-prod</code></pre>
+    <strong>Validacija:</strong> kontekst i API endpoint moraju odgovarati laboratorijskom klasteru, a svaka potrebna provera mora vratiti <code>yes</code>. Rezultat <code>no</code> nije razlog za traženje cluster-admin naloga; potrebno je zatražiti namespaced ulogu sa nedostajućim glagolom i resursom.
+  </li>
+  <li>
+    <strong>Napraviti radni direktorijum i početne namespace-ove.</strong>
+    Deklarativni manifest čuva se kao dokaz izvedene promene i može se verzionisati.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s-lab/29-network-policy
+cd ~/vanilla-k8s-lab/29-network-policy
+cat &gt; 01-namespaces.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-prod
+  labels:
+    environment: production
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-test
+  labels:
+    environment: test
+EOF
+kubectl apply -f 01-namespaces.yaml</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get namespaces shop-prod shop-test --show-labels</code></pre>
+    Oba namespace-a moraju imati status <code>Active</code>; <code>shop-prod</code> mora sadržati labelu <code>environment=production</code>, a <code>shop-test</code> labelu <code>environment=test</code>.
+  </li>
+  <li>
+    <strong>Implementirati referentnu aplikaciju.</strong>
+    Primer koristi tri Deployment-a i tri ClusterIP servisa. PostgreSQL je laboratorijski pokrenut sa jasno označenom zamenskom lozinkom; u produkciji bi poverljiva vrednost bila isporučena preko odobrenog sistema za tajne, a ne zapisana u manifestu.
+    <pre><code class="language-bash">cat &gt; 02-application.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: shop-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/part-of: shop
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: shop-prod
+spec:
+  selector:
+    app.kubernetes.io/name: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: shop-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: shop
+    spec:
+      containers:
+        - name: api
+          image: hashicorp/http-echo:1.0
+          args:
+            - -listen=:8080
+            - -text=shop-backend-ok
+          ports:
+            - name: api
+              containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: shop-prod
+spec:
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: api
+      port: 8080
+      targetPort: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database
+  namespace: shop-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: database
+        app.kubernetes.io/part-of: shop
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_DB
+              value: shop
+            - name: POSTGRES_USER
+              value: shop_app
+            - name: POSTGRES_PASSWORD
+              value: LAB_ONLY_REPLACE_ME
+          ports:
+            - name: postgres
+              containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: shop-prod
+spec:
+  selector:
+    app.kubernetes.io/name: database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+EOF
+kubectl apply --server-side --dry-run=server -f 02-application.yaml
+kubectl apply -f 02-application.yaml
+kubectl rollout status deployment/frontend -n shop-prod --timeout=120s
+kubectl rollout status deployment/backend -n shop-prod --timeout=120s
+kubectl rollout status deployment/database -n shop-prod --timeout=180s</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get deployments,pods,services -n shop-prod -o wide
+kubectl get endpointslices.discovery.k8s.io -n shop-prod</code></pre>
+    Sva tri Deployment-a moraju imati <code>AVAILABLE 1</code>, podovi stanje <code>Running</code>, a svaki Service najmanje jedan odgovarajući endpoint. Prazan EndpointSlice ukazuje na neusaglašene labele ili nespreman pod, a ne na problem NetworkPolicy mehanizma.
+  </li>
+  <li>
+    <strong>Napraviti kontrolne klijente i potvrditi početno otvoreno stanje.</strong>
+    Dva dugotrajna test poda omogućavaju ponovljive pozitivne i negativne testove bez stalnog kreiranja novih objekata.
+    <pre><code class="language-bash">cat &gt; 03-test-clients.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-client
+  namespace: shop-prod
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/component: test-client
+spec:
+  containers:
+    - name: tools
+      image: nicolaka/netshoot:latest
+      command: ["sh", "-c", "sleep 36000"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unauthorized-client
+  namespace: shop-test
+  labels:
+    app.kubernetes.io/name: unauthorized-client
+spec:
+  containers:
+    - name: tools
+      image: nicolaka/netshoot:latest
+      command: ["sh", "-c", "sleep 36000"]
+EOF
+kubectl apply -f 03-test-clients.yaml
+kubectl wait --for=condition=Ready pod/frontend-client -n shop-prod --timeout=120s
+kubectl wait --for=condition=Ready pod/unauthorized-client -n shop-test --timeout=120s
+kubectl exec -n shop-prod frontend-client -- curl -fsS --connect-timeout 3 http://backend:8080
+kubectl exec -n shop-prod frontend-client -- nc -zvw3 database 5432
+kubectl exec -n shop-test unauthorized-client -- curl -fsS --connect-timeout 3 http://backend.shop-prod.svc.cluster.local:8080</code></pre>
+    <strong>Validacija:</strong> pre izolacije prvi zahtev mora vratiti <code>shop-backend-ok</code>, TCP provera baze mora uspeti, a klijent iz <code>shop-test</code> mora moći da pristupi backend-u. Time se potvrđuje početno stanje i dokazuje da kasniji neuspeh potiče od uvedene politike, a ne od neispravne aplikacije.
+  </li>
+  <li>
+    <strong>Utvrditi DNS selektore pre pisanja egress dozvole.</strong>
+    U mnogim klasterima DNS podovi koriste labelu <code>k8s-app=kube-dns</code>, ali administrator ne sme pretpostaviti naziv ili labelu.
+    <pre><code class="language-bash">kubectl get services -n kube-system --show-labels
+kubectl get pods -n kube-system --show-labels | grep -Ei 'dns|coredns'
+kubectl get service kube-dns -n kube-system -o wide</code></pre>
+    <strong>Validacija:</strong> u ovom referentnom okruženju mora postojati Service <code>kube-dns</code>, a njegovi podovi moraju imati labelu <code>k8s-app=kube-dns</code>. Ako klaster koristi druge labele, sledeći manifest mora se prilagoditi stvarnom inventaru. Pogrešan selektor bi nakon default-deny politike prekinuo DNS i proizveo simptome slične nedostupnom servisu.
+  </li>
+  <li>
+    <strong>Kreirati default-deny i precizne allow politike.</strong>
+    Jedan manifest uvodi osnovnu zabranu za sve podove u <code>shop-prod</code>, dozvoljava DNS, frontend-to-backend i backend-to-database tokove. Backend dobija ingress dozvolu samo od podova sa frontend labelom u istom produkcionom namespace-u. Database prihvata samo backend.
+    <pre><code class="language-bash">cat &gt; 04-network-policies.yaml &lt;&lt;'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress-egress
+  namespace: shop-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: shop-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: shop-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-to-backend
+  namespace: shop-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-database
+  namespace: shop-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-to-database
+  namespace: shop-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: database
+      ports:
+        - protocol: TCP
+          port: 5432
+EOF
+kubectl apply --server-side --dry-run=server -f 04-network-policies.yaml
+kubectl diff -f 04-network-policies.yaml || true
+kubectl apply -f 04-network-policies.yaml</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get networkpolicies -n shop-prod
+kubectl describe networkpolicy -n shop-prod
+kubectl get networkpolicies -n shop-prod -o yaml &gt; network-policies-applied.yaml</code></pre>
+    Mora postojati šest politika. Izlaz <code>describe</code> mora pokazati očekivane pod selektore, smerove i portove. Sačuvani fajl predstavlja tehnički dokaz stvarno prihvaćenih API objekata, ali još ne dokazuje izvršavanje pravila u dataplane-u.
+  </li>
+  <li>
+    <strong>Izvesti pozitivni test dozvoljene aplikacione veze.</strong>
+    Frontend klijent mora i dalje moći da razreši DNS ime i pristupi backend servisu.
+    <pre><code class="language-bash">kubectl exec -n shop-prod frontend-client -- nslookup backend.shop-prod.svc.cluster.local
+kubectl exec -n shop-prod frontend-client -- curl -fsS --connect-timeout 3 http://backend:8080</code></pre>
+    <strong>Validacija:</strong> DNS upit mora vratiti ClusterIP servisa, a HTTP odgovor mora biti <code>shop-backend-ok</code>. Ako DNS ne radi, proveravaju se selektori DNS podova i TCP/UDP port 53. Ako DNS radi, a HTTP ne radi, proveravaju se labele izvornog i odredišnog poda, oba smera politike, Service endpoint-i i port 8080.
+  </li>
+  <li>
+    <strong>Izvesti negativne testove zabranjenih tokova.</strong>
+    Direktan pristup frontend klijenta bazi i pristup backend-u iz <code>shop-test</code> moraju biti blokirani.
+    <pre><code class="language-bash">kubectl exec -n shop-prod frontend-client -- sh -c 'nc -zvw3 database 5432; test $? -ne 0'
+kubectl exec -n shop-test unauthorized-client -- sh -c 'curl -fsS --connect-timeout 3 http://backend.shop-prod.svc.cluster.local:8080; test $? -ne 0'</code></pre>
+    <strong>Validacija:</strong> obe složene komande moraju završiti izlaznim kodom 0 zato što je unutrašnja konekcija očekivano neuspešna. Timeout je čest simptom tihog odbacivanja paketa. Trenutni <code>Connection refused</code> češće ukazuje da je paket stigao do odredišta, ali proces ne sluša na portu; zato se taj simptom ne sme automatski tumačiti kao uspešno blokiranje politikom.
+  </li>
+  <li>
+    <strong>Potvrditi stvaran backend-to-database tok.</strong>
+    Pošto referentni backend kontejner nema klijentske alate za PostgreSQL, privremeni dijagnostički pod dobija istu bezbednosnu labelu kao backend. Time se proverava politika identiteta zasnovana na labeli.
+    <pre><code class="language-bash">kubectl run backend-diagnostic \
+  -n shop-prod \
+  --image=nicolaka/netshoot:latest \
+  --labels=app.kubernetes.io/name=backend,app.kubernetes.io/component=diagnostic \
+  --restart=Never \
+  --command -- sleep 600
+kubectl wait --for=condition=Ready pod/backend-diagnostic -n shop-prod --timeout=120s
+kubectl exec -n shop-prod backend-diagnostic -- nc -zvw3 database 5432</code></pre>
+    <strong>Validacija:</strong> TCP veza mora uspeti. Zatim treba privremeno promeniti samo labelu dijagnostičkog poda i ponoviti test:
+    <pre><code class="language-bash">kubectl label pod backend-diagnostic -n shop-prod app.kubernetes.io/name=untrusted --overwrite
+kubectl exec -n shop-prod backend-diagnostic -- sh -c 'nc -zvw3 database 5432; test $? -ne 0'
+kubectl label pod backend-diagnostic -n shop-prod app.kubernetes.io/name=backend --overwrite</code></pre>
+    Nakon promene na <code>untrusted</code> pristup mora biti blokiran, a vraćanjem labele ponovo dozvoljen. Ovaj test pokazuje da upravljanje labelama predstavlja bezbednosno osetljivu privilegiju.
+  </li>
+  <li>
+    <strong>Pregledati događaje, aplikacione logove i logove mrežnog dodatka.</strong>
+    Standardni NetworkPolicy objekat nema univerzalni status koji potvrđuje da su sva dataplane pravila programirana. Događaji i logovi zato se čitaju zajedno sa funkcionalnim testovima.
+    <pre><code class="language-bash">kubectl get events -n shop-prod --sort-by=.metadata.creationTimestamp
+kubectl logs -n shop-prod deployment/backend --tail=100
+kubectl logs -n shop-prod deployment/database --tail=100
+kubectl get pods -n kube-system -o wide | grep -Ei 'calico|cilium|antrea|weave|kube-router'</code></pre>
+    <strong>Validacija:</strong> aplikacioni logovi ne smeju pokazivati neočekivane talase timeout-a ili neuspelih konekcija. Logovi mrežnog dodatka nalaze se u sistemskim agentima na svakom čvoru, obično u namespace-u <code>kube-system</code>, ali tačan naziv kontejnera i nivo detalja zavise od proizvoda. Preuzimaju se ciljano, na primer:
+    <pre><code class="language-bash">kubectl logs -n kube-system POD_MREZNOG_AGENTA -c KONTEJNER_AGENTA --since=15m</code></pre>
+    Traže se greške pri parsiranju politike, programiranju pravila, sinhronizaciji sa API serverom ili radu agenta na čvoru gde se nalazi problematični pod. Odsustvo zapisa o odbijenom paketu nije dokaz da paket nije blokiran, jer drop logging često nije podrazumevano uključen.
+  </li>
+  <li>
+    <strong>Dokumentovati kriterijume prihvatanja.</strong>
+    Promena je prihvaćena samo ako su ispunjeni svi merljivi uslovi:
+    <ul>
+      <li>sva tri aplikaciona Deployment-a imaju željeni broj raspoloživih replika;</li>
+      <li>DNS rezolucija iz izolovanih podova uspeva preko UDP i, gde alat omogućava, TCP porta 53;</li>
+      <li>frontend dobija HTTP odgovor <code>shop-backend-ok</code> sa backend servisa na portu 8080;</li>
+      <li>backend-identifikovani dijagnostički pod uspostavlja TCP vezu sa bazom na portu 5432;</li>
+      <li>frontend ne može neposredno da pristupi bazi;</li>
+      <li>klijent iz <code>shop-test</code> ne može da pristupi backend-u;</li>
+      <li>nema novih kritičnih aplikacionih ili CNI grešaka tokom najmanje jednog definisanog perioda nadzora;</li>
+      <li>primenjeni manifest, rezultati testova, vreme promene, izvršilac i rollback postupak evidentirani su u change zapisu i repozitorijumu infrastrukture.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Izvesti cleanup ili kontrolisani rollback.</strong>
+    U laboratoriji se brišu svi kreirani objekti. U produkciji se ne briše nasumično samo default-deny politika, jer bi to moglo neprimetno vratiti potpuno otvorenu komunikaciju. Rollback mora vratiti prethodno odobren skup politika iz verzionisanog manifesta.
+    <p><strong>Upozorenje:</strong> sledeće komande brišu laboratorijske namespace-ove i sve objekte u njima. Ne smeju se izvršavati u produkcionom klasteru.</p>
+    <pre><code class="language-bash">kubectl delete pod backend-diagnostic -n shop-prod --ignore-not-found
+kubectl delete -f 04-network-policies.yaml
+kubectl delete -f 03-test-clients.yaml
+kubectl delete -f 02-application.yaml
+kubectl delete -f 01-namespaces.yaml</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get namespaces shop-prod shop-test
+kubectl get networkpolicies --all-namespaces</code></pre>
+    Prva komanda treba da vrati da resursi nisu pronađeni nakon završetka brisanja. Druga ne sme prikazati politike iz obrisanih namespace-ova. Ako je cilj samo rollback politika uz očuvanje aplikacije, primenjuje se prethodno sačuvan i odobren manifest umesto brisanja namespace-a.
+  </li>
+</ol>
+<h3>Tipične greške i dijagnostika</h3>
+<ul>
+  <li><strong>CNI ne izvršava NetworkPolicy.</strong> API prihvata objekte, ali negativni testovi i dalje uspevaju. Proveravaju se tip CNI dodatka, uključene funkcije, zdravlje agenata na svim čvorovima i podrška korišćene verzije.</li>
+  <li><strong>Pogrešan podSelector.</strong> Politika bira nula podova ili pogrešnu grupu. Provera se radi komandom <code>kubectl get pods -n NAMESPACE -l 'SELEKTOR' --show-labels</code>. Prazan rezultat znači da politika nema očekivani cilj.</li>
+  <li><strong>Dozvoljen je samo jedan smer.</strong> Ingress odredišta je dozvoljen, ali egress izvora ostaje blokiran, ili obrnuto. Analiziraju se sve politike koje biraju oba poda.</li>
+  <li><strong>DNS je zaboravljen.</strong> Zahtevi po imenu ne uspevaju, dok test prema direktnoj IP adresi može uspeti. Proveravaju se stvarne labele DNS podova, namespace, UDP/53 i TCP/53.</li>
+  <li><strong>Mešanje AND i OR selektora.</strong> Dve odvojene stavke u <code>from</code> ili <code>to</code> proširuju dozvolu, dok su <code>namespaceSelector</code> i <code>podSelector</code> u jednoj stavci istovremeni uslovi.</li>
+  <li><strong>Pogrešan port.</strong> Service port, targetPort i containerPort nisu pravilno razlikovani. Politika se uobičajeno piše prema odredišnom portu na podu, a stvarno ponašanje se potvrđuje testom preko iste putanje koju koristi aplikacija.</li>
+  <li><strong>Preširoka dodatna politika.</strong> Restriktivna politika izgleda ispravno, ali druga politika sa širim selektorom već dozvoljava tok. Pregledaju se svi NetworkPolicy objekti u namespace-u, jer su pravila aditivna.</li>
+  <li><strong>Oslanjanje na IP adresu nakon NAT-a.</strong> <code>ipBlock</code> ne daje očekivani rezultat zbog SNAT/DNAT obrade. Ispituje se konkretna putanja paketa i dokumentacija mrežnog dodatka, load balancera i Service implementacije.</li>
+  <li><strong>Promena labele zaobilazi segmentaciju.</strong> Korisnik koji može menjati labele workload-a može ga uključiti u dozvoljenu grupu. RBAC i admission kontrola moraju ograničiti izmene bezbednosno značajnih labela.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Inventar komunikacionih tokova.</strong> Proveravaju se aplikaciona dokumentacija, Service i EndpointSlice objekti, flow logovi mrežnog dodatka i telemetry podaci. Inventar se ažurira pre svakog novog servisa, promene porta ili spoljne integracije. Nepoznat ponavljajući tok ili odredište van odobrene matrice zahteva reakciju vlasnika aplikacije i security tima. Dokumentuju se izvor, odredište, port, protokol, svrha i vlasnik u CMDB-u ili repozitorijumu arhitekture. Uspeh se meri procentom produkcionih tokova koji imaju evidentiranu poslovnu svrhu i vlasnika.</li>
+  <li><strong>Kontrola pokrivenosti default-deny politikama.</strong> Najmanje nakon kreiranja namespace-a i tokom periodičnog security pregleda izvršava se <code>kubectl get networkpolicies -A</code> i proverava da li produkcioni namespace ima eksplicitnu ingress i egress osnovu. Namespace bez odobrene politike predstavlja odstupanje. Prva reakcija nije automatsko uvođenje zabrane, već inventar zavisnosti i plan kontrolisane implementacije. Nalaz se evidentira u security backlog-u. Uspeh se meri udelom produkcionih namespace-ova sa validiranom segmentacijom.</li>
+  <li><strong>Validacija selektora nakon promene labela.</strong> Posle svakog Deployment rollout-a ili izmene standarda labeliranja izvršava se <code>kubectl get pods -n NAMESPACE --show-labels</code> i ciljane <code>-l</code> provere za svaku kritičnu politiku. Politika koja iznenada bira nula podova ili neuobičajeno veliki broj podova zahteva zaustavljanje rollout-a i poređenje sa prethodnom verzijom. Rezultat se beleži u CI/CD izveštaju i change zapisu. Uspeh se meri odsustvom incidenata izazvanih neusaglašenim labelama.</li>
+  <li><strong>Pozitivni i negativni sintetički testovi.</strong> Nakon svake izmene politike i periodično prema kritičnosti aplikacije pokreću se testovi dozvoljenih i zabranjenih tokova. Dozvoljen tok koji ne uspe ili zabranjen tok koji uspe predstavlja neposredan razlog za rollback ili izolaciju promene. Rezultati sa vremenom, izvorom, odredištem i izlaznim kodom čuvaju se uz deployment evidenciju. Uspeh se meri stopom prolaska testova i vremenom otkrivanja pogrešne politike.</li>
+  <li><strong>Nadzor zdravlja CNI agenata.</strong> Prate se dostupnost DaemonSet podova, restartovanja, greške sinhronizacije i kašnjenje programiranja pravila. Provera se obavlja kontinuirano monitoring sistemom i ručno nakon promene CNI konfiguracije ili nadogradnje čvora. Nedostupan agent na bilo kom aktivnom worker čvoru ili rast grešaka zahteva proveru node-a, logova i vendor procedure. Incident i zahvaćeni workload-i evidentiraju se u operativnom sistemu. Uspeh se meri dostupnošću agenata i vremenom oporavka.</li>
+  <li><strong>Kontrola privilegija nad NetworkPolicy i labelama.</strong> Periodično i nakon RBAC promene koriste se <code>kubectl auth can-i</code> i pregled Role/RoleBinding objekata. Neočekivano pravo kreiranja politika ili izmene workload-a sa bezbednosnim labelama zahteva ukidanje preširoke dozvole i audit prethodnih promena. Evidencija se čuva u IAM dokumentaciji i revizorskom tragu. Uspeh se meri brojem naloga sa opravdanim pristupom i odsustvom neodobrenih izmena.</li>
+  <li><strong>Verzionisanje i oporavak konfiguracije.</strong> Čuvaju se deklarativni NetworkPolicy manifesti, namespace labele, pripadajući testovi i odobrena matrica tokova. Promene se čuvaju pri svakom commit-u u zaštićenom Git repozitorijumu sa istorijom i pregledom najmanje dve osobe za kritične namespace-ove. Integritet se proverava kontrolom commit potpisa, CI validacijom i serverskim dry-run testom. Probni restore se izvodi u neprodukcijskom namespace-u primenom označene verzije i ponavljanjem pozitivnih i negativnih testova. Backup je upotrebljiv samo ako vraćena politika proizvodi očekivani skup dozvoljenih i zabranjenih tokova.</li>
+</ul>
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Aktivni kubeconfig kontekst i API endpoint provereni su komandama <code>kubectl config current-context</code> i <code>kubectl cluster-info</code>.</li>
+  <li>CNI dodatak i njegova podrška za NetworkPolicy potvrđeni su iz instalacione konfiguracije i zdravlja agenata na svim worker čvorovima.</li>
+  <li>Komunikaciona matrica sadrži izvor, odredište, namespace, labele, protokol, port, poslovnu svrhu i vlasnika svakog dozvoljenog toka.</li>
+  <li>Stvarne labele podova i namespace-ova proverene su ciljanim <code>kubectl get ... --show-labels</code> komandama.</li>
+  <li>DNS Service, DNS pod selektori i dozvole za UDP/TCP port 53 potvrđeni su pre egress izolacije.</li>
+  <li>Manifest je prošao <code>kubectl apply --server-side --dry-run=server</code>, a planirana razlika pregledana je pomoću <code>kubectl diff</code>.</li>
+  <li>Sve politike koje biraju izvorni i odredišni pod pregledane su zbog aditivne semantike pravila.</li>
+  <li>Najmanje jedan dozvoljeni tok potvrđen je uspešnom DNS i aplikacionom proverom.</li>
+  <li>Najmanje jedan zabranjeni tok potvrđen je kontrolisanim negativnim testom sa očekivanim neuspehom veze.</li>
+  <li>Aplikacioni događaji, logovi i zdravlje CNI agenata provereni su nakon primene.</li>
+  <li>Prethodna odobrena verzija politika dostupna je kao testiran rollback.</li>
+  <li>Manifest, rezultati testova, izvršilac, vreme, razlog i ishod promene evidentirani su u Git repozitorijumu i change zapisu.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da NetworkPolicy nije dodatna lista firewall pravila, već deklarativni model izolacije podova čije izvršavanje zavisi od mrežnog dodatka. Mora razlikovati podrazumevano otvoren pod od ingress-isolated i egress-isolated poda, razumeti aditivnost politika i znati da uspešna veza između izolovanih workload-a zahteva dozvolu na oba kraja komunikacije.
+</p>
+<p>
+  Praktična veština ne završava se pisanjem YAML manifesta. Administrator mora da izradi komunikacionu matricu, potvrdi selektore nad stvarnim objektima, sačuva DNS i infrastrukturne zavisnosti, uvede default-deny kontrolisano, izvede pozitivne i negativne testove i razlikuje timeout izazvan odbacivanjem paketa od DNS, Service, EndpointSlice ili aplikacionog problema. Posebno mora razumeti da labele predstavljaju deo bezbednosnog identiteta workload-a i da prava za njihovu izmenu moraju biti ograničena i nadzirana.
+</p>
+<p>
+  Produkcioni rizici nastaju kada se politika primeni bez inventara tokova, kada CNI ne izvršava pravila, kada se zaboravi egress prema DNS-u, kada druga politika proširi dozvolu ili kada se IP adrese tumače bez razumevanja NAT putanje. Standardni NetworkPolicy ostaje Layer 3/4 mehanizam i ne zamenjuje TLS, aplikacionu autentikaciju, RBAC, admission kontrolu, zaštitu tajni niti Layer 7 autorizaciju.
+</p>
+<p>
+  Administrator je odgovoran da promenu sprovede u granicama odobrenih ovlašćenja, da ne menja klasterski mrežni dodatak bez posebnog plana i da eskalira kada ponašanje zavisi od nedokumentovanog CNI ograničenja, hostNetwork saobraćaja, NAT-a, Windows čvorova ili load balancer putanje. Ispravno implementirana politika mora biti ponovljiva, merljivo testirana, verzionisana i povezana sa poslovnim razlogom. Tek tada mrežna segmentacija postaje pouzdana produkciona kontrola, a ne samo objekat prisutan u Kubernetes API-ju.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za NetworkPolicy koncept i networking.k8s.io/v1 API, administrativni vodiči za deklarisanje politika i mrežne dodatke, Kubernetes bezbednosne preporuke, dokumentacija za Service, DNS, namespace i klastersko umrežavanje, kao i zvanične reference CNI implementacija za izvršavanje, monitoring i troubleshooting mrežnih pravila
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-28-ingress-gateway-api.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-30-volume.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>
+
+

@@ -1,0 +1,521 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-46-sistematican-troubleshooting-tanzu-platforme.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Troubleshooting – najčešći problemi sa podovima, mrežom, storage-om i deploy procesom | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Troubleshooting u VMware Tanzu okruženju obuhvata dijagnostiku problema sa Kubernetes podovima, mrežom, storage-om, servisima i procesom isporuke aplikacija.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, troubleshooting, debugging, pods, networking, storage, deployment, kubectl, DevOps, cloud native, TKG, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-46-sistematican-troubleshooting-tanzu-platforme.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Troubleshooting – najčešći problemi sa podovima, mrežom, storage-om i deploy procesom">
+
+  <meta property="og:description"
+        content="Trideset osma lekcija VMware & Tanzu tutorijala – sistematično rešavanje problema u Kubernetes i Tanzu okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-46-sistematican-troubleshooting-tanzu-platforme.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-46-troubleshooting.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Troubleshooting – najčešći problemi sa podovima, mrežom, storage-om i deploy procesom">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-46-troubleshooting.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-46-troubleshooting.png"
+           alt="Troubleshooting – najčešći problemi sa podovima, mrežom, storage-om i deploy procesom">
+
+    </a>
+
+
+   <div class="page-subtitle">
+  XI. Observability, operativni rad i troubleshooting
+</div>
+ <div class="page-subtitle">
+  46. Sistematičan troubleshooting Tanzu platforme – mreža, storage, identitet, klaster i workload
+</div>
+<h3>Zašto troubleshooting zahteva metod, a ne nasumično menjanje konfiguracije</h3>
+<p>Troubleshooting u Kubernetes i Tanzu okruženju nije traženje komande koja će „naterati” aplikaciju da proradi, već kontrolisan proces kojim administrator utvrđuje na kom sloju je nastao problem, prikuplja dokaze, proverava hipotezu, primenjuje najmanju bezbednu promenu i potvrđuje da je uzrok zaista uklonjen. Nasumično restartovanje podova, brisanje resursa ili menjanje više parametara istovremeno može privremeno ukloniti simptom, ali istovremeno uništava dokaze, povećava obim incidenta i otežava pronalaženje osnovnog uzroka.</p>
+<p>U Tanzu okruženju isti korisnički simptom može poticati iz više domena. Poruka „aplikacija nije dostupna” može značiti da kontejner pada, da pod nije spreman, da Service nema endpoint-e, da DNS ne radi, da NetworkPolicy odbacuje saobraćaj, da load balancer nije dobio adresu, da PVC nije montiran ili da rollout nikada nije završio. Zato se dijagnostika vodi od simptoma ka zavisnostima, a ne od omiljene komponente administratora ka nasumično izabranom rešenju.</p>
+<p><strong>Osnovno pravilo je: prvo posmatraj, zatim suzi problem, tek onda menjaj.</strong> Pre promene treba sačuvati vreme početka incidenta, korisnički simptom, pogođeni namespace, verziju aplikacije, poslednju poznatu ispravnu promenu, trenutno stanje objekata i relevantne događaje i logove. Posle promene proveravaju se isti signali kako bi se dokazalo da je intervencija proizvela očekivani rezultat, a ne samo vremenski koincidirala sa oporavkom sistema.</p>
+<h3>Administratorski model dijagnostike po slojevima</h3>
+<p>Efikasan administrator razdvaja problem na kontrolne ravni. Prvi sloj je pristup Kubernetes API serveru i tačnost aktivnog konteksta. Drugi je deklarisano stanje workload-a: Deployment, StatefulSet, Job ili drugi kontroler. Treći je stvarno stanje podova, init kontejnera i aplikacionih procesa. Četvrti obuhvata Service, endpoint-e, DNS, CNI i mrežne politike. Peti obuhvata PersistentVolumeClaim, StorageClass, CSI drajver i infrastrukturu skladištenja. Iznad njih se nalaze GitOps, CI/CD, admission kontrole i Tanzu upravljanje životnim ciklusom, dok su ispod njih node-ovi, container runtime, vSphere resursi, mreža i datastore.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Početna provera</th>
+      <th>Tipičan dokaz problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pristup i kontekst</td>
+      <td><code>kubectl config current-context</code> i <code>kubectl auth can-i</code></td>
+      <td>Pogrešan klaster, istekao pristup, zabrana RBAC-a ili nedostupan API server</td>
+    </tr>
+    <tr>
+      <td>Deployment i rollout</td>
+      <td><code>kubectl rollout status</code> i <code>kubectl describe deployment</code></td>
+      <td>Nedostupne replike, pogrešan image, neuspešan admission ili istekao progress deadline</td>
+    </tr>
+    <tr>
+      <td>Pod i kontejner</td>
+      <td><code>kubectl get pod</code>, <code>describe</code> i <code>logs</code></td>
+      <td>Pending, ImagePullBackOff, CrashLoopBackOff, OOMKilled ili probe failure</td>
+    </tr>
+    <tr>
+      <td>Mreža i Service</td>
+      <td>Selektori, EndpointSlice, DNS i test konekcije</td>
+      <td>Service bez endpoint-a, pogrešan port, neuspešan DNS ili blokirana NetworkPolicy</td>
+    </tr>
+    <tr>
+      <td>Storage</td>
+      <td>PVC status, događaji, StorageClass i CSI komponente</td>
+      <td>Pending claim, neuspešno provisioniranje, attach ili mount greška</td>
+    </tr>
+    <tr>
+      <td>Node i infrastruktura</td>
+      <td><code>kubectl get nodes</code>, uslovi i resursi</td>
+      <td>NotReady, DiskPressure, MemoryPressure, nedostupan runtime, mreža ili datastore</td>
+    </tr>
+  </tbody>
+</table>
+<p>Redosled nije apsolutan. Kada monitoring jasno pokazuje da su svi podovi na jednom node-u istovremeno postali nedostupni, administrator će ranije proveriti node i infrastrukturni sloj. Kada je incident počeo neposredno nakon deploy-a, prvo će analizirati rollout i razliku između nove i prethodne revizije. Metod ostaje isti: činjenice određuju sledeći korak.</p>
+<h3>Početna provera pristupa, konteksta i obima incidenta</h3>
+<p>Pre analize aplikacije mora se potvrditi da se komande izvršavaju nad pravim klasterom i namespace-om. Pogrešan kontekst može dovesti do lažnog zaključka da resurs ne postoji, ali i do ozbiljnije posledice: promene u pogrešnom produkcionom ili razvojnom okruženju. U vSphere Supervisor i vSphere Kubernetes Service okruženjima pristup može uključivati <code>kubectl vsphere login</code>, dok samostalni Tanzu Kubernetes Grid može koristiti kubeconfig koji izdaje management cluster ili platforma za upravljanje. Konkretan postupak zavisi od verzije i modela implementacije, ali provera aktivnog konteksta ostaje obavezna.</p>
+<pre><code class="language-bash">kubectl config current-context
+kubectl config get-contexts
+kubectl cluster-info
+kubectl get namespace
+kubectl auth can-i get pods -n payments-prod
+kubectl auth can-i patch deployments.apps -n payments-prod</code></pre>
+<p>Komande treba da potvrde identitet klastera, dostupnost API servera, postojanje namespace-a i prava potrebna za posmatranje ili odobrenu intervenciju. Greške tipa <code>Forbidden</code> ukazuju na RBAC ili admission ograničenje, dok <code>connection refused</code>, TLS greške i timeout mogu ukazivati na neispravan kubeconfig, DNS, sertifikat, mrežnu putanju ili nedostupan API endpoint. Administrator ne sme zaobići problem korišćenjem šire administratorske uloge bez odobrenja; traži se najmanji skup prava potreban za konkretan incident.</p>
+<p>Obim incidenta zatim se određuje poređenjem namespace-ova, replika, node-ova i verzija. Problem jedne replike na jednom node-u razlikuje se od problema svih replika, svih aplikacija u namespace-u ili celog klastera. Vreme događaja treba povezati sa audit zapisima, Git commit-om, CI/CD izvršenjem, promenom image-a, rotacijom Secret-a, promenom StorageClass-a ili infrastrukturnim događajem u vCenter-u.</p>
+<h3>Identitet, autorizacija, sertifikati i admission sloj</h3>
+<p>Greška pristupa mora se razložiti na autentikaciju, autorizaciju i admission. Autentikacija utvrđuje ko poziva API; autorizacija, najčešće RBAC, odlučuje da li taj identitet sme da izvrši operaciju; admission kontroleri zatim proveravaju ili menjaju zahtev pre upisa objekta. Zbog toga uspešan login ne dokazuje da korisnik ima pravo nad konkretnim namespace-om, a rezultat <code>kubectl auth can-i</code> ne garantuje da će zahtev proći validacionu ili bezbednosnu admission politiku.</p>
+<p>U vSphere Supervisor i aktuelnom vSphere Kubernetes Service modelu <code>kubectl vsphere login</code> autentikuje korisnika prema Supervisor endpoint-u, a dostupni konteksti zavise od prava dodeljenih na vSphere Namespace-u. Promena dozvole se pouzdano proverava novim login-om, jer postojeći kubeconfig i token ne moraju odmah prikazati nov skup konteksta. Nazivi proizvoda i ekrani razlikuju se između vSphere 8 i vSphere 9 izdanja; u starijoj dokumentaciji mogu se pojaviti nazivi Tanzu Kubernetes Grid Service, TKG Service cluster ili guest cluster, dok aktuelni materijal koristi vSphere Kubernetes Service i VKS cluster.</p>
+<pre><code class="language-bash">kubectl config view --minify
+kubectl auth whoami
+kubectl auth can-i get pods -n payments-prod
+kubectl auth can-i --list -n payments-prod
+kubectl get events -n payments-prod \
+  --field-selector=reason=FailedCreate \
+  --sort-by='.metadata.creationTimestamp'</code></pre>
+<p>Sve navedene komande su read-only. <code>kubectl auth whoami</code> nije dostupan na svim starijim Kubernetes serverima; tada se identitet potvrđuje postupkom prijavljivanja, sadržajem aktivnog konteksta i audit zapisom. Kod <code>Unauthorized</code> proveravaju se važenje tokena, kubeconfig credential plugin, vreme na klijentu i platformi, lanac poverenja i API endpoint. Kod <code>Forbidden</code> proveravaju se korisnik ili grupa, Role/ClusterRole i binding, namespace i traženi glagol. Poruke webhook-a, Pod Security upozorenja, zabrana image registra ili potpisa ukazuju na admission sloj, a ne na RBAC.</p>
+<p>TLS grešku ne treba „rešavati” opcijom <code>--insecure-skip-tls-verify</code> u produkciji. Najpre se proveravaju tačno vreme, DNS ime endpoint-a, SAN vrednosti sertifikata, izdavalac i potpuni trust chain. NTP odstupanje može učiniti SAML ili drugi kratkotrajni token nevažećim iako su lozinka i RBAC ispravni. Dekodirane tokene, klijentske ključeve, kubeconfig fajlove i Secret vrednosti ne treba unositi u tiket; dovoljan je redigovan dokaz o identitetu, izdavaocu, vremenu važenja i poruci greške.</p>
+<h3>Klaster i control plane: granica samostalne intervencije</h3>
+<p>Kada <code>kubectl</code> ne može da dođe do API servera, isti simptom može poticati od klijentskog DNS-a ili proxy-ja, firewall-a, load balancer VIP-a, rute do workload mreže, nedostupnog kube-apiserver-a ili gubitka etcd quorum-a. Provera ide spolja ka unutra: razrešavanje FQDN-a, TCP dostupnost porta 6443, TLS odgovor, load balancer i endpoint-i, stanje control plane VM-ova u vCenter-u, pa tek zatim vendor-podržana analiza sistemskih komponenti.</p>
+<pre><code class="language-bash">getent hosts &lt;cluster-api-fqdn&gt;
+curl --connect-timeout 5 -kI https://&lt;cluster-api-fqdn&gt;:6443/readyz
+kubectl get --raw='/readyz?verbose'
+kubectl get nodes -o wide
+kubectl get pods -A -o wide</code></pre>
+<p><strong>Bezbednosna napomena:</strong> <code>curl -k</code> je ovde samo ograničen dijagnostički test TCP/TLS odziva i ne potvrđuje identitet servera; rezultat se mora ponoviti sa ispravnim CA poverenjem. <code>/readyz</code> može zahtevati autorizaciju. Ako VIP odgovara, ali API nije spreman, proveravaju se platformni alarmi i support bundle. Ako VIP ne odgovara, a control plane VM-ovi rade, prioritet su load balancer, ruta, firewall, MTU i workload mreža.</p>
+<p>Supervisor control plane VM-ovi i njihov etcd su platformom upravljane komponente. Broadcom izričito ograničava direktan pristup na prikupljanje dokaza i vendor-odobrene postupke: ručno menjanje manifesta, brisanje podataka, restartovanje ili rekonfigurisanje etcd članova može trajno oštetiti Supervisor i ugroziti podržanost. Gubitak quorum-a, nedostupnost više control plane članova, nekonzistentni endpoint-i ili sumnja na korupciju zahtevaju hitnu eskalaciju i support bundle pre promene. Ista disciplina važi za VKS control plane: node-level komande koriste se samo kada je dokumentacija za instaliranu verziju izričito predviđa ili kada ih vodi Broadcom Support.</p>
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Najmanje invazivan dokaz</th><th>Vlasnik sledećeg koraka</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Samo jedan korisnik nema kontekst</td><td>Novi login, namespace dozvole, <code>auth can-i</code> i audit</td><td>Identity/RBAC administrator</td></tr>
+    <tr><td>Svi korisnici imaju TLS ili token grešku</td><td>DNS, NTP, sertifikat, trust chain i platformni događaji</td><td>Platformski i PKI tim</td></tr>
+    <tr><td>VIP ne odgovara na portu 6443</td><td>DNS, ruta, firewall, load balancer i vCenter stanje VM-ova</td><td>Mrežni i platformski tim</td></tr>
+    <tr><td>VIP odgovara, <code>readyz</code> ne prolazi</td><td>Alarmi, sistemski podovi i support bundle</td><td>Platformski tim/Broadcom Support</td></tr>
+    <tr><td>Više node-ova je <code>NotReady</code></td><td>Node uslovi, zajednički ESXi host, mreža, datastore i vreme događaja</td><td>Platformski, vSphere, mrežni ili storage tim</td></tr>
+  </tbody>
+</table>
+<h3>Problemi sa podovima i kontejnerima</h3>
+<p>Status pod-a je početni signal, ali nije dijagnoza. <code>Pending</code> znači da pod još nije spreman za izvršavanje, ali uzrok može biti neuspešno raspoređivanje, nedostupan PVC, nedovoljan CPU ili memorija, taint bez odgovarajuće tolerancije, affinity pravilo ili ograničenje kvote. <code>ContainerCreating</code> često ukazuje na preuzimanje image-a, kreiranje sandbox-a, CNI konfiguraciju ili mount volumena. <code>ImagePullBackOff</code> znači da je Kubernetes nakon neuspešnog preuzimanja image-a prešao na ponavljanje sa odlaganjem. <code>CrashLoopBackOff</code> znači da se proces pokreće, završava neuspešno i ponovo pokreće; sam status ne govori zašto proces pada.</p>
+<pre><code class="language-bash">kubectl get pods -n payments-prod -o wide
+kubectl describe pod -n payments-prod &lt;pod-name&gt;
+kubectl get events -n payments-prod \
+  --sort-by='.metadata.creationTimestamp'
+kubectl logs -n payments-prod &lt;pod-name&gt; -c payments-api
+kubectl logs -n payments-prod &lt;pod-name&gt; -c payments-api --previous</code></pre>
+<p><code>describe</code> prikazuje uslove pod-a, stanje i poslednje završavanje svakog kontejnera, node, probe, mount-ove i događaje. Događaji su korisni, ali imaju ograničeno vreme čuvanja i mogu se ponavljati, pa nisu zamena za centralizovane logove. Opcija <code>--previous</code> je naročito važna kod CrashLoopBackOff stanja jer prikazuje izlaz prethodne instance kontejnera. Kod više kontejnera mora se navesti tačan kontejner; inače administrator može analizirati sidecar umesto glavne aplikacije.</p>
+<p>Razlog <code>OOMKilled</code> ukazuje da je kontejner premašio memorijski limit ili da je bio pogođen pritiskom memorije. Prva reakcija nije automatsko povećanje limita. Potrebno je uporediti trenutnu i istorijsku potrošnju, aplikacioni profil, heap podešavanja, curenje memorije i kapacitet node-a. Kod probe grešaka proveravaju se putanja, port, protokol, timeout, početno kašnjenje i stvarno vreme inicijalizacije. Readiness probe sprečava slanje saobraćaja nespremnom pod-u; liveness probe može restartovati proces koji je živ, ali spor. Startup probe je prikladna za aplikacije sa dugim pokretanjem jer odlaže aktiviranje liveness i readiness provera.</p>
+<p>Kada standardni image nema shell ili dijagnostičke alate, ne treba menjati produkcioni image samo radi incidenta. Uz odgovarajuća prava može se koristiti <code>kubectl debug</code> sa privremenim ephemeral kontejnerom. Ovaj postupak mora poštovati Pod Security, admission pravila i internu politiku, jer dijagnostički image uvodi dodatni softver i potencijalno šira prava u produkcioni namespace.</p>
+<h3>Scheduling, node i resursni problemi</h3>
+<p>Ako pod nije raspoređen, događaj <code>FailedScheduling</code> obično navodi koji uslov nije ispunjen. Administrator proverava zahteve i limite, slobodne resurse, node selektore, affinity, topology spread, taint-ove, tolerancije i vezu sa volumenom. Zahtev od 4 CPU ne može biti raspoređen na node koji ima dovoljno ukupnog kapaciteta, ali nema 4 slobodna CPU prema scheduler obračunu. Slično tome, PVC sa topološkim ograničenjem može vezati pod za zonu u kojoj nema odgovarajućeg node-a.</p>
+<pre><code class="language-bash">kubectl describe pod -n payments-prod &lt;pending-pod&gt;
+kubectl get nodes
+kubectl describe node &lt;node-name&gt;
+kubectl top nodes
+kubectl top pods -n payments-prod --containers
+kubectl get resourcequota,limitrange -n payments-prod</code></pre>
+<p><code>kubectl top</code> zahteva funkcionalan Metrics API i daje trenutni, a ne istorijski prikaz. Za trendove se koriste monitoring podaci. Node uslovi <code>MemoryPressure</code>, <code>DiskPressure</code>, <code>PIDPressure</code> i <code>Ready</code> pomažu pri razlikovanju aplikacionog od infrastrukturnog problema. Ako je node <code>NotReady</code>, administrator proverava koliko workload-a je pogođeno, da li kontroleri premeštaju podove i da li postoje lokalni ili attach-ovani volumeni koji ograničavaju bezbedan oporavak.</p>
+<p>Pristup node-u, restart kubelet-a, container runtime-a ili mrežnog agenta predstavlja privilegovanu infrastrukturnu intervenciju. Takav postupak se izvodi prema dokumentaciji tačne Tanzu i vSphere verzije i uz podršku platformskog tima. Ručni restart sistemskih komponenti bez analize može izazvati prekid više aplikacija ili prikriti kvar mreže, diska ili virtuelne mašine.</p>
+<h3>Mrežni problemi: Service, DNS, portovi i NetworkPolicy</h3>
+<p>Kada podovi rade, a aplikacija nije dostupna, dijagnostika se nastavlja od aplikacionog procesa ka potrošaču. Najpre se proverava da li aplikacija sluša na očekivanom portu i adresi. Proces koji sluša samo na <code>127.0.0.1</code> neće biti dostupan preko pod IP adrese. Zatim se proveravaju readiness stanje, Service selektor, EndpointSlice objekti, <code>port</code> i <code>targetPort</code>. Service bez endpoint-a najčešće znači da selektor ne odgovara labelama spremnih podova.</p>
+<pre><code class="language-bash">kubectl get pod -n payments-prod --show-labels
+kubectl get service payments-api -n payments-prod -o yaml
+kubectl get endpointslice -n payments-prod \
+  -l kubernetes.io/service-name=payments-api
+kubectl describe service payments-api -n payments-prod</code></pre>
+<p>DNS se testira iz pod-a koji pripada istoj mrežnoj i bezbednosnoj zoni kao stvarni klijent. Uspešno razrešavanje imena ne dokazuje da je aplikacioni port dostupan, a uspešan TCP spoj ne dokazuje da aplikacija vraća ispravan HTTP odgovor. Zbog toga se odvojeno proveravaju DNS, transport i aplikacioni protokol.</p>
+<pre><code class="language-bash">kubectl run netcheck -n payments-prod \
+  --image=curlimages/curl:8.10.1 \
+  --restart=Never --command -- sleep 1800
+
+kubectl exec -n payments-prod netcheck -- \
+  nslookup payments-api.payments-prod.svc.cluster.local
+
+kubectl exec -n payments-prod netcheck -- \
+  curl -sS --connect-timeout 3 \
+  http://payments-api:8080/health/ready</code></pre>
+
+<p>Verzija dijagnostičkog image-a treba da bude dozvoljena, skenirana i po mogućnosti preuzeta iz internog registry-ja. Ako DNS upit ne uspe, proveravaju se CoreDNS podovi, konfiguracija, upstream DNS i mrežna dostupnost DNS servisa. Ako DNS radi, ali konekcija ima timeout, mogući uzroci su NetworkPolicy, CNI, Service dataplane, firewall ili aplikacija koja ne sluša. <code>Connection refused</code> tipično znači da je cilj dostupan, ali na odredišnom portu nema procesa koji prihvata vezu. Timeout češće ukazuje na odbacivanje paketa, nedostupnu putanju ili tiho filtriranje.</p>
+<p>NetworkPolicy ima efekat samo ako je implementira mrežni dodatak korišćen u klasteru. Politike se analiziraju zajedno: pod može biti izolovan za ingress, egress ili oba smera, a dozvole iz više politika se kombinuju. Brisanje svih politika radi testa nije prihvatljiva produkciona metoda. Bezbedniji postupak je privremena, usko ograničena politika sa tačnim namespace i pod selektorima, portom i evidentiranim vremenom uklanjanja.</p>
+<h3>Storage problemi: PVC, provisioniranje, attach i mount</h3>
+<p>Storage incident se deli na četiri faze: izbor i vezivanje volumena, dinamičko provisioniranje, attach uređaja node-u i mount u pod. PVC u stanju <code>Pending</code> zahteva proveru StorageClass-a, provisioner-a, parametara, kvota, topologije i događaja. Vezan PVC ne garantuje da će pod uspešno montirati volumen; problem može nastati u CSI attach ili node mount fazi.</p>
+<pre><code class="language-bash">kubectl get pvc -n payments-prod
+kubectl describe pvc payments-data -n payments-prod
+kubectl get pv
+kubectl get storageclass
+kubectl describe pod -n payments-prod &lt;pod-name&gt;
+kubectl get csidrivers
+kubectl get csinodes</code></pre>
+<p>Događaji <code>ProvisioningFailed</code>, <code>FailedAttachVolume</code> i <code>FailedMount</code> pripadaju različitim fazama i ne rešavaju se istom intervencijom. Administrator proverava da li je StorageClass namenjen datom klasteru, da li postoji podrazumevana klasa kada manifest ne navodi <code>storageClassName</code>, da li datastore ima kapacitet i pristupačnost i da li CSI kontrolerske i node komponente rade. U vSphere okruženju dodatna analiza može zahtevati pregled vCenter zadataka, CNS objekta, datastore-a i Broadcom Knowledge Base postupka za tačnu verziju.</p>
+<p>Brisanje PVC-a je rizično. U zavisnosti od <code>reclaimPolicy</code>, vezani PV i podaci mogu biti trajno obrisani. Pre bilo kakvog brisanja administrator potvrđuje politiku zadržavanja, identitet volumena, backup, poslovnog vlasnika i plan oporavka. Promena StorageClass-a postojećeg PVC-a nije opšti način popravke; često je potrebno napraviti novi PVC, migrirati podatke i kontrolisano prebaciti workload.</p>
+<h3>Problemi sa deploy i rollout procesom</h3>
+<p>Deployment može biti tehnički kreiran, a ipak neuspešan u operativnom smislu. Novi ReplicaSet može imati podove u CrashLoopBackOff stanju, readiness probe može ostati neuspešna, image može biti nedostupan ili scheduler može ostaviti replike u Pending stanju. <code>kubectl rollout status</code> povezuje ove simptome sa napretkom Deployment-a, dok <code>rollout history</code> prikazuje revizije koje Kubernetes čuva u okviru podešenog limita istorije.</p>
+<pre><code class="language-bash">kubectl get deployment payments-api -n payments-prod
+kubectl describe deployment payments-api -n payments-prod
+kubectl rollout status deployment/payments-api \
+  -n payments-prod --timeout=120s
+kubectl rollout history deployment/payments-api -n payments-prod
+kubectl get replicaset -n payments-prod \
+  -l app.kubernetes.io/name=payments-api</code></pre>
+<p>Administrator mora utvrditi ko je vlasnik deklarisanog stanja. Ako resurs kontroliše GitOps, ručna izmena može biti automatski vraćena ili stvoriti drift. Ispravka se tada unosi u Git repozitorijum i prolazi odobreni tok, osim kada incident procedura dopušta hitnu promenu uz naknadnu sinhronizaciju. Ako deploy dolazi iz CI/CD sistema, analiziraju se artefakt, image digest, manifest, admission rezultat i identitet servisnog naloga.</p>
+<p>Rollback je opravdan kada je prethodna revizija poznato ispravna, kompatibilna sa trenutnim podacima i konfiguracijom i kada vraćanje aplikacije smanjuje rizik brže od popravke unapred. Nije bezbedan kada je nova verzija izvršila nepovratnu migraciju baze, promenila format podataka ili zavisi od Secret-a koji više ne postoji. Pre rollback-a proveravaju se release beleške, migracije, kompatibilnost i poslednja poznata funkcionalna revizija.</p>
+<h3>Logovi, događaji i dokazi koji se čuvaju tokom incidenta</h3>
+<p>Kubernetes događaji opisuju odluke i greške kontrolera, scheduler-a, kubelet-a i storage ili mrežnih komponenti. Kontejnerski logovi opisuju ponašanje aplikacije. Audit zapis pokazuje ko je pozvao API, nad kojim objektom i sa kojim rezultatom. Tanzu dijagnostički paketi i platformni logovi dopunjuju sliku kada problem zahvata klaster ili infrastrukturu. Nijedan izvor samostalno nije dovoljan.</p>
+<p>Za svaki incident treba sačuvati izlaz komandi sa vremenom prikupljanja, relevantne YAML objekte uz uklanjanje Secret vrednosti, prethodne i trenutne logove kontejnera, događaje, rollout reviziju, Git commit ili pipeline identifikator i infrastrukturne događaje. Tajne se ne kopiraju u tiket ili chat. Kod Secret objekta dokumentuju se naziv, verzija i vreme promene, ali ne i dekodirana vrednost.</p>
+<p>Za standalone Tanzu Kubernetes Grid odgovarajuća verzija Tanzu CLI-ja može obezbediti diagnostics dodatak i prikupljanje paketa za management ili workload cluster. Nazivi i mogućnosti komandi zavise od izdanja, pa se koriste isključivo prema dokumentaciji instalirane verzije. Kod vSphere Supervisor i vSphere Kubernetes Service okruženja prikupljanje logova može uključivati vCenter interfejs, platformne support bundle procedure i Broadcom Support alate. Dijagnostički paket može sadržati osetljive podatke i mora se čuvati u kontrolisanom repozitorijumu incidenta.</p>
+<h3>Od simptoma do osnovnog uzroka i trajne mere</h3>
+<p>Incident zapis mora razlikovati šest pojmova. <strong>Simptom</strong> je ono što korisnik ili monitoring vidi; <strong>obim</strong> opisuje pogođene korisnike, namespace-ove, klastere i vreme; <strong>posledica</strong> meri poslovni i tehnički uticaj; <strong>neposredni uzrok</strong> je događaj koji je direktno proizveo kvar; <strong>osnovni uzrok</strong> objašnjava zašto su sistem i proces dozvolili da taj događaj izazove incident; <strong>korektivna mera</strong> sprečava ponavljanje ili smanjuje posledicu. Workaround vraća uslugu bez uklanjanja osnovnog uzroka i zato mora imati rok, vlasnika i plan uklanjanja.</p>
+<table>
+  <thead>
+    <tr><th>Faza</th><th>Pitanje</th><th>Dokaz završetka</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Stabilizacija</td><td>Kako ograničiti uticaj najmanjom reverzibilnom promenom?</td><td>SLO signal se oporavlja bez širenja incidenta</td></tr>
+    <tr><td>Potvrda uzroka</td><td>Koji nalaz objašnjava sve ključne simptome i vremensku liniju?</td><td>Hipoteza je potvrđena logom, događajem, metrikom ili kontrolisanim testom</td></tr>
+    <tr><td>Trajna korekcija</td><td>Koja promena uklanja uzrok u deklarisanom izvoru istine?</td><td>Promena je pregledana, testirana, uvedena i merljivo validirana</td></tr>
+    <tr><td>Prevencija</td><td>Koja kontrola ranije otkriva ili sprečava isti obrazac?</td><td>Alarm, policy, test ili runbook ima vlasnika i datum provere</td></tr>
+  </tbody>
+</table>
+<h3>Integrisani praktikum: dijagnostika neuspešnog izdanja aplikacije</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Produkciona aplikacija za obradu plaćanja radi u workload klasteru <code>tkg-prod-01</code>, u namespace-u <code>payments-prod</code>. Deployment <code>payments-api</code> koristi tri replike, interni Service <code>payments-api</code> na portu 8080 i PVC <code>payments-data</code>. Nakon izdavanja verzije <code>2.4.0</code> korisnički zahtevi vraćaju grešku, rollout ne završava, a jedna nova replika ostaje u CrashLoopBackOff stanju. Praktikum namerno povezuje deploy, pod, mrežu i storage proveru, ali menja samo potvrđeni uzrok.</p>
+<p><strong>Cilj.</strong> Utvrditi da li problem potiče od rollout-a, aplikacionog procesa, Service konfiguracije, mrežne politike ili PVC-a; bezbedno vratiti dostupnost; sačuvati dokaze i potvrditi merljive kriterijume prihvatanja.</p>
+<p><strong>Referentno okruženje i preduslovi.</strong> Administrator ima ispravan kubeconfig za <code>tkg-prod-01</code>, pravo čitanja podova, događaja, logova, Deployment-a, Service-a, EndpointSlice i PVC objekata i odobreno pravo za rollback Deployment-a. Postojeći objekti su <code>payments-api</code>, <code>payments-data</code> i NetworkPolicy <code>payments-allow-api</code>. Dijagnostički image <code>registry.example.internal/ops/curl:8.10.1</code> prethodno je skeniran i odobren. Promena je otvorena pod identifikatorom <code>INC-2026-0738</code>.</p>
+<ol>
+  <li>
+    <strong>Potvrditi kontekst, prava i početno vreme.</strong>
+    Ovaj korak sprečava rad u pogrešnom klasteru i utvrđuje da li administrator ima samo prava koja su potrebna.
+    <pre><code class="language-bash">date -Iseconds
+kubectl config current-context
+kubectl cluster-info
+kubectl auth can-i get pods -n payments-prod
+kubectl auth can-i get pods/log -n payments-prod
+kubectl auth can-i patch deployments.apps -n payments-prod</code></pre>
+    <strong>Validacija:</strong> aktivni kontekst mora odgovarati klasteru <code>tkg-prod-01</code>, API server mora odgovoriti, a tri provere ovlašćenja treba da vrate <code>yes</code>. Ako pravo za patch ne postoji, administrator nastavlja dijagnostiku, ali rollback eskalira ovlašćenom deployment timu.
+  </li>
+  <li>
+    <strong>Odrediti obim incidenta i sačuvati početno stanje.</strong>
+    Jednim pregledom povezuju se Deployment, ReplicaSet, podovi, Service i PVC. Izlaz se čuva u direktorijumu incidenta bez Secret podataka.
+    <pre><code class="language-bash">mkdir -p "$HOME/incidents/INC-2026-0738"
+
+kubectl get deployment,replicaset,pod,service,pvc \
+  -n payments-prod -o wide \
+  | tee "$HOME/incidents/INC-2026-0738/initial-state.txt"
+
+kubectl get events -n payments-prod \
+  --sort-by='.metadata.creationTimestamp' \
+  | tee "$HOME/incidents/INC-2026-0738/events-initial.txt"
+
+kubectl rollout history deployment/payments-api \
+  -n payments-prod \
+  | tee "$HOME/incidents/INC-2026-0738/rollout-history.txt"</code></pre> <strong>Validacija:</strong> očekuje se da stari ReplicaSet još ima dostupne replike, novi ReplicaSet revizije za verziju 2.4.0 nema sve dostupne replike, Service postoji, a PVC je prikazan kao <code>Bound</code>. Ako su pogođeni i drugi workload-i ili node-ovi, incident se proširuje na klasterski ili infrastrukturni nivo.
+
+  </li>
+  <li>
+    <strong>Analizirati Deployment i neuspešan pod bez menjanja stanja.</strong>
+    Naziv novog problematičnog pod-a dobija se prema labelama, a zatim se čuvaju opis i logovi prethodne instance kontejnera.
+    <pre><code class="language-bash">kubectl describe deployment payments-api -n payments-prod \
+  | tee "$HOME/incidents/INC-2026-0738/deployment-describe.txt"
+
+kubectl get pods -n payments-prod \
+  -l app.kubernetes.io/name=payments-api \
+  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[0].image,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,PHASE:.status.phase'
+
+FAILED_POD=$(kubectl get pods -n payments-prod \
+  -l app.kubernetes.io/name=payments-api \
+  -o jsonpath='{range .items[?(@.status.containerStatuses[0].restartCount&gt;0)]}{.metadata.name}{"\n"}{end}' \
+  | head -n 1)
+
+kubectl describe pod "$FAILED_POD" -n payments-prod \
+  | tee "$HOME/incidents/INC-2026-0738/failed-pod-describe.txt"
+
+kubectl logs "$FAILED_POD" -n payments-prod \
+  -c payments-api --previous \
+  | tee "$HOME/incidents/INC-2026-0738/failed-pod-previous.log"</code></pre> <strong>Validacija:</strong> promenljiva <code>FAILED_POD</code> mora sadržati naziv pod-a. U scenariju se u prethodnom logu očekuje greška da direktorijum <code>/var/lib/payments/cache</code> nije upisiv, dok <code>describe</code> pokazuje da je kontejner završen sa nenultim kodom. Ako nema prethodnog loga, proveravaju se trenutni log i termination razlog.
+
+  </li>
+  <li>
+    <strong>Proveriti storage bez brisanja PVC-a.</strong>
+    PVC stanje, događaji i pod mount informacije razlikuju problem provisioniranja od aplikacione dozvole unutar već montiranog volumena.
+    <pre><code class="language-bash">kubectl get pvc payments-data -n payments-prod -o wide
+kubectl describe pvc payments-data -n payments-prod \
+  | tee "$HOME/incidents/INC-2026-0738/pvc-describe.txt"
+
+kubectl get pod "$FAILED_POD" -n payments-prod \
+  -o jsonpath='{range .spec.volumes[*]}{.name}{" => "}{.persistentVolumeClaim.claimName}{"\n"}{end}'
+
+kubectl get pod "$FAILED_POD" -n payments-prod \
+  -o jsonpath='{range .spec.containers[?(@.name=="payments-api")].volumeMounts[*]}{.name}{" => "}{.mountPath}{"\n"}{end}'</code></pre> <strong>Validacija:</strong> PVC treba da bude <code>Bound</code>, bez <code>ProvisioningFailed</code>, <code>FailedAttachVolume</code> ili <code>FailedMount</code> događaja, a volumen treba da bude montiran na očekivanoj putanji. To potvrđuje da storage infrastruktura nije primarni uzrok; problem je verovatnije promenjeni security context ili vlasništvo direktorijuma u verziji 2.4.0.
+
+  </li>
+  <li>
+    <strong>Isključiti Service i mrežu kao uzrok korisničkog simptoma.</strong>
+    Proveravaju se labele, Service selektor i EndpointSlice, a zatim se iz odobrenog dijagnostičkog pod-a testiraju DNS i HTTP prema Service-u.
+    <pre><code class="language-bash">kubectl get pod -n payments-prod \
+  -l app.kubernetes.io/name=payments-api --show-labels
+
+kubectl describe service payments-api -n payments-prod
+kubectl get endpointslice -n payments-prod 
+  -l kubernetes.io/service-name=payments-api -o wide
+
+kubectl run netcheck -n payments-prod \
+  --image=registry.example.internal/ops/curl:8.10.1 \
+  --restart=Never --command -- sleep 1800
+
+kubectl wait -n payments-prod --for=condition=Ready \
+  pod/netcheck --timeout=60s
+
+kubectl exec -n payments-prod netcheck -- \
+  nslookup payments-api.payments-prod.svc.cluster.local
+
+kubectl exec -n payments-prod netcheck -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' \
+  --connect-timeout 3 http://payments-api:8080/health/ready</code></pre> <strong>Validacija:</strong> EndpointSlice treba da sadrži najmanje endpoint-e starih spremnih replika, DNS mora vratiti ClusterIP Service-a, a HTTP test treba da vrati <code>200</code>. Time se dokazuje da mreža i Service rade za preostale zdrave replike, iako kapacitet i rollout nisu u prihvatljivom stanju.
+
+  </li>
+  <li>
+    <strong>Izvesti negativni mrežni test.</strong>
+    Test prema namerno pogrešnom portu pokazuje kako se razlikuje funkcionalan Service od porta na kome ništa ne sluša.
+    <pre><code class="language-bash">kubectl exec -n payments-prod netcheck -- \
+  curl -sS --connect-timeout 3 \
+  http://payments-api:65530/health/ready</code></pre>
+    <strong>Validacija:</strong> komanda mora da završi greškom, najčešće <code>Connection refused</code> ili timeout-om, dok test na portu 8080 ostaje uspešan. Ovaj rezultat ne sme biti protumačen kao kvar DNS-a jer je isto ime već uspešno razrešeno.
+  </li>
+  <li>
+    <strong>Potvrditi razliku između revizija i doneti odluku o rollback-u.</strong>
+    Pre promene proverava se image aktivnih ReplicaSet objekata i istorija revizija. Poslovni vlasnik potvrđuje da verzija 2.4.0 nije izvršila nepovratnu migraciju podataka.
+    <pre><code class="language-bash">kubectl get replicaset -n payments-prod \
+  -l app.kubernetes.io/name=payments-api \
+  -o custom-columns='NAME:.metadata.name,REVISION:.metadata.annotations.deployment\.kubernetes\.io/revision,IMAGE:.spec.template.spec.containers[0].image,DESIRED:.spec.replicas,READY:.status.readyReplicas'
+
+kubectl rollout history deployment/payments-api \
+  -n payments-prod --revision=7
+
+kubectl rollout history deployment/payments-api \
+  -n payments-prod --revision=8</code></pre> <strong>Validacija:</strong> revizija 7 treba da koristi poznato ispravnu verziju <code>2.3.6</code>, a revizija 8 problematičnu verziju <code>2.4.0</code>. Rollback se odobrava samo ako je revizija 7 kompatibilna sa trenutnom bazom, Secret-ima i konfiguracijom.
+
+  </li>
+  <li>
+    <strong>Bezbedno vratiti prethodnu reviziju.</strong>
+    <strong>Upozorenje:</strong> rollback menja aktivni workload i može biti nebezbedan posle nepovratnih migracija. U GitOps okruženju najpre se zaustavlja ili koordinira automatsko vraćanje željenog stanja, a trajna ispravka unosi se u Git.
+    <pre><code class="language-bash">kubectl rollout undo deployment/payments-api \
+  -n payments-prod --to-revision=7
+
+kubectl rollout status deployment/payments-api \
+  -n payments-prod --timeout=180s</code></pre> <strong>Validacija:</strong> rollout mora završiti porukom da je Deployment uspešno uveden. Ako timeout istekne, ne ponavlja se rollback naslepo; ponovo se proveravaju podovi, događaji, storage i node uslovi, a incident se eskalira.
+
+  </li>
+  <li>
+    <strong>Izvršiti završnu funkcionalnu proveru.</strong>
+    Proveravaju se broj dostupnih replika, image, restartovanja, endpoint-i i više uzastopnih HTTP zahteva.
+    <pre><code class="language-bash">kubectl get deployment payments-api -n payments-prod
+kubectl get pods -n payments-prod \
+  -l app.kubernetes.io/name=payments-api -o wide
+kubectl get endpointslice -n payments-prod \
+  -l kubernetes.io/service-name=payments-api -o wide
+
+for i in 1 2 3 4 5; do
+kubectl exec -n payments-prod netcheck -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://payments-api:8080/health/ready
+done
+
+kubectl get events -n payments-prod \
+  --sort-by='.metadata.creationTimestamp' 
+  | tail -n 30 \
+  | tee "$HOME/incidents/INC-2026-0738/events-final.txt"</code></pre> <strong>Validacija:</strong> Deployment mora imati tri od tri dostupne replike, svi podovi moraju biti Ready, broj restartovanja novih podova ne sme rasti, EndpointSlice mora sadržati tri spremna endpoint-a, a svih pet HTTP zahteva mora vratiti <code>200</code>.
+
+  </li>
+  <li>
+    <strong>Cleanup i dokumentovanje incidenta.</strong>
+    Dijagnostički pod se uklanja, dok se prikupljeni dokazi i odluke zadržavaju prema politici incidentnog upravljanja.
+    <pre><code class="language-bash">kubectl delete pod netcheck -n payments-prod
+kubectl get pod netcheck -n payments-prod
+
+kubectl get deployment payments-api -n payments-prod -o yaml 
+  | sed '/managedFields:/,$d' 
+> "$HOME/incidents/INC-2026-0738/deployment-final.yaml"</code></pre> <strong>Validacija:</strong> API treba da prijavi da dijagnostički pod više ne postoji. U incident zapisu dokumentuju se uzrok, pogođena verzija, revizija na koju je izvršen rollback, vreme oporavka, validacioni rezultati i korektivna akcija: ispravka vlasništva i security context-a pre ponovnog izdavanja verzije 2.4.0.
+
+  </li>
+</ol>
+<p><strong>Merljivi kriterijumi prihvatanja.</strong> Deployment ima tri dostupne replike najmanje deset minuta; nijedan aplikacioni pod ne povećava restart count; PVC ostaje <code>Bound</code> bez novih attach ili mount grešaka; Service ima tri spremna endpoint-a; pet uzastopnih internih health zahteva vraća HTTP 200; monitoring ne pokazuje novu grešku u stopi zahteva; dijagnostički pod je uklonjen; incident dokument sadrži vremensku liniju, dokaze, uzrok, promenu, validaciju i vlasnika trajne korektivne mere.</p>
+<h3>Tipične greške u troubleshooting postupku</h3>
+<ul>
+  <li><strong>Brisanje problematičnog pod-a pre čuvanja logova.</strong> Novi pod može proraditi na drugom node-u, ali se gubi prethodni log i dokaz koji je razlikovao aplikacioni od infrastrukturnog uzroka.</li>
+  <li><strong>Menjanje više slojeva istovremeno.</strong> Istovremena promena probe, limita, Service selektora i NetworkPolicy onemogućava dokazivanje koja je promena uklonila problem i povećava rizik novog kvara.</li>
+  <li><strong>Tumačenje statusa kao uzroka.</strong> CrashLoopBackOff je obrazac ponovnog pokretanja, Pending stanje čekanja, a ContainerCreating faza pripreme; pravi uzrok se nalazi u događajima, stanju kontejnera, logovima i zavisnostima.</li>
+  <li><strong>Ignorisanje prethodne revizije i vremena promene.</strong> Bez povezivanja incidenta sa image digest-om, Git commit-om, pipeline izvršenjem i audit zapisom lako se analizira pogrešan događaj.</li>
+  <li><strong>Privremeno proširenje prava bez kontrole.</strong> Cluster-admin pristup možda ubrzava intervenciju, ali povećava posledice greške i krši princip najmanjih privilegija. Potrebno je vremenski ograničeno, odobreno i auditovano pravo.</li>
+  <li><strong>Brisanje PVC-a kao pokušaj popravke.</strong> To može trajno ukloniti podatke. Najpre se utvrđuje faza kvara, reclaim politika, backup i identitet infrastrukturnog volumena.</li>
+  <li><strong>Ručna izmena objekta kojim upravlja GitOps.</strong> Kontroler može vratiti staro stanje, pa incident postaje ciklus međusobnog prepisivanja. Hitna promena mora biti koordinisana sa reconciliation procesom.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Voditi standardnu početnu dijagnostiku.</strong> Za svaki incident proveravaju se kontekst, prava, Deployment, podovi, događaji, Service endpoint-i, PVC i node uslovi pomoću odobrene skripte ili runbook-a. Izvršava se odmah po prijavi i posle svake promene. Reakciju zahtevaju nedostupne replike, rast restartovanja, novi warning događaji ili node koji nije Ready. Rezultati se čuvaju u incident sistemu, a uspešnost se meri procentom incidenata sa kompletnim početnim dokazima i vremenom do pravilne klasifikacije sloja kvara.</li>
+  <li><strong>Korelirati incidente sa promenama.</strong> Prate se Kubernetes audit zapisi, Git istorija, CI/CD izvršenja, rollout revizije i vCenter događaji. Korelacija se radi za svako novo pogoršanje i tokom postincidentne analize. Promena neposredno pre incidenta nije automatski uzrok, ali zahteva proveru. Dokumentuju se commit, image digest, izvršilac, vreme i odobrenje. Uspeh se meri mogućnošću da se svaka produkciona revizija poveže sa izvorom i pipeline izvršenjem.</li>
+  <li><strong>Pratiti restartovanja, probe i čekanje rollout-a.</strong> Monitoring i komande <code>kubectl get pods</code>, <code>kubectl rollout status</code> i aplikacione metrike proveravaju se posle svakog deploy-a i kontinuirano kroz alarme. Rast restart count-a, nedostupna replika duža od dogovorenog rollout prozora ili trajni probe failure zahtevaju pauziranje promocije i čuvanje logova. Dokumentuju se revizija i razlog zaustavljanja. Uspešnost se meri procentom neuspešnih izdanja otkrivenih pre korisničkog uticaja.</li>
+  <li><strong>Nadzirati kapacitet node-ova i namespace kvote.</strong> Koriste se istorijske CPU, memorijske, disk i pod metrike, node uslovi, ResourceQuota i LimitRange. Kapacitet se pregleda najmanje nedeljno i pre velikih izdanja. Kontinuirana potrošnja iznad internog praga, česta evikcija ili FailedScheduling zahtevaju analizu zahteva, skaliranja i kapaciteta, ne automatsko povećavanje svih limita. Odluke se beleže u kapacitetskom planu, a uspeh se meri smanjenjem incidenata izazvanih iscrpljenjem resursa.</li>
+  <li><strong>Kontrolisati zdravlje storage lanca.</strong> Prate se vreme provisioniranja PVC-a, attach i mount greške, CSI komponente, datastore kapacitet i dostupnost. Provera se radi kontinuirano alarmima i posle storage ili vSphere održavanja. PVC koji ostane Pending iznad definisanog SLO-a ili ponovljene CSI greške zahtevaju proveru događaja i eskalaciju storage timu. Beleže se PVC, PV, StorageClass, node, datastore ili CNS identifikator i vreme. Uspeh se meri vremenom provisioniranja i stopom uspešnih mount operacija.</li>
+  <li><strong>Čuvati aplikacione podatke i manifestno stanje prema planu oporavka.</strong> Backup obuhvata podatke aplikacije, potrebne Kubernetes objekte, konfiguraciju u Git-u i metapodatke potrebne za rekonstrukciju; Secret materijal čuva se samo u odobrenom zaštićenom sistemu. Učestalost proizlazi iz RPO-a, kopije se čuvaju u odvojenom bezbednosnom domenu, a integritet se proverava statusom backup posla, checksum-om gde je primenljivo i periodičnim restore testom u izolovanom namespace-u ili klasteru. Upotrebljiv backup potvrđuje aplikacija koja posle probnog restore-a uspešno prolazi funkcionalni test i proveru konzistentnosti podataka. Rezultat se evidentira u registru backup i restore testova.</li>
+  <li><strong>Održavati verzionisane runbook dokumente.</strong> Runbook sadrži početne provere, bezbedne komande, tačke zaustavljanja, eskalacione kontakte, dozvoljene rollback postupke i kriterijume uspeha. Pregleda se posle svakog većeg incidenta, promene Tanzu ili Kubernetes verzije i najmanje kvartalno. Nevažeća komanda ili zastareo naziv proizvoda zahteva neposrednu ispravku. Dokumentuje se vlasnik, verzija, datum testa i podržano okruženje, a uspeh se meri kroz vežbe u kojima drugi administrator može pratiti postupak bez neplaniranih privilegija.</li>
+</ul>
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Potvrđen je aktivni kubeconfig kontekst i identitet ciljnog klastera komandama <code>kubectl config current-context</code> i <code>kubectl cluster-info</code>.</li>
+  <li>Komandom <code>kubectl auth can-i</code> potvrđena su samo prava potrebna za čitanje i odobrenu promenu u pogođenom namespace-u.</li>
+  <li>Greška pristupa razvrstana je kao autentikaciona, autorizaciona, TLS/trust ili admission greška; nije zaobiđena nesigurnom opcijom ili trajno proširenim privilegijama.</li>
+  <li>Kod nedostupnog API-ja odvojeno su provereni DNS, port 6443, TLS odgovor, VIP/load balancer, control plane spremnost i vSphere stanje, bez nedokumentovane promene na upravljanim control plane VM-ovima.</li>
+  <li>Sačuvani su početno vreme, stanje Deployment-a, podova, događaja, Service-a, EndpointSlice i PVC-a pre prve promene.</li>
+  <li>Za svaki neispravan pod pregledani su <code>describe</code>, trenutno stanje kontejnera, termination razlog i <code>logs --previous</code> kada postoji restartovanje.</li>
+  <li>Service selektor odgovara labelama podova, a EndpointSlice sadrži očekivani broj spremnih endpoint-a.</li>
+  <li>DNS, TCP ili HTTP test izvršen je iz odgovarajuće mrežne zone i rezultat je protumačen odvojeno za svaki sloj.</li>
+  <li>PVC je proveren kroz status i događaje; pre bilo kakvog brisanja potvrđeni su reclaim politika, backup i plan oporavka.</li>
+  <li>Rollout revizija povezana je sa image digest-om, Git commit-om ili CI/CD izvršenjem.</li>
+  <li>Pre rollback-a potvrđena je kompatibilnost prethodne verzije sa bazom, konfiguracijom, Secret-ima i formatom podataka.</li>
+  <li>Posle intervencije potvrđeni su broj dostupnih replika, stabilan restart count, endpoint-i, funkcionalni zahtevi i odsustvo novih kritičnih događaja.</li>
+  <li>Privremeni dijagnostički podovi, dodatne politike i pristupi uklonjeni su nakon validacije.</li>
+  <li>Incident zapis sadrži simptom, obim, dokaze, osnovni uzrok, odobrenu promenu, rezultate validacije, vreme oporavka i vlasnika trajne korektivne mere.</li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<p>Lekcija je savladana kada administrator može da dobije prijavu „aplikacija ne radi”, bez unapred poznatog uzroka, i da dokumentovano: potvrdi pravi klaster i najmanja potrebna prava; klasifikuje obim; formira vremensku liniju; odvoji autentikaciju, RBAC i admission; proveri rollout, pod, node, Service, DNS, NetworkPolicy i storage lanac; prepozna kada je control plane problem izvan granice samostalne intervencije; sačuva dokaze pre promene; izabere najmanju reverzibilnu korekciju; validira tehnički i korisnički oporavak; ukloni privremene resurse; i zabeleži osnovni uzrok, workaround, trajnu meru, vlasnika i rok.</p>
+<h3>Zaključak</h3>
+<p>Troubleshooting Kubernetes i Tanzu okruženja zasniva se na sposobnosti administratora da sistem posmatra kao lanac zavisnosti, a ne kao skup nepovezanih objekata. Pod koji pada može biti posledica aplikacionog procesa, pogrešne konfiguracije, probe, nedostatka resursa, storage dozvole ili node problema. Nedostupan Service može poticati od selektora, readiness stanja, portova, DNS-a, NetworkPolicy ili mrežne infrastrukture. Neuspešan rollout može biti posledica bilo kog od tih slojeva, ali i admission kontrole, GitOps pomirenja ili nekompatibilne aplikacione promene.</p>
+<p>Nakon ove lekcije administrator treba da ume da potvrdi kontekst i ovlašćenja, odredi obim incidenta, prikupi događaje i logove pre izmene, razlikuje simptome pod-a, testira Service i DNS iz odgovarajuće zone, utvrdi fazu storage kvara i proveri rollout revizije. Treba da ume da primeni najmanju odobrenu promenu, bezbedno izvrši rollback samo kada je kompatibilnost potvrđena, validira oporavak merljivim testovima i ukloni privremene dijagnostičke resurse.</p>
+<p>Produkcioni rizik ne nastaje samo zbog tehničkog kvara već i zbog nekontrolisane intervencije. Restart sistemske komponente, brisanje PVC-a, promena mrežne politike, zaobilaženje GitOps toka ili korišćenje cluster-admin prava mogu proširiti incident i ugroziti podatke. Administrator mora znati granicu sopstvenog ovlašćenja: kvar control plane-a, ponovljene CSI ili CNI greške na više node-ova, problem vSphere infrastrukture, nepoznata korupcija podataka, nekompatibilna migracija ili postupak koji zahteva vendor-specifičnu intervenciju predstavljaju razlog za pravovremenu eskalaciju platformskom, mrežnom, storage, aplikacionom ili Broadcom Support timu.</p>
+<p>Dobro završen incident nije samo sistem koji ponovo odgovara. To je incident za koji postoje dokazi o uzroku, kontrolisana promena, potvrđen funkcionalni rezultat, očuvan audit trag, ažuriran runbook i korektivna mera koja smanjuje verovatnoću ponavljanja.</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za dijagnostiku podova, servisa, node-ova, resursa, audit zapisa i container runtime-a; Broadcom administrativni i troubleshooting vodiči za Tanzu Kubernetes Grid, vSphere Supervisor i vSphere Kubernetes Service; Broadcom Knowledge Base članci za mrežne, storage, upgrade, pristupne i dijagnostičke probleme; Tanzu i kubectl CLI reference, CSI i monitoring dokumentacija
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-47-lifecycle-i-nadogradnja-cele-platforme.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

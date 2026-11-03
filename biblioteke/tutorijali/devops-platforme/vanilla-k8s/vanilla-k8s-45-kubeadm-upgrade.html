@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kontrolisana kubeadm nadogradnja – pre-check, redosled čvorova, validacija i rollback odluka | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako se bezbedno planira i izvodi kubeadm nadogradnja Kubernetes klastera: pre-check, upgrade plan, redosled control-plane i worker čvorova, drain, validacija, troubleshooting i rollback odluka.">
+
+  <meta name="keywords"
+        content="kubeadm upgrade, Kubernetes nadogradnja, kubeadm upgrade plan, kubeadm upgrade apply, kubeadm upgrade node, kubectl drain, control plane upgrade, worker node upgrade, rollback Kubernetes, etcd backup, version skew, cgroups v2, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-45-kubeadm-upgrade.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+  <meta property="og:locale"
+        content="sr_RS">
+  <meta property="og:type"
+        content="article">
+  <meta property="og:title"
+        content="Kontrolisana kubeadm nadogradnja – pre-check, redosled čvorova, validacija i rollback odluka">
+  <meta property="og:description"
+        content="Planirajte i izvedite kontrolisanu kubeadm nadogradnju uz dokazivo početno stanje, bezbedan redosled čvorova, drain, validaciju svake etape i jasnu rollback granicu.">
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-45-kubeadm-upgrade.html">
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-45-kubeadm-upgrade.png">
+  <meta property="og:image:type"
+        content="image/png">
+  <meta property="og:image:width"
+        content="1200">
+  <meta property="og:image:height"
+        content="630">
+  <meta property="og:image:alt"
+        content="Kontrolisana kubeadm nadogradnja Kubernetes klastera">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-45-kubeadm-upgrade.png"
+       target="_blank"
+       rel="noopener">
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-45-kubeadm-upgrade.png"
+           alt="Kontrolisana kubeadm nadogradnja Kubernetes klastera">
+    </a>
+
+    <div class="page-subtitle">
+      X. Lifecycle, nadogradnje i oporavak klastera
+    </div>
+    <div class="page-subtitle">
+      45. Kontrolisana kubeadm nadogradnja – pre-check, redosled čvorova, validacija i rollback odluka
+    </div>
+
+    <p>
+      Nadogradnja Kubernetes klastera nije paketna operacija koja se istovremeno pokreće na svim serverima. Ona je kontrolisana promena distribuiranog sistema u kome se tokom ograničenog vremena namerno pojavljuju različite, ali podržane verzije API servera, kontrolera, <code>kubelet</code>-a i dodataka. Uspeh zato ne znači samo da je komanda <code>kubeadm upgrade</code> završila kodom 0. Potrebno je dokazati da su API i etcd zdravi, da scheduler i kontroleri rade, da svi nodovi ponovo postaju <code>Ready</code>, da mreža, DNS, storage i kritični workload-i zadržavaju funkciju i da je promena ostala unutar unapred definisanih granica rizika.
+    </p>
+    <p>
+      Lekcija se neposredno oslanja na inventar i matricu kompatibilnosti iz lekcije 43 i na PKI i kubeconfig lifecycle iz lekcije 44. Ovde se ti dokazi pretvaraju u change plan i izvršnu proceduru za klaster koji je napravljen i kojim se upravlja pomoću <code>kubeadm</code>-a. Detaljan etcd snapshot, restore, quorum i povratak kontrolne ravni ostaju tema lekcije 46; u ovoj lekciji se utvrđuje kada se upgrade može bezbedno nastaviti ili ponoviti, a kada je potreban formalni disaster recovery.
+    </p>
+
+    <div class="important-note">
+      <strong>Granica primene:</strong> postupak važi za self-managed kubeadm klastere sa static Pod kontrolnom ravni i stacked ili eksternim etcd-om. Managed Kubernetes servis, komercijalna distribucija ili drugačiji bootstrap alat imaju sopstveni orkestrator, redosled i podržanu rollback proceduru. Komande iz ove lekcije ne treba mešati sa procedurom provajdera.
+    </div>
+
+    <h3>Nadogradnja kao kontrolisana promena stanja</h3>
+    <p>
+      <code>kubeadm</code> upravlja konfiguracijom kontrolne ravni, lokalnim static Pod manifestima, kubelet konfiguracijom i podrazumevanim dodacima CoreDNS i kube-proxy. Ne nadograđuje operativni sistem, kernel, container runtime, CNI/CSI dodatke ni aplikacione workload-e. Takođe ne rešava automatski uklonjene API verzije, ne garantuje kapacitet za evikciju Pod-ova i ne pretvara neproveren backup u upotrebljiv recovery plan. Zato se promena deli na faze sa kontrolnim tačkama, a svaka naredna faza počinje tek kada je prethodna dokazano uspešna.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Faza</th><th>Promena</th><th>Minimalni dokaz pre nastavka</th><th>Tačka odluke</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Planiranje</td><td>Nema promene klastera; biraju se putanja, patch nivo i prozor.</td><td>Kompatibilnost svih zavisnosti, release notes, odobren change i recovery plan.</td><td>Go ili odlaganje.</td></tr>
+        <tr><td>Pre-check</td><td>Read-only provere i backup; eventualno priprema image-a i paketa.</td><td>Zdrav control plane, etcd quorum, validni sertifikati, dovoljan kapacitet i testiran restore.</td><td>Go/No-Go pre prve mutacije.</td></tr>
+        <tr><td>Prvi control-plane</td><td><code>kubeadm</code>, static Pod manifesti, mogući etcd i sertifikati, zatim kubelet.</td><td>API dostupan preko endpointa i direktno, komponentni Pod-ovi zdravi, etcd i osnovni workload test prolaze.</td><td>Nastaviti ili stabilizovati.</td></tr>
+        <tr><td>Ostali control-plane</td><td>Instance se menjaju jedna po jedna pomoću <code>kubeadm upgrade node</code>.</td><td>Prethodna instanca potpuno zdrava; quorum i load balancer ne pokazuju degradaciju.</td><td>Nastaviti, pauzirati ili vratiti saobraćaj.</td></tr>
+        <tr><td>Worker nodovi</td><td>Drain, kubeadm node faza, kubelet/kubectl paket, restart i uncordon.</td><td>Node <code>Ready</code>, CNI/CSI zdravi, workload-i dostupni, nema neočekivanih evikcija.</td><td>Nastaviti sledeći batch.</td></tr>
+        <tr><td>Zatvaranje</td><td>Uklanjanje privremenih mera i formalna validacija.</td><td>Verzije, SLO, događaji, logovi i funkcionalni testovi stabilni tokom observation period-a.</td><td>Zatvoriti change ili otvoriti problem/RCA.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Upstream podržava prelaz na sledeću minor verziju ili na noviji patch iste minor grane; preskakanje minor verzija nije podržano. Ako je klaster na <code>1.34.z</code>, put do <code>1.36.y</code> ima najmanje dve zasebne promene: najpre poslednji odgovarajući patch grane 1.35, puna validacija i observation period, a zatim 1.36. Za svaki korak koriste se dokumentacija i release notes baš te ciljne grane, jer se zahtevi paketa, podrazumevane vrednosti i poznati problemi menjaju.
+    </p>
+
+    <h3>Pre-check: uslovi koji moraju biti dokazani pre promene</h3>
+    <p>
+      Pre-check nije samo izlaz komande <code>kubeadm upgrade plan</code>. On objedinjuje organizacionu spremnost, zdravlje klastera, kompatibilnost infrastrukture i sposobnost oporavka. Izvodi se dovoljno rano da blokirajući nalaz može biti otklonjen, a zatim ponavlja neposredno pre maintenance prozora kako bi se otkrila promena početnog stanja.
+    </p>
+
+    <ul>
+      <li><strong>Putanja i podrška:</strong> ciljna puna patch verzija je podržana; ne preskače se minor; <code>kubeadm</code>, kubelet, kubectl, etcd, runtime, CNI, CSI, CoreDNS, Ingress/Gateway, operatori i webhook-i nalaze se u preseku zvaničnih matrica.</li>
+      <li><strong>Stanje:</strong> svi očekivani nodovi su <code>Ready</code>, control-plane static Pod-ovi rade na svim instancama, nema nerešenih kritičnih alarma, a poslednji incident i change su zatvoreni ili eksplicitno prihvaćeni.</li>
+      <li><strong>Kapacitet i dostupnost:</strong> preostali nodovi mogu prihvatiti eviktovane Pod-ove; PDB, anti-affinity, topology spread, quota, lokalni storage i singleton workload-i pregledani su pre drain-a.</li>
+      <li><strong>Oporavak:</strong> postoji svež, proveren etcd snapshot i application backup, kopije kubeadm konfiguracije i PKI materijala su zaštićene, a poznati su RTO, RPO, vlasnik odluke i tačan recovery runbook.</li>
+      <li><strong>Operativa:</strong> obezbeđeni su out-of-band pristup, privilegije, paketni repozitorijum, image registry, slobodan disk, stabilno vreme/DNS/mreža, komunikacioni kanal, monitoring i zabrana paralelnih promena.</li>
+    </ul>
+
+    <p>
+      Sledeće komande su read-only i izvršavaju se sa odobrene administratorske radne stanice. One ne zamenjuju inventar iz lekcije 43, već potvrđuju da se odobrena početna slika nije promenila.
+    </p>
+
+    <pre><code class="language-bash">kubectl config current-context
+kubectl version -o yaml
+kubectl get nodes -o wide
+kubectl get --raw='/readyz?verbose'
+kubectl -n kube-system get pods -o wide
+kubectl get pdb -A
+kubectl get events -A --sort-by='.lastTimestamp'
+kubectl get apiservices
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations</code></pre>
+
+    <p>
+      Endpoint <code>/readyz?verbose</code> potvrđuje skup internih API server provera, ali jedan uspešan odgovor kroz load balancer ne dokazuje zdravlje svake HA instance. Zato se proveravaju static Pod-ovi po nodu, load-balancer backend health i, kada je odobreno, direktan lokalni endpoint svake instance. Događaji imaju ograničen retention i ne predstavljaju dugoročni audit trag; korelišu se sa monitoringom, <code>journalctl</code> i runtime logovima u vremenskom opsegu promene.
+    </p>
+
+    <h4>Verzija paketa, repozitorijum i konfiguracija</h4>
+    <p>
+      Community repozitorijum <code>pkgs.k8s.io</code> organizovan je po minor granama. Za novu minor verziju mora se omogućiti odgovarajući repozitorijum pre instalacije; istorijski <code>apt.kubernetes.io</code> i <code>yum.kubernetes.io</code> repozitorijumi su zamrznuti od 2023. i ne predstavljaju aktuelnu putanju. U produkciji se konkretna verzija prvo proverava, zatim eksplicitno navodi pri instalaciji i ponovo pin-uje/hold-uje da nenamerna opšta OS nadogradnja ne promeni kubeadm ili kubelet.
+    </p>
+
+    <pre><code class="language-bash"># Debian/Ubuntu: read-only pregled dostupnih verzija iz već odobrenog repozitorijuma.
+sudo apt-get update
+sudo apt-cache madison kubeadm
+apt-cache policy kubeadm kubelet kubectl
+
+# RPM sistemi sa DNF: read-only pregled kandidata.
+sudo dnf list --showduplicates kubeadm --disableexcludes=kubernetes
+
+# Lokalna verzija i aktivna kubeadm konfiguracija.
+kubeadm version -o short
+sudo kubeadm config view
+sudo kubeadm certs check-expiration</code></pre>
+
+    <p>
+      <code>kubeadm config view</code> i <code>certs check-expiration</code> čitaju konfiguraciju i sertifikate, ali izlaz se čuva kao operativno osetljiv podatak. <code>kubeadm upgrade apply</code> i <code>kubeadm upgrade node</code> podrazumevano obnavljaju sertifikate kojima kubeadm upravlja na tom nodu; odluka da se koristi <code>--certificate-renewal=false</code> mora biti usklađena sa politikom iz lekcije 44, naročito kada organizacija ima spoljašnji CA ili zaseban renewal prozor.
+    </p>
+
+    <h4>Plan, diff i dry-run</h4>
+    <p>
+      Na prvom control-plane nodu, koji ima <code>/etc/kubernetes/admin.conf</code>, najpre se instalira ciljna verzija samo paketa <code>kubeadm</code>. Time se još ne menjaju Kubernetes control-plane komponente. Zatim <code>kubeadm upgrade plan</code> proverava dostupnost API-ja, zdravlje i version skew, prikazuje moguće ciljeve i stanja komponentnih konfiguracija. Verzija se navodi eksplicitno kada se želi izbeći oslanjanje na mrežno otkrivanje kandidata.
+    </p>
+
+    <pre><code class="language-bash"># Primer promenljive; zameniti stvarnom odobrenom punom verzijom.
+TARGET_VERSION='v1.36.x'
+
+sudo kubeadm upgrade plan "${TARGET_VERSION}"
+sudo kubeadm upgrade diff "${TARGET_VERSION}"
+sudo kubeadm upgrade apply "${TARGET_VERSION}" --dry-run</code></pre>
+
+    <p>
+      <code>upgrade diff</code> prikazuje očekivane razlike static Pod manifesta, a <code>--dry-run</code> simulira faze bez trajne promene željenog stanja. Nijedna od tih provera nije garancija da će image pull, restart, webhook ili infrastrukturna zavisnost proći u realnom trenutku. Flag-ovi <code>--ignore-preflight-errors=all</code>, <code>--force</code>, <code>--allow-experimental-upgrades</code> i <code>--allow-release-candidate-upgrades</code> nisu prečice za redovnu produkcionu promenu. Pojedinačno ignorisanje provere dopušteno je samo kada je razlog dokazan, rizik prihvaćen i kompenzaciona kontrola zapisana.
+    </p>
+
+    <h3>Redosled: prvi control-plane, ostale instance, pa worker nodovi</h3>
+    <p>
+      Zvanični tok je namerno asimetričan. Prvi control-plane node izvršava klastersku operaciju <code>kubeadm upgrade apply</code>. Ostale control-plane instance zatim lokalno usklađuju svoje manifeste pomoću <code>kubeadm upgrade node</code>. Worker nodovi dolaze posle kontrolne ravni, jedan po jedan ili u malim batch-evima čiji paralelizam ne prelazi raspoloživi kapacitet i dozvoljene PDB prekide.
+    </p>
+
+    <table>
+      <thead><tr><th>Red</th><th>Lokacija</th><th>Kubeadm radnja</th><th>Zašto baš tako</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Izabrani prvi control-plane node</td><td><code>kubeadm upgrade apply v1.xx.y</code></td><td>Pokreće klasterske faze, konvertuje konfiguraciju i postavlja ciljnu verziju.</td></tr>
+        <tr><td>2</td><td>Svaki dodatni control-plane, sekvencijalno</td><td><code>kubeadm upgrade node</code></td><td>Preuzima ClusterConfiguration i regeneriše lokalne control-plane i kubelet konfiguracije.</td></tr>
+        <tr><td>3</td><td>Worker nodovi po odobrenom batch-u</td><td><code>kubeadm upgrade node</code></td><td>Preuzima i prilagođava kubelet konfiguraciju; nema lokalne control-plane manifeste.</td></tr>
+        <tr><td>4</td><td>Svaki node tokom svoje etape</td><td>Upgrade kubelet/kubectl paketa, restart kubelet-a</td><td>Kubeadm ne nadograđuje OS paket kubelet-a umesto administratora.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Od v1.28 kubeadm podrazumevano čeka da sve control-plane instance budu nadograđene pre upgrade-a kube-proxy i CoreDNS dodataka. Zato se poslednja control-plane instanca ne pokreće dok sve prethodne nisu potpuno završile i prošle validaciju. CNI se nadograđuje ručno prema dokumentaciji njegovog projekta i njegovom propisanom mestu u redosledu; kubeadm to ne radi. Isto važi za CSI i druge add-on komponente.
+    </p>
+
+    <h3>Drain, PDB i granice dostupnosti</h3>
+    <p>
+      Minor upgrade kubelet-a zahteva prethodni drain noda. <code>kubectl drain</code> ga označava kao unschedulable i koristi Eviction API, pa poštuje PDB i grace period. DaemonSet Pod-ovi se ne eviktuju i zato se koristi <code>--ignore-daemonsets</code>. Uspešan drain znači da su eviktovani Pod-ovi koje je alat trebalo da ukloni; ne znači automatski da je aplikacija dostupna, da su svi Pod-ovi rescheduled niti da su podaci bezbedni.
+    </p>
+
+    <pre><code class="language-bash">NODE='cp-1.example.internal'
+
+# Read-only pregled pre evikcije.
+kubectl get node "${NODE}"
+kubectl get pods -A --field-selector "spec.nodeName=${NODE}" -o wide
+kubectl get pdb -A
+
+# State-changing: cordon i kontrolisana evikcija.
+kubectl drain "${NODE}" \
+  --ignore-daemonsets \
+  --timeout=20m
+
+# Posle uspešne lokalne nadogradnje i validacije noda.
+kubectl uncordon "${NODE}"</code></pre>
+
+    <p>
+      Flag <code>--delete-emptydir-data</code> dozvoljava brisanje podataka iz <code>emptyDir</code> volumena na eviktovanom Pod-u i ne dodaje se rutinski. <code>--force</code> može obrisati Pod bez odgovarajućeg kontrolera i zato se ne koristi dok vlasnik workload-a ne potvrdi posledicu i način povratka. Ako PDB blokira drain, to je signal da trenutno nema dozvoljenog disruption budget-a; PDB se ne briše automatski. Prvo se proveravaju zdravlje replika, pending Pod-ovi, kapacitet, affinity/topology uslovi i politika nezdravih Pod-ova.
+    </p>
+    <p>
+      Control-plane node može hostovati CoreDNS, ingress ili druge workload-e, u zavisnosti od taint/toleration konfiguracije. Drain ne zaustavlja static Pod-ove jer njima direktno upravlja kubelet. U HA topologiji se pre rada po mogućnosti uklanja konkretni backend iz load balancer rotacije, čeka pražnjenje konekcija i potvrđuje da preostale instance nose saobraćaj. U stacked etcd topologiji se nikada ne rade dve control-plane instance istovremeno: time se štite i API kapacitet i etcd quorum.
+    </p>
+
+    <h3>Izvršenje na control-plane i worker nodovima</h3>
+
+    <h4>Prvi control-plane node</h4>
+    <p>
+      Nakon odobrenog plana i backup-a, na prvom control-plane nodu se instalira ciljna verzija kubeadm-a i potvrđuje binarni fajl. Paketna sintaksa zavisi od distribucije i tačne revizije paketa; wildcard iz zvaničnog primera treba zameniti potvrđenom verzijom iz lokalnog repozitorijuma. Sledeći Debian/Ubuntu primer menja stanje hosta i izvršava se kao root/sudo u maintenance prozoru.
+    </p>
+
+    <pre><code class="language-bash"># Primer: postaviti punu distribucionu verziju, npr. 1.36.x-1.1.
+K8S_PKG_VERSION='1.36.x-1.1'
+TARGET_VERSION='v1.36.x'
+
+sudo apt-mark unhold kubeadm
+sudo apt-get update
+sudo apt-get install -y kubeadm="${K8S_PKG_VERSION}"
+sudo apt-mark hold kubeadm
+kubeadm version -o short
+
+sudo kubeadm upgrade plan "${TARGET_VERSION}"
+sudo kubeadm upgrade apply "${TARGET_VERSION}"</code></pre>
+
+    <p>
+      <code>upgrade apply</code> izvodi preflight, nadogradnju kontrolne ravni, upload kubeadm/kubelet konfiguracije, kubelet-config, bootstrap-token, add-on i post-upgrade faze. Može nadograditi lokalni etcd kada je <code>--etcd-upgrade=true</code>, što je podrazumevano, i obnavlja kubeadm-managed sertifikate ako nije isključeno. Komanda čuva backup-e lokalnog etcd člana i promenjenih manifesta pod <code>/etc/kubernetes/tmp</code>; oni su pomoć pri lokalnom neuspehu, ali nisu zamena za nezavisni etcd snapshot i testiran restore.
+    </p>
+    <p>
+      Posle uspešnog <code>apply</code>-a node se drain-uje pre minor upgrade-a kubelet-a, zatim se instaliraju kubelet i po potrebi lokalni kubectl, restartuje servis i radi validacija. Ako je node već drain-ovan prema odobrenom runbook-u, korak se ne ponavlja naslepo.
+    </p>
+
+    <pre><code class="language-bash">sudo apt-mark unhold kubelet kubectl
+sudo apt-get update
+sudo apt-get install -y \
+  kubelet="${K8S_PKG_VERSION}" \
+  kubectl="${K8S_PKG_VERSION}"
+sudo apt-mark hold kubelet kubectl
+
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+sudo systemctl status kubelet --no-pager
+sudo journalctl -u kubelet --since '-10 minutes' --no-pager</code></pre>
+
+    <h4>Dodatne control-plane instance</h4>
+    <p>
+      Na svakoj dodatnoj instanci instalira se ista ciljna verzija kubeadm-a, proverava se lokalna i klasterska spremnost i pokreće <code>kubeadm upgrade node</code>, ne <code>upgrade apply</code>. Zatim se radi drain, paketni upgrade kubelet-a/kubectl-a, restart, validacija i uncordon. Sledeća instanca počinje tek kada je prethodna zdrava kroz lokalni pogled, cluster endpoint i load balancer.
+    </p>
+
+    <pre><code class="language-bash">sudo kubeadm upgrade node
+
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+
+kubectl get node "$(hostname)" -o wide
+kubectl -n kube-system get pods \
+  --field-selector "spec.nodeName=$(hostname)" -o wide</code></pre>
+
+    <p>
+      Pretpostavka da <code>hostname</code> identično odgovara imenu Node objekta mora biti potvrđena; u suprotnom se koristi stvarno ime iz <code>kubectl get nodes</code>. Ako organizacija primenjuje patches direktorijum za kubeadm manifeste, isti odobreni i verzionisani patches moraju biti dostupni na svakoj instanci. <code>--config</code> se ne koristi kao prikriveni način reconfiguracije tokom upgrade-a: upstream upozorava da workflow nije projektovan za menjanje postojeće klasterske konfiguracije tim putem.
+    </p>
+
+    <h4>Worker nodovi i batch politika</h4>
+    <p>
+      Na worker nodu <code>kubeadm upgrade node</code> preuzima ClusterConfiguration i osvežava lokalnu kubelet konfiguraciju. Zatim se kubelet paket nadograđuje i servis restartuje. Batch veličina se ne bira po brzini, već kao minimum između raspoloživog viška kapaciteta, PDB dozvole, topology raspodele, storage ograničenja i operativne sposobnosti tima da paralelno dijagnostikuje kvar. Prvi worker je canary; naredni batch počinje tek posle observation period-a.
+    </p>
+
+    <pre><code class="language-bash">WORKER='worker-1.example.internal'
+
+# Sa administratorske radne stanice.
+kubectl drain "${WORKER}" --ignore-daemonsets --timeout=20m
+
+# Na worker nodu, sa sudo privilegijom.
+sudo kubeadm upgrade node
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+sudo systemctl status kubelet --no-pager
+
+# Sa administratorske radne stanice, tek posle lokalne provere.
+kubectl get node "${WORKER}" -o wide
+kubectl uncordon "${WORKER}"</code></pre>
+
+    <div class="important-note">
+      <strong>Kubernetes 1.36:</strong> na Linux nodovima <code>FailCgroupV1</code> podrazumevano je <code>true</code>, pa kubelet zahteva cgroups v2. Pre prelaska na 1.36 treba dokazati da OS, kernel, runtime i svi node pool-ovi koriste podržan cgroup v2 režim. Ovo nije problem koji treba otkrivati tek posle restarta kubelet-a.
+    </div>
+
+    <h3>Validacija posle svake etape</h3>
+    <p>
+      Validacija je slojevita. Komponenta može biti <code>Running</code>, a da nije spremna; node može biti <code>Ready</code>, a da DNS, CNI ili CSI ne rade za nove Pod-ove; API endpoint može odgovarati, a jedan load-balancer backend biti neispravan. Zato se proveravaju deklarisano stanje, health endpointi, realan promet i poslovno relevantna funkcija.
+    </p>
+
+    <table>
+      <thead><tr><th>Sloj</th><th>Dokaz</th><th>Neprihvatljiv nalaz</th></tr></thead>
+      <tbody>
+        <tr><td>Verzije</td><td>API server instance, kubelet po nodu, kube-proxy/CoreDNS i ciljna matrica.</td><td>Node ili control-plane izvan planiranog prelaznog skew-a.</td></tr>
+        <tr><td>API/control plane</td><td><code>/livez</code>, <code>/readyz?verbose</code>, static Pod readiness, leader election i LB backend health.</td><td>Nestabilan endpoint, restart loop, neuspešna interna ready provera.</td></tr>
+        <tr><td>etcd</td><td>Endpoint health/status, stabilan leader i member quorum prema odobrenom TLS postupku.</td><td>Gubitak člana/quorum-a, rast latencije, alarm ili neusaglašeni članovi.</td></tr>
+        <tr><td>Node/runtime</td><td><code>Ready</code>, kubelet bez ponavljajućih grešaka, CRI i image pull funkcionalni.</td><td><code>NotReady</code>, CNI not initialized, cgroup ili sandbox greške.</td></tr>
+        <tr><td>Mreža/DNS</td><td>Novi test Pod dobija IP, rešava cluster DNS i pristupa Service-u.</td><td>Postojeći Pod radi, ali novi sandbox/IP/DNS ne prolazi.</td></tr>
+        <tr><td>Storage</td><td>CSI controller/node Pod-ovi zdravi; odobreni test attach/mount kada je moguć.</td><td>Volume attach/mount timeout ili topološko blokiranje.</td></tr>
+        <tr><td>Workload/SLO</td><td>Desired/available replike, synthetic test, error rate, latency i kritični tokovi.</td><td>Porast grešaka, pending replike ili kršenje SLO-a.</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code class="language-bash">kubectl version -o yaml
+kubectl get nodes -o wide
+kubectl get --raw='/livez?verbose'
+kubectl get --raw='/readyz?verbose'
+kubectl -n kube-system get pods -o wide
+kubectl -n kube-system get daemonset kube-proxy
+kubectl -n kube-system get deployment coredns
+kubectl get deployments,statefulsets -A
+kubectl get events -A --sort-by='.lastTimestamp' | tail -n 100
+kubectl get pods -A \
+  --field-selector='status.phase!=Running,status.phase!=Succeeded'</code></pre>
+
+    <p>
+      Poslednji filter je pomoćni pregled, ali može propustiti <code>Running</code> Pod koji nije <code>Ready</code>. Zato se proveravaju readiness kolone, rollout status kritičnih kontrolera i metrike. Komanda <code>kubectl rollout status</code> ima smisla za konkretan poznati Deployment ili DaemonSet, ne za nekontrolisani masovni restart svih workload-a.
+    </p>
+
+    <pre><code class="language-bash">kubectl -n kube-system rollout status deployment/coredns --timeout=5m
+kubectl -n kube-system rollout status daemonset/kube-proxy --timeout=10m
+
+# Primer kontrolisanog testa DNS-a; menja klaster stvaranjem privremenog Pod-a.
+kubectl run upgrade-dns-check \
+  --image=registry.k8s.io/e2e-test-images/dnsutils:1.3 \
+  --restart=Never \
+  --command -- nslookup kubernetes.default.svc.cluster.local
+kubectl logs upgrade-dns-check
+kubectl delete pod upgrade-dns-check</code></pre>
+
+    <p>
+      Test image mora biti unapred odobren, dostupan iz internog registry-ja ako organizacija zabranjuje javni pull i kompatibilan sa politikama admission-a. U strogoj produkciji koristi se postojeći sintetički test ili unapred pripremljen namespace i ServiceAccount sa najmanjim privilegijama. Observation period se definiše pre promene; odsustvo greške tokom dva minuta nije dokaz stabilnosti ako se ključni controller reconcile ili poslovni batch izvršava ređe.
+    </p>
+
+    <h3>Rollback odluka: retry, stabilizacija ili disaster recovery</h3>
+    <p>
+      Kubernetes nadogradnja nema univerzalno „undo” dugme. <code>kubeadm upgrade</code> je projektovan kao idempotentan: ako je prekinut neočekivanim gašenjem ili privremenim kvarom, često se bezbedno ponavlja ista deklarisana ciljna verzija nakon prikupljanja dokaza i otklanjanja uzroka. To je <strong>resume/retry</strong>, ne rollback. Ručno instaliranje starijih paketa preko novijih control-plane podataka može pogoršati stanje, naročito kada je promenjena etcd verzija ili skladištena API reprezentacija.
+    </p>
+
+    <table>
+      <thead><tr><th>Stanje</th><th>Odluka</th><th>Uslov</th></tr></thead>
+      <tbody>
+        <tr><td>Pre <code>upgrade apply</code>, promenjen samo kubeadm paket</td><td>Pauza ili povratak paketa prema distribucionoj proceduri.</td><td>Control plane nije mutiran; potvrditi verzijsku kompatibilnost binara i sačuvati dokaz.</td></tr>
+        <tr><td>Apply prekinut, API/etcd zdravi, greška prolazna</td><td>Otkloniti uzrok i ponoviti isti <code>kubeadm upgrade apply</code>.</td><td>Dokazi potvrđuju stabilno stanje i isti cilj; ne koristiti <code>--force</code> refleksno.</td></tr>
+        <tr><td>Jedan HA control-plane node ne radi, ostali i quorum zdravi</td><td>Izolovati node, vratiti LB kapacitet na zdrave instance i popraviti/rekreirati node po runbook-u.</td><td>Nema nastavka na sledeći node dok redundansa nije obnovljena.</td></tr>
+        <tr><td>Kubelet paket ne startuje, control plane stabilan</td><td>Proveriti cgroup/runtime/config; po odobrenju vratiti samo host paket ili ispraviti konfiguraciju.</td><td>Ne vraćati klastersko stanje zbog lokalnog paketnog kvara.</td></tr>
+        <tr><td>etcd nema quorum ili podaci nisu konzistentni</td><td>Zaustaviti rollout i aktivirati etcd disaster recovery.</td><td>Restore iz potvrđenog snapshot-a po lekciji 46; nema improvizovanog kopiranja data-dir-a između članova.</td></tr>
+        <tr><td>Nova verzija radi, ali workload/SLO ne prolazi</td><td>Freeze, mitigacija ili application/add-on rollback; procena klasterskog recovery-ja.</td><td>Odluka vlasnika incidenta prema unapred definisanoj rollback granici i kompatibilnosti podataka.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Tokom upgrade-a kubeadm pravi direktorijume <code>/etc/kubernetes/tmp/kubeadm-backup-manifests-*</code> i, za lokalni etcd, <code>kubeadm-backup-etcd-*</code>. Vraćanje manifesta u <code>/etc/kubernetes/manifests</code> ili lokalnog etcd data direktorijuma je rizična, state-changing recovery operacija. Radi se samo prema verzijski odgovarajućoj zvaničnoj proceduri, nakon potvrde da automatski rollback nije uspeo, uz zaustavljanje komponenti i očuvanje forenzičkih kopija. Kod eksternog etcd-a kubeadm backup direktorijum za etcd je prazan.
+    </p>
+
+    <div class="important-note">
+      <strong>Stop kriterijum:</strong> zaustaviti naredne batch-eve kada control plane izgubi redundansu, etcd health/quorum nije potvrđen, API ili kritični webhook nije stabilan, node ne vraća <code>Ready</code> u predviđenom roku, CNI/CSI/DNS test ne prolazi, error rate ili latency pređu prag, PDB blokira planirani kapacitet ili se pojavi nalaz bez vlasnika i bez dokazane korekcije.
+    </div>
+
+    <h3>Troubleshooting tokom upgrade prozora</h3>
+    <p>
+      Dijagnostika prati redosled simptom → obim → dokaz → neposredni uzrok → osnovni uzrok → bezbedna korekcija → validacija. Pre bilo kakvog <code>--force</code>, restarta više servisa ili ručnog vraćanja manifesta čuvaju se kubeadm izlaz, vreme, package history, static Pod manifesti, kubelet i runtime logovi, događaji i metrike. Tako se razlikuje prethodni kvar od posledice nadogradnje.
+    </p>
+
+    <table>
+      <thead><tr><th>Simptom</th><th>Prve provere</th><th>Tipični uzroci</th><th>Bezbedna naredna akcija</th></tr></thead>
+      <tbody>
+        <tr><td><code>kubeadm upgrade plan</code> odbija cilj</td><td>Tačne verzije, repozitorijum, API dostupnost, Node Ready, skew i preflight tekst.</td><td>Preskočena minor verzija, pogrešan kubeadm, nezdrav node ili nedostupan registry.</td><td>Ispraviti putanju ili početno stanje; ne ignorisati sve provere.</td></tr>
+        <tr><td>API nestabilan posle manifesta</td><td><code>crictl ps -a</code>, kubelet journal, static Pod log, portovi, sertifikati i LB health.</td><td>Image pull, nevažeći flag/patch, cert, etcd veza ili resursni pritisak.</td><td>Izolovati lokalnu instancu; zadržati zdrave backende; ponoviti tek posle potvrde uzroka.</td></tr>
+        <tr><td>Node ostaje <code>NotReady</code></td><td>Node conditions, kubelet journal, runtime status, CNI DaemonSet i cgroup režim.</td><td>Kubelet config, cgroup v1 na 1.36, runtime/CRI ili CNI inicijalizacija.</td><td>Node ostaje cordoned; popraviti lokalni sloj i validirati pre uncordon-a.</td></tr>
+        <tr><td>Drain se ne završava</td><td>PDB, vlasnik Pod-a, finalizer, local storage, pending zamene i scheduler events.</td><td>Nedovoljna dostupnost/kapacitet, singleton ili pogrešna affinity pravila.</td><td>Popraviti workload/kapacitet; ne koristiti <code>--force</code> bez odobrenja vlasnika.</td></tr>
+        <tr><td>CoreDNS/kube-proxy nije nadograđen</td><td>Verzije svih control-plane instanci, rollout status i kubeadm log.</td><td>Preostala stara control-plane instanca; očekivano odlaganje add-on upgrade-a od v1.28.</td><td>Završiti i validirati control-plane redosled, zatim proveriti add-on rollout.</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code class="language-bash"># Na pogođenom nodu; read-only dijagnostika osim ako se posebno ne navede.
+sudo systemctl status kubelet containerd --no-pager
+sudo journalctl -u kubelet --since '-30 minutes' --no-pager
+sudo crictl ps -a
+sudo crictl pods
+sudo crictl images
+
+# Log konkretnog control-plane kontejnera, kada je ID potvrđen.
+sudo crictl logs CONTROL_PLANE_CONTAINER_ID
+
+# Pregled backup tragova koje je napravio kubeadm.
+sudo find /etc/kubernetes/tmp -maxdepth 2 -type f \
+  -printf '%TY-%Tm-%TdT%TH:%TM:%TS %p\n' | sort</code></pre>
+
+    <p>
+      <code>crictl</code> mora koristiti tačan CRI endpoint; pogrešan endpoint daje lažni utisak da kontejneri ne postoje. Za containerd se često koristi <code>unix:///run/containerd/containerd.sock</code>, a za CRI-O <code>unix:///var/run/crio/crio.sock</code>, ali se putanja potvrđuje iz konfiguracije konkretnog noda. Logovi se filtriraju od nekoliko minuta pre početka promene do sada, uz UTC korelaciju sa monitoringom i audit tragom.
+    </p>
+
+    <h3>Integrisani praktikum: kontrolisana nadogradnja HA kubeadm klastera</h3>
+    <p>
+      <strong>Cilj i kontekst.</strong> Platform tim nadograđuje laboratorijski HA klaster sa podržane minor verzije <code>n</code> na <code>n+1</code>. Cilj je izvesti pre-check, prvi control-plane, drugu control-plane instancu i jedan canary worker, a zatim doneti dokumentovanu odluku za ostatak rollout-a. Brojevi verzija ostaju promenljive kako vežba ne bi podsticala instaliranje zastarelog patch nivoa.
+    </p>
+    <p>
+      <strong>Topologija.</strong> Tri control-plane noda <code>cp-1</code>, <code>cp-2</code>, <code>cp-3</code> koriste stacked etcd iza TCP load balancer-a; najmanje tri worker noda koriste containerd i CNI/CSI koji eksplicitno podržavaju cilj. Postoji odvojena administratorska radna stanica i out-of-band konzola za svaki server.
+    </p>
+    <p>
+      <strong>Preduslovi i rizik.</strong> Ovo je laboratorijska vežba sa state-changing i potencijalno destruktivnim fazama. Potrebni su root/sudo na nodovima, cluster-admin za change prozor, odobreni package/image izvori, najmanje jedna dodatna kopija laboratorije ili dokazano obnovljiv etcd snapshot i backup aplikativnih podataka. Ne izvoditi na produkciji bez formalnog change-a, vlasnika aplikacija, monitoring-a, LB procedure i testiranog recovery runbook-a.
+    </p>
+
+    <h4>Vežba 1: change paket i početni dokaz</h4>
+    <p>
+      Na radnoj stanici se pravi restriktivna fascikla za izlaze. Prve komande menjaju samo lokalni filesystem. U plan se unose puna izvorna i ciljna verzija, linkovana interna odobrenja, pragovi za stop, RTO/RPO, batch veličina, redosled nodova i kontakt vlasnika svake zavisnosti.
+    </p>
+
+    <pre><code class="language-bash">umask 077
+CHANGE_DIR="${PWD}/kubeadm-upgrade-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${CHANGE_DIR}"
+
+date -u +'%Y-%m-%dT%H:%M:%SZ' &gt; "${CHANGE_DIR}/started-at-utc.txt"
+kubectl config current-context &gt; "${CHANGE_DIR}/context.txt"
+kubectl version -o yaml &gt; "${CHANGE_DIR}/version-before.yaml"
+kubectl get nodes -o wide &gt; "${CHANGE_DIR}/nodes-before.txt"
+kubectl get --raw='/readyz?verbose' &gt; "${CHANGE_DIR}/readyz-before.txt"
+kubectl -n kube-system get pods -o wide &gt; "${CHANGE_DIR}/kube-system-before.txt"
+kubectl get pdb -A &gt; "${CHANGE_DIR}/pdb-before.txt"
+kubectl get events -A --sort-by='.lastTimestamp' \
+  &gt; "${CHANGE_DIR}/events-before.txt"</code></pre>
+
+    <p>
+      <strong>Očekivani rezultat.</strong> Kontekst je tačan, sve tri control-plane instance i svi planirani worker nodovi su <code>Ready</code>, readiness provere su uspešne, nema nerešenog kritičnog alarma i kapacitet dopušta gubitak jednog noda. Etcd snapshot/restore dokaz i backup aplikativnih podataka moraju biti vezani za change, ali se tajne i privatni ključevi ne kopiraju u ovu fasciklu.
+    </p>
+
+    <h4>Vežba 2: preflight na prvom control-plane nodu</h4>
+    <p>
+      Na <code>cp-1</code> se potvrđuju slobodan prostor, runtime, cgroup i verzije, instalira ciljna kubeadm verzija i izvršavaju plan, diff i dry-run. Promenljive moraju sadržati vrednosti iz zvaničnog repozitorijuma za dan vežbe.
+    </p>
+
+    <pre><code class="language-bash">df -h / /var/lib/etcd /var/lib/containerd
+findmnt -no FSTYPE /sys/fs/cgroup
+stat -fc %T /sys/fs/cgroup
+kubelet --version
+kubeadm version -o short
+sudo crictl version
+
+TARGET_VERSION='v1.36.x'
+sudo kubeadm upgrade plan "${TARGET_VERSION}"
+sudo kubeadm upgrade diff "${TARGET_VERSION}"
+sudo kubeadm upgrade apply "${TARGET_VERSION}" --dry-run</code></pre>
+
+    <p>
+      <strong>Kriterijum.</strong> Cilj je upravo sledeća minor ili noviji patch iste grane, preflight nema neobjašnjenu grešku, diff odgovara odobrenom planu, potrebni image-i su dostupni, a cert renewal ponašanje je svesno izabrano. Ako se pojavi upozorenje, ono se klasifikuje i potpisuje; ne koristi se globalni ignore.
+    </p>
+
+    <h4>Vežba 3: prvi control-plane i hold point</h4>
+    <p>
+      Posle završnog Go odobrenja pokreće se <code>apply</code>. Tačna package instalacija sledi distribucionu proceduru iz teorijskog dela. Izlaz se čuva pomoću <code>tee</code>; zbog <code>pipefail</code>-a shell zadržava neuspeh prve komande u pipeline-u.
+    </p>
+
+    <pre><code class="language-bash">set -o pipefail
+sudo kubeadm upgrade apply "${TARGET_VERSION}" 2&gt;&amp;1 \
+  | tee "${CHANGE_DIR}/cp-1-upgrade-apply.log"
+
+kubectl get --raw='/readyz?verbose'
+kubectl get nodes -o wide
+kubectl -n kube-system get pods -o wide
+sudo systemctl status kubelet --no-pager
+sudo journalctl -u kubelet --since '-20 minutes' --no-pager</code></pre>
+
+    <p>
+      <strong>Hold point.</strong> Ne prelazi se na <code>cp-2</code> dok API, etcd i sve komponente na <code>cp-1</code> nisu zdrave, LB backend nije stabilan i sintetički test nije uspešan tokom definisanog perioda. Ako komanda stane zbog privremenog image pull-a, prvo se čuva dokaz i popravlja registry/DNS put; ista ciljna operacija se ponavlja tek kada je klaster stabilan. Ako se izgubi etcd quorum, vežba prelazi na DR runbook i ovde se prekida.
+    </p>
+
+    <h4>Vežba 4: dodatni control-plane i canary worker</h4>
+    <p>
+      <code>cp-2</code> se drain-uje prema planu, nadograđuje komandom <code>kubeadm upgrade node</code>, zatim se nadogradi kubelet, validira i uncordon-uje. Isti tok se tek potom primenjuje na <code>cp-3</code>. Posle treće instance proveravaju se CoreDNS i kube-proxy, jer ih aktuelni kubeadm po pravilu nadograđuje kada su sve control-plane instance dostigle cilj.
+    </p>
+
+    <pre><code class="language-bash">kubectl drain cp-2 --ignore-daemonsets --timeout=20m
+
+# Na cp-2, nakon instalacije ciljnog kubeadm paketa.
+sudo kubeadm upgrade node
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+
+# Sa radne stanice.
+kubectl get node cp-2 -o wide
+kubectl -n kube-system get pods --field-selector='spec.nodeName=cp-2' -o wide
+kubectl uncordon cp-2
+
+# Posle završetka svih control-plane instanci.
+kubectl -n kube-system rollout status deployment/coredns --timeout=5m
+kubectl -n kube-system rollout status daemonset/kube-proxy --timeout=10m</code></pre>
+
+    <p>
+      Canary worker prolazi isti drain → kubeadm node → kubelet paket/restart → validacija → uncordon tok. Posle uncordon-a mora se rasporediti nov Pod na node ili potvrditi ekvivalentnim sintetičkim testom da CNI, DNS, image pull i CSI funkcionišu. Samo postojeći dugovečni Pod nije dovoljan dokaz nove sandbox putanje.
+    </p>
+
+    <h4>Vežba 5: simulirani kvar i odluka</h4>
+    <p>
+      Bez namernog kvarenja klastera tim obrađuje scenario: <code>cp-2</code> je posle <code>kubeadm upgrade node</code> izbačen iz LB rotacije, lokalni API server se restartuje zbog nepostojećeg custom flag-a u odobrenom patches direktorijumu, dok <code>cp-1</code>, <code>cp-3</code> i etcd quorum ostaju zdravi.
+    </p>
+    <ol>
+      <li><strong>Simptom:</strong> LB i dalje služi API preko dve instance; lokalni kube-apiserver na <code>cp-2</code> je u restart loop-u.</li>
+      <li><strong>Obim i posledica:</strong> degradirana je redundansa, ali nema globalnog prekida ni gubitka quorum-a.</li>
+      <li><strong>Neposredni uzrok:</strong> nevažeći argument u generisanom static Pod manifestu.</li>
+      <li><strong>Osnovni uzrok:</strong> custom patch nije validiran protiv ciljne verzije i nije bio obuhvaćen change diff pregledom.</li>
+      <li><strong>Privremena mera:</strong> <code>cp-2</code> ostaje cordoned i izvan LB-a; rollout se zaustavlja.</li>
+      <li><strong>Trajna korekcija:</strong> ispraviti verzionisani patch, ponoviti istu kubeadm node fazu prema odobrenoj proceduri i validirati lokalnu instancu.</li>
+    </ol>
+    <p>
+      <strong>Odluka.</strong> Ovo nije razlog za globalni etcd restore, jer klastersko stanje i quorum nisu izgubljeni. Nije dozvoljeno nastaviti na sledeći node dok se redundansa ne vrati. Ako se uzrok ne može bezbedno korigovati unutar prozora, aktivira se odobrena procedura rekreiranja ili lokalnog povratka instance; odluku donosi change/incident owner na osnovu RTO-a i dokaza.
+    </p>
+
+    <h4>Vežba 6: završna validacija, checksum i čišćenje</h4>
+    <pre><code class="language-bash">date -u +'%Y-%m-%dT%H:%M:%SZ' &gt; "${CHANGE_DIR}/finished-at-utc.txt"
+kubectl version -o yaml &gt; "${CHANGE_DIR}/version-after.yaml"
+kubectl get nodes -o wide &gt; "${CHANGE_DIR}/nodes-after.txt"
+kubectl get --raw='/readyz?verbose' &gt; "${CHANGE_DIR}/readyz-after.txt"
+kubectl -n kube-system get pods -o wide &gt; "${CHANGE_DIR}/kube-system-after.txt"
+kubectl get events -A --sort-by='.lastTimestamp' \
+  &gt; "${CHANGE_DIR}/events-after.txt"
+
+find "${CHANGE_DIR}" -maxdepth 1 -type f ! -name SHA256SUMS \
+  -printf '%f\n' | sort | while IFS= read -r file; do
+    sha256sum "${CHANGE_DIR}/${file}"
+  done &gt; "${CHANGE_DIR}/SHA256SUMS"
+
+(cd "${CHANGE_DIR}" &amp;&amp; sha256sum --check SHA256SUMS)</code></pre>
+
+    <p>
+      <strong>Kriterijum završetka.</strong> Sve planirane komponente i nodovi imaju ciljnu ili eksplicitno dozvoljenu prelaznu verziju, svi nodovi su <code>Ready</code> i schedulable, control-plane i etcd su zdravi, CoreDNS/kube-proxy/CNI/CSI testovi prolaze, critical workload i SLO metrike su stabilni tokom observation period-a, a svaki incident ima zapis. Backup direktorijumi pod <code>/etc/kubernetes/tmp</code> ne brišu se pre formalnog zatvaranja change-a i isteka rollback/recovery perioda; zatim se uklanjaju prema politici zaštite i retention-a jer mogu sadržati osetljive klasterske podatke.
+    </p>
+
+    <p>
+      <strong>Povratak laboratorije.</strong> Ako je cilj vežbe bio trajna podržana nadogradnja, početno stanje se ne vraća samo radi čišćenja. Ako laboratorijski zahtev izričito traži staru verziju, bezbedniji povratak je obnova cele izolovane laboratorije iz prethodno testiranog snapshot-a/infrastructure-as-code procedure, a ne ad hoc downgrade živog klastera. Time se izbegava mešanje novog etcd/API stanja sa starim binarnim komponentama.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+    <ul class="checklist">
+      <li>☐ Ciljna verzija je puna podržana patch verzija, a svaka minor grana se prelazi zasebnim change-om.</li>
+      <li>☐ Inventar, release notes, deprecated API-ji i matrice CNI/CSI/runtime/OS dodataka provereni su za konkretan cilj.</li>
+      <li>☐ Klaster je zdrav pre promene; postojeći kvar nije prikriven kao prihvaćen preflight warning.</li>
+      <li>☐ Etcd snapshot i application backup su sveži, zaštićeni i dokazano obnovljivi; RTO/RPO su poznati.</li>
+      <li>☐ Sertifikatska obnova tokom kubeadm upgrade-a usklađena je sa PKI politikom i spoljašnjim CA modelom.</li>
+      <li>☐ Repozitorijum odgovara ciljnoj minor grani, paketi su eksplicitno verzionisani i ponovo hold/pin-ovani.</li>
+      <li>☐ Prvi control-plane koristi <code>upgrade apply</code>, ostali control-plane i worker nodovi <code>upgrade node</code>.</li>
+      <li>☐ Control-plane instance nadograđuju se strogo sekvencijalno, uz LB, quorum i health proveru posle svake.</li>
+      <li>☐ Drain poštuje PDB; <code>--force</code> i <code>--delete-emptydir-data</code> nisu korišćeni bez eksplicitne procene posledica.</li>
+      <li>☐ Worker batch veličina određena je kapacitetom, topology/PDB granicama i sposobnošću oporavka, ne željenom brzinom.</li>
+      <li>☐ Za Kubernetes 1.36 potvrđeni su cgroups v2, podržani kernel, OS i runtime pre restarta kubelet-a.</li>
+      <li>☐ CNI, CSI i ostali eksterni dodaci prate svoje zvanične procedure; nije pretpostavljeno da ih kubeadm nadograđuje.</li>
+      <li>☐ Svaki hold point proverava API, etcd, node, runtime, DNS, mrežu, storage, workload i SLO dokaze.</li>
+      <li>☐ Retry iste ciljne verzije jasno je razlikovan od rollback-a i od disaster recovery-ja.</li>
+      <li>☐ Backup manifesti i etcd tragovi u <code>/etc/kubernetes/tmp</code> čuvaju se i uklanjaju po odobrenoj retention politici.</li>
+      <li>☐ Change se zatvara tek posle definisanog observation period-a, checksum-a dokaza i ažuriranja inventara/CMDB-a.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <p>
+      Lekcija je savladana kada administrator ume da pretvori kompatibilnost iz lekcije 43 i PKI nalaze iz lekcije 44 u izvršan kubeadm change plan: bira podržan cilj bez preskakanja minor verzija, proverava pakete i repozitorijume, tumači <code>upgrade plan</code>, <code>diff</code> i dry-run, procenjuje PDB i kapacitet, određuje stop kriterijume i obezbeđuje testiran recovery dokaz pre prve mutacije.
+    </p>
+    <p>
+      Praktični kriterijum je uspešna sekvenca prvi control-plane → ostale control-plane instance → canary worker → kontrolisani worker batch, sa validacijom posle svakog noda. Administrator mora da razlikuje klasterski <code>upgrade apply</code> od lokalnog <code>upgrade node</code>, kubeadm fazu od paketnog upgrade-a kubelet-a, <code>Ready</code> stanje od pune funkcionalnosti mreže/storage-a i idempotentan retry od destruktivnog rollback-a. Na osnovu logova, health endpointa, etcd quorum-a, synthetic testa i SLO metrika ume da donese dokazivu odluku: nastaviti, pauzirati, stabilizovati ili aktivirati DR.
+    </p>
+
+    <h3>Zaključak</h3>
+    <p>
+      Kontrolisana kubeadm nadogradnja je serija malih, proverljivih promena, a ne jedna velika komanda. Njena bezbednost zavisi od zdravog početnog stanja, podržane putanje bez preskakanja minor verzija, poznatih zavisnosti, testiranog oporavka i discipline da se posle svake instance zastane i proveri stvarna funkcija sistema. Redosled prvog control-plane noda, ostalih control-plane instanci i worker nodova čuva version skew, dostupnost API-ja i etcd quorum, dok drain i PDB upravljaju planiranim prekidom workload-a.
+    </p>
+    <p>
+      <code>kubeadm</code> automatizuje složene faze, ali ne preuzima odgovornost za CNI/CSI, aplikativne podatke, kapacitet, SLO ili poslovnu odluku. Zato uspešan izlaz mora biti potvrđen health endpointima, logovima, događajima, metrikama i sintetičkim testovima. Posebno je važno razumeti rollback granicu: ponavljanje idempotentnog upgrade-a može biti pravilna korekcija prolaznog kvara, dok gubitak etcd quorum-a zahteva formalni disaster recovery, ne improvizovani downgrade.
+    </p>
+    <p>
+      Odgovoran administrator ne nastavlja rollout zato što je maintenance prozor kratak, već samo zato što dokaz pokazuje da je prethodna etapa stabilna. Time nadogradnja postaje upravljiv lifecycle proces sa poznatim blast radius-om, jasnim vlasništvom i obnovljivim stanjem. Sledeća lekcija produbljuje upravo tu poslednju liniju odbrane: etcd snapshot, restore, quorum i povratak kontrolne ravni kada stabilizacija više nije dovoljna.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za kubeadm cluster upgrade, upgrade faze, version skew i package repozitorijume; kubeadm CLI i konfiguracione reference za plan, diff, apply, node, sertifikate i recovery tragove; zvanične Kubernetes administrativne reference za bezbedan drain, PodDisruptionBudget, API health i troubleshooting nodova; primarna dokumentacija za etcd backup, quorum i oporavak, container runtime, cgroups i klasterske dodatke
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn"
+         href="vanilla-k8s-44-sertifikati-pki-kubeconfig.html">
+        ← Prethodna lekcija
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s-46-etcd-backup-disaster-recovery.html">
+        Sledeća lekcija →
+      </a>
+    </div>
+
+  </main>
+
+  <script src="../../../../js/syntax/prism.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,594 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-47-disaster-recovery-replikacija.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Disaster recovery, replikacija i orkestracija oporavka – od RPO/RTO do testiranog plana | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Projektovanje disaster recovery plana za VMware okruženje uz RPO, RTO, replikaciju, orkestraciju oporavka, testiranje i dokaz poslovnog kontinuiteta.">
+
+  <meta name="keywords"
+        content="VMware disaster recovery, replikacija, orkestracija oporavka, RPO, RTO, DR plan, poslovni kontinuitet, vSphere, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-47-disaster-recovery-replikacija.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Disaster recovery, replikacija i orkestracija oporavka – od RPO/RTO do testiranog plana">
+
+  <meta property="og:description"
+        content="Projektovanje disaster recovery plana za VMware okruženje uz RPO, RTO, replikaciju, orkestraciju oporavka, testiranje i dokaz poslovnog kontinuiteta.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-47-disaster-recovery-replikacija.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-47-disaster-recovery-replikacija.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Disaster recovery, replikacija i orkestracija oporavka – od RPO/RTO do testiranog plana">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-47-disaster-recovery-replikacija.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-47-disaster-recovery-replikacija.png"
+           alt="Disaster recovery, replikacija i orkestracija oporavka – od RPO/RTO do testiranog plana">
+
+    </a>
+
+    <div class="page-subtitle">
+  XII. Disaster recovery i upravljanje incidentima
+</div>
+
+<div class="page-subtitle">
+  47. Disaster recovery, replikacija i orkestracija oporavka – od RPO/RTO do testiranog plana
+</div>
+
+<p>
+  Visoka dostupnost, backup i disaster recovery rešavaju različite klase problema. vSphere HA ponovo pokreće virtuelnu mašinu kada host otkaže, ali ne vraća podatke koje je aplikacija već oštetila i ne pomaže ako ceo primarni lokalitet postane nedostupan. Backup čuva nezavisne tačke oporavka, ali sam po sebi ne obezbeđuje redosled pokretanja desetina zavisnih sistema, promenu mrežnih parametara i dokaz da će poslovna usluga proraditi u zadatom roku. Disaster recovery (DR) objedinjuje ljude, infrastrukturu, kopije podataka, automatizovani tok oporavka i proveru aplikacije. Njegov rezultat nije „replika postoji”, već dokaz da se definisana poslovna usluga može vratiti u prihvatljivo stanje, sa poznatim gubitkom podataka i u poznatom vremenu.
+</p>
+
+<p>
+  Ova lekcija se oslanja na backup i restore iz lekcije 36, monitoring iz lekcije 37, sistematičnu dijagnostiku iz lekcije 38 i kontrolisane promene iz lekcije 46. Fokus je na dizajnu i proveri DR sistema: od poslovnih zahteva i domena otkaza, preko vSphere Replication ili storage replikacije, do recovery plan-a, izolovanog testa, planned migration-a, disaster failover-a, reprotect-a i failback-a. Trijaža incidenta, support bundle i formalna analiza osnovnog uzroka detaljno se obrađuju u sledećoj lekciji.
+</p>
+
+<div class="info-box">
+  <strong>Verzijski i proizvodni okvir.</strong> Naziv <em>VMware Site Recovery Manager (SRM)</em> koristi se u starijim izdanjima, postojećim instalacijama i nazivu PowerCLI modula <code>VMware.VimAutomation.Srm</code>. Aktuelna dokumentacija za liniju 9.x koristi naziv <em>VMware Live Site Recovery</em>. U ovoj lekciji izraz „orkestrator” označava Live Site Recovery/SRM, a „vSphere Replication” zaseban mehanizam replikacije na nivou virtuelne mašine. Dostupnost funkcija, licenciranje, kompatibilnost vCenter/ESXi izdanja, podržani storage adapteri i maksimalne vrednosti moraju se proveriti u entitlement-u, release notes-u, compatibility matrix-u i Configuration Maximums dokumentu za konkretan build pre projektovanja ili nadogradnje.
+</div>
+
+<h3>1. Od poslovnog uticaja do tehničkog cilja oporavka</h3>
+
+<p>
+  DR projekat ne počinje izborom proizvoda, već analizom poslovnog uticaja (Business Impact Analysis, BIA). Vlasnik usluge određuje koje poslovne funkcije moraju biti vraćene, koje degradirano stanje je privremeno prihvatljivo i koliko podataka organizacija sme da izgubi. Administrator zatim prevodi zahteve u merljive ciljeve, zavisnosti i tehničke kontrole. Ako su ciljevi preuzeti iz opšte politike bez merenja stvarnog vremena podizanja baze, DNS promene ili aplikacione provere, plan je samo pretpostavka.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Pojam</th><th>Praktično značenje</th><th>Dokaz</th><th>Česta greška</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>RPO</td><td>Najveća prihvatljiva starost oporavljenih podataka; meri potencijalni gubitak podataka.</td><td>Vreme poslednje upotrebljive recovery point tačke i aplikaciona konzistentnost.</td><td>Izjednačavanje podešenog RPO-a sa garantovanim rezultatom bez praćenja RPO violation događaja.</td></tr>
+    <tr><td>RTO</td><td>Najduže prihvatljivo vreme od prekida do obnove dogovorenog nivoa usluge.</td><td>Vremenska linija od deklaracije do uspešnog poslovnog testa.</td><td>Merenje samo vremena uključivanja VM-a, bez mreže, baze, aplikacije i odobrenja vlasnika.</td></tr>
+    <tr><td>WRT</td><td>Work Recovery Time: vreme posle tehničkog restore-a potrebno ljudima da provere, usklade i nastave proces.</td><td>Potpis vlasnika procesa i uspešan funkcionalni scenario.</td><td>Ignorisanje ručnih kontrola, redova poruka i naknadnog usaglašavanja podataka.</td></tr>
+    <tr><td>MTD/MTPD</td><td>Najduži period u kome poslovni proces sme biti nedostupan pre neprihvatljive štete.</td><td>BIA i odobreni kontinuitet poslovanja.</td><td>Postavljanje RTO-a jednakog MTD-u, bez rezerve za WRT i nepredviđeno kašnjenje.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Ciljeve treba definisati po usluzi ili recovery tier-u, ne jednim brojem za sve VM-ove. Tier 0 može obuhvatiti identitet, DNS, vreme, KMS i upravljačku ravan bez kojih ostale grupe ne mogu da se oporave. Tier 1 obuhvata kritične transakcione aplikacije, a niži tier-ovi sisteme koji mogu čekati ili biti obnovljeni iz backupa. Kraći RPO povećava količinu promena koje mreža i ciljni storage moraju da prihvate; kraći RTO zahteva unapred rezervisan compute, automatizaciju i česta testiranja. Zbog toga svaki cilj mora imati vlasnika, cenu i rezultat poslednjeg testa.
+</p>
+
+<h4>Minimalni karton DR usluge</h4>
+
+<ul>
+  <li>naziv usluge, poslovni vlasnik, tehnički vlasnik i kontakt za deklaraciju katastrofe;</li>
+  <li>recovery tier, RPO, RTO, maksimalno tolerisana nedostupnost i dozvoljeno degradirano stanje;</li>
+  <li>VM-ovi, baze, eksterni SaaS sistemi, identitet, DNS, NTP, PKI, KMS, firewall i load balancer zavisnosti;</li>
+  <li>redosled i uslovi pokretanja, readiness provere, test transakcija i kriterijum prihvatanja;</li>
+  <li>metod zaštite, retention recovery points, enkripcija, odgovorna lica i break-glass pristup;</li>
+  <li>datum poslednjeg testa, izmereni RPO/RTO, odstupanja, otvorene korektivne mere i rok ponovnog testa.</li>
+</ul>
+
+<h3>2. Pretnje, domeni otkaza i izbor DR topologije</h3>
+
+<p>
+  Dizajn mora početi eksplicitnim scenarijima: gubitak jednog hosta, storage sistema, management plane-a, mrežne zone, zgrade, regiona, administratorskog identiteta ili integriteta podataka. Dva sajta ne znače automatski dva nezavisna domena otkaza. Zajednički WAN čvor, isti identity provider, jedna KMS instanca, rastegnuti Layer 2 bez alternativnog rutiranja ili zajednička administrativna privilegija mogu pretvoriti lokalni kvar ili napad u istovremeni gubitak oba sajta.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Model</th><th>Prednost</th><th>Ograničenje</th><th>Primer primene</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Active–passive</td><td>Jasna kontrola autoritativnog sajta i jednostavniji runbook.</td><td>Kapacitet sekundarnog sajta može biti neiskorišćen ili nedovoljan ako nije rezervisan.</td><td>Većina klasičnih orkestriranih DR planova.</td></tr>
+    <tr><td>Bi-directional</td><td>Oba sajta štite različite grupe workload-a i koriste resurse.</td><td>Planovi, mreže i kapacitet moraju sprečiti sudar prilikom istovremenog oporavka.</td><td>Dva data centra sa podeljenim produkcionim servisima.</td></tr>
+    <tr><td>Stretched cluster</td><td>Brz odgovor na pojedine infrastrukturne kvarove.</td><td>Nije zamena za nezavisnu kopiju, backup ili oporavak od logičke korupcije; zahteva stroge latency i witness uslove.</td><td>Metro dostupnost uz poseban DR sloj.</td></tr>
+    <tr><td>Pilot light / warm site</td><td>Niži trošak uz unapred prisutne ključne servise.</td><td>Duži RTO i potreba za automatizovanim proširenjem kapaciteta.</td><td>Usluge koje prihvataju kontrolisano degradiran rad.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  DR sajt mora imati dovoljno resursa za recovery skup, a ne nužno kopiju kompletnog primarnog sajta. Ipak, računica mora uključiti HA rezervu, management VM-ove, replikacioni overhead, privremene test VM-ove i resurse za reprotect. DRS affinity/anti-affinity pravila, host grupe, resource pool mapiranja i storage policy moraju biti ponovo smisleni na ciljnom sajtu. Nije bezbedno pretpostaviti da će ista imena mreža ili datastore-a značiti i istu bezbednosnu zonu.
+</p>
+
+<h3>3. Replikacija nije backup: modeli i kriterijumi izbora</h3>
+
+<p>
+  Replikacija održava operativnu kopiju blizu trenutnog stanja i prvenstveno smanjuje RPO/RTO. Ona može veoma brzo preneti brisanje, ransomware enkripciju ili aplikacionu korupciju. Backup mora imati odvojenu politiku zadržavanja, po mogućnosti immutable ili administrativno izolovanu kopiju, i dokaz restore-a. DR plan zato bira između replike i backup recovery tačke prema vrsti incidenta; najnovija replika nije uvek najbezbednija tačka.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Mehanizam</th><th>Granularnost i zavisnosti</th><th>Prednosti</th><th>Ključna ograničenja</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>vSphere Replication</td><td>Host-based, po VM-u; cilj može biti datastore podržanog tipa.</td><td>Ne zavisi od identičnog storage niza; fleksibilan izbor VM-ova i RPO politike.</td><td>Asinhron; troši host, mrežne i storage resurse; application consistency i podržane funkcije moraju se proveriti po verziji.</td></tr>
+    <tr><td>Array-based replication</td><td>Storage uređaji/LUN-ovi ili konzistentne grupe; orkestrator koristi vendor Storage Replication Adapter.</td><td>Efikasan prenos na nivou niza i konzistentnost grupe koju podržava storage.</td><td>Zavisnost od kompatibilnih nizova, firmware-a i SRA verzije; granularnost zaštite prati storage raspored.</td></tr>
+    <tr><td>Backup/restore</td><td>Recovery point iz kataloga, često uz image-level i aplikacionu zaštitu.</td><td>Duže zadržavanje i odbrana od logičke korupcije; moguća izolovana/immutable kopija.</td><td>Obično duži RTO; orkestracija i mrežno mapiranje mogu zahtevati dodatni proizvod ili runbook.</td></tr>
+    <tr><td>Aplikaciona replikacija</td><td>Baza ili aplikacija upravlja konzistentnošću i ulogama.</td><td>Razume transakcije i često omogućava mali RPO.</td><td>Ne štiti automatski ceo VM i infrastrukturne zavisnosti; split-brain kontrola je kritična.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Synchronous replication može potvrditi upis tek kada je prihvaćen na oba domena, pa može približiti RPO nuli, ali povećava latency i ne štiti od logičke greške. Asynchronous replication šalje promene naknadno; njen ostvareni RPO zavisi od change rate-a, raspoloživog bandwidth-a, latencije, ciljnog storage-a i backlog-a. Kompresija, enkripcija u tranzitu, QoS i raspored inicijalnih sinhronizacija moraju se projektovati zajedno sa mrežnim timom.
+</p>
+
+<div class="warning-box">
+  <strong>Kontrola kompatibilnosti.</strong> Ne unositi u dizajn napamet minimalni RPO, broj recovery point instanci, podržane diskove, maksimalan broj VM-ova ili SRA mogućnosti. Te vrednosti se razlikuju po izdanju i topologiji. Za svaki konkretan build proveriti Product Interoperability Matrix, Live Site Recovery i vSphere Replication release notes, Configuration Maximums i vendor SRA dokumentaciju. Posebno proveriti encrypted VM, vTPM, shared disk/WSFC, RDM, NVMe, vVol, vSAN ESA i stretched-storage scenarije.
+</div>
+
+<h3>4. Arhitektura vSphere Replication i tok podataka</h3>
+
+<p>
+  vSphere Replication je host-based mehanizam. Promene virtuelnih diskova prati se na izvornom ESXi hostu, a podaci se prenose ka vSphere Replication server komponenti na ciljnom sajtu i upisuju u replica diskove. vSphere Replication appliance obezbeđuje management servis i može se proširiti dodatnim replication serverima u skladu sa podržanom arhitekturom. Management saobraćaj i data path nisu ista stvar; firewall pravila i dijagnostika moraju pratiti smer i komponentu konkretnog toka.
+</p>
+
+<p>
+  Inicijalna sinhronizacija može preneti kompletne diskove ili, gde je podržano i pravilno pripremljeno, iskoristiti seed kopiju kako bi se smanjio WAN transfer. Seed nije proizvoljna kopija: identitet i sadržaj diskova moraju odgovarati dokumentovanom postupku. Posle inicijalne sinhronizacije prenose se promene prema RPO politici. Multiple point in time (MPIT) recovery points mogu omogućiti izbor starije tačke, ali troše dodatni prostor i nisu zamena za backup retention.
+</p>
+
+<h4>Konzistentnost podataka</h4>
+
+<ul>
+  <li><strong>Crash-consistent</strong> tačka odgovara stanju posle naglog gubitka napajanja; guest OS i aplikacija moraju izvršiti sopstveni recovery.</li>
+  <li><strong>File-system quiescing</strong>, kada je podržan i uspešan, pokušava da umiri I/O kroz VMware Tools. To nije automatski isto što i aplikaciono konzistentan backup baze.</li>
+  <li><strong>Application-consistent</strong> rezultat zahteva aplikaciono podržan mehanizam, pre/post skripte ili izvornu replikaciju baze, zajedno sa testom stvarne transakcione konzistentnosti.</li>
+</ul>
+
+<p>
+  Za VM sa velikim change rate-om administrator mora izmeriti prosečan i vršni dnevni churn. Gruba početna procena potrebnog efektivnog protoka je količina promenjenih podataka podeljena raspoloživim vremenom prenosa, uz rezervu za protokolarni overhead, retransmisije i istovremenu inicijalnu sinhronizaciju. Merenje backlog-a i RPO violation-a važnije je od teorijske brzine linka.
+</p>
+
+<pre><code class="language-none">Potrebni efektivni protok ≈ promenjeni podaci u intervalu / raspoloživo vreme prenosa
+
+Primer: 180 GiB promena tokom 8 h
+180 × 8 / (8 × 3600) ≈ 0,05 Gib/s ≈ 50 Mib/s
+
+Rezultat nije dimenzionisanje: dodaju se vršni faktor, overhead, konkurentne replike,
+inicijalne sinhronizacije i bezbednosna rezerva.</code></pre>
+
+<h3>5. Orkestracija: site pair, mapiranja, protection group i recovery plan</h3>
+
+<p>
+  Live Site Recovery/SRM povezuje upravljačke ravni dva sajta i orkestrira oporavak replika. Tipičan dizajn sadrži uparene instance, vCenter Server na svakom sajtu, odgovarajući replikacioni mehanizam, mapiranja inventara, protection groups i recovery plans. Orkestrator ne projektuje aplikaciju umesto administratora: ako nisu poznate zavisnosti, plan će pouzdano automatizovati pogrešan redosled.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Objekat</th><th>Uloga</th><th>Validacija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Site pair</td><td>Uspostavlja poverenje i upravljanje između zaštićenog i recovery sajta.</td><td>Obe strane su Connected; DNS, vreme, sertifikati i privilegije su ispravni.</td></tr>
+    <tr><td>Resource mapping</td><td>Mapira izvorni cluster/resource pool na ciljnu lokaciju izvršavanja.</td><td>Cilj ima kapacitet i pravila koja ne blokiraju placement.</td></tr>
+    <tr><td>Folder mapping</td><td>Određuje ciljnu VM folder hijerarhiju.</td><td>Operativna odgovornost, permission inheritance i inventar ostaju jasni.</td></tr>
+    <tr><td>Network mapping</td><td>Vezuje produkcione mreže između sajtova.</td><td>VLAN/segment, routing, firewall, DNS i load balancer odgovaraju istoj sigurnosnoj nameni.</td></tr>
+    <tr><td>Placeholder datastore</td><td>Čuva male placeholder VM datoteke za inventarske objekte na recovery sajtu.</td><td>Dostupan je svim potrebnim hostovima i nije isti koncept kao replica datastore.</td></tr>
+    <tr><td>Protection group</td><td>Logički grupiše VM-ove koji se štite istim modelom replikacije.</td><td>Svi članovi su zaštićeni bez unresolved mapping grešaka.</td></tr>
+    <tr><td>Recovery plan</td><td>Definiše prioritete, zavisnosti, korake, testnu mrežu i oporavak jedne poslovne usluge ili konzistentnog skupa.</td><td>Test, cleanup i poslednji izveštaj su uspešni; vlasnik usluge prihvatio rezultat.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Recovery plan treba graditi po aplikacionom toku. Priority grupe obezbeđuju grubi redosled, dok se zavisnosti između VM-ova koriste kada određeni servis mora biti spreman pre drugog. „VM je powered on” nije dovoljan uslov; readiness se proverava portom, API health endpoint-om, statusom baze ili kontrolisanom test transakcijom. Custom command ili prompt treba da bude determinističan, vremenski ograničen, idempotentan koliko je moguće i da ne sadrži lozinke. Ako korak zahteva ljudsku odluku, mora imenovati ulogu, dokaz i uslov za nastavak.
+</p>
+
+<h3>6. Mreža, identitet i bezbednost tokom oporavka</h3>
+
+<p>
+  Najčešći razlog da tehnički oporavljen VM ne postane dostupna usluga jeste nepotpun mrežni dizajn. Postoje tri osnovna modela: očuvanje IP adrese uz stretched network, promena IP parametara na recovery sajtu ili kombinacija sa globalnim load balancing-om/DNS preusmeravanjem. Stretched Layer 2 pojednostavljuje adresiranje, ali širi broadcast i bezbednosni domen i zahteva zaštitu od istovremenog aktiviranja obe kopije. Promena IP-a zahteva proveru statičkih konfiguracija, DNS TTL-a, firewall objekata, sertifikata, licenciranja vezanog za adresu i aplikacionih allow-list pravila.
+</p>
+
+<p>
+  Test network mora biti izolovana od produkcije kako testna kopija ne bi slala e-poštu, obrađivala produkcione redove, ažurirala DNS ili stupila u kontakt sa stvarnim payment/OT sistemima. Auto-created isolated network može biti dovoljna za jednostavan test jednog VM-a, ali višeslojna aplikacija obično zahteva unapred projektovan izolovani segment sa testnim DNS-om, rutiranjem i emuliranim zavisnostima. Obezbediti administrativni pristup kroz kontrolisani jump host, a ne povezivanjem testnog segmenta sa produkcijom „samo na trenutak”.
+</p>
+
+<ul>
+  <li>Oba sajta moraju imati pouzdan DNS, NTP i PKI; vremenska razlika može pokvariti autentikaciju i korelaciju događaja.</li>
+  <li>Break-glass nalozi moraju biti lokalno upotrebljivi ako je centralni identity provider deo incidenta, uz MFA i kontrolisano čuvanje gde je primenljivo.</li>
+  <li>KMS/key provider mora biti dostupan sa recovery sajta i imati bezbedno obnovljivu konfiguraciju; bez ključa encrypted VM ili vTPM workload može ostati neupotrebljiv.</li>
+  <li>Servisni nalozi koriste najmanje privilegije prema zvaničnom privilege modelu; aktivnosti se audit-uju na oba vCenter-a i orkestratoru.</li>
+  <li>Sertifikate ne treba zaobilaziti opcijom za ignorisanje grešaka u produkcionoj automatizaciji; ispraviti trust chain i DNS identitet.</li>
+</ul>
+
+<h3>7. Test, planned migration, disaster recovery, reprotect i failback</h3>
+
+<table>
+  <thead>
+    <tr><th>Operacija</th><th>Kada se koristi</th><th>Uticaj i uslov</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Test</td><td>Redovna provera recovery plan-a bez prekida produkcije.</td><td>Kreira testne instance u izolovanoj mreži koristeći dostupne recovery point podatke; produkciona replikacija se nastavlja prema mogućnostima proizvoda.</td></tr>
+    <tr><td>Cleanup</td><td>Posle testa.</td><td>Uklanja testne VM-ove i privremene objekte; neuspešan cleanup se rešava dokazima, ne ručnim brisanjem nasumičnih datoteka.</td></tr>
+    <tr><td>Planned migration</td><td>Kontrolisano premeštanje kada je izvorni sajt dostupan.</td><td>Prioritet je završna sinhronizacija i uredno gašenje izvora; cilj je minimalan ili nulti gubitak promena u granicama podržanog procesa.</td></tr>
+    <tr><td>Disaster recovery</td><td>Izvor nije pouzdano dostupan ili je proglašena katastrofa.</td><td>Može koristiti poslednju raspoloživu recovery tačku; prihvata se moguć gubitak do ostvarenog RPO-a.</td></tr>
+    <tr><td>Reprotect</td><td>Posle uspešnog recovery-ja, kada infrastruktura dozvoljava obrnuti smer zaštite.</td><td>Uspostavlja zaštitu sa trenutno aktivnog ka prethodnom sajtu; nije isto što i failback.</td></tr>
+    <tr><td>Failback</td><td>Kontrolisani povratak workload-a na obnovljeni originalni ili novi primarni sajt.</td><td>Zahteva validan obrnuti smer, kapacitet, mapiranja, plan promene i novu poslovnu validaciju.</td></tr>
+  </tbody>
+</table>
+
+<div class="warning-box">
+  <strong>Fencing pre failover-a.</strong> Pre aktiviranja recovery kopije mora postojati pouzdan dokaz da izvorna aplikacija više ne može da piše u autoritativne podatke ili da komunicira sa korisnicima. Izolovati storage, mrežu ili aplikacionu ulogu prema odobrenom runbook-u. Pretpostavka da je sajt „verovatno mrtav” može proizvesti split-brain, dvostruke transakcije i težu korupciju od prvobitnog kvara.
+</div>
+
+<h4>Kontrolne kapije odluke</h4>
+
+<ol>
+  <li><strong>Deklaracija:</strong> ovlašćena poslovna i tehnička lica potvrđuju scenario, obim i izabranu recovery tačku.</li>
+  <li><strong>Fencing:</strong> incident commander dobija dokaz da stari autoritet ne može da prima ili zapisuje produkcione transakcije.</li>
+  <li><strong>Tehnički recovery:</strong> orkestrator izvršava plan; svaki ručni override se beleži.</li>
+  <li><strong>Validacija:</strong> infrastrukturne, aplikacione i poslovne provere potvrđuju podatke i funkciju.</li>
+  <li><strong>Preusmeravanje:</strong> tek zatim se menja DNS/GSLB/load balancer ili korisnički pristup.</li>
+  <li><strong>Stabilizacija:</strong> monitoring, backup i replikacija se prilagođavaju novom autoritativnom sajtu.</li>
+</ol>
+
+<h3>8. Operativni nadzor, logovi i dokazi</h3>
+
+<p>
+  DR stanje treba nadzirati svakodnevno, a ne samo pred godišnji test. Minimalni dashboard prikazuje zdravlje site pair-a, stanje svih replika, trenutni lag, RPO violations, poslednji uspešan recovery point, slobodan prostor ciljnog datastore-a, throughput/backlog, stanje protection group-a, datum i ishod poslednjeg testa. Alarm mora imati vlasnika i vreme reakcije; višednevna crvena replika poništava ugovoreni RPO čak i ako produkcija radi bez simptoma.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Izvor dokaza</th><th>Šta tražimo</th><th>Korelacija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>vSphere Client: Tasks, Events, Alarms</td><td>Promenu konfiguracije, prekid komunikacije, datastore ili VM grešku i tačno vreme.</td><td>Recovery history i change ticket.</td></tr>
+    <tr><td>Live Site Recovery/SRM appliance logovi</td><td>Grešku plana, mapiranja, protection group-a, SRA poziva ili udaljene sesije.</td><td>vCenter događaji na oba sajta i storage audit.</td></tr>
+    <tr><td>vSphere Replication management/server logovi</td><td>RPO violation, autentikaciju, transfer, disk ili target datastore problem.</td><td>ESXi hostd/vmkernel događaji, mrežne metrike i datastore latency.</td></tr>
+    <tr><td>Storage/SRA logovi</td><td>Pairing, consistency group, snapshot, promote/demote ili device discovery grešku.</td><td>Firmware/SRA compatibility i događaji storage niza.</td></tr>
+    <tr><td>Recovery Plan History i izveštaj testa</td><td>Trajanje svakog koraka, upozorenje, ručni odgovor i konačan status.</td><td>Aplikacioni monitoring, test transakcija i izmereni RTO.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Tačne putanje logova zavise od verzije i appliance-a, zato se uz incident beleže build i komponenta, a lokacija potvrđuje u zvaničnom troubleshooting vodiču. Za podršku se generiše support bundle kroz administrativni interfejs proizvoda i čuva uz vremensku zonu, recovery plan history i incident ID. Ne menjati nasumično log nivo u produkciji: verbose/trace može povećati potrošnju diska i treba ga uključiti samo kontrolisano, za ograničen period.
+</p>
+
+<h3>9. Sistematičan troubleshooting DR toka</h3>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Prve read-only provere</th><th>Verovatni uzroci</th><th>Bezbedna korekcija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Replika je Not Active ili RPO violated</td><td>Vreme prve greške, change rate, backlog, datastore prostor/latencija, reachability i sertifikati.</td><td>WAN gubitak, istekao certifikat, pun cilj, usporen storage, promenjen VM disk ili servis.</td><td>Otkloniti potvrđeno usko grlo; ne pokretati novu full sync dok nije procenjen WAN i postojeća replika.</td></tr>
+    <tr><td>VM nije zaštićen</td><td>Protection status, placeholder, mapiranja i zadatak konfiguracije.</td><td>Nedostaje mapping, placeholder datastore nije dostupan, disk nije obuhvaćen ili privilegija nedostaje.</td><td>Ispraviti konkretno mapiranje/privilegiju i ponovo zaštititi; potvrditi sve diskove.</td></tr>
+    <tr><td>Test VM se uključuje, ali aplikacija ne radi</td><td>Guest heartbeat, IP/DNS, portovi, vreme, zavisnosti, servisni log i redosled.</td><td>Pogrešna test mreža, nedostupan identitet/KMS, aplikacioni timeout ili nekonzistentni podaci.</td><td>Ispraviti testnu zavisnost ili plan; ne povezivati izolovanu kopiju direktno sa produkcijom.</td></tr>
+    <tr><td>Cleanup ne uspeva</td><td>Recovery history, aktivni zadaci, zaključani objekti, test bubble i storage stanje.</td><td>Prekinuta sesija, zaključan disk, nedostupan host/storage ili ručna promena test objekta.</td><td>Ponoviti cleanup prema dokumentovanom toku nakon obnove zavisnosti; ručno uklanjanje samo uz vendor postupak i backup inventara.</td></tr>
+    <tr><td>Planned migration ne završava</td><td>Final sync, source shutdown, datastore i aplikacioni status.</td><td>Izvor još piše, replika kasni ili zavisnost plana čeka.</td><td>Zaustaviti na kontrolnoj kapiji, vratiti izvor ako je bezbedno ili eksplicitno preći na disaster recovery samo uz novo odobrenje.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Dijagnostika ide od najmanje invazivnog ka rizičnijem: sačuvati recovery history i vremensku liniju; utvrditi obim; proveriti poslednje promene, alarme i zavisnosti; formulisati jednu proverljivu hipotezu; potvrditi je iz najmanje dva povezana izvora; primeniti najmanju reverzibilnu korekciju; ponoviti validaciju. Resync, remove protection, brisanje placeholder-a, ponovno uparivanje sajtova ili ručna manipulacija replica diskovima menjaju stanje i ne koriste se kao „probaj pa vidi”.
+</p>
+
+<h4>Model nalaza za incident</h4>
+
+<ul>
+  <li><strong>Simptom:</strong> šta je opaženo i u koje vreme.</li>
+  <li><strong>Obim i posledica:</strong> koje replike/usluge i koji RPO/RTO su ugroženi.</li>
+  <li><strong>Neposredni uzrok:</strong> tehnički događaj koji je proizveo simptom.</li>
+  <li><strong>Osnovni uzrok:</strong> zašto kontrola nije sprečila ili rano otkrila događaj.</li>
+  <li><strong>Zaobilazno rešenje:</strong> privremena mera, njen rizik i rok uklanjanja.</li>
+  <li><strong>Trajna mera:</strong> promena dizajna, procedure, monitoringa ili kapaciteta i dokaz ponovnim testom.</li>
+</ul>
+
+<h3>10. Praktikum – od inventara do dokazanog recovery plan-a</h3>
+
+<div class="warning-box">
+  <strong>Laboratorijski opseg.</strong> Vežbe izvoditi u izolovanom laboratorijskom okruženju ili u odobrenom DR test prozoru. Ne pokretati stvarni recovery, planned migration, reprotect ili failback nad produkcionim planom bez change zapisa, poslovnog odobrenja, potvrđenog fencing-a i rollback odluke. Nazivi servera i mreža u primerima su dokumentacioni.
+</div>
+
+<h4>Topologija i početno stanje</h4>
+
+<pre><code class="language-none">Zaštićeni sajt A                         Recovery sajt B
+vc-a.lab.example                        vc-b.lab.example
+lsr-a / VR appliance  ===== WAN =====  lsr-b / VR appliance
+PG-PROD: 192.0.2.0/24                   PG-DR: 198.51.100.0/24
+APP01 + DB01                            replica datastore + test bubble
+
+Tok usluge: klijent → APP01:443 → DB01:5432
+Recovery redosled: infrastruktura zavisnosti → DB01 → APP01 → health/test transakcija</code></pre>
+
+<p>
+  Potrebni su namenski laboratorijski vCenter i orkestrator/replication appliance na oba sajta, kompatibilni build-ovi, DNS forward i reverse rezolucija, NTP, validni sertifikati, datastore kapacitet i nalog sa dokumentovanim minimalnim privilegijama. Administrator mora imati pristup vSphere Client-u, appliance administraciji, VCF PowerCLI-ju i aplikacionim testovima. Pre početka zabeležiti stanje VM-ova, slobodan prostor, mrežna mapiranja i backup konfiguracije appliance-a.
+</p>
+
+<h4>Vežba 1 – DR inventar i merljivi zahtevi</h4>
+
+<p><strong>Cilj:</strong> pre konfiguracije dokazati da je recovery skup potpun i da su ciljevi merljivi. Rizik je nizak jer je vežba read-only.</p>
+
+<ol>
+  <li>Sa poslovnim vlasnikom popuniti karton usluge: RPO 30 minuta, RTO 90 minuta, dozvoljen test bez spoljnog slanja i kriterijum „uspešan login, čitanje i rollback test transakcije”.</li>
+  <li>U PowerCLI konzoli povezanoj sa oba laboratorijska vCenter-a prikupiti stanje VM-ova. Kredencijale uneti interaktivno; ne smeštati ih u skriptu.</li>
+</ol>
+
+<pre><code class="language-powershell">$vcA = Connect-VIServer -Server "vc-a.lab.example" -Credential (Get-Credential)
+$vcB = Connect-VIServer -Server "vc-b.lab.example" -Credential (Get-Credential)
+
+Get-VM -Server $vcA -Name "APP01","DB01" |
+  Select-Object Name, PowerState,
+    @{N="Host";E={$_.VMHost.Name}},
+    @{N="Datastore";E={($_ | Get-Datastore).Name -join ","}},
+    @{N="Networks";E={($_ | Get-NetworkAdapter).NetworkName -join ","}}
+
+Get-Datastore -Server $vcB |
+  Select-Object Name, State,
+    @{N="FreeGiB";E={[math]::Round($_.FreeSpaceGB,1)}},
+    @{N="CapacityGiB";E={[math]::Round($_.CapacityGB,1)}}</code></pre>
+
+<p>
+  Komande samo čitaju stanje. Očekivani rezultat je kompletan APP01/DB01 skup, poznate mreže i dovoljan ciljni kapacitet sa rezervom za recovery points i test. U vSphere Client-u potvrditi tagove vlasništva, alarme i zavisnosti. Ako se inventar razlikuje od kartona usluge, zaustaviti konfiguraciju i uskladiti CMDB; automatizacija nepotpunog skupa samo ubrzava nepotpun oporavak.
+</p>
+
+<h4>Vežba 2 – Konfiguracija replikacije i validacija RPO-a</h4>
+
+<p><strong>Cilj:</strong> zaštititi APP01 i DB01 vSphere Replication-om prema laboratorijskoj RPO politici. Promena stanja je srednjeg rizika jer stvara replica diskove i mrežno/storage opterećenje.</p>
+
+<ol>
+  <li>U vSphere Client-u otvoriti Site Recovery, potvrditi site pair i zdravlje vSphere Replication komponenti.</li>
+  <li>Izabrati <em>Configure Replication</em> za oba VM-a, recovery sajt B, ciljni datastore i storage policy. Ne prihvatati podrazumevanu lokaciju bez provere kapaciteta i bezbednosne klase.</li>
+  <li>Postaviti laboratorijski podržan RPO i broj point-in-time instanci u okviru kapaciteta. Opciju quiescing uključiti samo ako je podržana i prethodno testirana sa VMware Tools i aplikacijom.</li>
+  <li>Pokrenuti konfiguraciju i pratiti inicijalnu sinhronizaciju. Ne pokretati paralelno veliki broj full sync poslova.</li>
+  <li>Posle statusa OK uneti kontrolisanu promenu u aplikaciju, sačekati narednu recovery tačku i zabeležiti ostvareni lag.</li>
+</ol>
+
+<p>
+  Očekivani rezultat je Active/OK replika bez RPO violation-a, sa svim nameravanim diskovima i recovery point politikom. Proveriti Tasks/Events, appliance health, slobodan prostor i mrežni throughput. Ako sinhronizacija zaostaje, prvo utvrditi change rate, backlog, packet loss i target latency. Rollback laboratorije je plansko uklanjanje replikacije kroz proizvodni interfejs tek po završetku svih vežbi; ne brisati replica VMDK ručno.
+</p>
+
+<h4>Vežba 3 – Site pair, mapiranja i recovery plan</h4>
+
+<p><strong>Cilj:</strong> napraviti ponovljiv plan za dvoslojnu aplikaciju. Promena je srednjeg rizika i ostaje u laboratorijskom inventaru.</p>
+
+<ol>
+  <li>Potvrditi site pairing i identitete obe strane. Ispraviti DNS, NTP ili sertifikat pre nastavka; ne koristiti trajno ignorisanje TLS grešaka.</li>
+  <li>Kreirati resource, folder i network mapping. Posebno podesiti test network mapping ka izolovanom segmentu.</li>
+  <li>Izabrati placeholder datastore dostupan svim recovery hostovima, odvojen po operativnoj politici od replica destinacije.</li>
+  <li>Kreirati protection group <code>PG-APP-DEMO</code> sa APP01 i DB01 i potvrditi status Protected.</li>
+  <li>Kreirati recovery plan <code>RP-APP-DEMO</code>. DB01 postaviti u raniju priority grupu, APP01 iza njega, uz readiness proveru baze pre nastavka.</li>
+  <li>Dodati dokumentovan callout/prompt za test transakciju. Skripta ne sme sadržati tajnu niti menjati produkcioni DNS.</li>
+</ol>
+
+<p>
+  Kriterijum završetka je plan bez unresolved protection ili mapping grešaka, sa jasno prikazanim redosledom i izolovanom testnom mrežom. Rollback je uklanjanje recovery plan-a i protection group-a kroz interfejs samo ako nisu potrebni za naredne vežbe; pre toga sačuvati konfiguracioni zapis i screenshot mapiranja.
+</p>
+
+<h4>Vežba 4 – Automatizovana read-only provera PowerCLI-jem</h4>
+
+<p>
+  VCF PowerCLI se izvršava na administratorskoj stanici. Sledeći primer uspostavlja sesiju; sama konekcija ne pokreće recovery, ali pristupa osetljivoj upravljačkoj ravni. Tačan API model i metode iz <code>ExtensionData</code> proveriti za instalirani modul i server build, jer nisu svi objekti predstavljeni klasičnim cmdlet-ima.
+</p>
+
+<pre><code class="language-powershell">Import-Module VMware.VimAutomation.Core
+Import-Module VMware.VimAutomation.Srm
+
+$vc = Connect-VIServer -Server "vc-a.lab.example" -Credential (Get-Credential)
+$remoteCredential = Get-Credential -Message "Nalog za recovery SRM/LSR sajt"
+$srm = Connect-SrmServer -Server $vc -RemoteCredential $remoteCredential
+
+$srm | Select-Object Name, IsConnected
+$srm.ExtensionData | Get-Member
+
+# Posle read-only inspekcije zatvoriti obe sesije.
+Disconnect-SrmServer -Server $srm -Confirm:$false
+Disconnect-VIServer -Server $vc -Confirm:$false</code></pre>
+
+<p>
+  Očekuje se <code>IsConnected=True</code> i prikaz dostupnog API objekta bez TLS upozorenja. <code>Get-Member</code> je read-only način da se utvrdi stvarni objektni model; nije dokaz zdravlja plana. Ne kopirati sa interneta poziv recovery metode bez provere zvanične API reference, RBAC-a, režima testa i change odobrenja. U produkciji koristiti secret vault i namenski nalog; interaktivni <code>Get-Credential</code> je prihvatljiv laboratorijski obrazac.
+</p>
+
+<h4>Vežba 5 – Izolovani test, merenje RTO-a i cleanup</h4>
+
+<p><strong>Cilj:</strong> dokazati oporavak aplikacije bez prekida produkcije. Rizik je srednji: pogrešno mrežno mapiranje može izazvati IP konflikt ili stvarne spoljne akcije.</p>
+
+<ol>
+  <li>Otvoriti change/test zapis i potvrditi da je testna mreža izolovana, da su e-mail/payment integracije blokirane i da postoji jump host.</li>
+  <li>Zabeležiti UTC početak i trenutno stanje replikacije. Pokrenuti <em>Test Recovery Plan</em>, nikako <em>Run Recovery Plan</em>.</li>
+  <li>Pratiti korake u Recovery Steps i Tasks/Events. Ne preskakati upozorenje bez zapisa razloga.</li>
+  <li>Na testnom DB01 proveriti servis i recovery baze; na APP01 proveriti DNS/hosts rezoluciju unutar bubble-a, HTTPS health i zatim izvršiti dogovorenu reverzibilnu test transakciju.</li>
+  <li>Zabeležiti vreme tehničke spremnosti, vreme poslovnog prihvatanja, izabranu recovery point tačku i procenjeni ostvareni RPO.</li>
+  <li>Izvesti recovery history/report i sačuvati aplikacione dokaze. Pokrenuti <em>Cleanup</em> i potvrditi da su testni VM-ovi i privremeni uređaji uklonjeni, dok produkcija i replike ostaju zdrave.</li>
+</ol>
+
+<pre><code class="language-bash"># Izvršava se sa izolovanog testnog jump hosta; komande samo proveravaju stanje.
+date -u
+getent hosts app01.dr-test.example
+curl --fail --silent --show-error --max-time 10 \
+  https://app01.dr-test.example/health
+
+# Primer provere TCP dostupnosti baze; ne potvrđuje transakcionu ispravnost.
+nc -vz -w 5 db01.dr-test.example 5432</code></pre>
+
+<p>
+  Uspeh znači: plan je Test Complete, aplikaciona transakcija je prošla, izmereni RTO je unutar cilja, nema kontakta sa produkcionim integracijama, cleanup je završen i replikacija je ponovo OK. Ako test ne uspe, ne proglašavati DR sposobnost na osnovu delimično podignutih VM-ova. Zabeležiti neuspešan korak, neposredni uzrok i korektivnu meru, pa zakazati ponovni test.
+</p>
+
+<h4>Vežba 6 – Kontrolisani kvar i troubleshooting grana</h4>
+
+<p><strong>Cilj:</strong> u laboratoriji vežbati dokazivanje uzroka RPO violation-a bez destruktivnog failover-a. Bezbedna simulacija je ograničenje bandwidth-a ili kontrolisani prekid tačno dokumentovane replikacione putanje; ne gasiti produkcioni storage ili ceo vCenter.</p>
+
+<ol>
+  <li>Pre simulacije sačuvati healthy status, datastore prostor, latency, mrežni throughput i vreme poslednje sinhronizacije.</li>
+  <li>U dogovorenom laboratorijskom prozoru primeniti reverzibilno ograničenje na replikacioni test tok. Zabeležiti change ID i UTC vreme.</li>
+  <li>Posmatrati kada se pojavljuje backlog/RPO violation. Prikupiti događaje iz vCenter-a, orkestratora i replication appliance-a za isti interval.</li>
+  <li>Formulisati hipotezu „raspoloživi protok je manji od change rate-a”, potvrditi je mrežnom metrikom i rastom backlog-a, pa ukloniti ograničenje.</li>
+  <li>Potvrditi da backlog opada i da se status vraća na OK bez brisanja/reconfigurisanja replike.</li>
+</ol>
+
+<p>
+  Privremeno rešenje može biti kontrolisano smanjenje konkurentnih inicijalnih sinhronizacija; trajna mera je kapacitivno planiranje/QoS ili promena politike zasnovana na poslovnom zahtevu. Rollback je uklanjanje laboratorijskog mrežnog ograničenja i potvrda prvobitne konfiguracije. Kriterijum završetka je korelisana vremenska linija i oporavljena replika, ne samo nestanak alarma.
+</p>
+
+<h4>Vežba 7 – Tabletop planned migration, disaster failover i failback</h4>
+
+<p>
+  Cilj je proveriti odluke bez pokretanja destruktivne operacije. Tim prolazi kroz tri scenarija: najavljena selidba sa dostupnim sajtom A, nagli gubitak sajta A i povratak posle obnove. Za svaki scenario imenovati ko proglašava događaj, ko potvrđuje fencing, koju recovery point tačku bira, kada se preusmerava saobraćaj, ko prihvata podatke, kako se uspostavlja backup na aktivnom sajtu i koji uslovi dopuštaju reprotect/failback.
+</p>
+
+<p>
+  Završni dokaz je odobren runbook sa RACI odgovornostima, kontaktima van primarnog sistema, kontrolnim kapijama, rollback kriterijumima i procenjenim vremenima. Ako tim ne može nedvosmisleno da odgovori ko sprečava split-brain ili ko proglašava oporavljene podatke autoritativnim, stvarni failover se ne vežba dok se upravljanje ne ispravi.
+</p>
+
+<h3>11. Administratorske prakse</h3>
+
+<ul>
+  <li>Projektovati oporavak po poslovnoj usluzi i zavisnostima, ne po proizvoljnoj listi VM-ova.</li>
+  <li>Držati backup i replikaciju kao komplementarne, administrativno razdvojene kontrole; testirati i noviju repliku i stariju bezbednu recovery point tačku.</li>
+  <li>Meriti ostvareni RPO i end-to-end RTO, uključujući deklaraciju, fencing, mrežno preusmeravanje i poslovno prihvatanje.</li>
+  <li>Testirati plan posle značajne promene aplikacije, mreže, storage-a, sertifikata, KMS-a, identiteta ili verzije proizvoda, kao i periodično prema politici.</li>
+  <li>Automatizovati read-only inventar i validacije; state-changing recovery operacije zaštititi change kontrolom, RBAC-om, eksplicitnim režimom i audit tragom.</li>
+  <li>Čuvati plan i kontakte van istog failure domain-a; recovery procedura ne sme biti dostupna samo u sistemu koji se oporavlja.</li>
+  <li>Redovno proveravati kapacitet recovery sajta, licence, kompatibilnost build-ova/SRA-a i istek sertifikata.</li>
+  <li>Svaki test završiti cleanup-om, ponovnom proverom zaštite, izveštajem, vlasnikom korektivne mere i datumom ponovnog testa.</li>
+</ul>
+
+<h3>12. Završna kontrolna tačka</h3>
+
+<p>Administrator je završio lekciju kada može dokazima da:</p>
+
+<ul class="checklist">
+  <li>razlikuje HA, backup, replikaciju, orkestraciju i poslovni kontinuitet;</li>
+  <li>prevede BIA zahtev u recovery tier, RPO, RTO, zavisnosti i kriterijum prihvatanja;</li>
+  <li>izabere između vSphere Replication, array-based i aplikacione replikacije bez poistovećivanja replike sa backupom;</li>
+  <li>objasni uloge site pair-a, mapiranja, placeholder datastore-a, protection group-a i recovery plan-a;</li>
+  <li>projektuje izolovanu testnu mrežu i spreči IP konflikt, neželjene spoljne akcije i split-brain;</li>
+  <li>razlikuje Test, Cleanup, Planned Migration, Disaster Recovery, Reprotect i Failback;</li>
+  <li>izvede izolovan test, izmeri end-to-end RTO, proceni ostvareni RPO i dobije poslovno prihvatanje;</li>
+  <li>koreliše recovery history, vCenter događaje, replication/orkestrator logove, mrežne i storage metrike;</li>
+  <li>bezbedno zaustavi tok kada fencing, integritet podataka, KMS, kapacitet ili identitet nisu dokazani;</li>
+  <li>dokumentuje odstupanje, korektivnu meru, vlasnika, rok i obavezni ponovni test.</li>
+</ul>
+
+<h3>13. Zaključak</h3>
+
+<p>
+  Pouzdan disaster recovery nije proizvod koji se jednom instalira, već stalno proveravana sposobnost organizacije. Replikacija obezbeđuje podatke u drugom domenu, orkestrator prevodi zavisnosti u kontrolisan tok, ali tek izolovan test i poslovna validacija pretvaraju konfiguraciju u dokaz oporavljivosti. Najvažnija administratorska odluka često nije „pokreni plan”, već izbor odgovarajuće recovery tačke, potvrda da je izvor ograđen i spremnost da se proces zaustavi kada integritet nije dokazan.
+</p>
+
+<p>
+  Administrator koji odgovorno upravlja DR-om poznaje granice verzije i licence, prati ostvareni RPO, meri celokupan RTO, čuva nezavisne backup kopije, testira mrežu i identitet jednako ozbiljno kao VM-ove i dokumentuje svaki izuzetak. Tako recovery plan prestaje da bude optimističan dokument i postaje proverljiv operativni sistem za kontinuitet poslovanja. Sledeća lekcija nastavlja od trenutka kada događaj preraste u incident: trijažom, prikupljanjem support bundle-a, koordinacijom sa podrškom i RCA postupkom.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware Live Site Recovery i vSphere Replication arhitektonska, instalaciona, administrativna, kompatibilna i troubleshooting dokumentacija; release notes i Configuration Maximums; Storage Replication Adapter vodiči; VCF PowerCLI SRM modul i Live Site Recovery REST API reference; zvanične smernice za recovery plan, test, cleanup, reprotect i failback
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-46-upravljanje-promenama-odrzavanje.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-48-incidenti-support-bundle-rca.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

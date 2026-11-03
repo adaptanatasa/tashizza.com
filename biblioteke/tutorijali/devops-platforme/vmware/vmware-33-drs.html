@@ -1,0 +1,2469 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-33-drs.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>DRS – raspoređivanje opterećenja unutar VMware klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMware DRS i naučite kako se opterećenje virtuelnih mašina automatski raspoređuje između ESXi hostova unutar VMware klastera.">
+
+  <meta name="keywords"
+        content="VMware DRS, Distributed Resource Scheduler, raspoređivanje opterećenja, VMware klaster, ESXi host, balansiranje resursa, CPU resursi, memorijski resursi, vMotion, automatizacija klastera, resource pool, vCenter, vSphere, VMware administracija, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-33-drs.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="DRS – raspoređivanje opterećenja unutar VMware klastera">
+
+  <meta property="og:description"
+        content="Saznajte kako VMware DRS prati korišćenje resursa i raspoređuje virtuelne mašine između hostova radi ravnomernijeg rada klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-33-drs.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-33-drs.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="DRS – raspoređivanje opterećenja unutar VMware klastera">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-33-drs.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-33-drs.png"
+           alt="DRS – raspoređivanje opterećenja unutar VMware klastera">
+
+    </a>
+
+      <div class="page-subtitle">
+   VII. Klasteri, dostupnost, performanse i bezbednosna osnova
+</div>
+
+<div class="page-subtitle">
+33. Distributed Resource Scheduler – balansiranje opterećenja i pravila smeštaja
+</div>
+
+<h3>Šta je Distributed Resource Scheduler (DRS)</h3>
+
+<p>Distributed Resource Scheduler (DRS) predstavlja mehanizam za inteligentno upravljanje računarskim resursima unutar VMware vSphere klastera. Za razliku od High Availability (HA), čiji je zadatak oporavak nakon otkaza hosta, DRS radi neprekidno tokom normalnog rada infrastrukture i nastoji da virtuelnim mašinama obezbedi najbolje moguće uslove za izvršavanje koristeći raspoložive CPU i memorijske resurse svih hostova u klasteru.</p>
+
+<p>Najvažnije je razumeti da DRS nije sistem koji "izjednačava procenat opterećenja hostova". To je pojednostavljeno objašnjenje koje više nije potpuno tačno za savremene verzije vSphere-a.</p>
+
+<p>Od vSphere 7 pa nadalje algoritam je potpuno promenjen. Umesto da posmatra isključivo hostove, DRS prvenstveno procenjuje kvalitet rada svake pojedinačne virtuelne mašine (VM DRS Score odnosno VM Happiness). Cilj nije da svi hostovi imaju isti procenat zauzeća već da svaka VM dobije što bolje uslove za izvršavanje uz minimalan broj nepotrebnih vMotion migracija.</p>
+
+<p>Drugim rečima:</p>
+
+<ul>
+<li>HA reaguje kada host otkaže.</li>
+<li>vMotion izvršava samu migraciju.</li>
+<li>DRS odlučuje da li migracija uopšte ima smisla.</li>
+</ul>
+
+<hr>
+
+<h3>Mesto DRS-a u VMware arhitekturi</h3>
+
+<p>DRS je komponenta vCenter Server-a.</p>
+
+<p>ESXi hostovi sami po sebi ne donose DRS odluke.</p>
+
+<p>Kompletna analiza izvršava se u okviru vCenter-a koji prikuplja telemetriju svih hostova, izračunava optimalan raspored VM-ova i zatim koristi vMotion da izvrši planirane migracije.</p>
+
+<p>Pojednostavljen tok izgleda ovako:</p>
+
+<ol>
+<li>ESXi hostovi šalju informacije o CPU, memoriji i drugim resursima.</li>
+<li>vCenter prikuplja metrike.</li>
+<li>DRS obrađuje stanje celog klastera.</li>
+<li>Izračunava DRS Score za svaku VM.</li>
+<li>Analizira cenu migracije.</li>
+<li>Ako korist prevazilazi trošak, pokreće vMotion.</li>
+<li>Nastavlja praćenje rada klastera.</li>
+</ol>
+
+<p>Važno je razumeti da DRS nikada ne migrira VM "reda radi". Svaka migracija predstavlja određeni trošak CPU vremena, mrežnog saobraćaja i VM stun intervala. Savremeni DRS upravo zbog toga pokušava da izvrši što manje migracija koje donose najveću korist.</p>
+
+<hr>
+
+<h3>Preduslovi za korišćenje DRS-a</h3>
+
+<p>Administrator često uključi DRS očekujući da će odmah raditi, a zaboravi da nekoliko drugih VMware tehnologija mora prethodno biti ispravno konfigurisano.</p>
+
+<p>Minimalni preduslovi uključuju:</p>
+
+<ul>
+<li>vCenter Server</li>
+<li>Cluster objekat</li>
+<li>više ESXi hostova</li>
+<li>zajednički datastore ili Shared Nothing vMotion kada je podržan za konkretan scenario</li>
+<li>ispravno konfigurisan vMotion VMkernel</li>
+<li>DNS rezoluciju</li>
+<li>sinhronizovano vreme</li>
+<li>odgovarajuće licence koje podržavaju DRS funkcionalnost za konkretno izdanje vSphere platforme.</li>
+</ul>
+
+<p>Bez ispravnog vMotion-a DRS praktično ne može izvršavati automatsko balansiranje jer nema način da prebaci VM između hostova.</p>
+
+<hr>
+
+<h3>Kako DRS procenjuje stanje klastera</h3>
+
+<p>Administrator početnik često posmatra samo:</p>
+
+<ul>
+<li>CPU Usage</li>
+<li>Memory Usage</li>
+</ul>
+
+<p>DRS koristi daleko više parametara.</p>
+
+<p>U procenu ulaze između ostalog:</p>
+
+<ul>
+<li>CPU Ready Time</li>
+<li>CPU contention</li>
+<li>NUMA raspored</li>
+<li>cache locality</li>
+<li>memory pressure</li>
+<li>ballooning</li>
+<li>compression</li>
+<li>host reservations</li>
+<li>VM reservations</li>
+<li>resource shares</li>
+<li>network cost migracije</li>
+<li>trajanje potencijalnog dobitka nakon migracije.</li>
+</ul>
+
+<p>Jedna VM može imati loš DRS Score iako host izgleda "poluprazan".</p>
+
+<p>Razlog može biti:</p>
+
+<ul>
+<li>CPU Ready</li>
+<li>NUMA neusklađenost</li>
+<li>lokalni memory pressure</li>
+<li>loš raspored velikih VM-ova.</li>
+</ul>
+
+<p>Zbog toga ozbiljan administrator nikada ne donosi zaključak samo na osnovu procenta zauzeća hosta.</p>
+
+<hr>
+
+<h3>DRS Score (VM Happiness)</h3>
+
+<p>Od vSphere 7 uveden je novi koncept koji predstavlja jednu od najvećih promena u radu DRS-a.</p>
+
+<p>Svaka virtuelna mašina dobija sopstvenu ocenu rada.</p>
+
+<p>Ocena predstavlja procenu koliko VM trenutno dobija resursa koji su joj potrebni.</p>
+
+<p>Što je ocena veća:</p>
+
+<ul>
+<li>VM radi efikasnije</li>
+<li>ima manje čekanja CPU resursa</li>
+<li>ima manje memorijskog pritiska</li>
+<li>nije potrebno njeno premeštanje.</li>
+</ul>
+
+<p>Ako bi migracija značajno povećala DRS Score, DRS će predložiti ili automatski izvršiti vMotion u zavisnosti od režima automatizacije.</p>
+
+<hr>
+
+<h3>Periodična analiza klastera</h3>
+
+<p>Starije verzije DRS-a radile su analizu u znatno dužim intervalima.</p>
+
+<p>Od modernih verzija vSphere analiza se izvršava približno jednom u minutu.</p>
+
+<p>To omogućava mnogo brže reagovanje na promene opterećenja bez preteranog povećanja broja migracija.</p>
+
+<p>Istovremeno DRS procenjuje da li će korist migracije trajati dovoljno dugo da opravda njen trošak.</p>
+
+<p>Na primer:</p>
+
+<ul>
+<li>kratkotrajni CPU spike od desetak sekundi gotovo nikada neće izazvati migraciju;</li>
+<li>kontinuirano visoko opterećenje koje traje više minuta verovatno hoće.</li>
+
+</ul>
+
+<hr>
+
+<h3>Initial Placement</h3>
+
+<p>Jedna od najvažnijih funkcija DRS-a dešava se pre nego što administrator uopšte primeti da je DRS radio.</p>
+
+<p>Kada uključujemo novu virtuelnu mašinu, DRS bira host na kojem će ona biti pokrenuta.</p>
+
+<p>Pri tome uzima u obzir:</p>
+
+<ul>
+<li>trenutno stanje svih hostova</li>
+<li>NUMA topologiju</li>
+<li>resource pool</li>
+<li>rezervacije</li>
+<li>afinitetna pravila</li>
+<li>host maintenance status</li>
+<li>licencna ograničenja</li>
+<li>DRS pravila.</li>
+</ul>
+
+<p>Na taj način izbegava se nepotrebna kasnija migracija.</p>
+
+<p>Dobra početna odluka često znači da vMotion uopšte neće biti potreban.</p>
+
+<hr>
+
+<h3>Load Balancing</h3>
+
+<p>Nakon što VM počne da radi, DRS kontinuirano prati stanje.</p>
+
+<p>Ako dođe do značajnog disbalansa, razmatra moguće migracije.</p>
+
+<p>Pri tome procenjuje:</p>
+
+<ul>
+<li>koliko će migracija trajati</li>
+<li>koliko mreže će koristiti</li>
+<li>koliko će poboljšati DRS Score</li>
+<li>da li narušava DRS pravila</li>
+<li>da li postoji dovoljan kapacitet na ciljnom hostu.</li>
+</ul>
+
+<p>Tek nakon toga odlučuje da li će migracija biti izvršena.</p>
+
+<hr>
+
+<h3>DRS Automation Mode</h3>
+
+<p>Klaster može raditi u različitim režimima automatizacije.</p>
+
+<table>
+<thead>
+<tr>
+<th>Režim</th>
+<th>Ponašanje</th>
+<th>Tipična upotreba</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual</td>
+<td>DRS daje preporuke, administrator ih ručno prihvata.</td>
+<td>Laboratorije i test okruženja.</td>
+</tr>
+<tr>
+<td>Partially Automated</td>
+<td>Automatski bira host pri uključivanju VM-a, kasnije migracije predlaže administratoru.</td>
+<td>Kontrolisana produkcija.</td>
+</tr>
+<tr>
+<td>Fully Automated</td>
+<td>Samostalno pokreće vMotion kada proceni da je potrebno.</td>
+<td>Enterprise produkcija.</td>
+</tr>
+</tbody>
+</table>
+
+<p>U savremenim produkcionim okruženjima najčešće se koristi Fully Automated režim jer omogućava najefikasnije korišćenje resursa.</p>
+
+<hr>
+
+<h3>Migration Sensitivity</h3>
+
+<p>Novije verzije više ne koriste stari "Migration Threshold" koncept na isti način kao ranije.</p>
+
+<p>Administrator podešava koliko agresivno DRS sme da optimizuje raspored VM-ova.</p>
+
+<p>Niži nivo znači:</p>
+
+<ul>
+<li>manje migracija</li>
+<li>konzervativnije ponašanje.</li>
+</ul>
+
+<p>Viši nivo znači:</p>
+
+<ul>
+<li>češće optimizacije</li>
+<li>veći fokus na poboljšanje DRS Score.</li>
+</ul>
+
+<p>Podrazumevana srednja vrednost predstavlja najbolji kompromis za najveći broj produkcionih okruženja.</p>
+
+<hr>
+
+<h3>DRS pravila (Affinity i Anti-Affinity)</h3>
+
+<p>Jedan od najvažnijih administrativnih zadataka jeste pravilno definisanje DRS pravila.</p>
+
+<p>Najčešća pravila su:</p>
+
+<ul>
+<li>VM-VM Affinity</li>
+<li>VM-VM Anti-Affinity</li>
+<li>VM-Host Affinity</li>
+<li>VM-Host Anti-Affinity.</li>
+</ul>
+
+<p>Primeri:</p>
+
+<ul>
+<li>Application Server i Database Server mogu biti zajedno zbog brzine komunikacije.</li>
+<li>Dva Domain Controller-a moraju biti na različitim hostovima.</li>
+<li>Licencirani softver može biti vezan za određene hostove.</li>
+<li>GPU VM mora ostati na hostovima koji imaju odgovarajući hardver.</li>
+</ul>
+
+<p>Administrator mora razlikovati preporučena (<em>Should</em>) i obavezna (<em>Must</em>) VM-Host pravila. <em>Should</em> je meko ograničenje: DRS nastoji da ga poštuje, ali ga može prekršiti kada su dostupnost ili izvodljivost važnije. <em>Must</em> je tvrdo ograničenje koje blokira placement ili migraciju van dozvoljene host grupe i može sprečiti HA restart kada nijedan dozvoljeni host nije raspoloživ. VM-VM affinity i anti-affinity pravila imaju sopstvenu semantiku i njihov odnos sa HA zavisi od konkretne operacije i HA podešavanja; zato se ponašanje mora testirati za power-on, korisnički vMotion, HA failover i Maintenance Mode, a ne zaključivati samo iz naziva pravila.</p>
+
+<h3>Praktikum – od validacije preduslova do incident response-a</h3>
+
+<p><strong>Praktični cilj</strong></p>
+
+<p>U ovom delu praktikuma administrator priprema klaster za bezbedan rad DRS-a, proverava sve zavisnosti, uključuje DRS u kontrolisanom režimu, posmatra preporuke pre automatskog izvršavanja migracija i konfiguriše osnovna VM-VM i VM-Host pravila.</p>
+
+<p>Vežbe su organizovane tako da se prvo utvrdi zdravo početno stanje, a tek zatim menjaju konfiguracija i raspored virtuelnih mašina. Ovakav redosled je važan u produkciji: ako administrator uključi automatizaciju pre nego što proveri vMotion, vSphere Cluster Services, mrežnu dostupnost, zajednički storage i postojeća pravila, kasnije neće moći pouzdano da razlikuje grešku DRS-a od greške zavisne infrastrukture.</p>
+
+<p>DRS radi kao klasterska funkcija vCenter Servera i za praktično izvršavanje preporučenih migracija koristi vMotion. U vSphere 7.0 Update 1 i vSphere 8 okruženjima ispravno stanje vSphere Cluster Services predstavlja važnu zavisnost za rad DRS-a; nezdravo vCLS stanje može ograničiti ili zaustaviti DRS. To nije univerzalna tvrdnja za sve buduće generacije: počev od vSphere 9.0, Broadcom navodi da se vCLS može isključiti bez uticaja na DRS i HA. Administrator zato postupak dijagnostike vezuje za tačan vCenter build, a ne za opštu pretpostavku.</p>
+
+<hr>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Primer naziva</th>
+      <th>Namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server</td>
+      <td>vcsa01.lab.local</td>
+      <td>Centralno upravljanje klasterom i izvršavanje DRS logike</td>
+    </tr>
+    <tr>
+      <td>Datacenter</td>
+      <td>DC-BEOGRAD</td>
+      <td>Organizacioni kontejner</td>
+    </tr>
+    <tr>
+      <td>Klaster</td>
+      <td>CL-PROD-LAB</td>
+      <td>DRS i HA klaster</td>
+    </tr>
+    <tr>
+      <td>ESXi host 1</td>
+      <td>esx01.lab.local</td>
+      <td>Izvorni ili ciljni compute resurs</td>
+    </tr>
+    <tr>
+      <td>ESXi host 2</td>
+      <td>esx02.lab.local</td>
+      <td>Izvorni ili ciljni compute resurs</td>
+    </tr>
+    <tr>
+      <td>ESXi host 3</td>
+      <td>esx03.lab.local</td>
+      <td>Dodatni kapacitet i test anti-affinity pravila</td>
+    </tr>
+    <tr>
+      <td>Zajednički datastore</td>
+      <td>DS-SHARED-01</td>
+      <td>Datastore vidljiv svim hostovima</td>
+    </tr>
+    <tr>
+      <td>VM mreža</td>
+      <td>DVPG-SERVER-VLAN120</td>
+      <td>Ista mrežna dostupnost na svim hostovima</td>
+    </tr>
+    <tr>
+      <td>vMotion mreža</td>
+      <td>VMK-vMotion</td>
+      <td>Live migracija između hostova</td>
+    </tr>
+    <tr>
+      <td>Test VM-ovi</td>
+      <td>drs-web01, drs-web02, drs-db01, drs-load01</td>
+      <td>Test početnog raspoređivanja, migracija i DRS pravila</td>
+    </tr>
+    <tr>
+      <td>Administratorska stanica</td>
+      <td>admin01.lab.local</td>
+      <td>PowerCLI i pristup vSphere Clientu</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Preporučeni laboratorijski kapacitet</strong></p>
+
+<ul>
+  <li>najmanje tri ESXi hosta kada se testiraju anti-affinity pravila i održavanje hosta;</li>
+  <li>najmanje jedan zajednički datastore dostupan svim hostovima;</li>
+  <li>ispravan vMotion VMkernel interfejs na svakom hostu;</li>
+  <li>najmanje četiri male test virtuelne mašine;</li>
+  <li>PowerCLI instaliran na administratorskoj stanici;</li>
+  <li>administratorski ili namenski delegirani nalog sa pravima za konfiguraciju klastera, migraciju VM-ova i upravljanje DRS pravilima.</li>
+</ul>
+
+<p>Za osnovnu demonstraciju mogu se koristiti dva hosta, ali takva topologija nije dovoljna za kvalitetno testiranje svih situacija. Na primer, obavezno anti-affinity pravilo za tri virtuelne mašine ne može biti zadovoljeno ako postoje samo dva podobna hosta.</p>
+
+<p><strong>Važna verzijska i licencna napomena</strong></p>
+
+<p>Dostupnost DRS-a zavisi od vSphere odnosno VMware Cloud Foundation izdanja, prava pretplate i konkretnog licencnog modela koji je primenjen u organizaciji. Nazivi paketa i prava korišćenja menjali su se između generacija proizvoda. Administrator zato pre implementacije mora proveriti prava koja važe za njegovu ugovorenu verziju, a ne oslanjati se na staru tabelu licenci ili pretpostavku da svako vCenter izdanje automatski uključuje DRS.</p>
+
+<hr>
+
+<h3>Vežba 1 – Prikupljanje početnog stanja i provera zavisnosti</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Potvrditi da je klaster tehnički spreman za DRS pre menjanja njegove konfiguracije.</p>
+
+<p><strong>Početno stanje</strong></p>
+
+<ul>
+  <li>hostovi su povezani sa vCenter Serverom;</li>
+  <li>virtuelne mašine rade na najmanje dva hosta;</li>
+  <li>DRS još nije uključen ili je podešen na Manual;</li>
+  <li>ne postoje aktivni maintenance, remediation ili migration zadaci;</li>
+  <li>nema poznatog incidenta na mreži ili storage sistemu.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ova vežba je pretežno read-only. Nemoj uključivati DRS niti pokretati migracije dok ne potvrdiš da su vMotion, zajednički datastore, mrežne port grupe, kompatibilnost procesora i vCLS u ispravnom stanju.</p>
+
+<p><strong>Korak 1 – Pregled klastera u vSphere Clientu</strong></p>
+
+<ol>
+  <li>Prijavi se u vSphere Client.</li>
+  <li>Otvori <strong>Hosts and Clusters</strong>.</li>
+  <li>Izaberi klaster <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori karticu <strong>Summary</strong>.</li>
+  <li>Proveri da li postoje crveni ili žuti alarmi.</li>
+  <li>Proveri polje koje prikazuje stanje vSphere Cluster Services.</li>
+  <li>Otvori <strong>Monitor &gt; Issues and Alarms &gt; Triggered Alarms</strong>.</li>
+  <li>Otvori <strong>Monitor &gt; Tasks and Events &gt; Events</strong> i pregledaj događaje iz poslednja 24 časa.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>status klastera je zdrav;</li>
+  <li>vCenter ima vezu sa svim hostovima;</li>
+  <li>vSphere Cluster Services nisu označene kao Unhealthy;</li>
+  <li>ne postoji aktivan alarm koji navodi da je DRS funkcionalnost ograničena;</li>
+  <li>nema hostova u stanju Disconnected, Not Responding ili Maintenance Mode;</li>
+  <li>nema neuspelih vMotion zadataka koji ukazuju na postojeći infrastrukturni problem.</li>
+</ul>
+
+<p>Ako vSphere Client prijavljuje da je DRS funkcionalnost pogođena zbog nezdravog vCLS stanja, takav alarm ne treba samo potvrditi i sakriti. Najpre se utvrđuje zašto vCLS nije zdrav: nedostupan datastore, problem sa EAM servisom, nedostatak prostora na VCSA, problem sa sertifikatima, pravima ili životnim ciklusom vCLS VM-ova. Broadcom dokumentuje više različitih uzroka istog vidljivog simptoma, pa brisanje vCLS VM-ova bez dijagnoze nije univerzalno rešenje. </p>
+
+<p><strong>Korak 2 – Provera ESXi hostova i raspoloživog kapaciteta</strong></p>
+
+<p>Za svaki host otvori:</p>
+
+<p><strong>Host &gt; Monitor &gt; Performance &gt; Advanced</strong></p>
+
+<p>Pregledaj najmanje:</p>
+
+<ul>
+  <li>CPU Usage;</li>
+  <li>CPU Ready za važnije VM-ove;</li>
+  <li>Memory Usage;</li>
+  <li>Memory Active;</li>
+  <li>Balloon;</li>
+  <li>Swap in i Swap out;</li>
+  <li>Network Usage na vMotion uplinkovima;</li>
+  <li>datastore latency i connectivity alarme.</li>
+</ul>
+
+<p>Ne donosi zaključak samo na osnovu zbirnog CPU procenta. Host sa relativno niskom prosečnom zauzetošću može imati pojedinačne VM-ove sa visokim CPU Ready vremenom, NUMA problemom ili memorijskim pritiskom.</p>
+
+<p><strong>Korak 3 – Provera vMotion VMkernel konfiguracije</strong></p>
+
+<p>Na svakom hostu otvori:</p>
+
+<p><strong>Host &gt; Configure &gt; Networking &gt; VMkernel adapters</strong></p>
+
+<p>Potvrdi:</p>
+
+<ul>
+  <li>da postoji VMkernel interfejs namenjen vMotion-u;</li>
+  <li>da je na njemu omogućena usluga vMotion;</li>
+  <li>da su IP adresa, maska i VLAN ispravni;</li>
+  <li>da odgovarajuća port grupa postoji na svakom hostu;</li>
+  <li>da fizički uplinkovi imaju stanje Up;</li>
+  <li>da MTU odgovara konfiguraciji cele putanje.</li>
+</ul>
+
+<p><strong>ESXCLI provera</strong></p>
+
+<p>Sledeće komande izvršavaju se preko SSH ili ESXi Shell-a na svakom hostu. One ne menjaju konfiguraciju.</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+esxcli network ip interface ipv4 get
+esxcli network nic list
+esxcli network vswitch standard list
+esxcli network vswitch dvs vmware list</code></pre>
+
+<p><code>esxcli network ip interface list</code> prikazuje VMkernel interfejse i osnovno operativno stanje. U izlazu treba pronaći vMotion VMkernel, na primer <code>vmk1</code>, i potvrditi da je Enabled.</p>
+
+<p><code>esxcli network ip interface ipv4 get</code> prikazuje IPv4 adresu i masku svakog VMkernel interfejsa. Komanda je read-only.</p>
+
+<p><code>esxcli network nic list</code> proverava fizičke NIC interfejse. Za aktivne uplinkove očekuje se <code>Link Up</code>, odgovarajuća brzina i pravilno detektovan drajver.</p>
+
+<p>Komande za standardni i distribuirani switch koriste se prema tipu mreže. One ne menjaju stanje, ali izlaz distribuiranog switcha može biti obiman.</p>
+
+<p><strong>Provera vMotion mrežne dostupnosti</strong></p>
+
+<p>Sa hosta <code>esx01.lab.local</code> testiraj vMotion adresu hosta <code>esx02.lab.local</code>. Pretpostavimo da je vMotion vezan za <code>vmk1</code>:</p>
+
+<pre><code class="language-bash">vmkping -I vmk1 10.100.80.12</code></pre>
+
+<p>Ako se koristi jumbo MTU 9000, testiraj paket koji ne sme biti fragmentiran:</p>
+
+<pre><code class="language-bash">vmkping -I vmk1 -d -s 8972 10.100.80.12</code></pre>
+
+<p>Prva komanda potvrđuje osnovnu IP dostupnost. Druga potvrđuje da cela mrežna putanja podržava podešeni jumbo frame. Neuspešan jumbo test uz uspešan standardni ping obično ukazuje na neusklađen MTU na VMkernel interfejsu, vSwitch-u, fizičkom switchu ili međuspoju.</p>
+
+<p>Komande su read-only i bezbedne, ali veliki broj paralelnih testova ili korišćenje agresivnih parametara nije potreban u produkciji.</p>
+
+<p><strong>Korak 4 – Provera zajedničkog datastore-a</strong></p>
+
+<p>U vSphere Clientu otvori:</p>
+
+<p><strong>Datastore &gt; Hosts</strong></p>
+
+<p>Potvrdi da svi hostovi koji učestvuju u DRS-u vide datastore na kome se nalaze test VM-ovi.</p>
+
+<p>Na svakom ESXi hostu može se izvršiti:</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+esxcli storage core path list</code></pre>
+
+<p>Prva komanda prikazuje montirane datastore fajl-sisteme. Druga prikazuje storage putanje i njihovo stanje. Obe komande su read-only, ali <code>storage core path list</code> može dati vrlo dugačak izlaz.</p>
+
+<p>Za DRS compute migraciju uz zajednički storage VM fajlovi ne moraju da se kopiraju na drugi datastore, ali ciljni host mora imati pristup njihovoj trenutnoj lokaciji. Kada datastore nije vidljiv ciljnom hostu, ta destinacija neće biti validna.</p>
+
+<p><strong>Korak 5 – Provera mreža virtuelnih mašina</strong></p>
+
+<p>Otvori test VM, zatim:</p>
+
+<p><strong>VM &gt; Edit Settings &gt; Network Adapter</strong></p>
+
+<p>Potvrdi da ciljna port grupa postoji i da je dostupna na svim hostovima. Kod vSphere Distributed Switch-a proveri članstvo hostova, dodeljene uplinkove i VLAN konfiguraciju. Kod standardnih switch-eva proveri da port grupe imaju isti naziv i VLAN ID na svakom hostu.</p>
+
+<p>Isti naziv port grupe nije dovoljan dokaz da je mreža jednako konfigurisana. Na standardnim switch-evima moguće je da dve port grupe imaju isti naziv, ali različit VLAN ili pogrešan uplink.</p>
+
+<p><strong>Korak 6 – Provera procesorske kompatibilnosti</strong></p>
+
+<p>Ako hostovi koriste različite CPU generacije, proveri EVC:</p>
+
+<p><strong>Cluster &gt; Configure &gt; VMware EVC</strong></p>
+
+<p>VM koja koristi instrukcije nedostupne na ciljnom hostu ne može biti bezbedno migrirana. Ako se EVC uvodi naknadno, možda će biti potrebno gašenje i ponovno uključivanje pojedinih VM-ova da bi prihvatile zajednički CPU feature baseline.</p>
+
+<p>Nemoj menjati EVC režim bez zasebnog plana promene i provere kompatibilnosti svih hostova.</p>
+
+<p><strong>Korak 7 – PowerCLI inventar početnog stanja</strong></p>
+
+<p>Komande se izvršavaju na administratorskoj stanici na kojoj je instaliran Broadcom VMware PowerCLI.</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa01.lab.local
+
+$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$cluster |
+    Select-Object Name,
+                  DrsEnabled,
+                  DrsAutomationLevel,
+                  HAEnabled
+
+Get-VMHost -Location $cluster |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  NumCpu,
+                  MemoryTotalGB,
+                  CpuUsageMhz,
+                  MemoryUsageGB
+
+Get-VM -Location $cluster |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+                  NumCpu,
+                  MemoryGB</code></pre>
+
+<p><code>Connect-VIServer</code> uspostavlja sesiju sa vCenter Serverom. Ne menja vSphere konfiguraciju.</p>
+
+<p><code>Get-Cluster</code>, <code>Get-VMHost</code> i <code>Get-VM</code> su read-only cmdlet-i. Oni prikupljaju trenutno stanje i predstavljaju dobru osnovu za zapis pre promene.</p>
+
+<p>Očekivani izlaz treba da pokaže:</p>
+
+<ul>
+  <li>sve hostove u stanju Connected i PoweredOn;</li>
+  <li>stvarni DRS status i nivo automatizacije;</li>
+  <li>trenutni raspored VM-ova po hostovima;</li>
+  <li>osnovnu sliku potrošnje CPU i memorije.</li>
+</ul>
+
+<p><strong>Čuvanje početnog stanja u CSV fajl</strong></p>
+
+<pre><code class="language-powershell">$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+Get-VMHost -Location $cluster |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  NumCpu,
+                  MemoryTotalGB,
+                  CpuUsageMhz,
+                  MemoryUsageGB |
+    Export-Csv ".\drs-hosts-before-$timestamp.csv" -NoTypeInformation
+
+Get-VM -Location $cluster |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+                  NumCpu,
+                  MemoryGB |
+    Export-Csv ".\drs-vms-before-$timestamp.csv" -NoTypeInformation</code></pre>
+
+<p>Ovaj postupak ne menja vSphere objekte. Kreira lokalne CSV fajlove na administratorskoj stanici. Takav zapis omogućava poređenje stanja pre i posle DRS intervencije.</p>
+
+<p><strong>Provera uspeha vežbe</strong></p>
+
+<p>Vežba je uspešna ako administrator može da potvrdi sve sledeće:</p>
+
+<ul>
+  <li>vCenter i svi hostovi su povezani;</li>
+  <li>vCLS stanje je zdravo;</li>
+  <li>vMotion VMkernel interfejsi imaju međusobnu dostupnost;</li>
+  <li>MTU je usklađen;</li>
+  <li>test VM-ovi se nalaze na storage-u vidljivom svim ciljnim hostovima;</li>
+  <li>VM port grupe su dostupne na svim hostovima;</li>
+  <li>procesorska kompatibilnost omogućava vMotion;</li>
+  <li>početni inventar je sačuvan.</li>
+</ul>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatan uzrok</th>
+      <th>Sledeća provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vMotion vmkping ne uspeva</td>
+      <td>VLAN, IP, maska, routing, uplink ili firewall problem</td>
+      <td>VMkernel konfiguracija, fizički switch i vmkernel.log</td>
+    </tr>
+    <tr>
+      <td>Standardni ping radi, jumbo test ne radi</td>
+      <td>Neusklađen MTU</td>
+      <td>VMkernel, vSwitch, DVS, fizički portovi i trunk putanja</td>
+    </tr>
+    <tr>
+      <td>Datastore nije vidljiv jednom hostu</td>
+      <td>Storage zoning, masking, NFS pristup, path ili mount problem</td>
+      <td>Storage adapteri, putanje, datastore događaji i vmkernel.log</td>
+    </tr>
+    <tr>
+      <td>vCLS je Unhealthy</td>
+      <td>Problem EAM servisa, storage-a, sertifikata, prava ili vCLS VM-ova</td>
+      <td>Cluster alarm, eam.log, vpxd.log i stanje VCSA servisa</td>
+    </tr>
+    <tr>
+      <td>Jedan host nema VM port grupu</td>
+      <td>Host nije pravilno dodat na DVS ili standardni switch nije usklađen</td>
+      <td>Switch članstvo, uplinkovi, VLAN i port-group konfiguracija</td>
+    </tr>
+    <tr>
+      <td>CPU incompatibility</td>
+      <td>Različite CPU generacije ili neodgovarajući EVC</td>
+      <td>EVC baseline i CPU mogućnosti izvornog i ciljnog hosta</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h3>Vežba 2 – Uključivanje DRS-a u kontrolisanom režimu</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Uključiti DRS najpre u režimu Manual, potvrditi da klaster generiše razumljive preporuke i tek nakon validacije preći na viši nivo automatizacije.</p>
+
+<p><strong>Zašto se u laboratoriji počinje režimom Manual</strong></p>
+
+<p>Manual režim omogućava administratoru da odvoji odluku DRS algoritma od samog izvršavanja vMotion-a. Tako može da pregleda izvornu i ciljnu lokaciju, razlog preporuke, prioritet i uticaj pravila pre nego što migracija počne.</p>
+
+<p>U produkciji se često koristi Fully Automated režim, ali prelazak na automatizaciju treba da bude rezultat validacije, a ne prvi korak.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Vežba 1 je završena bez otvorenih kritičnih problema.</li>
+  <li>Nema aktivnih backup, snapshot consolidation, replication ili lifecycle operacija.</li>
+  <li>Promena je evidentirana u sistemu za upravljanje promenama.</li>
+  <li>Postoji dogovoreni period posmatranja.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Uključivanje DRS-a menja konfiguraciju klastera. Manual režim neće automatski izvršavati standardne load-balancing migracije, ali će menjati način na koji se generišu i prikazuju preporuke. Pre promene sačuvaj trenutno stanje i proveri da ne postoje VM override podešavanja koja bi dala neočekivano ponašanje.</p>
+
+<p><strong>GUI postupak</strong></p>
+
+<ol>
+  <li>Izaberi <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure &gt; Services &gt; vSphere DRS</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Omogući vSphere DRS.</li>
+  <li>Izaberi automatizaciju <strong>Manual</strong>.</li>
+  <li>Zadrži podrazumevanu migration sensitivity vrednost, osim ako laboratorijski cilj zahteva drugačije.</li>
+  <li>Nemoj dodavati napredne DRS opcije bez dokumentovanog razloga.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p><strong>PowerCLI postupak</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+Set-Cluster -Cluster $cluster `
+    -DrsEnabled $true `
+    -DrsAutomationLevel Manual `
+    -Confirm:$false</code></pre>
+
+<p>Komanda se izvršava sa administratorske stanice povezane na vCenter.</p>
+
+<p><code>Set-Cluster</code> menja konfiguraciju klastera i zato nije read-only. Parametar <code>-DrsEnabled $true</code> uključuje DRS, dok <code>-DrsAutomationLevel Manual</code> postavlja ručno izvršavanje preporuka. <code>-Confirm:$false</code> uklanja interaktivnu potvrdu i treba ga koristiti samo kada je administrator siguran da je ciljni objekat tačno identifikovan.</p>
+
+<p>Aktuelna PowerCLI referenca navodi da podešavanje DRS nivoa automatizacije preko <code>Set-Cluster</code> ujedno zahteva odnosno aktivira DRS konfiguraciju klastera. </p>
+
+<p><strong>Validacija konfiguracije</strong></p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Select-Object Name,
+                  DrsEnabled,
+                  DrsAutomationLevel</code></pre>
+
+<p>Očekivani rezultat:</p>
+
+<pre><code class="language-none">Name         DrsEnabled DrsAutomationLevel
+----         ---------- ------------------
+CL-PROD-LAB  True       Manual</code></pre>
+
+<p>Tačan vizuelni format izlaza zavisi od verzije PowerCLI-a, ali vrednosti moraju pokazivati da je DRS uključen i da je nivo Manual.</p>
+
+<p><strong>GUI validacija</strong></p>
+
+<ol>
+  <li>Otvori <strong>Cluster &gt; Summary</strong>.</li>
+  <li>Potvrdi da nema novog DRS ili vCLS alarma.</li>
+  <li>Otvori <strong>Monitor &gt; vSphere DRS</strong>.</li>
+  <li>Pregledaj DRS Score, history i recommendations prikaze koji su dostupni u konkretnoj verziji klijenta.</li>
+  <li>Otvori <strong>Configure &gt; VM Overrides</strong> i proveri da li neki VM ima lokalno podešavanje koje nadjačava klasterski Manual režim.</li>
+</ol>
+
+<p><strong>Provera VM override podešavanja pomoću PowerCLI-a</strong></p>
+
+<p>PowerCLI prikaz pojedinačnih DRS override vrednosti može zavisiti od verzije modula i API objekta. Osnovni inventar može se dobiti pregledom VM objekata i njihovih extension podataka:</p>
+
+<pre><code class="language-powershell">Get-VM -Location $cluster |
+    Select-Object Name,
+                  PowerState,
+                  VMHost,
+                  @{Name="DrsBehavior";Expression={$_.ExtensionData.Config.ManagedBy.ExtensionKey}}</code></pre>
+
+<p>Ovaj primer nije potpuna zamena za GUI pregled VM Overrides. Njegova svrha je da pokaže da za detaljne API atribute često treba pregledati <code>ExtensionData</code>. Za pouzdanu proveru override politike koristi se <strong>Cluster &gt; Configure &gt; VM Overrides</strong> ili namenski skript prilagođen verziji vSphere API-ja.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>DRS je uključen;</li>
+  <li>automatizacija je Manual;</li>
+  <li>nema vCLS upozorenja;</li>
+  <li>DRS stranica prikazuje stanje klastera;</li>
+  <li>nema neočekivanih VM override podešavanja;</li>
+  <li>nijedna VM nije automatski migrirana samo zbog uključivanja Manual režima.</li>
+</ul>
+
+<p><strong>Vraćanje u početno stanje</strong></p>
+
+<p>Ako je početno stanje bilo DRS Disabled:</p>
+
+<pre><code class="language-powershell">Set-Cluster -Cluster $cluster `
+    -DrsEnabled $false `
+    -Confirm:$false</code></pre>
+
+<p>Ova komanda menja stanje klastera i isključuje DRS. Ne izvršavaj je u produkciji bez procene uticaja na workload placement, host maintenance operacije i druge automatizovane procese.</p>
+
+<hr>
+
+<h3>Vežba 3 – Provera DRS preporuka i kontrolisano izvršavanje migracije</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Posmatrati kako DRS formira preporuke, proveriti da li je predloženi ciljni host tehnički ispravan i ručno primeniti samo odabranu preporuku.</p>
+
+<p><strong>Laboratorijska priprema</strong></p>
+
+<ul>
+  <li>DRS je u režimu Manual.</li>
+  <li>Najmanje tri hosta su Connected.</li>
+  <li>Test VM-ovi koriste zajednički datastore i zajedničku mrežu.</li>
+  <li>Najmanje dva test VM-a nalaze se na istom hostu.</li>
+  <li>Na drugim hostovima postoji slobodan CPU i memorijski kapacitet.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ne proizvodi ozbiljnu CPU ili memorijsku saturaciju na produkcionim VM-ovima radi dobijanja DRS preporuke. U laboratoriji koristi namenske test VM-ove i ograničeno opterećenje. DRS neće nužno preporučiti migraciju samo zato što je jedan host prazniji od drugog. Savremeni DRS procenjuje korist za VM i trošak migracije, a prazan host sam po sebi nije dokaz da je trenutni raspored loš. Broadcom navodi da VM-ovi neće biti premešteni na prazan host sve dok korist migracije ne opravda njen trošak ili dok novi workload ne bude početno raspoređen na taj host. </p>
+
+<p><strong>Korak 1 – Zabeleži raspored VM-ova pre testa</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Location $cluster |
+    Where-Object {$_.PowerState -eq "PoweredOn"} |
+    Sort-Object VMHost, Name |
+    Select-Object Name,
+                  VMHost,
+                  NumCpu,
+                  MemoryGB</code></pre>
+
+<p>Komanda je read-only. Sačuvaj izlaz ili ga izvezi u CSV.</p>
+
+<p><strong>Korak 2 – Napravi kontrolisano opterećenje</strong></p>
+
+<p>Na laboratorijskoj Linux VM može se koristiti alat kao što je <code>stress-ng</code>, pod uslovom da je prethodno instaliran i da se izvršava isključivo na test sistemu.</p>
+
+<pre><code class="language-bash">stress-ng --cpu 2 --timeout 10m --metrics-brief</code></pre>
+
+<p>Komanda opterećuje dva CPU worker procesa tokom deset minuta. Ona menja trenutno radno opterećenje unutar gosta, ali ne menja vSphere konfiguraciju.</p>
+
+<p>Nemoj postaviti broj worker-a veći od razumno dodeljenih vCPU resursa i nemoj koristiti memorijske testove koji mogu izazvati guest swapping, OOM događaj ili destabilizaciju hosta.</p>
+
+<p>Ako <code>stress-ng</code> nije instaliran, koristi aplikacioni test koji je već odobren za laboratoriju. Cilj nije postići maksimalno opterećenje, već dovoljno dugo i kontrolisano opterećenje da se posmatra DRS ponašanje.</p>
+
+<p><strong>Korak 3 – Posmatraj DRS Score i preporuke</strong></p>
+
+<p>U vSphere Clientu otvori:</p>
+
+<p><strong>Cluster &gt; Monitor &gt; vSphere DRS</strong></p>
+
+<p>U zavisnosti od verzije klijenta pregledaj:</p>
+
+<ul>
+  <li>DRS Score klastera;</li>
+  <li>DRS Score pojedinačnih VM-ova;</li>
+  <li>recommendations;</li>
+  <li>history;</li>
+  <li>faults;</li>
+  <li>recent vMotion tasks.</li>
+</ul>
+
+<p>Nemoj očekivati trenutnu preporuku nakon kratkog CPU skoka. DRS procenjuje da li je poboljšanje dovoljno veliko i dovoljno trajno da opravda migraciju.</p>
+
+<p><strong>PowerCLI pregled preporuka</strong></p>
+
+<pre><code class="language-powershell">$recommendations = Get-DrsRecommendation -Cluster $cluster
+
+$recommendations |
+    Select-Object Key,
+                  Type,
+                  Priority,
+                  Reason,
+                  Target</code></pre>
+
+<p><code>Get-DrsRecommendation</code> je read-only cmdlet koji pribavlja trenutno dostupne preporuke. Dostupna polja mogu se razlikovati prema tipu preporuke i PowerCLI verziji.</p>
+
+<p>Ako standardni prikaz ne pokazuje dovoljno detalja:</p>
+
+<pre><code class="language-powershell">$recommendations | Format-List *</code></pre>
+
+<p><code>Format-List *</code> ne menja sistem. Prikazuje sve raspoložive osobine objekta i koristan je za analizu u laboratoriji. U automatizovanim skriptama nije dobro oslanjati se na sve osobine bez provere njihove dostupnosti u konkretnoj verziji.</p>
+
+<p>PowerCLI pruža posebne cmdlet-e za čitanje i primenu DRS preporuka, uključujući <code>Get-DrsRecommendation</code> i <code>Invoke-DrsRecommendation</code>. </p>
+
+<p><strong>Korak 4 – Administratorska procena preporuke</strong></p>
+
+<p>Pre prihvatanja preporuke proveri:</p>
+
+<ol>
+  <li>Koja VM se migrira?</li>
+  <li>Sa kog hosta?</li>
+  <li>Na koji host?</li>
+  <li>Koji je razlog preporuke?</li>
+  <li>Da li cilj ima dovoljno CPU i memorijskog kapaciteta?</li>
+  <li>Da li cilj vidi datastore?</li>
+  <li>Da li cilj ima potrebnu VM port grupu?</li>
+  <li>Da li postoji affinity ili anti-affinity pravilo?</li>
+  <li>Da li VM koristi lokalni uređaj, passthrough, SR-IOV, vGPU ili drugi resurs koji ograničava migraciju?</li>
+  <li>Da li su u toku backup, snapshot, replication ili aplikacioni maintenance zadaci?</li>
+</ol>
+
+<p><strong>Korak 5 – Primeni jednu preporuku</strong></p>
+
+<pre><code class="language-powershell">$recommendation = Get-DrsRecommendation -Cluster $cluster |
+    Select-Object -First 1
+
+$recommendation | Format-List *
+
+$recommendation | Invoke-DrsRecommendation -Confirm</code></pre>
+
+<p>Prve dve komande čitaju i prikazuju preporuku. Poslednja komanda menja operativno stanje sistema zato što pokreće preporučenu akciju, najčešće vMotion.</p>
+
+<p>Parametar <code>-Confirm</code> zadržava interaktivnu potvrdu. U produkcionom radu je bezbednije prvo pregledati objekat, a zatim eksplicitno potvrditi izvršavanje. Nemoj koristiti masovno prosleđivanje svih preporuka u <code>Invoke-DrsRecommendation</code> dok ne proveriš njihov sadržaj i kumulativni uticaj.</p>
+
+<p><strong>GUI alternativa</strong></p>
+
+<ol>
+  <li>Otvori DRS Recommendations prikaz.</li>
+  <li>Izaberi jednu preporuku.</li>
+  <li>Pregledaj source, destination, reason i priority.</li>
+  <li>Klikni <strong>Apply Recommendations</strong> samo za odabranu stavku, ako verzija interfejsa dozvoljava selektivnu primenu.</li>
+  <li>Prati zadatak u <strong>Recent Tasks</strong>.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>pokreće se vMotion zadatak;</li>
+  <li>VM ostaje uključena;</li>
+  <li>VM menja compute host, ali ostaje na istom datastore-u ako je izvršena standardna compute migracija;</li>
+  <li>aplikaciona dostupnost ostaje očuvana;</li>
+  <li>DRS Recommendation nestaje ili se stanje preporuka ponovo izračunava;</li>
+  <li>DRS history beleži akciju;</li>
+  <li>u Tasks and Events postoji događaj migracije.</li>
+</ul>
+
+<p><strong>Provera uspeha</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "drs-load01" |
+    Select-Object Name,
+                  PowerState,
+                  VMHost</code></pre>
+
+<p>Zatim proveri događaje:</p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity (Get-VM -Name "drs-load01") `
+    -Start (Get-Date).AddMinutes(-30) `
+    -MaxSamples 100 |
+    Sort-Object CreatedTime -Descending |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage</code></pre>
+
+<p><code>Get-VIEvent</code> je read-only. Prikazuje događaje povezane sa VM-om. Očekuje se događaj koji opisuje početak i završetak migracije ili eventualnu grešku.</p>
+
+<p><strong>Provera aplikacione dostupnosti</strong></p>
+
+<p>Za test Linux VM može se tokom migracije pokrenuti kontrolisani ping sa administratorske stanice:</p>
+
+<pre><code class="language-bash">ping drs-load01.lab.local</code></pre>
+
+<p>Ping nije potpuna aplikaciona provera. Za realnu validaciju koristi se odgovarajući test servisa, na primer HTTP zahtev:</p>
+
+<pre><code class="language-bash">curl -I https://drs-load01.lab.local/health</code></pre>
+
+<p>Ako aplikacija nema health endpoint, koristi se unapred definisan sintetički test. Administratorski zaključak ne sme biti samo „VM je Powered On”; mora biti potvrđeno da je poslovna usluga ostala dostupna.</p>
+
+<p><strong>Ako preporuka nije generisana</strong></p>
+
+<p>To nije automatski dokaz da DRS ne radi. Proveri:</p>
+
+<ol>
+  <li>da li je opterećenje dovoljno dugo trajalo;</li>
+  <li>da li VM zaista trpi contention;</li>
+  <li>da li ciljna migracija donosi merljivo poboljšanje;</li>
+  <li>da li je migration sensitivity veoma konzervativna;</li>
+  <li>da li VM override onemogućava automatizaciju;</li>
+  <li>da li affinity pravilo ograničava raspored;</li>
+  <li>da li je ciljni host kompatibilan;</li>
+  <li>da li postoji problem vMotion uplinka;</li>
+  <li>da li vCLS ima zdrav status;</li>
+  <li>da li preporuka postoji, ali je blokirana fault događajem.</li>
+</ol>
+
+<p>Broadcom dokumentuje slučaj u kojem DRS ne migrira VM-ove na prazan host jer ne postoji dovoljno contention-a da opravda migraciju. U istom kontekstu preporučuje se provera potrebnih uplinkova ako je DRS Score nizak, a migracije se ipak ne izvršavaju. </p>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ul>
+  <li>Zaustavi <code>stress-ng</code> ako još radi.</li>
+  <li>Sačekaj da se CPU opterećenje stabilizuje.</li>
+  <li>Nemoj odmah ručno vraćati VM na prethodni host osim ako je to cilj laboratorije.</li>
+  <li>Sačuvaj DRS history i događaje.</li>
+  <li>Uporedi raspored sa početnim CSV inventarom.</li>
+</ul>
+
+<hr>
+
+<h3>Vežba 4 – Kreiranje VM-VM anti-affinity pravila</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Obezbediti da dve redundantne instance iste usluge ne rade na istom ESXi hostu i proveriti kako DRS reaguje kada je pravilo zadovoljivo, kada je privremeno prekršeno i kada nema dovoljno odgovarajućih hostova.</p>
+
+<p><strong>Poslovni scenario</strong></p>
+
+<p>Virtuelne mašine <code>drs-web01</code> i <code>drs-web02</code> predstavljaju dva čvora iste web usluge iza load balancera. Ako obe rade na istom hostu, kvar tog hosta istovremeno uklanja oba aplikaciona čvora. VM-VM anti-affinity pravilo smanjuje taj zajednički failure domain.</p>
+
+<p><strong>Važno ograničenje</strong></p>
+
+<p>Anti-affinity pravilo ne zamenjuje HA, aplikacioni clustering, load balancer, rezervni kapacitet niti disaster recovery. Ono samo utiče na raspored VM-ova unutar klastera.</p>
+
+<p><strong>Početno stanje</strong></p>
+
+<ul>
+  <li>obe VM su uključene;</li>
+  <li>obe koriste resurse dostupne svim hostovima;</li>
+  <li>najmanje dva hosta su podobna za obe VM;</li>
+  <li>DRS je uključen;</li>
+  <li>ne postoji prethodno pravilo sa istim VM-ovima.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Obavezno pravilo može sprečiti uključivanje ili migraciju VM-a ako nema dovoljno podobnih hostova. U produkciji najpre proveri kapacitet u normalnom stanju i u scenariju gubitka jednog hosta.</p>
+
+<p><strong>GUI postupak</strong></p>
+
+<ol>
+  <li>Izaberi <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure &gt; Configuration &gt; VM/Host Rules</strong>.</li>
+  <li>Klikni <strong>Add</strong>.</li>
+  <li>Unesi naziv <strong>AA-WEB-TIER</strong>.</li>
+  <li>Izaberi tip pravila <strong>Separate Virtual Machines</strong>.</li>
+  <li>Dodaj <code>drs-web01</code> i <code>drs-web02</code>.</li>
+  <li>Omogući pravilo.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p><strong>PowerCLI postupak</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+$vms = Get-VM -Name "drs-web01","drs-web02"
+
+New-DrsRule -Name "AA-WEB-TIER" `
+    -Cluster $cluster `
+    -VM $vms `
+    -KeepTogether $false `
+    -Enabled $true</code></pre>
+
+<p>Komanda se izvršava sa PowerCLI administratorske stanice. <code>New-DrsRule</code> menja konfiguraciju klastera.</p>
+
+<p><code>-KeepTogether $false</code> definiše anti-affinity ponašanje, odnosno zahtev da VM-ovi ne budu držani zajedno. Pre izvršavanja proveri da komanda vraća tačno dve očekivane VM, naročito u okruženju u kome imena nisu jedinstvena između vCenter instanci.</p>
+
+<p>Aktuelni PowerCLI skup komandi uključuje cmdlet-e za kreiranje, čitanje, menjanje i uklanjanje DRS pravila i klasterskih grupa. </p>
+
+<p><strong>Validacija pravila</strong></p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster |
+    Where-Object {$_.Name -eq "AA-WEB-TIER"} |
+    Format-List *</code></pre>
+
+<p>Komanda je read-only. Očekuje se:</p>
+
+<ul>
+  <li>pravilo postoji;</li>
+  <li>pravilo je Enabled;</li>
+  <li>obuhvata obe test VM;</li>
+  <li>KeepTogether je False ili ekvivalentna oznaka anti-affinity pravila.</li>
+</ul>
+
+<p><strong>Provera rasporeda</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "drs-web01","drs-web02" |
+    Select-Object Name,
+                  VMHost,
+                  PowerState</code></pre>
+
+<p>Ako se VM-ovi nalaze na različitim hostovima, pravilo je trenutno zadovoljeno.</p>
+
+<p>Ako se nalaze na istom hostu, DRS treba da generiše preporuku ili izvrši migraciju u skladu sa nivoom automatizacije, podobnošću drugih hostova i prirodom pravila.</p>
+
+<p><strong>Kontrolisani test kršenja pravila</strong></p>
+
+<p>Ovaj test se izvodi isključivo u laboratoriji.</p>
+
+<ol>
+  <li>Privremeno isključi pravilo.</li>
+  <li>Ručno migriraj obe test VM na isti host.</li>
+  <li>Potvrdi da aplikacioni test i dalje radi.</li>
+  <li>Ponovo uključi pravilo.</li>
+  <li>Posmatraj DRS recommendations i faults.</li>
+  <li>U Manual režimu pregledaj preporuku pre primene.</li>
+  <li>Primeni preporuku i potvrdi da su VM ponovo razdvojene.</li>
+</ol>
+
+<p><strong>Ručno isključivanje i uključivanje pravila pomoću PowerCLI-a</strong></p>
+
+<pre><code class="language-powershell">$rule = Get-DrsRule -Cluster $cluster -Name "AA-WEB-TIER"
+
+Set-DrsRule -Rule $rule -Enabled $false
+
+# Laboratorijska migracija se izvodi kontrolisano.
+
+Set-DrsRule -Rule $rule -Enabled $true</code></pre>
+
+<p><code>Set-DrsRule</code> menja konfiguraciju pravila. Privremeno isključivanje uklanja zaštitu rasporeda, pa se u produkciji mora evidentirati, vremenski ograničiti i odmah vratiti nakon odobrene operacije.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>DRS prepoznaje da su VM-ovi na istom hostu;</li>
+  <li>generiše preporuku za razdvajanje ili automatski izvršava migraciju, u zavisnosti od režima;</li>
+  <li>nakon akcije VM-ovi rade na različitim hostovima;</li>
+  <li>pravilo je označeno kao zadovoljeno;</li>
+  <li>aplikaciona usluga ostaje dostupna.</li>
+</ul>
+
+<p><strong>Test nedostatka resursa ili hostova</strong></p>
+
+<p>Isključivo u laboratoriji, postavi jedan od tri hosta u Maintenance Mode, tako da ostanu dva dostupna hosta. Zatim proveri da li oba web čvora mogu ostati razdvojena.</p>
+
+<p>Ako zatim i drugi podoban host postane nedostupan, obavezno pravilo više nije moguće zadovoljiti. Administrator mora razumeti razliku između:</p>
+
+<ul>
+  <li>pravila koje je poželjno zadovoljiti, ali može biti prekršeno radi dostupnosti;</li>
+  <li>pravila koje je obavezno i može blokirati placement ili power-on.</li>
+</ul>
+
+<p>Uvek proveri ponašanje konkretne vrste pravila i verzije vSphere-a. Nemoj pretpostaviti da će DRS samostalno izabrati poslovno prihvatljiv kompromis kada su svi uslovi međusobno nespojivi.</p>
+
+<p><strong>Relevantni događaji i alarmi</strong></p>
+
+<p>Pregledaj:</p>
+
+<ul>
+  <li><strong>Cluster &gt; Monitor &gt; Tasks and Events &gt; Events</strong>;</li>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Recommendations</strong>;</li>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Faults</strong>;</li>
+  <li>alarm za nezadovoljeno DRS pravilo, ako je dostupan i omogućen u konkretnoj verziji;</li>
+  <li>vMotion zadatke povezane sa korekcijom pravila.</li>
+</ul>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Mogući uzrok</th>
+      <th>Bezbedna akcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pravilo postoji, ali su VM-ovi zajedno</td>
+      <td>Pravilo je Disabled, DRS je Manual ili nema podobnog cilja</td>
+      <td>Proveri status pravila, preporuke i kompatibilne hostove</td>
+    </tr>
+    <tr>
+      <td>Migracija je preporučena, ali ne uspeva</td>
+      <td>vMotion, storage, mrežna ili CPU kompatibilnost</td>
+      <td>Pregledaj task grešku, vmkernel.log i vpxd.log</td>
+    </tr>
+    <tr>
+      <td>VM ne može da se uključi</td>
+      <td>Obavezno pravilo nema validan placement</td>
+      <td>Vrati host, oslobodi kapacitet ili kontrolisano izmeni pravilo</td>
+    </tr>
+    <tr>
+      <td>Pravilo stalno izaziva migracije</td>
+      <td>Konflikt sa drugim pravilom ili česte promene podobnosti hostova</td>
+      <td>Prikaži sva pravila, grupe i VM override postavke</td>
+    </tr>
+    <tr>
+      <td>Redundantne VM ponovo završe zajedno nakon incidenta</td>
+      <td>Pravilo je preporučeno, privremeno prekršeno ili DRS ne može da ga ispuni</td>
+      <td>Proveri rule compliance i kapacitet nakon oporavka hosta</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Ako pravilo više nije potrebno:</p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster -Name "AA-WEB-TIER" |
+    Remove-DrsRule -Confirm</code></pre>
+
+<p><code>Remove-DrsRule</code> trajno uklanja pravilo i menja konfiguraciju klastera. Parametar <code>-Confirm</code> ostavlja administratorsku potvrdu.</p>
+
+<p>Ako je cilj samo završetak testa, bolje je ostaviti pravilo uključeno, dokumentovati njegovu namenu i potvrditi da su VM-ovi raspoređeni na različitim hostovima.</p>
+
+<hr>
+
+<h3>Kontrolna tačka nakon prvog dela praktikuma</h3>
+
+<p>Administrator je uspešno završio prvi deo praktikuma ako može samostalno da:</p>
+
+<ul>
+  <li>utvrdi da li je klaster spreman za DRS;</li>
+  <li>proveri vMotion, storage, mrežu, EVC i vCLS zavisnosti;</li>
+  <li>sačuva početni inventar pre promene;</li>
+  <li>uključi DRS u Manual režimu kroz GUI i PowerCLI;</li>
+  <li>čita i procenjuje DRS preporuke;</li>
+  <li>bezbedno primeni pojedinačnu preporuku;</li>
+  <li>potvrdi aplikacionu dostupnost tokom vMotion-a;</li>
+  <li>kreira i validira VM-VM anti-affinity pravilo;</li>
+  <li>prepozna situaciju u kojoj pravilo nije moguće zadovoljiti;</li>
+  <li>razlikuje problem DRS algoritma od problema zavisne infrastrukture.</li>
+</ul>
+
+<h3>Vežba 5 – Konfigurisanje VM-Host grupa i pravila za namenski hardver</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Kreirati VM grupu i host grupu, povezati ih VM-Host affinity pravilom i proveriti razliku između preporučenog pravila tipa <em>Should</em> i obaveznog pravila tipa <em>Must</em>.</p>
+
+<p><strong>Poslovni scenario</strong></p>
+
+<p>Virtuelna mašina <code>drs-db01</code> koristi aplikaciju licenciranu samo za dva određena fizička hosta. Alternativni primer bio bi workload koji zahteva GPU, poseban procesorski model, direktan pristup određenom uređaju ili namensku mrežnu vezu.</p>
+
+<p>U klasteru postoje tri hosta:</p>
+
+<ul>
+  <li><code>esx01.lab.local</code> – dozvoljen;</li>
+  <li><code>esx02.lab.local</code> – dozvoljen;</li>
+  <li><code>esx03.lab.local</code> – nije dozvoljen za ovaj workload.</li>
+</ul>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>DRS je uključen;</li>
+  <li>sva tri hosta su povezana sa vCenter Serverom;</li>
+  <li>VM <code>drs-db01</code> može tehnički da se izvršava na prva dva hosta;</li>
+  <li>ne postoji drugo DRS pravilo koje je u konfliktu sa novim pravilom;</li>
+  <li>poslovni ili licencni zahtev je dokumentovan.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Obavezno VM-Host pravilo može sprečiti uključivanje, migraciju, evakuaciju ili oporavak virtuelne mašine ako nijedan dozvoljeni host nije raspoloživ. Pravilo ne treba označiti kao obavezno samo zato što administrator želi uredan raspored.</p>
+
+<p>Za zahteve koji predstavljaju preferenciju koristi se pravilo tipa <em>Should run on hosts in group</em>. Za zahteve koji se ne smeju prekršiti, kao što su određena licencna ili hardverska ograničenja, koristi se <em>Must run on hosts in group</em>, ali tek nakon analize scenarija otkaza i održavanja.</p>
+
+<p><strong>Korak 1 – Kreiranje VM grupe kroz vSphere Client</strong></p>
+
+<ol>
+  <li>Izaberi klaster <strong>CL-PROD-LAB</strong>.</li>
+  <li>Otvori <strong>Configure &gt; Configuration &gt; VM/Host Groups</strong>.</li>
+  <li>Klikni <strong>Add</strong>.</li>
+  <li>Izaberi tip grupe <strong>VM Group</strong>.</li>
+  <li>Unesi naziv <strong>VMG-LICENSED-DB</strong>.</li>
+  <li>Dodaj virtuelnu mašinu <code>drs-db01</code>.</li>
+  <li>Sačuvaj grupu.</li>
+</ol>
+
+<p><strong>Korak 2 – Kreiranje host grupe</strong></p>
+
+<ol>
+  <li>Na istoj stranici klikni <strong>Add</strong>.</li>
+  <li>Izaberi tip <strong>Host Group</strong>.</li>
+  <li>Unesi naziv <strong>HG-LICENSED-HOSTS</strong>.</li>
+  <li>Dodaj hostove <code>esx01.lab.local</code> i <code>esx02.lab.local</code>.</li>
+  <li>Sačuvaj grupu.</li>
+</ol>
+
+<p><strong>Korak 3 – Kreiranje VM-Host pravila</strong></p>
+
+<ol>
+  <li>Otvori <strong>Configure &gt; Configuration &gt; VM/Host Rules</strong>.</li>
+  <li>Klikni <strong>Add</strong>.</li>
+  <li>Unesi naziv <strong>RULE-LICENSED-DB-HOSTS</strong>.</li>
+  <li>Izaberi tip pravila <strong>Virtual Machines to Hosts</strong>.</li>
+  <li>Izaberi VM grupu <strong>VMG-LICENSED-DB</strong>.</li>
+  <li>Izaberi opciju <strong>Should run on hosts in group</strong>.</li>
+  <li>Izaberi host grupu <strong>HG-LICENSED-HOSTS</strong>.</li>
+  <li>Omogući pravilo i sačuvaj promenu.</li>
+</ol>
+
+<p>Prvi test se namerno izvodi sa preporučenim pravilom. Tek kada je potvrđeno ponašanje u normalnom radu, maintenance scenariju i gubitku hosta, pravilo se može promeniti u obavezno ako poslovni zahtev to nalaže.</p>
+
+<p><strong>PowerCLI inventar grupa i pravila</strong></p>
+
+<p>U aktuelnim PowerCLI izdanjima dostupni su cmdlet-i za pregled DRS pravila, uključujući VM-Host affinity pravila. Pri korišćenju <code>Get-DrsRule</code> treba eksplicitno navesti odgovarajući tip pravila ili VMHost parametar, jer podrazumevani poziv prvenstveno vraća VM affinity i anti-affinity pravila. </p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+Get-DrsRule -Cluster $cluster -Type VMHostAffinity |
+    Format-List *</code></pre>
+
+<p>Komanda je read-only. Prikazuje postojeća VM-Host pravila i njihove osobine. Tačni nazivi tipova i polja mogu se razlikovati između PowerCLI generacija, pa pre automatizacije proveri:</p>
+
+<pre><code class="language-powershell">Get-Help Get-DrsRule -Full</code></pre>
+
+<p><strong>Korak 4 – Provera preporučenog pravila</strong></p>
+
+<p>Ručno migriraj <code>drs-db01</code> na <code>esx03.lab.local</code>, ali samo u laboratoriji i samo ako VM nema stvarno hardversko ili licencno ograničenje.</p>
+
+<p>Pošto je pravilo tipa <em>Should</em>, migracija može biti dozvoljena, ali DRS treba da registruje da preferirani placement nije zadovoljen i, zavisno od režima automatizacije i procenjene koristi, formira preporuku za vraćanje VM-a na host iz dozvoljene grupe.</p>
+
+<p>U Partially Automated režimu kršenje VM-Host affinity pravila može biti prikazano kao DRS preporuka, a ne kao DRS fault, zato što se migracije nakon početnog placementa izvršavaju ručno ili po odobrenju administratora. </p>
+
+<p>Pregledaj:</p>
+
+<ul>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Recommendations</strong>;</li>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Faults</strong>;</li>
+  <li><strong>Cluster &gt; Monitor &gt; Tasks and Events</strong>;</li>
+  <li>trenutni host VM-a;</li>
+  <li>status pravila.</li>
+</ul>
+
+<p><strong>Korak 5 – Promena pravila u obavezno</strong></p>
+
+<p>Isključivo u laboratoriji, promeni pravilo u:</p>
+
+<p><strong>Must run on hosts in group</strong></p>
+
+<p>Zatim pokušaj ručnu migraciju VM-a na <code>esx03.lab.local</code>.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Migracija treba da bude odbijena zato što bi prekršila obavezno VM-Host pravilo. Za razliku od običnih VM-VM affinity pravila, DRS i placement logika ne treba da izvršavaju akciju koja krši obavezno VM-Host pravilo.</p>
+
+<p>Broadcom dokumentuje da ručni vMotion u određenim okolnostima može prekršiti VM-VM pravilo „Keep Virtual Machines Together” ili „Separate Virtual Machines”, dok obavezno VM-Host pravilo ima strože ponašanje i DRS ne bira akciju koja ga krši. Zato administrator ne sme pretpostaviti da sve vrste DRS pravila imaju isto izvršno ponašanje. </p>
+
+<p><strong>Provera uspeha</strong></p>
+
+<pre><code class="language-powershell">Get-VM -Name "drs-db01" |
+    Select-Object Name,
+                  PowerState,
+                  VMHost</code></pre>
+
+<p>VM treba da ostane na jednom od hostova iz grupe <strong>HG-LICENSED-HOSTS</strong>.</p>
+
+<p><strong>Moguće greške</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Uzrok</th>
+      <th>Korektivna akcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>VM ostaje na hostu van preferirane grupe</td>
+      <td>Pravilo je tipa Should, DRS je Manual ili migracija ne donosi dovoljnu korist</td>
+      <td>Pregledati preporuke, nivo automatizacije i kompatibilnost ciljnih hostova</td>
+    </tr>
+    <tr>
+      <td>VM ne može da se uključi</td>
+      <td>Must pravilo nema nijedan dostupan odgovarajući host</td>
+      <td>Vratiti host, proširiti host grupu ili kroz odobrenu promenu ublažiti pravilo</td>
+    </tr>
+    <tr>
+      <td>Maintenance Mode se ne završava</td>
+      <td>VM je obaveznim pravilom vezana za host koji se evakuiše</td>
+      <td>Analizirati poslovni razlog pravila pre izmene ili isključivanja</td>
+    </tr>
+    <tr>
+      <td>DRS vraća VM nakon ručne migracije</td>
+      <td>Ručno izabrani host nije usklađen sa pravilom ili drugim sistemskim zahtevom</td>
+      <td>Proveriti sva DRS pravila, grupe, vSAN sistemske zahteve i VM overrides</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Vrati VM na jedan od hostova iz host grupe.</li>
+  <li>Vrati pravilo na <em>Should</em> ako je samo laboratorijski promenjeno u <em>Must</em>.</li>
+  <li>Potvrdi da je pravilo Enabled.</li>
+  <li>Dokumentuj poslovnu svrhu pravila.</li>
+</ol>
+
+<hr>
+
+<h3>Vežba 6 – Planirano održavanje hosta u DRS klasteru</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Bezbedno evakuisati workload sa ESXi hosta, utvrditi kako DRS pravila, HA Admission Control, vCLS i raspoloživi kapacitet utiču na Maintenance Mode i vratiti host u produkciju bez nekontrolisanog pomeranja virtuelnih mašina.</p>
+
+<p><strong>Poslovni scenario</strong></p>
+
+<p>Host <code>esx02.lab.local</code> treba da uđe u Maintenance Mode zbog firmware ažuriranja, zamene mrežne kartice ili planirane lifecycle remediation operacije.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>postoji odobren zahtev za promenu;</li>
+  <li>backup i aplikacioni timovi su obavešteni kada je potrebno;</li>
+  <li>nema aktivne snapshot consolidation, backup, replication ili migration operacije;</li>
+  <li>preostali hostovi imaju dovoljno kapaciteta;</li>
+  <li>sva DRS pravila su pregledana;</li>
+  <li>provereno je stanje HA Admission Control-a;</li>
+  <li>vMotion mreža je ispravna.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Maintenance Mode nije samo komanda za promenu statusa hosta. Host ne može završiti ulazak u Maintenance Mode dok sve uključene workload VM ne budu migrirane ili ugašene. Sistem može ostati dugo u stanju <em>Entering Maintenance Mode</em> ako DRS ne pronalazi validan placement.</p>
+
+<p>Nemoj prekidati zadatak nasumičnim restartovanjem management agenata, vCenter servisa ili hosta. Najpre utvrdi koja VM ili koje pravilo blokira evakuaciju.</p>
+
+<p><strong>Korak 1 – Pre-flight provera kapaciteta</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+$hostToMaintain = Get-VMHost -Name "esx02.lab.local"
+
+Get-VM -Location $hostToMaintain |
+    Where-Object {$_.PowerState -eq "PoweredOn"} |
+    Select-Object Name,
+                  NumCpu,
+                  MemoryGB,
+                  VMHost
+
+Get-VMHost -Location $cluster |
+    Where-Object {$_.Name -ne $hostToMaintain.Name} |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState,
+                  CpuUsageMhz,
+                  MemoryUsageGB,
+                  MemoryTotalGB</code></pre>
+
+<p>Komande su read-only. Prvi izlaz prikazuje workload koji mora da bude evakuisan. Drugi prikazuje preostale hostove i osnovni kapacitet.</p>
+
+<p>Ne koristi samo zbir slobodne memorije. Proveri i:</p>
+
+<ul>
+  <li>VM reservations;</li>
+  <li>host i resource-pool reservations;</li>
+  <li>HA Admission Control;</li>
+  <li>NUMA zahteve velikih VM-ova;</li>
+  <li>passthrough i vGPU uređaje;</li>
+  <li>VM-Host Must pravila;</li>
+  <li>licencne host grupe;</li>
+  <li>vSAN i storage zahteve;</li>
+  <li>mogućnost preostalih hostova da izdrže realno opterećenje, a ne samo da uključe VM-ove.</li>
+</ul>
+
+<p><strong>Korak 2 – Pregled DRS pravila</strong></p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster |
+    Select-Object Name,
+                  Enabled,
+                  Type</code></pre>
+
+<p>Zatim posebno pregledaj VM-Host pravila:</p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster -Type VMHostAffinity |
+    Format-List *</code></pre>
+
+<p>Posebno traži VM koja je obaveznim pravilom vezana isključivo za host koji ulazi u Maintenance Mode.</p>
+
+<p><strong>Korak 3 – Pokretanje Maintenance Mode-a kroz GUI</strong></p>
+
+<ol>
+  <li>Izaberi <code>esx02.lab.local</code>.</li>
+  <li>Klikni desnim tasterom.</li>
+  <li>Izaberi <strong>Maintenance Mode &gt; Enter Maintenance Mode</strong>.</li>
+  <li>Ako je host deo vSAN klastera, izaberi odgovarajući vSAN data migration režim prema posebnom maintenance planu.</li>
+  <li>Prati <strong>Recent Tasks</strong>.</li>
+  <li>Prati migracije svake VM.</li>
+</ol>
+
+<p><strong>PowerCLI alternativa</strong></p>
+
+<pre><code class="language-powershell">Set-VMHost -VMHost $hostToMaintain `
+    -State Maintenance `
+    -Confirm</code></pre>
+
+<p>Komanda menja operativno stanje hosta i može pokrenuti evakuaciju workload-a. Parametar <code>-Confirm</code> je namerno zadržan.</p>
+
+<p>Pre izvršavanja u produkciji potvrdi da promenljiva <code>$hostToMaintain</code> sadrži tačno jedan očekivani host:</p>
+
+<pre><code class="language-powershell">$hostToMaintain |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState</code></pre>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>DRS bira validne ciljne hostove;</li>
+  <li>workload VM-ovi se migriraju bez gašenja;</li>
+  <li>pravila koja je moguće zadovoljiti ostaju zadovoljena;</li>
+  <li>host prelazi u Maintenance Mode;</li>
+  <li>na hostu ne ostaju uključene obične workload VM;</li>
+  <li>aplikacioni monitoring ne registruje prekid usluge.</li>
+</ul>
+
+<p><strong>Scenario A – Maintenance Mode ostaje na približno 19%</strong></p>
+
+<p>U vSAN okruženjima Broadcom dokumentuje da približno 19% napretka često odgovara fazi vMotion migracije VM-ova. Ako zadatak dugo ostaje na toj vrednosti, administrator treba da traži VM koju nije moguće migrirati, a ne da zaključuje da je sam progress indikator neispravan. Raniji zastoj, približno oko 2%, može ukazivati na precheck, HA ili DRS ograničenja. </p>
+
+<p>Proveri:</p>
+
+<ol>
+  <li>koja VM još radi na hostu;</li>
+  <li>da li postoji aktivan ili neuspešan migration task;</li>
+  <li>DRS Faults;</li>
+  <li>VM-Host i VM-VM pravila;</li>
+  <li>passthrough ili lokalne uređaje;</li>
+  <li>storage i mrežnu kompatibilnost;</li>
+  <li>HA Admission Control;</li>
+  <li>vCLS ili druge sistemski upravljane VM-ove.</li>
+</ol>
+
+<pre><code class="language-powershell">Get-VM -Location $hostToMaintain |
+    Where-Object {$_.PowerState -eq "PoweredOn"} |
+    Select-Object Name,
+                  VMHost,
+                  PowerState</code></pre>
+
+<p><strong>Scenario B – Affinity pravilo blokira evakuaciju</strong></p>
+
+<p>Broadcom navodi slučajeve u kojima Maintenance Mode ostaje u toku zato što affinity pravilo ili sistemski upravljana VM sprečava automatsku migraciju. Rešenje je najpre identifikovati pravilo, a zatim ga izmeniti ili privremeno isključiti samo kada je to poslovno i tehnički dozvoljeno. </p>
+
+<p>Ne isključuj pravilo pre nego što odgovoriš na sledeća pitanja:</p>
+
+<ul>
+  <li>Da li pravilo postoji zbog softverske licence?</li>
+  <li>Da li VM zavisi od GPU-a, passthrough uređaja ili posebne mreže?</li>
+  <li>Da li pravilo sprečava zajednički failure domain?</li>
+  <li>Da li migracija na drugi host može prekinuti aplikacionu dostupnost?</li>
+  <li>Da li se pravilo može privremeno proširiti dodavanjem drugog odgovarajućeg hosta?</li>
+</ul>
+
+<p>Ako se host doda u odgovarajuću host grupu, promena mora biti dokumentovana i kasnije vraćena. Broadcom upozorava da affinity pravila često postoje upravo zbog licencne usklađenosti, hardverskih zavisnosti ili uticaja na HA, pa njihovo isključivanje ne sme biti rutinska reakcija. </p>
+
+<p><strong>Scenario C – Dvočlani klaster i HA Admission Control</strong></p>
+
+<p>U dvočlanom klasteru host može ostati zaglavljen pri ulasku u Maintenance Mode ako HA Admission Control zahteva kapacitet koji nije moguće očuvati nakon evakuacije. Broadcom kao trajno bolje rešenje navodi dodavanje najmanje još jednog hosta, dok privremeno isključivanje Admission Control-a zahteva pažljivu procenu rizika i nije bezazlena administrativna promena. </p>
+
+<p>Isključivanjem Admission Control-a klaster može ostati bez garantovanog failover kapaciteta. Zato administrator mora dokumentovati:</p>
+
+<ul>
+  <li>koliko dugo će zaštita biti oslabljena;</li>
+  <li>ko je odobrio rizik;</li>
+  <li>koji workload je pogođen;</li>
+  <li>kada se Admission Control vraća;</li>
+  <li>kako se potvrđuje da je zaštita obnovljena.</li>
+</ul>
+
+<p><strong>Korak 4 – Izlazak iz Maintenance Mode-a</strong></p>
+
+<p>Nakon završetka radova:</p>
+
+<ol>
+  <li>potvrdi da je fizički i firmware rad završen;</li>
+  <li>proveri storage adaptere i putanje;</li>
+  <li>proveri fizičke NIC interfejse;</li>
+  <li>proveri vMotion VMkernel mrežu;</li>
+  <li>proveri vreme i DNS;</li>
+  <li>izvedi host iz Maintenance Mode-a;</li>
+  <li>sačekaj da host postane potpuno Connected;</li>
+  <li>proveri vSAN resync ako je primenljivo;</li>
+  <li>proveri DRS i HA status;</li>
+  <li>ne premeštaj odmah ručno sve VM-ove nazad.</li>
+</ol>
+
+<pre><code class="language-powershell">Set-VMHost -VMHost $hostToMaintain `
+    -State Connected `
+    -Confirm</code></pre>
+
+<p>Komanda menja stanje hosta. Nakon povratka, DRS treba sam da proceni da li premeštanje VM-ova na vraćeni host donosi dovoljnu korist. Prazan host nije razlog da se na njega odmah vrati trećina workload-a.</p>
+
+<p><strong>Validacija oporavka</strong></p>
+
+<pre><code class="language-powershell">Get-VMHost -Name "esx02.lab.local" |
+    Select-Object Name,
+                  ConnectionState,
+                  PowerState
+
+Get-DrsRecommendation -Cluster $cluster
+
+Get-VM -Location $cluster |
+    Sort-Object VMHost, Name |
+    Select-Object Name,
+                  PowerState,
+                  VMHost</code></pre>
+
+<p>Potvrdi:</p>
+
+<ul>
+  <li>host je Connected;</li>
+  <li>nema novih storage ili network alarma;</li>
+  <li>vMotion test uspeva;</li>
+  <li>DRS pravila su ponovo uključena;</li>
+  <li>HA Admission Control je vraćen ako je privremeno menjan;</li>
+  <li>aplikacije rade;</li>
+  <li>promena je zatvorena sa zapisom stvarnog ishoda.</li>
+</ul>
+
+<hr>
+
+<h3>Vežba 7 – Pogrešna DRS konfiguracija i konflikt pravila</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Namerno napraviti kontrolisan konflikt DRS pravila u laboratoriji, analizirati način na koji ga vCenter prikazuje i bezbedno vratiti konzistentnu konfiguraciju.</p>
+
+<p><strong>Laboratorijski scenario</strong></p>
+
+<p>Virtuelne mašine <code>drs-web01</code> i <code>drs-web02</code> već imaju anti-affinity pravilo koje zahteva razdvajanje. Administrator greškom kreira drugo pravilo koje zahteva da iste VM budu zajedno.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ova vežba se izvodi isključivo u laboratoriji. Konfliktna pravila u produkciji mogu izazvati nemoguć placement, stalne preporuke, neuspelo održavanje i blokiran power-on.</p>
+
+<p><strong>Korak 1 – Snimanje postojeće konfiguracije</strong></p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster |
+    Format-List * |
+    Out-File ".\drs-rules-before-conflict.txt"</code></pre>
+
+<p>Komanda čita pravila i zapisuje ih u lokalni fajl. Ne menja vSphere konfiguraciju.</p>
+
+<p><strong>Korak 2 – Kreiranje konfliktnog pravila</strong></p>
+
+<pre><code class="language-powershell">$webVMs = Get-VM -Name "drs-web01","drs-web02"
+
+New-DrsRule -Name "AFF-WEB-CONFLICT-LAB" `
+    -Cluster $cluster `
+    -VM $webVMs `
+    -KeepTogether $true `
+    -Enabled $true</code></pre>
+
+<p><code>New-DrsRule</code> menja konfiguraciju klastera. Parametar <code>-KeepTogether $true</code> zahteva da VM-ovi ostanu zajedno, što je u direktnom konfliktu sa prethodno napravljenim anti-affinity pravilom.</p>
+
+<p><strong>Korak 3 – Analiza simptoma</strong></p>
+
+<p>Pregledaj:</p>
+
+<ul>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Faults</strong>;</li>
+  <li><strong>Cluster &gt; Monitor &gt; vSphere DRS &gt; Recommendations</strong>;</li>
+  <li><strong>Cluster &gt; Configure &gt; VM/Host Rules</strong>;</li>
+  <li>status oba pravila;</li>
+  <li>Recent Tasks i Events.</li>
+</ul>
+
+<p>Broadcom dokumentuje da konfliktna pravila mogu sprečiti DRS da pronađe raspored koji istovremeno zadovoljava sve uslove. Administrator treba da traži logičku kontradikciju između pravila, a ne samo nedostatak fizičkih resursa. </p>
+
+<p><strong>PowerCLI pregled</strong></p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster |
+    Where-Object {
+        $_.Name -in @(
+            "AA-WEB-TIER",
+            "AFF-WEB-CONFLICT-LAB"
+        )
+    } |
+    Format-List *</code></pre>
+
+<p>Uporedi članstvo VM-ova i vrednost <code>KeepTogether</code>.</p>
+
+<p><strong>Potvrda uzroka</strong></p>
+
+<p>Uzrok je potvrđen kada oba omogućena pravila obuhvataju iste VM-ove, ali zahtevaju međusobno suprotan placement.</p>
+
+<p><strong>Bezbedna korektivna akcija</strong></p>
+
+<p>Ukloni samo laboratorijsko konfliktno pravilo:</p>
+
+<pre><code class="language-powershell">Get-DrsRule -Cluster $cluster `
+    -Name "AFF-WEB-CONFLICT-LAB" |
+    Remove-DrsRule -Confirm</code></pre>
+
+<p>Komanda trajno uklanja pravilo i menja konfiguraciju. Pre potvrde proveri tačno ime pravila.</p>
+
+<p><strong>Validacija oporavka</strong></p>
+
+<ul>
+  <li>DRS fault nestaje nakon novog izračunavanja;</li>
+  <li>anti-affinity pravilo ostaje omogućeno;</li>
+  <li>VM-ovi se nalaze na različitim hostovima ili postoji validna preporuka;</li>
+  <li>nema novih migracionih grešaka;</li>
+  <li>izveštaj pravila više ne sadrži konfliktno pravilo.</li>
+</ul>
+
+<p><strong>Administratorska pouka</strong></p>
+
+<p>Pravila ne treba posmatrati pojedinačno. Svaka promena mora biti analizirana zajedno sa svim pravilima koja obuhvataju iste VM-ove, hostove, grupe, resource pool-ove i failure domene.</p>
+
+<hr>
+
+<h3>Vežba 8 – Nedostatak resursa i DRS koji ne može da izvrši migraciju</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Razlikovati situaciju u kojoj DRS ne želi da migrira VM zato što migracija ne donosi dovoljnu korist od situacije u kojoj želi da je migrira, ali nema nijedan tehnički validan cilj.</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>VM <code>drs-load01</code> ima rezervaciju memorije i veći broj vCPU-a. Preostali hostovi imaju zbirno dovoljno slobodnih resursa, ali nijedan pojedinačni host nema dovoljno nefragmentisanog kapaciteta ili ne zadovoljava sva pravila.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Nemoj u produkciji veštački povećavati reservations niti praviti memorijsku saturaciju radi testa. U laboratoriji koristi male vrednosti i test VM.</p>
+
+<p><strong>Korak 1 – Pregled VM resursa</strong></p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "drs-load01"
+
+$vm |
+    Select-Object Name,
+                  NumCpu,
+                  MemoryGB,
+                  VMHost,
+                  PowerState</code></pre>
+
+<p>Za detaljne reservation i limit vrednosti koristi:</p>
+
+<pre><code class="language-powershell">Get-VMResourceConfiguration -VM $vm |
+    Format-List *</code></pre>
+
+<p>Komanda je read-only. Prikazuje CPU i memorijske reservations, limits i shares za VM.</p>
+
+<p><strong>Korak 2 – Pregled raspoloživog kapaciteta hostova</strong></p>
+
+<pre><code class="language-powershell">Get-VMHost -Location $cluster |
+    Select-Object Name,
+                  ConnectionState,
+                  CpuTotalMhz,
+                  CpuUsageMhz,
+                  MemoryTotalGB,
+                  MemoryUsageGB</code></pre>
+
+<p>Zbirno slobodan kapacitet klastera nije dovoljan pokazatelj. VM se izvršava na jednom hostu i njen reservation mora biti ostvariv na konkretnom ciljnom hostu.</p>
+
+<p><strong>Korak 3 – Kontrolisana promena u laboratoriji</strong></p>
+
+<p>U vSphere Clientu otvori:</p>
+
+<p><strong>VM &gt; Edit Settings &gt; VM Options &gt; CPU ili Memory &gt; Reservation</strong></p>
+
+<p>Postavi malu, ali dovoljno značajnu reservation vrednost da samo jedan ili nijedan alternativni host bude validan cilj.</p>
+
+<p>Pre promene zabeleži originalnu vrednost.</p>
+
+<p><strong>Korak 4 – Posmatranje DRS ponašanja</strong></p>
+
+<p>Pokreni kontrolisano CPU opterećenje na VM i pregledaj:</p>
+
+<ul>
+  <li>DRS Score;</li>
+  <li>recommendations;</li>
+  <li>faults;</li>
+  <li>VM-Host pravila;</li>
+  <li>host utilization;</li>
+  <li>reservation konfiguraciju.</li>
+</ul>
+
+<p><strong>Mogući ishod 1 – Nema preporuke</strong></p>
+
+<p>VM ne trpi dovoljno contention-a ili korist migracije ne opravdava njen trošak. To je validna DRS odluka.</p>
+
+<p><strong>Mogući ishod 2 – Postoji preporuka, ali akcija ne uspeva</strong></p>
+
+<p>Stanje se promenilo između izračunavanja i izvršavanja ili postoji vMotion, mrežna, storage ili kompatibilnosna greška.</p>
+
+<p><strong>Mogući ishod 3 – DRS Fault navodi da nema odgovarajućeg hosta</strong></p>
+
+<p>Pravila, reservations, HA politika, CPU kompatibilnost, mreža, storage ili uređaj isključuju sve ciljne hostove.</p>
+
+<p><strong>Sistematska dijagnostika</strong></p>
+
+<ol>
+  <li>Potvrdi tačan simptom i vreme nastanka.</li>
+  <li>Utvrdi da li je pogođena jedna VM ili više njih.</li>
+  <li>Pregledaj nedavne promene reservations, pravila i host statusa.</li>
+  <li>Proveri da li postoji host koji zadovoljava sve uslove.</li>
+  <li>Pregledaj DRS Faults i Events.</li>
+  <li>Pregledaj vpxd.log i ESXi migracione logove.</li>
+  <li>Potvrdi ograničavajući uslov.</li>
+  <li>Izaberi najmanje rizičnu korekciju.</li>
+  <li>Validiraj novu preporuku ili uspešnu migraciju.</li>
+  <li>Dokumentuj uzrok i trajnu preventivnu meru.</li>
+</ol>
+
+<p><strong>Bezbedne korektivne opcije</strong></p>
+
+<ul>
+  <li>ukloniti pogrešno postavljenu reservation vrednost;</li>
+  <li>osloboditi kapacitet migracijom manje kritičnog workload-a;</li>
+  <li>dodati host u klaster;</li>
+  <li>vratiti host iz Maintenance Mode-a;</li>
+  <li>ispraviti konfliktno pravilo;</li>
+  <li>proširiti host grupu samo ako novi host ispunjava poslovni zahtev;</li>
+  <li>rešiti vMotion, mrežni ili storage problem;</li>
+  <li>promeniti VM veličinu tek nakon aplikacione i performansne analize.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<p>Vrati originalnu reservation vrednost i zaustavi test opterećenje. Zatim sačekaj da se metrike stabilizuju i proveri da li DRS ponovo ima validne ciljne hostove.</p>
+
+<hr>
+
+<h3>Vežba 9 – Analiza događaja i logova kod DRS incidenta</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Prikupiti događaje i logove iz vCenter Servera i ESXi hostova, povezati ih sa konkretnim DRS ili vMotion incidentom i razlikovati mesto donošenja odluke od mesta izvršavanja migracije.</p>
+
+<p><strong>Scenario</strong></p>
+
+<p>DRS prikazuje preporuku za migraciju VM-a <code>drs-load01</code>, ali se migracija završava greškom ili se uopšte ne pokreće.</p>
+
+<p><strong>Osnovni model dijagnostike</strong></p>
+
+<ul>
+  <li>vCenter i DRS određuju placement i pokreću zadatak;</li>
+  <li>ESXi hostovi izvršavaju vMotion i beleže host-side detalje;</li>
+  <li>vSphere Client prikazuje task, event, recommendation i fault objekte;</li>
+  <li>jedan log retko daje celu sliku.</li>
+</ul>
+
+<p><strong>1. vpxd.log</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Opis</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lokacija</td>
+      <td><code>/var/log/vmware/vpxd/vpxd.log</code> na vCenter Server Appliance uređaju</td>
+    </tr>
+    <tr>
+      <td>Komponenta</td>
+      <td>vCenter Server servis vpxd</td>
+    </tr>
+    <tr>
+      <td>Šta tražimo</td>
+      <td>DRS odluke, placement greške, migracione zadatke, Managed Object reference, host i VM identifikatore</td>
+    </tr>
+    <tr>
+      <td>Tumačenje</td>
+      <td>Pokazuje šta je vCenter pokušao da uradi, koji objekat je obrađen i koju grešku je dobio od zavisne komponente</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Na VCSA uređaju koristi se read-only filtriranje:</p>
+
+<pre><code class="language-bash">grep -Ei "drs|recommend|relocat|migrat|placement" \
+/var/log/vmware/vpxd/vpxd.log | tail -n 200</code></pre>
+
+<p>Za poznato ime VM-a:</p>
+
+<pre><code class="language-bash">grep -i "drs-load01" \
+/var/log/vmware/vpxd/vpxd.log | tail -n 100</code></pre>
+
+<p>Ime VM-a nije uvek prisutno u svakoj liniji. Često treba povezati task ID, VM Managed Object ID, host ID i vreme događaja.</p>
+
+<p><strong>2. vmkernel.log</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Opis</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lokacija</td>
+      <td><code>/var/log/vmkernel.log</code> na ESXi hostu</td>
+    </tr>
+    <tr>
+      <td>Komponenta</td>
+      <td>VMkernel</td>
+    </tr>
+    <tr>
+      <td>Šta tražimo</td>
+      <td>vMotion mrežne greške, storage path događaje, VMkernel adapter probleme, timeout i kompatibilnosne poruke</td>
+    </tr>
+    <tr>
+      <td>Tumačenje</td>
+      <td>Pokazuje da li je host mogao da izvrši data-plane deo migracije</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre><code class="language-bash">grep -Ei "vmotion|migrate|timeout|fail|vmk" \
+/var/log/vmkernel.log | tail -n 200</code></pre>
+
+<p>Ne tumači svaku liniju sa rečju <code>fail</code> kao uzrok. Uskladi timestamp sa vCenter taskom i proveri da li je poruka nastala na izvornom ili ciljnom hostu.</p>
+
+<p><strong>3. hostd.log</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Opis</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lokacija</td>
+      <td><code>/var/log/hostd.log</code> na ESXi hostu</td>
+    </tr>
+    <tr>
+      <td>Komponenta</td>
+      <td>ESXi host management servis hostd</td>
+    </tr>
+    <tr>
+      <td>Šta tražimo</td>
+      <td>VM operacije, reconfiguration, migration task i lokalne API greške</td>
+    </tr>
+    <tr>
+      <td>Tumačenje</td>
+      <td>Povezuje vCenter zahtev sa operacijom izvršenom na konkretnom hostu</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre><code class="language-bash">grep -Ei "migrat|relocat|drs-load01|error" \
+/var/log/hostd.log | tail -n 200</code></pre>
+
+<p><strong>4. vpxa.log</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Opis</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lokacija</td>
+      <td><code>/var/log/vpxa.log</code> na ESXi hostu</td>
+    </tr>
+    <tr>
+      <td>Komponenta</td>
+      <td>vCenter agent na ESXi hostu</td>
+    </tr>
+    <tr>
+      <td>Šta tražimo</td>
+      <td>Komunikaciju sa vCenterom, zadatke dobijene od vpxd-a i greške agentske koordinacije</td>
+    </tr>
+    <tr>
+      <td>Tumačenje</td>
+      <td>Pomaže kada vCenter i host imaju različit pogled na stanje zadatka</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre><code class="language-bash">grep -Ei "migrat|relocat|error|timeout" \
+/var/log/vpxa.log | tail -n 200</code></pre>
+
+<p><strong>5. eam.log</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Opis</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lokacija</td>
+      <td><code>/var/log/vmware/eam/eam.log</code> na VCSA uređaju</td>
+    </tr>
+    <tr>
+      <td>Komponenta</td>
+      <td>ESX Agent Manager</td>
+    </tr>
+    <tr>
+      <td>Šta tražimo</td>
+      <td>vCLS i druga solution-agent stanja, deployment greške, sistemske VM zavisnosti</td>
+    </tr>
+    <tr>
+      <td>Tumačenje</td>
+      <td>Koristi se kada DRS ne radi zbog nezdravog vCLS ili solution-agent stanja</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre><code class="language-bash">grep -Ei "vcls|cluster|error|fail" \
+/var/log/vmware/eam/eam.log | tail -n 200</code></pre>
+
+<p>Broadcom navodi da DRS operacije mogu da ne uspeju ako se pozovu pre nego što se prva vCLS VM za DRS klaster uspešno uključi. To može uticati na početni placement, izbor hosta pri migraciji i druge operacije koje pozivaju DRS algoritam. </p>
+
+<p><strong>PowerCLI prikupljanje događaja</strong></p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "drs-load01"
+$startTime = (Get-Date).AddHours(-2)
+
+Get-VIEvent -Entity $vm `
+    -Start $startTime `
+    -MaxSamples 500 |
+    Sort-Object CreatedTime |
+    Select-Object CreatedTime,
+                  UserName,
+                  FullFormattedMessage</code></pre>
+
+<p>Komanda je read-only. Daje hronologiju događaja vezanih za VM.</p>
+
+<p><strong>PowerCLI prikupljanje host log bundle-a</strong></p>
+
+<p>PowerCLI <code>Get-Log</code> može čitati delove logova ili pokrenuti prikupljanje bundle-a, zavisno od parametara. Broadcom dokumentuje zasebne režime za čitanje loga i preuzimanje dijagnostičkog bundle-a. </p>
+
+<pre><code class="language-powershell">Get-Log -VMHost (Get-VMHost -Name "esx01.lab.local") `
+    -Bundle `
+    -DestinationPath ".\support-bundles"</code></pre>
+
+<p>Ova komanda ne menja konfiguraciju, ali prikupljanje bundle-a može privremeno koristiti CPU, disk i mrežne resurse. U velikom incidentu nemoj istovremeno pokretati bundle na svim hostovima bez procene opterećenja.</p>
+
+<p><strong>Praktično povezivanje nalaza</strong></p>
+
+<ol>
+  <li>Zabeleži tačno vreme neuspelog taska.</li>
+  <li>Iz vSphere Clienta kopiraj punu poruku greške.</li>
+  <li>Identifikuj izvornu i ciljnu ESXi stranu.</li>
+  <li>U vpxd.log pronađi task ili relocation zahtev.</li>
+  <li>Na oba hosta proveri vmkernel.log.</li>
+  <li>U hostd.log i vpxa.log proveri lokalnu realizaciju zadatka.</li>
+  <li>Ako postoji vCLS alarm, proveri eam.log.</li>
+  <li>Formuliši jedan proverljiv uzrok.</li>
+  <li>Izvrši najmanje rizičnu korekciju.</li>
+  <li>Ponovi migraciju samo nakon otklanjanja uzroka.</li>
+</ol>
+
+<p><strong>Primer tumačenja</strong></p>
+
+<p>Ako vpxd.log pokazuje da je DRS izabrao ciljni host, ali vmkernel.log na izvornom hostu pokazuje timeout prema ciljnoj vMotion adresi, DRS odluka je verovatno bila validna, dok je izvršenje propalo zbog vMotion mreže.</p>
+
+<p>Ako DRS ne formira nijednu validnu destinaciju, a DRS Fault prikazuje konflikt pravila ili nedostatak resursa, traženje problema u VMkernel mreži nije prvi korak.</p>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ul>
+  <li>zaustavi test opterećenje;</li>
+  <li>vrati originalna pravila i reservations;</li>
+  <li>potvrdi da su svi hostovi Connected;</li>
+  <li>potvrdi da nema aktivnih Maintenance Mode zadataka;</li>
+  <li>potvrdi da je vCLS zdrav;</li>
+  <li>izvedi jednu kontrolisanu test migraciju;</li>
+  <li>sačuvaj izveštaj incidenta.</li>
+</ul>
+
+<hr>
+
+<h3>Vežba 10 – Prelazak na Fully Automated režim i završna operativna validacija</h3>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Prebaciti klaster iz Manual u Fully Automated režim tek nakon završene funkcionalne i incidentne validacije, a zatim potvrditi da automatizacija radi kontrolisano i u skladu sa pravilima.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>vMotion testovi su uspešni;</li>
+  <li>vCLS je zdrav;</li>
+  <li>DRS pravila su dokumentovana i bez konflikata;</li>
+  <li>VM overrides su pregledani;</li>
+  <li>kapacitet omogućava održavanje najmanje jednog hosta, prema dizajnu klastera;</li>
+  <li>nema aktivnog incidenta;</li>
+  <li>definisan je period pojačanog nadzora nakon promene.</li>
+</ul>
+
+<p><strong>GUI postupak</strong></p>
+
+<ol>
+  <li>Otvori <strong>Cluster &gt; Configure &gt; Services &gt; vSphere DRS</strong>.</li>
+  <li>Klikni <strong>Edit</strong>.</li>
+  <li>Postavi automatizaciju na <strong>Fully Automated</strong>.</li>
+  <li>Zadrži srednji nivo migration sensitivity ako nema dokazanog razloga za promenu.</li>
+  <li>Sačuvaj promenu.</li>
+</ol>
+
+<p><strong>PowerCLI postupak</strong></p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name "CL-PROD-LAB"
+
+Set-Cluster -Cluster $cluster `
+    -DrsEnabled $true `
+    -DrsAutomationLevel FullyAutomated `
+    -Confirm:$false</code></pre>
+
+<p>Komanda menja konfiguraciju klastera. <code>-Confirm:$false</code> je prihvatljiv u kontrolisanom skriptu tek nakon eksplicitne provere ciljnog objekta.</p>
+
+<p><strong>Validacija</strong></p>
+
+<pre><code class="language-powershell">Get-Cluster -Name "CL-PROD-LAB" |
+    Select-Object Name,
+                  DrsEnabled,
+                  DrsAutomationLevel</code></pre>
+
+<p>Zatim posmatraj najmanje jedan definisani period:</p>
+
+<ul>
+  <li>broj DRS pokrenutih migracija;</li>
+  <li>razloge migracija;</li>
+  <li>DRS Score važnih VM-ova;</li>
+  <li>CPU Ready;</li>
+  <li>memory contention;</li>
+  <li>vMotion mrežno opterećenje;</li>
+  <li>rule compliance;</li>
+  <li>migration faults;</li>
+  <li>aplikacione SLO i health provere.</li>
+</ul>
+
+<p><strong>Kada ne treba povećavati migration sensitivity</strong></p>
+
+<ul>
+  <li>kada administrator samo želi vizuelno jednako opterećene hostove;</li>
+  <li>kada nije potvrđeno da VM-ovi trpe contention;</li>
+  <li>kada vMotion mreža nema dovoljno kapaciteta;</li>
+  <li>kada se migracije preklapaju sa backup prozorom;</li>
+  <li>kada se veliki VM-ovi često premeštaju bez merljivog dobitka;</li>
+  <li>kada postoji nestabilna aplikaciona ili storage infrastruktura.</li>
+</ul>
+
+<p><strong>Rollback</strong></p>
+
+<p>Ako se pojave neočekivane migracije ili povećano opterećenje vMotion mreže, klaster se može vratiti na Manual režim bez potpunog isključivanja DRS-a:</p>
+
+<pre><code class="language-powershell">Set-Cluster -Cluster $cluster `
+    -DrsAutomationLevel Manual `
+    -Confirm:$false</code></pre>
+
+<p>Rollback ne rešava uzrok. Nakon promene treba analizirati DRS history, pravila, VM overrides, sensitivity, resource contention i infrastrukturne zavisnosti.</p>
+
+<hr>
+
+<h3>Administratorske prakse</h3>
+
+<p><strong>1. Projektuj DRS zajedno sa HA i kapacitetom, ne kao izolovanu funkciju</strong></p>
+
+<p>Klaster mora imati dovoljno kapaciteta da nakon gubitka ili održavanja jednog hosta:</p>
+
+<ul>
+  <li>HA i dalje može da zadovolji definisanu failover politiku;</li>
+  <li>DRS može da pronađe validan placement;</li>
+  <li>Must pravila ostanu zadovoljiva;</li>
+  <li>velike VM mogu stati na pojedinačne hostove;</li>
+  <li>aplikacije ne rade trajno pod visokim contention-om.</li>
+</ul>
+
+<p><strong>2. Koristi Must samo za stvarno obavezne zahteve</strong></p>
+
+<p>Svako Must pravilo treba da ima dokumentovan razlog, vlasnika i posledice privremenog kršenja. Primeri opravdanih razloga su:</p>
+
+<ul>
+  <li>softverska licenca vezana za fizičke hostove;</li>
+  <li>GPU ili passthrough zavisnost;</li>
+  <li>poseban bezbednosni ili regulatorni zahtev;</li>
+  <li>workload koji tehnički ne može da radi na drugim hostovima.</li>
+</ul>
+
+<p>Za performansnu ili organizacionu preferenciju koristi Should pravilo.</p>
+
+<p><strong>3. Vodi centralni registar DRS pravila</strong></p>
+
+<p>Za svako pravilo zabeleži:</p>
+
+<ul>
+  <li>naziv;</li>
+  <li>tip;</li>
+  <li>članove;</li>
+  <li>poslovni razlog;</li>
+  <li>vlasnika aplikacije;</li>
+  <li>da li je pravilo obavezno ili preporučeno;</li>
+  <li>uticaj na HA i Maintenance Mode;</li>
+  <li>datum poslednje validacije;</li>
+  <li>postupak privremenog isključivanja i vraćanja.</li>
+</ul>
+
+<p><strong>4. Standardizuj nazive</strong></p>
+
+<p>Primeri:</p>
+
+<ul>
+  <li><code>AA-DC-PROD</code> – anti-affinity za domain controllere;</li>
+  <li><code>AFF-APP-DB</code> – affinity aplikacije i baze;</li>
+  <li><code>VMG-ORACLE-LICENSED</code> – VM grupa;</li>
+  <li><code>HG-ORACLE-HOSTS</code> – host grupa;</li>
+  <li><code>RULE-ORACLE-MUST-HOSTS</code> – obavezno VM-Host pravilo.</li>
+</ul>
+
+<p><strong>5. Prati VM metrike, ne samo prosečno opterećenje hosta</strong></p>
+
+<p>Za kritične VM prati:</p>
+
+<ul>
+  <li>CPU Ready;</li>
+  <li>Co-Stop kod SMP VM-ova;</li>
+  <li>Memory Active;</li>
+  <li>Balloon;</li>
+  <li>Swap in i Swap out;</li>
+  <li>NUMA locality;</li>
+  <li>DRS Score;</li>
+  <li>aplikaciono vreme odziva.</li>
+</ul>
+
+<p>Jednak procenat CPU Usage na hostovima nije cilj sam po sebi.</p>
+
+<p><strong>6. Prati vMotion infrastrukturu kao produkcionu uslugu</strong></p>
+
+<p>Najmanje proveravaj:</p>
+
+<ul>
+  <li>uplink status i greške;</li>
+  <li>propusni opseg;</li>
+  <li>MTU usklađenost;</li>
+  <li>VLAN i routing;</li>
+  <li>trajanje migracija;</li>
+  <li>broj paralelnih migracija;</li>
+  <li>uticaj na management i storage saobraćaj ako dele fizičke uplinkove.</li>
+</ul>
+
+<p><strong>7. Pre održavanja izvrši DRS precheck</strong></p>
+
+<p>Pre svakog Maintenance Mode-a proveri:</p>
+
+<ul>
+  <li>VM-Host Must pravila;</li>
+  <li>anti-affinity pravila;</li>
+  <li>passthrough i vGPU uređaje;</li>
+  <li>lokalne ISO i uređaje;</li>
+  <li>HA Admission Control;</li>
+  <li>slobodan kapacitet;</li>
+  <li>vSAN data migration režim;</li>
+  <li>aktivne backup i replication zadatke.</li>
+</ul>
+
+<p><strong>8. Ne isključuj vCLS ili sistemske komponente radi brze korekcije</strong></p>
+
+<p>Nezdrav vCLS treba dijagnostikovati kroz stanje klastera, EAM, vpxd, storage, prava i VCSA servise. DRS zavisi od zdravog vCLS stanja, a operacije koje pozivaju DRS mogu biti ograničene dok ta zavisnost nije obnovljena. </p>
+
+<p><strong>9. Izbegavaj nedokumentovane napredne opcije</strong></p>
+
+<p>DRS advanced options ne treba kopirati iz starih blogova ili primenjivati kao univerzalni tuning. Njihovo značenje, podrška i ponašanje mogu se menjati između verzija. Koristi ih samo kada su dokumentovane za konkretnu verziju ili kada ih preporuči Broadcom Support za precizno definisan problem.</p>
+
+<p><strong>10. Testiraj pravila u failure i maintenance scenariju</strong></p>
+
+<p>Pravilo koje radi dok su svi hostovi dostupni nije dovoljno testirano. Proveri:</p>
+
+<ul>
+  <li>gubitak jednog hosta;</li>
+  <li>Maintenance Mode jednog hosta;</li>
+  <li>nedostatak kapaciteta;</li>
+  <li>nedostupan član host grupe;</li>
+  <li>konflikt sa drugim pravilom;</li>
+  <li>povratak hosta u klaster.</li>
+</ul>
+
+<p><strong>11. Backup vCenter Servera je važniji od pokušaja zasebnog „backup-a DRS-a”</strong></p>
+
+<p>DRS konfiguracija je deo vCenter inventara i konfiguracije. Redovno sprovodi podržani file-based backup VCSA uređaja, proveravaj uspeh backup-a i periodično testiraj restore proceduru u izolovanom okruženju.</p>
+
+<p>PowerCLI izveštaji DRS pravila i grupa korisni su kao dodatna dokumentacija i brza referenca, ali nisu potpuna zamena za podržani vCenter backup.</p>
+
+<p><strong>12. Posle incidenta čuvaj tehničku hronologiju</strong></p>
+
+<p>Incidentni zapis treba da sadrži:</p>
+
+<ul>
+  <li>tačno vreme;</li>
+  <li>pogođene VM i hostove;</li>
+  <li>simptom;</li>
+  <li>DRS recommendation ili fault;</li>
+  <li>relevantna pravila;</li>
+  <li>izvod iz događaja i logova;</li>
+  <li>potvrđeni uzrok;</li>
+  <li>korektivnu akciju;</li>
+  <li>dokaz oporavka;</li>
+  <li>preventivnu meru.</li>
+</ul>
+
+<p><strong>13. Oprezno koristi resource pool-ove i scalable shares</strong></p>
+
+<p>Resource pool ne treba koristiti samo kao folder za organizaciju VM-ova. Shares imaju značenje tokom contention-a i porede se unutar roditeljskog resursnog konteksta. Scalable shares omogućavaju dinamičko skaliranje shares vrednosti resource pool-a kada se VM-ovi dodaju ili uklanjaju, ali njihovo uključivanje treba da bude deo svesnog modela upravljanja resursima. </p>
+
+<p><strong>14. Ne očekuj da DRS rešava pogrešno dimenzionisanje</strong></p>
+
+<p>DRS može bolje rasporediti postojeće resurse, ali ne može stvoriti CPU, memoriju, storage IOPS ili mrežni kapacitet. Ako svi hostovi trpe visok contention, migracija samo premešta problem.</p>
+
+<p><strong>15. Promene automatizacije uvodi postepeno</strong></p>
+
+<p>Za nov ili problematičan klaster koristi sledeći redosled:</p>
+
+<ol>
+  <li>provera zavisnosti;</li>
+  <li>Manual režim;</li>
+  <li>analiza preporuka;</li>
+  <li>kontrolisane migracije;</li>
+  <li>validacija pravila;</li>
+  <li>Partially Automated kada je potreban prelazni period;</li>
+  <li>Fully Automated;</li>
+  <li>pojačan monitoring nakon promene.</li>
+</ol>
+
+<hr>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Lekcija je završena kada administrator može da pokaže sledeće proverljive sposobnosti, a ne samo da potvrdi da je opcija DRS uključena:</p>
+
+<ul>
+  <li>iz inventara i konfiguracije dokazuje da su vMotion, mreže VM-ova, datastore, EVC i verzijski relevantno vCLS stanje spremni za DRS;</li>
+  <li>objašnjava razliku između početnog smeštaja, periodične optimizacije, Manual, Partially Automated i Fully Automated režima;</li>
+  <li>čita DRS Score i preporuku zajedno sa CPU contention-om, memorijskim pritiskom, rezervacijama i troškom migracije, bez zaključivanja samo iz prosečnog procenta hosta;</li>
+  <li>projektuje VM-VM i VM-Host pravilo, razlikuje <em>Should</em> od <em>Must</em> i dokumentuje posledice po power-on, vMotion, HA failover i održavanje;</li>
+  <li>pre Maintenance Mode-a dokazuje da preostali hostovi imaju kapacitet i da nijedno pravilo ili HA Admission Control politika neće blokirati evakuaciju;</li>
+  <li>PowerCLI komandama razdvaja čitanje stanja od izmene, čuva početno stanje i ume da izvrši kontrolisan rollback;</li>
+  <li>incident povezuje kroz vCenter događaje, <code>vpxd.log</code>, <code>vmkernel.log</code>, <code>hostd.log</code>, <code>vpxa.log</code> i, kada je vCLS relevantan, <code>eam.log</code>;</li>
+  <li>dokumentuje simptom, obim, posledicu, neposredni i osnovni uzrok, privremenu meru, trajnu korekciju i dokaz oporavka.</li>
+</ul>
+
+<p>Kriterijum uspeha jeste da se sve navedeno demonstrira na laboratorijskom klasteru bez nekontrolisanog prekida rada VM-ova i da se klaster na kraju vrati u dokumentovano, zdravo stanje.</p>
+
+<hr>
+
+<h3>Zaključak</h3>
+
+<p>DRS nije jednostavan mehanizam koji premešta virtuelne mašine sa „punog” na „prazan” host. On je centralni klasterski sistem za donošenje odluka o početnom placementu i rasporedu workload-a, zasnovan na stanju pojedinačnih VM-ova, raspoloživim resursima, trošku migracije, kompatibilnosti infrastrukture i pravilima koja je definisao administrator.</p>
+
+<p>Administrator nakon ove lekcije treba da bude sposoban da razlikuje četiri suštinski različite situacije:</p>
+
+<ul>
+  <li>DRS ne migrira VM zato što migracija nije korisna;</li>
+  <li>DRS želi da izvrši migraciju, ali je blokira infrastrukturna greška;</li>
+  <li>DRS nema validan ciljni host zbog resursa, pravila ili zavisnosti;</li>
+  <li>DRS radi ispravno, ali konfiguracija administratora proizvodi neželjeni rezultat.</li>
+</ul>
+
+<p>Praktično znanje obuhvata mnogo više od uključivanja opcije <em>Fully Automated</em>. Administrator mora umeti da proveri vMotion mrežu, zajednički storage, EVC, vCLS, HA Admission Control, resource reservations, VM overrides, affinity pravila i stvarni kapacitet klastera. Mora umeti da pročita preporuku, objasni zašto je nastala, proceni njen rizik i potvrdi da je aplikacija ostala dostupna nakon izvršavanja.</p>
+
+<p>Posebna odgovornost postoji pri korišćenju obaveznih VM-Host pravila. Takva pravila mogu biti neophodna zbog licenci, bezbednosti ili hardvera, ali istovremeno mogu blokirati power-on, HA oporavak i Maintenance Mode. Zato svako pravilo mora imati dokumentovan razlog, vlasnika, testiran failure scenario i postupak kontrolisanog privremenog odstupanja.</p>
+
+<p>Kvalitetno projektovan DRS klaster ne procenjuje se po tome da li svi hostovi prikazuju isti procenat opterećenja. Procenjuje se po tome da li kritične VM dobijaju potrebne resurse, da li se pravila mogu zadovoljiti i tokom otkaza, da li planirano održavanje prolazi bez incidenta, da li automatizacija ne proizvodi nepotrebne migracije i da li administrator može iz događaja i logova jasno dokazati uzrok svakog odstupanja.</p>
+
+<p>Kada su kapacitet, vMotion, verzijski relevantne klasterske zavisnosti, pravila i monitoring pravilno projektovani, Fully Automated DRS postaje pouzdan operativni mehanizam koji neprekidno optimizuje klaster. Kada te osnove nisu uređene, automatizacija samo brže otkriva i širi posledice pogrešnog dizajna.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Resource Management i vSphere Availability administrativna dokumentacija; vSphere DRS, vMotion i vSphere Cluster Services arhitektonske reference; Broadcom Knowledge Base članci o pravilima smeštaja, DRS fault događajima, Maintenance Mode-u i vCLS zavisnostima; aktuelna Broadcom VCF PowerCLI cmdlet referenca
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-32-high-availability.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-34-performanse.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

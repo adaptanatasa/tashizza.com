@@ -1,0 +1,930 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-47-inventar-labels-annotations-cmdb.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Inventar Kubernetes resursa, labels, annotations i integracija sa CMDB sistemima | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Inventar Kubernetes resursa, labels, annotations i integracija sa CMDB sistemima omogućavaju efikasno upravljanje, klasifikaciju, pretragu i održavanje enterprise Kubernetes okruženja.">
+
+  <meta name="keywords"
+        content="Kubernetes inventar, Kubernetes labels, Kubernetes annotations, CMDB, asset management, Kubernetes metadata, kubectl labels, kubectl annotate, enterprise Kubernetes, vanilla Kubernetes, Kubernetes administracija, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-47-inventar-labels-annotations-cmdb.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Inventar Kubernetes resursa, labels, annotations i integracija sa CMDB sistemima">
+
+  <meta property="og:description"
+        content="Naučite kako se labels, annotations i inventar Kubernetes resursa koriste za organizaciju, automatizaciju i povezivanje Kubernetes klastera sa enterprise CMDB sistemima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-47-inventar-labels-annotations-cmdb.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-39-inventar-labels-annotations.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Inventar Kubernetes resursa, labels, annotations i integracija sa CMDB sistemima">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-39-inventar-labels-annotations.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-39-inventar-labels-annotations.png"
+           alt="Inventar Kubernetes resursa, labels, annotations i integracija sa CMDB sistemima">
+
+    </a>
+  
+<div class="page-subtitle">
+XI. Upravljanje platformom i interoperabilnost
+</div>
+  <div class="page-subtitle">
+47. Inventar resursa, labels, annotations i CMDB – vlasništvo, klasifikacija i razmena podataka
+</div>
+
+<p>
+U enterprise okruženju Kubernetes klaster nije izolovano ostrvo, već deo šireg informacionog sistema u kome postoje vlasnici aplikacija, poslovne usluge, troškovni centri, ugovori o nivou usluge, procedure za upravljanje promenama, sistemi za nadzor i centralna konfiguraciona baza podataka. Kubernetes API veoma precizno opisuje trenutno stanje objekata u klasteru, ali sam po sebi ne zna koja poslovna služba koristi aplikaciju, ko odobrava njene promene, kojem servisu u CMDB sistemu pripada ili koliko dugo određeni resurs mora da postoji. Te informacije moraju biti uvedene kroz kontrolisan model metapodataka i povezane sa spoljnim sistemima.
+</p>
+<p>
+Inventar Kubernetes resursa zato nije samo rezultat komande <code>kubectl get</code>. Produkcioni inventar predstavlja kontrolisanu evidenciju tehničkih objekata, njihovih odnosa, vlasništva, životnog ciklusa i povezanosti sa poslovnim konfiguracionim stavkama. Dobar inventar omogućava da administrator odgovori na pitanja koja se javljaju tokom incidenta, revizije ili planiranja promene: koji deployment pripada određenoj aplikaciji, na kojim čvorovima rade njegovi podovi, koji servisi ga izlažu, koji persistent volume claim koristi, ko je vlasnik sistema i koja CMDB konfiguraciona stavka predstavlja tu poslovnu uslugu.
+</p>
+<h3>Inventar Kubernetes resursa kao izvor operativne istine</h3>
+<p>
+Kubernetes objekti su trajne reprezentacije željenog i zabeleženog stanja klastera. Svaki objekat dostupan preko Kubernetes API-ja ima najmanje polja <code>apiVersion</code>, <code>kind</code> i <code>metadata</code>, dok većina radnih resursa ima i <code>spec</code> i <code>status</code>. Polje <code>spec</code> opisuje željeno stanje koje je zadao korisnik ili kontroler, a <code>status</code> stanje koje su kontroleri i kubelet čvorovi do sada ostvarili. Inventarski sistem mora razlikovati ova dva nivoa. Deployment sa željene tri replike i samo dve raspoložive replike postoji u inventaru, ali istovremeno nosi operativni simptom koji zahteva reakciju.
+</p>
+<p>
+Kubernetes API je autoritativni izvor za objekte koji trenutno postoje u klasteru, ali nije zamena za CMDB. Kubernetes objekti su dinamični: pod može nestati i biti ponovo kreiran sa novim imenom i UID vrednošću, ReplicaSet se menja tokom rollout-a, a status i <code>resourceVersion</code> mogu se promeniti više puta u kratkom periodu. CMDB je obično namenjen stabilnijim konfiguracionim stavkama, njihovim vlasnicima i međusobnim relacijama. Zbog toga se u CMDB najčešće ne upisuje svaki prolazni pod kao trajna poslovna konfiguraciona stavka. Podovi se mogu čuvati kao kratkotrajni tehnički inventar ili operativni odnos, dok se namespace, workload, servis, ingress, čvor, storage zahtev i klaster tretiraju kao stabilnije stavke.
+</p>
+<p>
+Za svaki inventarisani objekat korisno je sačuvati identitet klastera, API grupu, vrstu resursa, namespace, ime, UID, datum kreiranja, relevantne labels i annotations, vlasničke reference, željeno i ostvareno stanje i vreme poslednje sinhronizacije. Kubernetes UID je posebno važan jer razlikuje dva objekta sa istim imenom koji su postojali u različitim periodima. Ime i namespace nisu dovoljni za istorijsku korelaciju: objekat može biti obrisan, a zatim ponovo napravljen pod istim imenom.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Podatak</th>
+      <th>Administratorska svrha</th>
+      <th>Napomena za CMDB</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>cluster ID, kind, namespace i name</td>
+      <td>Pronalaženje i prikaz resursa</td>
+      <td>Čine čitljiv složeni identifikator, ali ne zamenjuju UID</td>
+    </tr>
+    <tr>
+      <td>metadata.uid</td>
+      <td>Jedinstveno razlikovanje životnog ciklusa objekta</td>
+      <td>Pogodan eksterni ključ za konkretnu instancu objekta</td>
+    </tr>
+    <tr>
+      <td>metadata.labels</td>
+      <td>Selektovanje, grupisanje i automatizacija</td>
+      <td>Koristiti samo odobrene ključeve za klasifikaciju</td>
+    </tr>
+    <tr>
+      <td>metadata.annotations</td>
+      <td>Dodatni opis, reference i integracioni podaci</td>
+      <td>Ne skladištiti tajne niti nekontrolisane velike sadržaje</td>
+    </tr>
+    <tr>
+      <td>ownerReferences</td>
+      <td>Razumevanje kontrolera i zavisnih objekata</td>
+      <td>Osnova za relacije, ali ne predstavlja svaku poslovnu zavisnost</td>
+    </tr>
+    <tr>
+      <td>spec i status sažetak</td>
+      <td>Poređenje željenog i ostvarenog stanja</td>
+      <td>Uvoziti samo polja potrebna za CMDB ili operativni inventar</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Labels kao kontrolisana klasifikacija resursa</h3>
+<p>
+Label je par ključ–vrednost pridružen Kubernetes objektu. Labels su namenjene identifikovanju grupa objekata i mogu se koristiti u selector izrazima. Kontroleri i servisi ih koriste kao funkcionalni deo arhitekture: Deployment povezuje ReplicaSet i podove preko selector-a, dok Service pronalazi odredišne podove na osnovu svojih selector-a. Zbog toga promena label vrednosti nije samo administrativno preimenovanje. Pogrešna promena može izbaciti pod iz skupa endpoint-a, poremetiti upravljanje workload-om ili izazvati preklapanje selector-a između aplikacija.
+</p>
+<p>
+Ključ label-a može imati opcioni DNS prefiks i naziv odvojen znakom <code>/</code>. Prefiksi <code>kubernetes.io</code> i <code>k8s.io</code> rezervisani su za Kubernetes. Organizacija treba da koristi sopstveni DNS domen, na primer <code>tashizza.example</code>, kako se njeni metapodaci ne bi sudarili sa ključevima platforme ili drugih proizvoda. Vrednosti label-a su kratke i ograničenog formata, pa nisu pogodne za duge opise, liste kontakata ili JSON dokumente.
+</p>
+<p>
+Zvanično preporučeni ključevi sa prefiksom <code>app.kubernetes.io</code> olakšavaju dosledno opisivanje aplikacija. Najčešće se koriste <code>app.kubernetes.io/name</code>, <code>instance</code>, <code>version</code>, <code>component</code>, <code>part-of</code>, <code>managed-by</code> i <code>created-by</code>. Oni nisu obavezni za rad Kubernetes jezgra, ali daju zajednički jezik alatima, administratorima i timovima. Organizacione labels mogu ih dopuniti podacima kao što su okruženje, kritičnost, vlasnički tim ili troškovni centar.
+</p>
+<pre><code class="language-yaml">metadata:
+  labels:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/instance: inventory-api-prod
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: warehouse-platform
+    app.kubernetes.io/managed-by: gitops
+    tashizza.example/environment: production
+    tashizza.example/criticality: high
+    tashizza.example/owner-team: platform-operations</code></pre>
+<p>
+Model label-a mora biti definisan pre masovnog označavanja. Vrednosti kao što su <code>prod</code>, <code>production</code> i <code>prd</code> tehnički su validne, ali predstavljaju tri različite kategorije. Bez rečnika dozvoljenih vrednosti inventar postaje neupotrebljiv za pouzdane upite. Dobar standard određuje naziv ključa, značenje, dozvoljene vrednosti, resurse na koje se primenjuje, vlasnika podatka i pravilo izmene.
+</p>
+<p>
+Administrator mora razlikovati labels namenjene selector-ima od labels namenjenih poslovnoj klasifikaciji. Selector labels workload-a menjaju se samo kroz kontrolisanu promenu manifesta i uz razumevanje ponašanja kontrolera. Poslovne labels, kao što su kritičnost i vlasnički tim, mogu biti predmet admission politike, GitOps provere ili periodične kontrole usklađenosti. Ručno dodavanje label-a komandom <code>kubectl label</code> korisno je za dijagnostiku i kontrolisane intervencije, ali u deklarativno upravljanom okruženju trajna promena mora biti unesena i u izvorni Git repozitorijum. U suprotnom će je sledeća sinhronizacija vratiti ili će klaster odstupati od dokumentovanog stanja.
+</p>
+<h3>Annotations za opisne i integracione metapodatke</h3>
+<p>
+Annotations su takođe parovi ključ–vrednost, ali se ne koriste kao selector-i. Pogodne su za podatke koji moraju pratiti objekat, a nisu namenjeni grupisanju: identifikator promene, CMDB identifikator, kontaktna grupa, referenca na dokumentaciju, checksum konfiguracije, podaci alata koji je objekat generisao ili strukturisan sadržaj koji ne može stati u label. Vrednosti annotations mogu biti obimnije i sadržati znakove koji nisu dozvoljeni u label vrednostima.
+</p>
+<pre><code class="language-yaml">metadata:
+  annotations:
+    tashizza.example/cmdb-ci-id: "CI-K8S-APP-004271"
+    tashizza.example/change-record: "CHG-2026-0719"
+    tashizza.example/runbook: "urn:runbook:warehouse:inventory-api"
+    tashizza.example/data-classification: "internal"
+    tashizza.example/inventory-scope: "workload"</code></pre>
+<p>
+Annotations nisu skladište za lozinke, pristupne tokene, privatne ključeve ili druge tajne. Korisnici sa pravom čitanja objekta mogu pročitati njegove annotations, a njihove vrednosti mogu dospeti u audit evidenciju, rezervne kopije, Git repozitorijume i spoljne inventarske sisteme. Annotation treba da sadrži referencu na tajnu ili identifikator zapisa u bezbednom sistemu, nikada samu tajnu.
+</p>
+<p>
+Nije svaka annotation organizacioni podatak. Mnogi kontroleri, ingress implementacije, service mesh komponente, backup alati i GitOps sistemi koriste sopstvene annotation prefikse i specifičnu semantiku. Administrator ne sme menjati nepoznatu annotation samo zato što izgleda zastarelo. Prvo mora utvrditi koji kontroler je koristi, proveriti dokumentaciju konkretne verzije komponente i proceniti posledice. Neke annotations utiču na mrežno rutiranje, kreiranje cloud load balancer-a, ubrizgavanje sidecar kontejnera ili backup politiku.
+</p>
+<h3>Upravljanje promenom metapodataka i sprečavanje drift-a</h3>
+<p>
+Metapodatak ima vlasnika isto kao i svaka druga konfiguracija. Platformski tim obično poseduje rečnik ključeva i admission pravila, aplikacioni tim odgovara za vlasništvo i poslovnu klasifikaciju svoje aplikacije, a CMDB tim za CI identifikatore i pravila životnog ciklusa. Za svaki ključ treba dokumentovati izvor istine, dozvoljene vrednosti, resurse na koje se primenjuje, da li je obavezan, ko sme da ga menja i kako se rešava konflikt između Git-a, klastera i CMDB-a. CMDB povratna annotation ne sme postati konkurentski izvor za podatak kojim upravlja GitOps.
+</p>
+<p>
+Komande <code>kubectl label</code> i <code>kubectl annotate</code> menjaju živi objekat. Bez opcije <code>--overwrite</code> odbiće zamenu postojeće vrednosti, što je korisna zaštita od slučajnog prepisivanja. Sa <code>--overwrite</code> promena je namerna i mora imati change zapis, prethodno očitanu vrednost i validaciju zavisnih selector-a. Sufiks <code>-</code> uklanja ključ. Sledeći primer prvo samo čita stanje, a zatim prikazuje state-changing postupke; u deklarativnom okruženju iste izmene moraju biti unesene u izvorni manifest.
+</p>
+<pre><code class="language-bash"># Read-only dokaz pre promene
+kubectl get deployment inventory-api -n cmdb-demo \
+  -o jsonpath='{.metadata.labels.tashizza\.example/owner-team}{"\n"}'
+
+# Menja stanje: kontrolisana zamena vrednosti
+kubectl label deployment inventory-api -n cmdb-demo \
+  tashizza.example/owner-team=platform-operations --overwrite
+
+# Menja stanje: dodavanje integracione reference
+kubectl annotate deployment inventory-api -n cmdb-demo \
+  tashizza.example/change-record=CHG-2026-0719 --overwrite
+
+# Menja stanje: uklanjanje annotation ključa
+kubectl annotate deployment inventory-api -n cmdb-demo \
+  tashizza.example/change-record-</code></pre>
+<p>
+Posle promene proveravaju se efektivni metapodaci, <code>metadata.generation</code> i zavisni objekti. Promena same metadata vrednosti ne mora povećati <code>generation</code>, jer to polje prati promene željenog stanja relevantne za kontroler, pa se uspeh ne dokazuje samo njegovim povećanjem. Za selector label-e dokaz uključuje pod labels, Service selector i EndpointSlice; za GitOps objekat proverava se i status sinhronizacije. Rollback je vraćanje prethodno očitane vrednosti ili ponovno primenjivanje odobrenog manifesta.
+</p>
+<h3>Otkrivanje, filtriranje i izvoz inventara</h3>
+<p>
+Komanda <code>kubectl api-resources</code> prikazuje resurse koje konkretan API server trenutno podržava. To je pouzdaniji početak od fiksne liste zapisane u skripti, jer klaster može sadržati dodatne API grupe i CustomResourceDefinition objekte. Ipak, pokušaj izvoza svih resursa bez klasifikacije obično nije dobar pristup. Neki API objekti predstavljaju kratkotrajne događaje, bezbednosno osetljive podatke, interne lease objekte ili veliku količinu statusa bez CMDB vrednosti.
+</p>
+<pre><code class="language-bash">kubectl api-resources --verbs=list --namespaced=true
+kubectl api-resources --verbs=list --namespaced=false
+kubectl get deployments,statefulsets,daemonsets,services,ingresses,persistentvolumeclaims \
+  --all-namespaces \
+  -l 'tashizza.example/environment=production' \
+  -o wide</code></pre>
+<p>
+Za ručni pregled mogu se koristiti široki i prilagođeni tabelarni izlazi, JSONPath i puni JSON ili YAML. Za automatizovanu integraciju preporučuje se JSON jer zadržava tipove i strukturu podataka. Parsiranje podrazumevanog tabelarnog izlaza pomoću komandi <code>grep</code>, <code>awk</code> ili fiksnih pozicija kolona je nepouzdano: format je namenjen ljudima i može se razlikovati između resursa i verzija.
+</p>
+<pre><code class="language-bash">kubectl get deployments --all-namespaces \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,UID:.metadata.uid,DESIRED:.spec.replicas,AVAILABLE:.status.availableReplicas'
+
+kubectl get deployment inventory-api -n cmdb-demo \
+  -o jsonpath='{.metadata.labels}{"\n"}{.metadata.annotations}{"\n"}'</code></pre>
+
+<p>
+Kod velikih klastera API klijent mora podržati paginaciju i nastavak pomoću polja <code>continue</code>. Za kontinuiranu sinhronizaciju efikasniji je obrazac list-and-watch: klijent prvo učita početnu kolekciju i zapamti njen <code>resourceVersion</code>, a zatim prati događaje dodavanja, izmene i brisanja. Watch veza nije beskonačna ni trajno pouzdana. Klijent mora obraditi prekid veze, istek stare verzije resursa, ponovno listanje i duplikate. CMDB uvoz zato treba da bude idempotentan: ponovljeni zapis sa istim klasterom i UID vrednošću ažurira postojeću stavku umesto da pravi duplikat.
+</p>
+<p>
+Periodični potpuni snapshot jednostavniji je za početnu implementaciju i korekciju odstupanja. Watch pruža manju latenciju, ali povećava složenost. U praksi se često kombinuju: događaji se obrađuju gotovo u realnom vremenu, a jednom dnevno ili nedeljno radi se puna rekonsilijacija kojom se pronalaze propuštene izmene i objekti koji su obrisani dok integracija nije radila.
+</p>
+<h3>Mapiranje Kubernetes objekata u CMDB model</h3>
+<p>
+Pre integracije mora se definisati koje Kubernetes vrste predstavljaju konfiguracione stavke, a koje samo njihove odnose ili operativne instance. Klaster se obično mapira kao infrastrukturna ili platformska CI stavka. Node predstavlja računarski resurs povezan sa virtuelnom mašinom, fizičkim serverom ili cloud instancom. Namespace može predstavljati administrativnu zonu, okruženje ili tehnički tenant. Deployment, StatefulSet i DaemonSet predstavljaju upravljane workload-e, dok Service i Ingress predstavljaju tačke mrežnog pristupa. PVC opisuje zahtev za skladištem i može se povezati sa PersistentVolume i spoljnim storage resursom.
+</p>
+<p>
+Podovi zahtevaju posebnu odluku. Njihov životni vek može biti kraći od intervala sinhronizacije, pa njihovo čuvanje kao punopravnih CI stavki može proizvesti veliku količinu zastarelih zapisa. Za incidentnu analizu korisnije je da podovi budu deo observability ili operativnog inventara sa ograničenim periodom čuvanja. U CMDB se može čuvati zbirno stanje workload-a, broj željenih i raspoloživih replika i relacija ka čvorovima ili servisima.
+</p>
+<p>
+Relacije se ne smeju zaključivati samo iz sličnih imena. Deployment upravlja ReplicaSet objektom preko <code>ownerReferences</code>, ReplicaSet upravlja podovima, a Service bira podove preko label selector-a. Ingress upućuje na Service po imenu. PVC se pojavljuje u pod template-u workload-a, ali stvarna veza prema PersistentVolume objektu vidi se kroz <code>spec.volumeName</code> na vezanom PVC-u. Integracioni proces treba da koristi ove eksplicitne podatke i da zabeleži kada relacija ne može pouzdano da se utvrdi.
+</p>
+<p>
+CMDB identifikator može se vratiti u Kubernetes kao annotation tek nakon što CMDB kreira ili pronađe stavku. Taj postupak ne sme izazvati beskonačnu petlju: annotation promena povećava verziju objekta, što ponovo aktivira sinhronizaciju. Integracija treba da ignoriše izmene koje ne menjaju poslovno relevantan skup polja ili da izračuna hash normalizovanog inventarskog zapisa.
+</p>
+<h3>Bezbednost, ovlašćenja i pouzdanost integracije</h3>
+<p>
+Inventarski proces uglavnom zahteva operacije <code>get</code>, <code>list</code> i, kod watch integracije, <code>watch</code>. Ne treba mu automatski dodeliti <code>cluster-admin</code>. Čitanje Kubernetes resursa nije beznačajna privilegija: konfiguracije workload-a mogu otkriti nazive internih sistema, image registre, promenljive okruženja, mrežne adrese i poslovnu strukturu. Secrets se po pravilu potpuno isključuju iz inventara. ConfigMap sadržaj takođe se ne izvozi bez jasne potrebe; dovoljno je evidentirati postojanje, UID i vezu sa workload-om.
+</p>
+<p>
+ServiceAccount namenjen integraciji treba da bude odvojen od administratorskih naloga. Njegov token se automatski projektuje u pod samo kada je potreban. Kod spoljnog procesa prednost imaju organizacioni identitet, kratkotrajni tokeni, OIDC ili druga kontrolisana autentikacija umesto statičnog dugotrajnog service account tokena. Prava treba proveravati komandama <code>kubectl auth can-i</code> pre puštanja procesa i nakon svake promene RBAC pravila.
+</p>
+<p>
+Veza prema CMDB API-ju mora koristiti TLS i proveru sertifikata. Token ili klijentski sertifikat čuva se u namenskom sistemu za tajne ili Kubernetes Secret objektu sa odgovarajućim ograničenjima, enkripcijom podataka u etcd skladištu i kontrolisanim pristupom. Tajna se ne zapisuje u annotation, ConfigMap, image ili log. Integracioni program ne sme u poruci o grešci ispisati HTTP Authorization zaglavlje.
+</p>
+<p>
+Logovi moraju omogućiti utvrđivanje vremena sinhronizacije, klastera, broja pročitanih i poslatih objekata, neuspelih vrsta resursa, HTTP statusa CMDB odgovora i identifikatora izvršenja. Payload sa kompletnim manifestima ne treba rutinski ispisivati. Audit evidencija API servera može pokazati koje je resurse integracioni identitet čitao ili menjao, ali audit politika i lokacija logova zavise od načina instalacije control plane-a. U kubeadm okruženju audit fajl se nalazi na putanji zadatoj opcijom <code>--audit-log-path</code> procesa kube-apiserver; u upravljanom servisu pristupa mu se kroz mehanizam cloud provajdera.
+</p>
+<h3>Integrisani praktikum: kontrolisani izvoz workload inventara u CMDB API</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong></p>
+<p>
+Organizacija koristi Vanilla Kubernetes klaster <code>vk8s-prod-01</code>. Tim za upravljanje konfiguracijama zahteva periodični izvoz Deployment, StatefulSet, DaemonSet, Service, Ingress i PVC objekata u centralni CMDB. U klasteru će biti pripremljen namespace <code>cmdb-demo</code> sa aplikacijom <code>inventory-api</code> i CronJob procesom <code>cmdb-inventory-exporter</code>. CMDB endpoint je bezbedna zamenska adresa <code>https://cmdb-api.example.internal/api/v1/kubernetes-ci/import</code>. U prvom prolazu koristi se režim <code>DRY_RUN=true</code>, pa se normalizovani JSON zapisuje u log umesto slanja.
+</p>
+<p><strong>Cilj i kriterijumi prihvatanja.</strong></p>
+<ul>
+  <li>Deployment i Service moraju sadržati standardizovane aplikacione i organizacione labels.</li>
+  <li>Integracioni ServiceAccount sme da čita samo unapred definisane grupe resursa i ne sme da čita Secrets.</li>
+  <li>CronJob mora završiti statusom <code>Complete</code> i u logu prijaviti najmanje jedan pronađen workload.</li>
+  <li>Svaki izvezeni objekat mora sadržati cluster, apiVersion, kind, namespace, name, UID, creationTimestamp, labels, annotations i sažetak stanja.</li>
+  <li>Negativni test mora potvrditi odgovor <code>no</code> za čitanje Secrets i neuspešan pokušaj njihovog listanja.</li>
+</ul>
+<p><strong>Referentno okruženje i preduslovi.</strong></p>
+<p>
+Administrator radi sa stanice <code>admin01</code>, ima funkcionalan <code>kubectl</code> kontekst za klaster i pravo da kreira namespace, workload, ClusterRole, ClusterRoleBinding, ConfigMap, Secret i CronJob. Klaster mora imati DNS i mrežnu putanju prema CMDB adresi kada se kasnije isključi dry-run režim. Referentni kontejner koristi Python 3.13 i samo standardnu biblioteku. U produkciji image treba preuzimati iz odobrenog internog registra, zaključati digest vrednošću i prethodno bezbednosno skenirati.
+</p>
+<ol>
+  <li>
+    <strong>Provera konteksta i postojećeg stanja.</strong>
+    Pre kreiranja resursa administrator potvrđuje da radi nad očekivanim klasterom i proverava da li namespace već postoji. Pogrešan kontekst može dovesti do promene drugog klastera.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get namespace cmdb-demo
+kubectl auth can-i create namespaces
+kubectl auth can-i create clusterroles.rbac.authorization.k8s.io</code></pre>
+    <strong>Validacija:</strong> naziv konteksta i adresa API servera moraju odgovarati klasteru <code>vk8s-prod-01</code>. Odgovor <code>NotFound</code> za namespace prihvatljiv je samo ako se lekcija izvodi prvi put. Odgovori za potrebna prava moraju biti <code>yes</code>.
+  </li>
+  <li>
+    <strong>Kreiranje referentne aplikacije sa standardnim metapodacima.</strong>
+    Manifest formira namespace, Deployment i Service. Selector labels <code>app.kubernetes.io/name</code> i <code>app.kubernetes.io/instance</code> iste su u Deployment selector-u, pod template-u i Service selector-u. Poslovni metapodaci odvojeni su od funkcionalnih selector-a.
+    <pre><code class="language-bash">cat &gt; 47-reference-application.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cmdb-demo
+  labels:
+    tashizza.example/environment: production
+    tashizza.example/owner-team: platform-operations
+  annotations:
+    tashizza.example/cmdb-ci-id: "CI-K8S-NS-004270"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+  namespace: cmdb-demo
+  labels:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/instance: inventory-api-prod
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: warehouse-platform
+    app.kubernetes.io/managed-by: kubectl
+    tashizza.example/environment: production
+    tashizza.example/criticality: high
+    tashizza.example/owner-team: platform-operations
+  annotations:
+    tashizza.example/cmdb-ci-id: "CI-K8S-APP-004271"
+    tashizza.example/change-record: "CHG-2026-0719"
+    tashizza.example/runbook: "urn:runbook:warehouse:inventory-api"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inventory-api
+      app.kubernetes.io/instance: inventory-api-prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inventory-api
+        app.kubernetes.io/instance: inventory-api-prod
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: warehouse-platform
+        tashizza.example/environment: production
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: cmdb-demo
+  labels:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/instance: inventory-api-prod
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: warehouse-platform
+    tashizza.example/environment: production
+    tashizza.example/criticality: high
+  annotations:
+    tashizza.example/cmdb-ci-id: "CI-K8S-SVC-004272"
+spec:
+  selector:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/instance: inventory-api-prod
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+EOF
+kubectl apply -f 47-reference-application.yaml</code></pre>
+    <strong>Validacija:</strong> rollout mora biti uspešan, dve replike raspoložive, a Service mora imati dva endpoint-a. Ako podovi nisu Ready, inventar će ispravno registrovati objekat, ali kriterijum funkcionalnosti aplikacije neće biti ispunjen.
+    <pre><code class="language-bash">kubectl rollout status deployment/inventory-api -n cmdb-demo --timeout=120s
+kubectl get deployment,pods,service,endpointslice -n cmdb-demo \
+  -l app.kubernetes.io/instance=inventory-api-prod
+kubectl get deployment inventory-api -n cmdb-demo \
+  -o jsonpath='{.spec.replicas}{" desired, "}{.status.availableReplicas}{" available\n"}'</code></pre>
+  </li>
+  <li>
+    <strong>Kreiranje minimalnog RBAC identiteta.</strong>
+    ClusterRole dozvoljava samo <code>get</code> i <code>list</code> nad vrstama koje ulaze u dogovoreni inventar. Pravo <code>watch</code> nije uključeno jer se referentni proces pokreće periodično i pravi snapshot. Secrets, ConfigMaps, pod logovi, exec i proxy podresursi nisu dozvoljeni.
+    <pre><code class="language-bash">cat &gt; 47-inventory-rbac.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cmdb-inventory-exporter
+  namespace: cmdb-demo
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cmdb-inventory-reader
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - nodes
+      - services
+      - persistentvolumeclaims
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cmdb-inventory-reader
+subjects:
+  - kind: ServiceAccount
+    name: cmdb-inventory-exporter
+    namespace: cmdb-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cmdb-inventory-reader
+EOF
+kubectl apply -f 47-inventory-rbac.yaml</code></pre>
+    <strong>Validacija:</strong> očekuje se <code>yes</code> za Deployment i <code>no</code> za Secret. Provera se obavlja impersonacijom ServiceAccount identiteta, pa ne zavisi od širih prava administratora.
+    <pre><code class="language-bash">kubectl auth can-i list deployments.apps --all-namespaces \
+  --as=system:serviceaccount:cmdb-demo:cmdb-inventory-exporter
+kubectl auth can-i list secrets --all-namespaces \
+  --as=system:serviceaccount:cmdb-demo:cmdb-inventory-exporter
+kubectl auth can-i get nodes/proxy \
+  --as=system:serviceaccount:cmdb-demo:cmdb-inventory-exporter</code></pre>
+  </li>
+  <li>
+    <strong>Priprema normalizacionog programa.</strong>
+    Program koristi projektovani ServiceAccount token i CA sertifikat, poziva Kubernetes API preko interne promenljive <code>KUBERNETES_SERVICE_HOST</code>, prati serversku paginaciju i formira stabilan inventarski dokument. Izvoze se samo odobreni metapodaci i kontrolisani sažetak stanja; kompletni <code>spec</code>, <code>status</code>, <code>managedFields</code> i proizvoljne annotations ostaju izvan payload-a.
+    <pre><code class="language-python">import json
+import os
+import ssl
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+
+API_HOST = os.environ["KUBERNETES_SERVICE_HOST"]
+API_PORT = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+API_BASE = f"https://{API_HOST}:{API_PORT}"
+TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+CLUSTER_ID = os.environ["CLUSTER_ID"]
+CMDB_URL = os.environ["CMDB_URL"]
+DRY_RUN = os.environ.get("DRY_RUN", "true").lower() == "true"
+
+RESOURCES = [
+    ("/api/v1/namespaces", "Namespace"),
+    ("/api/v1/nodes", "Node"),
+    ("/api/v1/services", "Service"),
+    ("/api/v1/persistentvolumeclaims", "PersistentVolumeClaim"),
+    ("/apis/apps/v1/deployments", "Deployment"),
+    ("/apis/apps/v1/statefulsets", "StatefulSet"),
+    ("/apis/apps/v1/daemonsets", "DaemonSet"),
+    ("/apis/networking.k8s.io/v1/ingresses", "Ingress"),
+]
+ALLOWED_LABEL_PREFIXES = ("app.kubernetes.io/", "tashizza.example/")
+ALLOWED_ANNOTATION_PREFIXES = ("tashizza.example/",)
+
+with open(TOKEN_PATH, encoding="utf-8") as token_file:
+    token = token_file.read().strip()
+
+tls_context = ssl.create_default_context(cafile=CA_PATH)
+
+def api_get(path, query=None):
+    suffix = "?" + urllib.parse.urlencode(query) if query else ""
+    request = urllib.request.Request(
+        API_BASE + path + suffix,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, context=tls_context, timeout=30) as response:
+        return json.load(response)
+
+def api_list(path):
+    items = []
+    continue_token = None
+    while True:
+        query = {"limit": "500"}
+        if continue_token:
+            query["continue"] = continue_token
+        page = api_get(path, query)
+        items.extend(page.get("items", []))
+        continue_token = page.get("metadata", {}).get("continue")
+        if not continue_token:
+            return items
+
+def selected(metadata, field, prefixes):
+    return {
+        key: value
+        for key, value in metadata.get(field, {}).items()
+        if key.startswith(prefixes)
+    }
+
+def object_summary(kind, item):
+    spec = item.get("spec", {})
+    status = item.get("status", {})
+    summaries = {
+        "Deployment": {
+            "desiredReplicas": spec.get("replicas"),
+            "readyReplicas": status.get("readyReplicas", 0),
+            "availableReplicas": status.get("availableReplicas", 0),
+        },
+        "StatefulSet": {
+            "desiredReplicas": spec.get("replicas"),
+            "readyReplicas": status.get("readyReplicas", 0),
+            "currentReplicas": status.get("currentReplicas", 0),
+        },
+        "DaemonSet": {
+            "desiredNumberScheduled": status.get("desiredNumberScheduled", 0),
+            "numberReady": status.get("numberReady", 0),
+            "numberUnavailable": status.get("numberUnavailable", 0),
+        },
+        "Service": {
+            "type": spec.get("type"),
+            "clusterIP": spec.get("clusterIP"),
+            "selector": spec.get("selector", {}),
+        },
+        "PersistentVolumeClaim": {
+            "phase": status.get("phase"),
+            "storageClassName": spec.get("storageClassName"),
+            "volumeName": spec.get("volumeName"),
+        },
+    }
+    return summaries.get(kind, {})
+
+def normalize(kind, item):
+    metadata = item.get("metadata", {})
+    return {
+        "externalKey": f"{CLUSTER_ID}:{metadata.get('uid')}",
+        "cluster": CLUSTER_ID,
+        "apiVersion": item.get("apiVersion"),
+        "kind": kind,
+        "namespace": metadata.get("namespace"),
+        "name": metadata.get("name"),
+        "uid": metadata.get("uid"),
+        "creationTimestamp": metadata.get("creationTimestamp"),
+        "labels": selected(metadata, "labels", ALLOWED_LABEL_PREFIXES),
+        "annotations": selected(metadata, "annotations", ALLOWED_ANNOTATION_PREFIXES),
+        "owners": [
+            {
+                "apiVersion": owner.get("apiVersion"),
+                "kind": owner.get("kind"),
+                "name": owner.get("name"),
+                "uid": owner.get("uid"),
+                "controller": owner.get("controller", False),
+            }
+            for owner in metadata.get("ownerReferences", [])
+        ],
+        "summary": object_summary(kind, item),
+    }
+
+inventory = []
+failures = []
+for path, kind in RESOURCES:
+    try:
+        objects = api_list(path)
+        inventory.extend(normalize(kind, item) for item in objects)
+        print(f"resource={kind} count={len(objects)} status=collected")
+    except urllib.error.HTTPError as error:
+        failures.append({"kind": kind, "httpStatus": error.code})
+        print(f"resource={kind} status=failed http_status={error.code}", file=sys.stderr)
+    except Exception as error:
+        failures.append({"kind": kind, "errorType": type(error).__name__})
+        print(f"resource={kind} status=failed error={type(error).__name__}", file=sys.stderr)
+
+payload = {
+    "schemaVersion": "1.0",
+    "cluster": CLUSTER_ID,
+    "collectedAt": datetime.now(timezone.utc).isoformat(),
+    "objectCount": len(inventory),
+    "objects": inventory,
+    "failures": failures,
+}
+
+if DRY_RUN:
+    print(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+else:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        CMDB_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {os.environ['CMDB_TOKEN']}",
+            "Content-Type": "application/json",
+            "Idempotency-Key": f"{CLUSTER_ID}-{payload['collectedAt']}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        print(f"cmdb_status={response.status} object_count={len(inventory)}")
+
+if failures:
+    sys.exit(2)</code></pre>
+    Program se na stanici <code>admin01</code> čuva kao <code>exporter.py</code>, proverava bez izvršavanja, a zatim se iz fajla deklarativno generiše ConfigMap. Komande menjaju stanje klastera tek pri <code>kubectl apply</code> koraku.
+    <pre><code class="language-bash">python3 -m py_compile exporter.py
+
+kubectl create configmap cmdb-inventory-exporter-code \
+  --namespace cmdb-demo \
+  --from-file=exporter.py=./exporter.py \
+  --dry-run=client -o yaml &gt; 47-exporter-configmap.yaml
+
+kubectl apply -f 47-exporter-configmap.yaml
+kubectl get configmap cmdb-inventory-exporter-code -n cmdb-demo \
+  -o jsonpath='{.data.exporter\.py}' | sed -n '1,25p'</code></pre>
+    <strong>Validacija:</strong> kompilaciona provera mora završiti bez izlaza i sa kodom 0; ConfigMap mora sadržati ključ <code>exporter.py</code>. Paginacija je obavezna za klastere u kojima jedna kolekcija može preći serverski limit, a allow-list prefiksa sprečava nekontrolisan izvoz annotations drugih kontrolera.
+  </li>
+  <li>
+    <strong>Priprema CronJob objekta u dry-run režimu.</strong>
+    U laboratorijskom prolazu CMDB token nije potreban. Referenca ka Secret-u označena je sa <code>optional: true</code>; pre stvarnog poziva Secret mora obezbediti odobreni secrets operator ili deployment pipeline. Produkcioni image mora dolaziti iz odobrenog registra, biti zaključan digest vrednošću i skeniran; javni tag je ovde samo laboratorijska demonstracija.
+    <pre><code class="language-yaml">apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cmdb-inventory-exporter
+  namespace: cmdb-demo
+  labels:
+    app.kubernetes.io/name: cmdb-inventory-exporter
+    app.kubernetes.io/component: integration
+    app.kubernetes.io/part-of: configuration-management
+    tashizza.example/environment: production
+spec:
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cmdb-inventory-exporter
+            app.kubernetes.io/component: integration
+        spec:
+          serviceAccountName: cmdb-inventory-exporter
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: exporter
+              image: python:3.13.5-slim
+              imagePullPolicy: IfNotPresent
+              command: ["python", "/opt/exporter/exporter.py"]
+              env:
+                - name: CLUSTER_ID
+                  value: vk8s-prod-01
+                - name: CMDB_URL
+                  value: https://cmdb-api.example.internal/api/v1/kubernetes-ci/import
+                - name: DRY_RUN
+                  value: "true"
+                - name: CMDB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: cmdb-api-credentials
+                      key: token
+                      optional: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: exporter-code
+                  mountPath: /opt/exporter
+                  readOnly: true
+          volumes:
+            - name: exporter-code
+              configMap:
+                name: cmdb-inventory-exporter-code</code></pre>
+    Manifest se čuva kao <code>47-exporter-cronjob.yaml</code>. Pre promene stanja koristi se klijentska i serverska dry-run validacija; druga provera uključuje admission i zahteva odgovarajuća prava.
+    <pre><code class="language-bash">kubectl apply --dry-run=client -f 47-exporter-cronjob.yaml
+kubectl apply --dry-run=server -f 47-exporter-cronjob.yaml
+kubectl apply -f 47-exporter-cronjob.yaml
+
+kubectl get cronjob cmdb-inventory-exporter -n cmdb-demo \
+  -o jsonpath='{.spec.schedule}{"\n"}{.spec.jobTemplate.spec.template.spec.serviceAccountName}{"\n"}'</code></pre>
+    <strong>Validacija:</strong> obe dry-run provere i stvarni <code>apply</code> moraju uspeti; izlaz mora prikazati raspored <code>17 * * * *</code> i ServiceAccount <code>cmdb-inventory-exporter</code>.
+  </li>
+  <li>
+    <strong>Ručno pokretanje i validacija dry-run sinhronizacije.</strong>
+    Jednokratni Job nastaje iz CronJob template-a, čime se testira ista konfiguracija bez čekanja rasporeda.
+    <pre><code class="language-bash">kubectl create job cmdb-inventory-exporter-manual-01 \
+  --from=cronjob/cmdb-inventory-exporter \
+  -n cmdb-demo
+
+kubectl wait --for=condition=complete \
+  job/cmdb-inventory-exporter-manual-01 \
+  -n cmdb-demo --timeout=180s
+
+kubectl logs job/cmdb-inventory-exporter-manual-01 -n cmdb-demo
+
+DEPLOYMENT_UID="$(kubectl get deployment inventory-api -n cmdb-demo \
+  -o jsonpath='{.metadata.uid}')"
+kubectl logs job/cmdb-inventory-exporter-manual-01 -n cmdb-demo | \
+  grep -F "$DEPLOYMENT_UID"</code></pre>
+    <strong>Validacija:</strong> Job mora biti <code>Complete</code>, log mora sadržati broj objekata po vrsti, završni JSON sa <code>"cluster":"vk8s-prod-01"</code> i UID referentnog Deployment-a.
+  </li>
+  <li>
+    <strong>Provera normalizovanog zapisa.</strong>
+    Poslednja linija loga čuva se lokalno, a Python proverava ugovor šeme i zdravlje referentnog workload-a.
+    <pre><code class="language-bash">kubectl logs job/cmdb-inventory-exporter-manual-01 -n cmdb-demo | \
+  tail -n 1 &gt; 47-inventory-output.json
+
+python3 - &lt;&lt;'PY'
+import json
+
+with open("47-inventory-output.json", encoding="utf-8") as source:
+    payload = json.load(source)
+
+required = {
+    "externalKey", "cluster", "apiVersion", "kind", "namespace", "name",
+    "uid", "creationTimestamp", "labels", "annotations", "owners", "summary",
+}
+assert payload["cluster"] == "vk8s-prod-01"
+assert payload["objectCount"] == len(payload["objects"])
+assert not payload["failures"]
+deployment = next(
+    item for item in payload["objects"]
+    if item["kind"] == "Deployment"
+    and item["namespace"] == "cmdb-demo"
+    and item["name"] == "inventory-api"
+)
+assert required.issubset(deployment)
+assert deployment["labels"]["tashizza.example/criticality"] == "high"
+assert deployment["annotations"]["tashizza.example/cmdb-ci-id"] == "CI-K8S-APP-004271"
+assert deployment["summary"]["desiredReplicas"] == 2
+assert deployment["summary"]["availableReplicas"] == 2
+print("ACCEPTED: normalized inventory is complete and the reference workload is healthy")
+PY</code></pre>
+    <strong>Očekivani rezultat:</strong> poruka počinje sa <code>ACCEPTED</code>. Ako samo provera replika ne uspe, exporter je možda ispravan, a aplikacija nezdrava; tada se proveravaju Deployment uslovi, podovi i događaji pre izmene integracije.
+  </li>
+  <li>
+    <strong>Negativni RBAC test bez pokretanja dodatnog poda.</strong>
+    Impersonacija je najmanje invazivna provera efektivnog prava. Očekuje se <code>no</code>; stvarno listanje Secrets nije potrebno da bi se dokazala zabrana.
+    <pre><code class="language-bash">kubectl auth can-i list secrets --all-namespaces \
+  --as=system:serviceaccount:cmdb-demo:cmdb-inventory-exporter
+
+kubectl auth can-i --list --all-namespaces \
+  --as=system:serviceaccount:cmdb-demo:cmdb-inventory-exporter</code></pre>
+    <strong>Validacija:</strong> prvi odgovor mora biti <code>no</code>, a zbirna lista ne sme sadržati write glagole ni pristup resursima <code>secrets</code>, <code>pods/exec</code>, <code>pods/attach</code>, <code>pods/portforward</code> ili <code>nodes/proxy</code>. Ako se pojavi neželjeno pravo, suspenduje se CronJob i pregledaju svi binding objekti pre korekcije RBAC-a.
+  </li>
+  <li>
+    <strong>Kontrolisani stvarni CMDB test.</strong>
+    Ovaj produkcijski uslovljen korak izvodi se tek posle provere DNS-a, TLS lanca, NetworkPolicy pravila, CMDB kredencijala, ugovora šeme, idempotentnog upsert ponašanja i odobrenja promene. Secret se ne pravi interaktivnom komandom sa pravom vrednošću u shell istoriji; isporučuje ga odobreni secrets mehanizam. CronJob ostaje u dry-run režimu, a poseban lokalno generisan Job dobija <code>DRY_RUN=false</code>.
+    <pre><code class="language-bash">kubectl create job cmdb-inventory-exporter-live-test-01 \
+  --from=cronjob/cmdb-inventory-exporter \
+  -n cmdb-demo --dry-run=client -o yaml &gt; 47-live-job.yaml
+
+kubectl set env --local -f 47-live-job.yaml \
+  --containers=exporter DRY_RUN=false -o yaml &gt; 47-live-job-enabled.yaml
+
+kubectl apply --dry-run=server -f 47-live-job-enabled.yaml
+kubectl apply -f 47-live-job-enabled.yaml
+kubectl wait --for=condition=complete \
+  job/cmdb-inventory-exporter-live-test-01 \
+  -n cmdb-demo --timeout=180s
+kubectl logs job/cmdb-inventory-exporter-live-test-01 -n cmdb-demo</code></pre>
+    <strong>Validacija:</strong> Job mora završiti kao <code>Complete</code>, log mora pokazati HTTP status koji ugovor CMDB API-ja definiše kao prihvaćen, a CMDB tim potvrđuje upsert po ključu <code>vk8s-prod-01:&lt;KUBERNETES_UID&gt;</code> bez duplikata. Tek zatim se kroz odobrenu Git promenu menja trajni CronJob. HTTP 401 upućuje na kredencijal, 403 na CMDB autorizaciju, 429 na ograničenje brzine, 5xx na CMDB servis, a DNS i TLS greške na mrežnu putanju ili lanac poverenja. Pre ponavljanja zahteva mora se potvrditi idempotentnost.
+    <pre><code class="language-bash">kubectl get pods -n cmdb-demo \
+  -l job-name=cmdb-inventory-exporter-live-test-01 -o wide
+kubectl describe job cmdb-inventory-exporter-live-test-01 -n cmdb-demo
+kubectl events -n cmdb-demo \
+  --for=job/cmdb-inventory-exporter-live-test-01 --types=Warning</code></pre>
+  </li>
+</ol>
+<p><strong>Logovi i dijagnostika.</strong></p>
+<p>
+Standardni izlaz i greške exporter kontejnera dostupni su kroz <code>kubectl logs job/IME</code> dok postoje Job i Pod, odnosno u centralnom log sistemu kada je integrisan. Kubernetes događaji objašnjavaju scheduling, image pull, mount i izvršne probleme; API audit trag potvrđuje zahteve ServiceAccount-a; CMDB pristupni i aplikacioni logovi potvrđuju prijem, autentikaciju, validaciju šeme i upsert. Korelacija se radi po UTC vremenu, klaster ID-u, Job UID-u i CMDB request ili correlation identifikatoru, bez zapisivanja tokena i kompletnog payload-a.
+</p>
+<p><strong>Rollback i cleanup.</strong></p>
+<p>
+Ako integracija nije stabilna, CronJob se prvo suspenduje. Pošto referentni manifest ostaje u <code>DRY_RUN=true</code> režimu sve do odobrene Git promene, rollback stvarnog testa svodi se na uklanjanje jednokratnog Job-a i opoziv ili rotaciju kredencijala ako je mogao biti kompromitovan.
+</p>
+<pre><code class="language-bash">kubectl patch cronjob cmdb-inventory-exporter \
+  -n cmdb-demo --type=merge \
+  -p='{"spec":{"suspend":true}}'
+
+kubectl delete job cmdb-inventory-exporter-live-test-01 \
+  -n cmdb-demo --ignore-not-found</code></pre>
+<p>
+Potpuno uklanjanje laboratorije je destruktivno: brisanje namespace-a uklanja sve namespaced objekte. Pre izvršenja mora se dokazati da <code>cmdb-demo</code> ne sadrži tuđe resurse; ClusterRoleBinding i ClusterRole uklanjaju se zasebno.
+</p>
+<pre><code class="language-bash">kubectl get all,configmap,secret,serviceaccount,ingress,persistentvolumeclaim \
+  -n cmdb-demo
+
+kubectl delete clusterrolebinding cmdb-inventory-reader
+kubectl delete clusterrole cmdb-inventory-reader
+kubectl delete namespace cmdb-demo
+
+rm -f exporter.py 47-reference-application.yaml 47-inventory-rbac.yaml \
+  47-exporter-configmap.yaml 47-exporter-cronjob.yaml \
+  47-inventory-output.json 47-live-job.yaml 47-live-job-enabled.yaml</code></pre>
+
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<ul>
+  <li><strong>Nepotpuni podaci zbog RBAC pravila.</strong> Exporter prijavljuje HTTP 403 samo za određenu vrstu. Komanda <code>kubectl auth can-i list RESURS --as=...</code> potvrđuje autorizacioni problem. Ne treba širiti prava na sve resurse bez pregleda potrebnog API group-a i množine resursa.</li>
+  <li><strong>Prazan rezultat zbog namespace ograničenja.</strong> Poziv ka namespaced kolekciji jednog namespace-a ne predstavlja ceo klaster. Cluster-wide list putanja za core resurse koristi oblik <code>/api/v1/services</code>, dok namespace putanja koristi <code>/api/v1/namespaces/IME/services</code>.</li>
+  <li><strong>Duplikati u CMDB-u.</strong> Najčešći uzrok je korišćenje imena umesto stabilnog ključa ili nepostojanje idempotentnog upsert postupka. Rešenje je složeni ključ klaster–UID i jasno pravilo za istoriju obrisanih i ponovo kreiranih objekata.</li>
+  <li><strong>Stari objekti ostaju aktivni u CMDB-u.</strong> Snapshot koji samo dodaje i ažurira zapise ne registruje brisanja. Potrebna je rekonsilijacija koja označava stavke neviđene u kompletnom uspešnom snapshot-u, uz grace period koji sprečava masovno deaktiviranje kada je izvoz bio nepotpun.</li>
+  <li><strong>Promena label-a prekida saobraćaj.</strong> Ako se promeni label koju koristi Service selector, EndpointSlice može ostati bez endpoint-a. Provera se radi komandama <code>kubectl get service -o yaml</code>, <code>kubectl get pods --show-labels</code> i <code>kubectl get endpointslice</code>.</li>
+  <li><strong>Drift između Git-a i klastera.</strong> Ručno dodata metadata nestaje nakon GitOps sinhronizacije. Trajna korekcija mora biti uvedena u deklarativni izvor, a ne samo u živi objekat.</li>
+  <li><strong>CMDB nedostupnost blokira nova izvršenja.</strong> Bez <code>concurrencyPolicy: Forbid</code>, timeout-a i ograničenog retry ponašanja mogu se nagomilati paralelni Job objekti. Potrebno je pratiti trajanje, broj neuspeha i starost poslednje uspešne sinhronizacije.</li>
+  <li><strong>Preveliki inventarski payload.</strong> Izvoz kompletnog <code>managedFields</code>, statusa i manifesta povećava saobraćaj i rizik od curenja podataka. Normalizacija mora imati eksplicitnu listu dozvoljenih polja, paginaciju i po potrebi slanje u paketima.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola pokrivenosti obaveznim metapodacima.</strong> Najmanje jednom dnevno i nakon uvođenja novog namespace-a izvršava se upit koji pronalazi workload-e bez labels za okruženje, vlasnički tim i kritičnost. Odstupanje zahteva identifikovanje vlasnika i korekciju izvornog manifesta. Rezultat i broj neusaglašenih objekata beleže se u izveštaju platformskog tima; uspeh je nula produkcionih workload-a bez obaveznih podataka.</li>
+  <li><strong>Praćenje uspeha sinhronizacije.</strong> Posle svakog CronJob izvršenja proveravaju se Job status, trajanje, broj izvezenih objekata, broj neuspelih API kolekcija i HTTP status CMDB-a. Više od jednog uzastopnog neuspeha ili starost poslednjeg uspeha veća od dva planirana intervala zahteva suspendovanje automatskog toka, pregled logova i proveru zavisnosti. Incident ili radni nalog sadrži Job UID, vreme, klaster, kod greške i preduzetu meru.</li>
+  <li><strong>Periodična RBAC revizija.</strong> Mesečno i nakon promene ClusterRole objekta proveravaju se efektivna prava ServiceAccount-a komandama <code>kubectl auth can-i</code> i pregledom svih binding objekata. Svako pravo nad Secrets, pod exec, attach, port-forward, nodes/proxy ili write glagolima zahteva neposrednu analizu i uklanjanje ako nije formalno odobreno. Uspeh se meri potvrđenom listom dozvoljenih prava bez nedokumentovanih proširenja.</li>
+  <li><strong>Kontrola label i annotation rečnika.</strong> Pri svakoj promeni standarda proveravaju se Git šeme, admission pravila i postojeći objekti. Nova vrednost se ne uvodi samo zato što je sintaksno dozvoljena. Reakciju zahtevaju sinonimi, pogrešan prefiks, slobodan unos kritičnosti i nepostojeći CMDB identifikator. Odluka se dokumentuje u registru metapodataka sa vlasnikom i datumom važenja.</li>
+  <li><strong>Rekonsilijacija Kubernetes i CMDB stanja.</strong> Najmanje jednom dnevno porede se broj aktivnih CI stavki i poslednji kompletan Kubernetes snapshot. Nagli pad ili rast veći od uobičajene promene klastera ne sme automatski deaktivirati veliki broj zapisa; prvo se proveravaju potpunost snapshot-a, API greške i promene scope-a. Uspeh je potpuna obrada svih dogovorenih vrsta bez neobjašnjenih duplikata i siročadi.</li>
+  <li><strong>Praćenje selector relacija.</strong> Nakon promene Deployment ili Service labels proveravaju se pod labels, Service selector i EndpointSlice objekti. Service koji očekuje aktivne replike, a nema endpoint-e duže od jednog readiness ciklusa, zahteva trenutno vraćanje pogrešne promene ili korekciju selector-a. Promena i rezultat validacije beleže se u change zapisu.</li>
+  <li><strong>Zaštita tajni i logova.</strong> Posle promene exporter koda radi se pregled kojim se potvrđuje da log ne sadrži Authorization zaglavlja, CMDB tokene, Secret sadržaj ili kompletne osetljive manifeste. Svako otkrivanje tajne zahteva opoziv kredencijala, uklanjanje iz log sistema prema proceduri i bezbednosni incident. Uspeh se meri automatskom i ručnom proverom uzorka logova bez osetljivih vrednosti.</li>
+  <li><strong>Backup i oporavak konfiguracije integracije.</strong> Manifesti, šema mapiranja, kod exporter-a i RBAC definicije čuvaju se verzionisano u Git repozitorijumu pri svakoj odobrenoj promeni. Tajne se čuvaju u namenskom secrets sistemu, ne u Git-u. CMDB baza i Kubernetes etcd backup rade se prema pravilima vlasnika tih sistema. Kvartalni test oporavka mora dokazati da se u izolovanom okruženju mogu vratiti verzija konfiguracije, kredencijal iz bezbednog skladišta i uspešan dry-run izvoz sa očekivanim brojem objekata.</li>
+  <li><strong>Provera kompatibilnosti nakon nadogradnje.</strong> Posle promene Kubernetes minor verzije ili CMDB API šeme proveravaju se discovery podaci, API putanje, dostupne verzije resursa, RBAC i testni uvoz. HTTP 404, uklonjena API verzija ili promenjena obavezna CMDB polja zahtevaju obustavljanje produkcione sinhronizacije dok se mapiranje ne prilagodi. Rezultat se dokumentuje u zapisniku nadogradnje.</li>
+</ul>
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>☐ Komandom <code>kubectl api-resources</code> potvrđene su API grupe i verzije svih inventarisanih vrsta.</li>
+  <li>☐ Za svaki CI tip definisani su stabilan eksterni ključ, obavezna polja, relacije i pravilo životnog ciklusa.</li>
+  <li>☐ Deployment, Service i povezani objekti koriste dosledne selector labels bez preklapanja sa drugom aplikacijom.</li>
+  <li>☐ Obavezni organizacioni label ključevi koriste odobreni DNS prefiks i kontrolisane vrednosti.</li>
+  <li>☐ Annotations ne sadrže lozinke, tokene, privatne ključeve ni druge tajne.</li>
+  <li>☐ <code>kubectl auth can-i</code> vraća <code>yes</code> samo za potrebne read operacije i <code>no</code> za Secrets i rizične podresurse.</li>
+  <li>☐ Dry-run Job završava statusom <code>Complete</code>, nema neuspelih kolekcija i izvozi očekivani workload UID.</li>
+  <li>☐ Normalizovani zapis sadrži cluster ID, kind, namespace, name, UID, timestamps, metadata, vlasničke reference i sažetak stanja.</li>
+  <li>☐ Ponovljeni CMDB uvoz ažurira postojeću stavku bez kreiranja duplikata.</li>
+  <li>☐ Postoji postupak za označavanje obrisanih objekata koji se aktivira samo nakon kompletnog uspešnog snapshot-a.</li>
+  <li>☐ Logovi sadrže identifikator izvršenja, broj objekata i status, ali ne sadrže kredencijale ili nekontrolisane manifeste.</li>
+  <li>☐ Suspendovanje CronJob-a, vraćanje dry-run režima i cleanup postupak provereni su i dokumentovani.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+Administrator nakon ove lekcije treba da razume da Kubernetes inventar nije statičan spisak imena, već vremenski promenljiva slika API objekata i njihovih relacija. Labels omogućavaju pouzdano grupisanje i istovremeno mogu biti funkcionalni deo rada kontrolera i mrežnih servisa. Annotations nose dodatni kontekst, ali nisu bezbedno mesto za tajne niti zamena za kontrolisan model podataka. UID, cluster identitet, owner references, selector-i i sažetak željenog i ostvarenog stanja zajedno omogućavaju da se tehnički objekat pravilno identifikuje i poveže sa CMDB stavkom.
+</p>
+<p>
+Praktična administratorska veština obuhvata otkrivanje API resursa, filtriranje objekata, projektovanje rečnika metapodataka, normalizaciju JSON podataka, dodelu minimalnih RBAC prava, validaciju sinhronizacije i razlikovanje grešaka Kubernetes API-ja od mrežnih, TLS, autentikacionih i CMDB problema. Bezbedna promena podrazumeva dry-run, merljive kriterijume, kontrolisani test stvarnog API poziva, mogućnost obustavljanja CronJob-a i dokumentovan rollback.
+</p>
+<p>
+Granica ove integracije je važna: Kubernetes može pouzdano opisati resurse koje poznaje, ali ne može sam utvrditi njihov poslovni značaj, tačnost vlasništva ili organizacionu politiku životnog ciklusa. Administrator ne sme samostalno izmišljati CMDB klasifikaciju, širiti pristup osetljivim resursima ili masovno menjati labels koje utiču na selector-e. Nejasan vlasnik aplikacije, neusaglašena CMDB šema, potreba za pristupom Secrets objektima, veliki broj neočekivanih deaktivacija ili neuspešna provera TLS identiteta predstavljaju razloge za eskalaciju vlasniku aplikacije, CMDB arhitekti, bezbednosnom timu ili vlasniku platforme.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija o objektima, labels, annotations i preporučenim aplikacionim oznakama; Kubernetes API koncepti i reference resursa; kubectl CLI reference; RBAC, ServiceAccount, autorizacioni i audit vodiči; dokumentacija za admission kontrolu, bezbednosne prakse i upravljanje API pristupom; primarni API obrasci za paginaciju, resourceVersion, watch i automatizovanu integraciju
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-46-etcd-backup-disaster-recovery.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-48-politike-admission-policy-as-code.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

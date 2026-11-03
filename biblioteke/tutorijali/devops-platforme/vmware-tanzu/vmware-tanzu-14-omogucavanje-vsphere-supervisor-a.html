@@ -1,0 +1,591 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Omogućavanje vSphere Supervisor-a – kontrolisana implementacija korak po korak | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Omogućavanje vSphere Supervisor-a kroz kontrolisanu implementaciju korak po korak – konfiguracija klastera, mreže, storage-a i upravljačkih servisa.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, vSphere Supervisor, omogućavanje Supervisor-a, implementacija, Workload Management, VKS, Kubernetes, VMware vSphere, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Omogućavanje vSphere Supervisor-a – kontrolisana implementacija korak po korak">
+
+  <meta property="og:description"
+        content="Četrnaesta lekcija VMware &amp; Tanzu tutorijala – kontrolisano omogućavanje vSphere Supervisor-a korak po korak.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Omogućavanje vSphere Supervisor-a – kontrolisana implementacija korak po korak">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.png"
+           alt="Omogućavanje vSphere Supervisor-a – kontrolisana implementacija korak po korak">
+
+    </a>
+
+    <div class="page-subtitle">
+  IV. Omogućavanje i početna validacija Supervisor-a
+</div>
+
+<div class="page-subtitle">
+  14. Omogućavanje vSphere Supervisor-a – kontrolisana implementacija korak po korak
+</div>
+
+<p>Prethodna lekcija završila je plan implementacije: izabrani su klaster ili zone, mrežni model, storage politike, upravljačke adrese i rasponi koji ne smeju da se preklapaju. U ovoj lekciji taj odobreni dizajn prevodimo u stvarnu Supervisor implementaciju. Cilj nije samo da čarobnjak u vSphere Client-u završi bez crvene poruke, već da se promena izvede kontrolisano, sa poznatim početnim stanjem, dokazima za svaku kontrolnu tačku i unapred definisanim kriterijumom za zaustavljanje.</p>
+
+<p>Omogućavanje Supervisor-a je infrastrukturna promena širokog dometa. vCenter Workload Control Plane servis orkestrira pripremu ESXi hostova, postavljanje Supervisor control plane virtuelnih mašina, povezivanje mreža, primenu storage politika, uspostavljanje Kubernetes API endpoint-a i konfiguraciju zavisnih servisa. U image-managed klasteru u proces je uključen i vSphere Lifecycle Manager, koji održava željeno stanje hostova. Zato neuspeh u jednoj zavisnosti — DNS-u, NTP-u, rutiranju, MTU-u, sertifikatu load balancer-a, storage kompatibilnosti ili vLCM depot-u — može da se pojavi kao zastoj u sasvim drugoj fazi.</p>
+
+<p>Terminologija zavisi od generacije proizvoda. U vSphere 8.x interfejs i dokumentacija često koriste nazive <em>Workload Management</em>, <em>vSphere Supervisor</em>, <em>vSphere IaaS control plane</em> i <em>TKG Service</em>; aktuelni naziv Kubernetes servisa je vSphere Kubernetes Service (VKS). U VCF/vSphere 9.x Supervisor je deo šireg VCF modela i licenciranje komponenti se vezuje za licencirani vCenter/solution subscription. Naziv polja, redosled stranica čarobnjaka i ponuđene mrežne integracije mogu se razlikovati između build-ova. Zbog toga se ova lekcija oslanja na logičke faze implementacije, dok se tačan prikaz mora proveriti u dokumentaciji za instalirani build.</p>
+
+<h3>1. Šta enablement menja i zašto se tretira kao kontrolisana promena</h3>
+
+<p>Administrator u čarobnjaku unosi željenu konfiguraciju, ali promenu ne izvršava jedna komponenta. vCenter proverava podobnost klastera, orkestrira host konfiguraciju, raspoređuje control plane VM instance i prati njihovo stanje. ESXi hostovi dobijaju komponente potrebne za učešće u Supervisor-u, mrežna platforma obezbeđuje L2/L3 povezivost i virtualne adrese, storage politike određuju gde se čuvaju control plane objekti, a DNS, NTP i PKI omogućavaju identitet i vremenski doslednu komunikaciju.</p>
+
+<table>
+  <thead>
+    <tr><th>Faza</th><th>Promena</th><th>Glavni dokaz</th><th>Tipična posledica greške</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Pre-check</td><td>Provera klastera, hostova, licenci, mreže i storage-a</td><td>Bez blokirajućih compatibility grešaka; odobren change zapis</td><td>Čarobnjak ne dopušta nastavak ili prijavljuje nepodržanu konfiguraciju</td></tr>
+    <tr><td>Host preparation</td><td>vLCM/EAM/WCP pripremaju ESXi hostove i Spherelet zavisnosti</td><td>Host Config status napreduje; nema vLCM drift-a ni EAM alarma</td><td>Status ostaje <code>Configuring</code>; host nije <code>Ready</code></td></tr>
+    <tr><td>Control plane deployment</td><td>Kreiraju se Supervisor control plane VM instance</td><td>VM instance su raspoređene, uključene i imaju očekivane mrežne adaptere</td><td>Provisioning timeout, placement ili storage greška</td></tr>
+    <tr><td>Network bootstrap</td><td>Konfigurišu se management/workload veze, API VIP i load balancing</td><td>vCenter doseže floating/API adresu; gateway, DNS i NTP su dostupni</td><td>VM radi, ali Supervisor ostaje u <code>Configuring</code> stanju</td></tr>
+    <tr><td>Kubernetes bootstrap</td><td>Formira se etcd/control plane i pokreću sistemski podovi</td><td>Supervisor prelazi u <code>Running</code>/<code>Healthy</code> prema verziji</td><td>Nespremni sistemski podovi i zavisni operatori</td></tr>
+  </tbody>
+</table>
+
+<p>Promena je uspešna tek kada su ostvarena tri nivoa dokaza: vSphere nivo prikazuje zdrav Supervisor i hostove; mrežni nivo potvrđuje dosegljivost i pravilno rutiranje; Kubernetes nivo potvrđuje spremnost čvorova i sistemskih komponenti. Zelen status samo u jednom interfejsu nije dovoljan dokaz.</p>
+
+<h3>2. Verzijska, licencna i topološka odluka pre prvog klika</h3>
+
+<p>Pre početka zabeležite tačne build brojeve vCenter Server-a, ESXi hostova, NSX-a i NSX Advanced Load Balancer-a ako se koriste. Kompatibilnost se proverava prema Broadcom interoperability i product documentation matricama za konkretan build, a ne prema opštem nazivu „vSphere 8”. Patch nivo može promeniti dostupne mogućnosti, poznate probleme i način remediacije.</p>
+
+<ul>
+  <li><strong>Licenca:</strong> u vSphere 8.x proverite model koji važi za kupljeni VVF/VCF paket, evaluation period i način dodele Supervisor licence. Od vSphere 8.0 Update 2b postoji solution-license model za odgovarajuće pakete. U vSphere/VCF 9.x komponente se licenciraju u okviru aktuelnog subscription modela nakon licenciranja povezanog vCenter-a. Ne oslanjajte se na stari Tanzu edition postupak bez provere build-a i ugovora.</li>
+  <li><strong>Jedan klaster ili tri zone:</strong> single-cluster Supervisor i three-zone Supervisor nisu isti placement model. U zonalnom modelu svaka vSphere zona mapira odgovarajući klaster i kvar domene mora biti stvaran, ne samo imenovan.</li>
+  <li><strong>Mrežni stack:</strong> NSX i vSphere Distributed Switch (VDS) modeli imaju različite preduslove i mogućnosti. Izbor se ne menja usput da bi se „prošlo” kroz čarobnjak.</li>
+  <li><strong>Load balancer:</strong> tačan podržani provider i integracija zavise od verzije. Za VDS model potreban je podržani load-balancing mehanizam; za NSX model proveravaju se NSX objekti, transport zone, edge kapacitet i, kada je deo dizajna, integracija sa NSX Advanced Load Balancer-om.</li>
+  <li><strong>Workload tipovi:</strong> podrška za vSphere Pods, Supervisor Services i određene platformske funkcije nije identična u svim mrežnim modelima i verzijama. Ne projektujte budući servis na osnovu same činjenice da se Supervisor može omogućiti.</li>
+</ul>
+
+<p>Produkcioni <em>go/no-go</em> dokument mora sadržati odobren mrežni dijagram, IPAM rezervacije, DNS zapise, storage policy rezultate, firewall matricu, rollback odluku, odgovorne osobe i period promene. Laboratorija može koristiti manji control plane size i pojednostavljene mrežne servise, ali ne sme prikrivati preklapanje CIDR opsega, nepouzdan DNS ili nepodržanu verziju.</p>
+
+<h3>3. Predimplementaciona kontrolna kapija</h3>
+
+<p>Kontrolna kapija se izvršava neposredno pre promene, čak i kada je readiness assessment završen prethodnog dana. Njena svrha je da otkrije drift: host koji je ušao u maintenance mode, novu vLCM grešku, istekli sertifikat, zauzetu IP adresu ili promenu firewall pravila. Svaka provera ima vlasnika i dokaz sa vremenskom oznakom.</p>
+
+<table>
+  <thead>
+    <tr><th>Oblast</th><th>Go uslov</th><th>Dokaz</th><th>No-go primer</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>vCenter i hostovi</td><td>Podržani i međusobno kompatibilni build-ovi; svi ciljni hostovi povezani</td><td>Inventory izvoz, health i compatibility rezultat</td><td>Disconnected host, nerešena vLCM compliance greška</td></tr>
+    <tr><td>Cluster services</td><td>HA i DRS konfigurisani prema podržanoj topologiji; kapacitet za control plane rezervacije</td><td>Cluster configuration i capacity zapis</td><td>Nema placement kapaciteta posle jednog kvara hosta</td></tr>
+    <tr><td>VDS/NSX</td><td>Svi hostovi imaju potrebne uplink/port group/transport veze; MTU je end-to-end usklađen</td><td>VDS health, NSX transport node i testovi putanje</td><td>Jedan host nema workload port group ili overlay MTU</td></tr>
+    <tr><td>IPAM</td><td>Sve statičke adrese i rasponi rezervisani i bez preklapanja</td><td>IPAM change zapis i ARP/ping provera iz odgovarajućeg segmenta</td><td>API VIP već odgovara na ARP ili CIDR se preklapa sa Service CIDR-om</td></tr>
+    <tr><td>DNS/NTP</td><td>Forward i, gde je zahtevano, reverse rezolucija; isti pouzdan vremenski izvor</td><td><code>nslookup</code>/<code>dig</code>, NTP health</td><td>vCenter FQDN nije razrešiv sa workload mreže</td></tr>
+    <tr><td>Storage</td><td>Politike su compatible na svim predviđenim datastore-ovima; dovoljno prostora</td><td>SPBM compatibility i datastore capacity</td><td>Politika je compatible samo na datastore-u nedostupnom jednom hostu</td></tr>
+    <tr><td>Load balancer</td><td>Provider zdrav, sertifikat i kredencijali važeći, address pool slobodan</td><td>Provider health, certificate chain i pool evidencija</td><td>Pogrešan data-plane endpoint ili nepoverljiv sertifikat</td></tr>
+    <tr><td>Operativa</td><td>Backup vCenter-a i podržanih konfiguracija svež i proverljiv; monitoring i change owner dostupni</td><td>Backup job i restore-readiness zapis</td><td>Ne postoji poznata tačka oporavka vCenter-a</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Važno:</strong> običan ICMP test ne dokazuje da je mreža spremna. Potrebno je proveriti konkretan smer, izvorni segment, TCP/UDP port, DNS ime i MTU koji će koristiti komponenta. Firewall „allow” pravilo bez potvrđenog toka paketa nije dokaz.</p>
+
+<h3>4. Read-only PowerCLI snimak početnog stanja</h3>
+
+<p>Sledeće komande izvršavaju se sa administratorske radne stanice na kojoj je instaliran aktuelni VCF/VMware PowerCLI. One samo čitaju stanje. Koristite namenski nalog sa najmanjim potrebnim privilegijama i čuvajte izlaz u change evidenciji; lozinku ne upisujte u skriptu.</p>
+
+<pre><code class="language-powershell">$vcenter = "vcsa01.example.com"
+$clusterName = "Compute-01"
+
+Connect-VIServer -Server $vcenter
+
+$cluster = Get-Cluster -Name $clusterName
+$cluster | Select-Object Name, HAEnabled, DrsEnabled, DrsAutomationLevel
+
+$cluster | Get-VMHost |
+  Select-Object Name, ConnectionState, PowerState, Version, Build
+
+Get-WMCluster -Cluster $cluster |
+  Format-List *
+
+$cluster | Get-Datastore |
+  Select-Object Name, Type, CapacityGB, FreeSpaceGB
+
+Get-SpbmStoragePolicy |
+  Select-Object Name, Description</code></pre>
+
+<p>Očekivani rezultat je jedan nedvosmislen ciljni klaster, svi hostovi u očekivanom stanju i odsustvo već aktivnog Workload Management-a. <code>Get-WMCluster</code> može vratiti prazan rezultat ili stanje koje zavisi od PowerCLI/build kombinacije; ako pokaže postojeću ili delimičnu konfiguraciju, ne pokrećite novi enablement pre nego što utvrdite poreklo stanja. Izvoz liste storage politika ne dokazuje kompatibilnost — compatibility se potvrđuje u SPBM/vSphere prikazu za konkretan datastore.</p>
+
+<h3>5. Promenljivi podaci i implementacioni radni list</h3>
+
+<p>Vrednosti se ne improvizuju u čarobnjaku. Pre otvaranja stranice <em>Workload Management</em> popunite i odobrite radni list. Taj dokument postaje osnova za peer review, implementaciju i kasniji audit.</p>
+
+<table>
+  <thead>
+    <tr><th>Parametar</th><th>Primer laboratorijske vrednosti</th><th>Produkcioni kriterijum</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>vCenter / klaster ili zone</td><td><code>vcsa01</code> / <code>Compute-01</code></td><td>Tačan inventory MoRef i potvrđena failure-domain topologija</td></tr>
+    <tr><td>Management port group</td><td><code>DVPG-SUP-MGMT</code></td><td>Dostupna na svakom ciljnom hostu; VLAN i MTU potvrđeni</td></tr>
+    <tr><td>Control plane IP adrese</td><td><code>10.20.14.21-23</code></td><td>Rezervisane, slobodne, rutabilne prema zahtevanoj matrici</td></tr>
+    <tr><td>Floating/Kubernetes API IP</td><td><code>10.20.14.20</code></td><td>Rezervisana; DNS ime i sertifikacioni plan poznati</td></tr>
+    <tr><td>DNS / NTP / search domain</td><td><code>10.20.1.10</code> / <code>10.20.1.20</code> / <code>example.com</code></td><td>Dostupni sa relevantnih interfejsa; bez split-DNS iznenađenja</td></tr>
+    <tr><td>Service CIDR</td><td><code>10.96.0.0/24</code></td><td>Ne preklapa se ni sa jednom fizičkom, VPN, pod ili povezanom mrežom</td></tr>
+    <tr><td>Workload/namespace mreža</td><td><code>DVPG-WORKLOAD-01</code></td><td>Adresni kapacitet uključuje rast i operativnu rezervu</td></tr>
+    <tr><td>Ingress/egress rasponi</td><td>Prema odobrenom dizajnu</td><td>Međusobno odvojeni kada model to zahteva; rutiranje/NAT dokumentovani</td></tr>
+    <tr><td>Storage politike</td><td><code>SUP-CP-GOLD</code>, <code>SUP-EPHEMERAL</code>, <code>SUP-IMAGE</code></td><td>Kompatibilne, dostupne i kapacitivno dovoljne</td></tr>
+    <tr><td>Control plane size</td><td><code>Tiny</code> samo u laboratoriji</td><td>Dimenzionisan prema podržanoj skali i budućim servisima</td></tr>
+    <tr><td>Load balancer</td><td>Laboratorijski podržan provider</td><td>HA, sertifikati, address pool, health monitori i operativno vlasništvo</td></tr>
+  </tbody>
+</table>
+
+<p>Service CIDR je interna Kubernetes servisna mreža i ne mora biti rutirana iz enterprise mreže, ali mora biti jedinstvena u celom relevantnom okruženju. Management, workload, ingress, egress i namespace rasponi imaju različite uloge; spajanje tih pojmova u jednu kolonu „Kubernetes IP” vodi pogrešnim firewall pravilima i otežava incident response.</p>
+
+<h3>6. Kontrolisana GUI implementacija</h3>
+
+<p>Tačan naziv koraka u vSphere Client-u zavisi od build-a. Tipičan tok počinje preko <em>Menu → Workload Management</em>, zatim <em>Get Started</em> ili dodavanjem Supervisor-a. Pre svakog potvrđivanja snimite stranicu ili izvezite vrednosti u change zapis. Ne koristite browser refresh kao način „ubrzavanja” operacije; status pratite iz task/event pogleda i relevantnih logova.</p>
+
+<h4>Korak 1 — izbor sistema, topologije i mrežnog stack-a</h4>
+
+<ol>
+  <li>Izaberite tačan vCenter i ciljni klaster, odnosno unapred konfigurisane vSphere zone.</li>
+  <li>Izaberite NSX ili VDS mrežni model prema odobrenom dizajnu.</li>
+  <li>Pročitajte pre-check rezultat do kraja. Warning nije automatski bezopasan: vlasnik promene mora da objasni njegovu posledicu.</li>
+  <li>Ako se ponuđena topologija razlikuje od planirane, zaustavite promenu. Ne birajte dostupnu opciju samo zato što je čarobnjak prihvata.</li>
+</ol>
+
+<p><strong>Kontrolna tačka:</strong> inventory objekat, mrežni stack i broj zona tačno odgovaraju odobrenom radnom listu. Screenshot i task ID unose se u evidenciju.</p>
+
+<h4>Korak 2 — control plane size i storage politike</h4>
+
+<ol>
+  <li>Izaberite control plane size prema sizing vodiču za verziju. <code>Tiny</code> je prihvatljiv za ograničenu laboratoriju, ali nije podrazumevana produkciona odluka.</li>
+  <li>Dodelite storage politike za control plane/master, ephemeral i image sadržaj kada ih interfejs traži odvojeno.</li>
+  <li>Potvrdite da politika nije samo sintaktički dostupna već kompatibilna sa datastore-ovima vidljivim svim odgovarajućim hostovima.</li>
+  <li>Proverite slobodan prostor i failure tolerance politike. Prestroga politika bez dovoljnog broja fault domena može blokirati provisioning; preslaba politika smanjuje otpornost.</li>
+</ol>
+
+<p><strong>Posledica odluke:</strong> control plane size utiče na rezervacije CPU/RAM-a, maksimalnu podržanu skalu i stabilnost sistemskih servisa. Storage politika utiče na dostupnost, performanse i ponašanje pri kvaru; kasnija promena nije zamena za početno pravilno projektovanje.</p>
+
+<h4>Korak 3 — management mreža i upravljačke adrese</h4>
+
+<ol>
+  <li>Izaberite management distributed port group dostupan svakom ciljnom hostu.</li>
+  <li>Izaberite DHCP samo ako verzija i dizajn to podržavaju i ako DHCP obezbeđuje stabilne, rezervisane lease-ove, ispravan gateway, DNS i NTP. Za produkciju se često biraju unapred rezervisane statičke adrese zbog predvidljivosti.</li>
+  <li>Unesite control plane management adrese, subnet mask/prefix, gateway, DNS servere, NTP servere i search domain tačno iz IPAM-a.</li>
+  <li>Unesite floating/API adresu ako je zasebno polje u izabranom modelu.</li>
+</ol>
+
+<p><strong>Kontrolna tačka:</strong> svaka adresa je slobodna iz perspektive pravog VLAN-a, gateway je dosegljiv, vCenter FQDN se razrešava preko navedenog DNS-a, a vremenski izvori su usklađeni. Ne testirajte samo sa administratorskog laptopa koji može koristiti drugu DNS zonu i drugu rutu.</p>
+
+<h4>Korak 4 — workload mreža i load balancer integracija</h4>
+
+<p>U VDS modelu izaberite primary workload network i podržani load balancer, zatim unesite address range, gateway, masku, DNS i NTP vrednosti koje traži build. Ako se koristi HAProxy ili druga istorijski podržana integracija, potvrdite da je još podržana za konkretan release; nemojte prenositi postupak iz vSphere 7 vodiča u vSphere 8/9 bez matrice podrške. Sertifikacioni lanac provider-a mora odgovarati endpoint-u, a kredencijali moraju imati potrebne, ali ne preširoke privilegije.</p>
+
+<p>U NSX modelu proverite izabrani VDS/transport zone, edge cluster, tier-0 gateway i parametre za ingress, egress i namespace mreže prema implementacionom modelu. Minimumi i ograničenja CIDR-a zavise od funkcije i verzije; na primer, zvanični zahtevi za određene NSX Supervisor modele navode najmanje /27 za pojedine egress/ingress potrebe i zabranjuju preklapanje. Uvek primenite zahtev za konkretan build, ne univerzalno pravilo izvedeno iz jednog primera.</p>
+
+<p><strong>Kontrolna tačka:</strong> load balancer API/data-plane endpoint-i su dosegljivi, sertifikat je validan za korišćeno ime, IP pool nema konflikt, a firewall dozvoljava dokumentovane tokove u oba potrebna smera. Kod NSX-a transportni čvorovi, edge i relevantni T0/T1 objekti moraju biti zdravi pre nastavka.</p>
+
+<h4>Korak 5 — pregled, peer review i pokretanje</h4>
+
+<ol>
+  <li>Uporedite svako polje sa radnim listom metodom „četiri oka”. Druga osoba čita vrednost iz odobrenog dokumenta, operator potvrđuje vrednost na ekranu.</li>
+  <li>Posebno pročitajte CIDR prefix, gateway, početak i kraj IP raspona, DNS/NTP adrese, storage politike i naziv port group-a.</li>
+  <li>Zabeležite vreme početka, operatora, change ID i trenutno stanje svih zavisnosti.</li>
+  <li>Tek tada pokrenite enablement. Ovo je state-changing korak.</li>
+</ol>
+
+<p>Posle pokretanja ne menjajte paralelno VDS, NSX, storage politike, DNS, certifikate ili vLCM image osim ako je promena deo potvrđene korektivne grane. Paralelna promena uništava uzročno-posledični trag i može ostaviti sistem u stanju koje se teško reprodukuje.</p>
+
+<h3>7. Praćenje implementacije bez ometanja orkestracije</h3>
+
+<p>Napredovanje se prati na tri mesta: Workload Management statusu, vCenter Recent Tasks/Events prikazu i infrastrukturnim objektima. Prvo utvrdite poslednju uspešnu fazu i koliko dugo nema napretka; tek zatim otvarajte logove. Jedan spor korak nije automatski kvar, ali ponavljani task bez promene stanja, isti timeout ili rastući alarm zahtevaju analizu.</p>
+
+<ul>
+  <li><strong>vCenter:</strong> pratite WCP, vLCM/PMan i EAM povezane taskove, host config status i kreiranje control plane VM instanci.</li>
+  <li><strong>Compute:</strong> proverite placement, power state, datastore i mrežne adaptere VM instanci bez ručnog menjanja njihove konfiguracije.</li>
+  <li><strong>Mreža:</strong> proverite ARP/ruting, load balancer pool i health monitore, NSX realizaciju i firewall hit counter-e.</li>
+  <li><strong>Storage:</strong> proverite provisioning taskove, SPBM compliance i datastore alarme.</li>
+</ul>
+
+<p>Na VCSA su ključni tragovi u direktorijumima <code>/var/log/vmware/wcp</code>, <code>/var/log/vmware/eam</code> i <code>/var/log/vmware/vpxd</code>. Konkretan naziv i rotacija fajla zavise od verzije; za WCP se tipično koristi <code>wcpsvc.log</code>. Sledeće read-only komande izvršava ovlašćeni VCSA shell administrator u uskom vremenskom prozoru oko incidenta:</p>
+
+<pre><code class="language-bash"># Read-only: poslednjih 200 redova WCP servisnog loga
+tail -n 200 /var/log/vmware/wcp/wcpsvc.log
+
+# Read-only: korelacija po vremenu i obrascima; prilagoditi datum incidenta
+grep -Ei "error|fail|timeout|opID|PMan|EAM|Spherelet" \
+  /var/log/vmware/wcp/wcpsvc.log | tail -n 200
+
+# Read-only: stanje WCP servisa na VCSA
+service-control --status wcp</code></pre>
+
+<p>Tražite <code>opID</code>, cluster/host identifikator i vremensku oznaku, pa isti identifikator korelišite sa EAM, vpxd, vLCM i mrežnim događajima. Izdvojena reč <code>error</code> bez konteksta nije uzrok. Sačuvajte nekoliko desetina redova pre i posle događaja, task ID, screenshot i tačno UTC/lokalno vreme.</p>
+
+<h3>8. Stop uslovi i bezbedno upravljanje odstupanjem</h3>
+
+<p>Implementacija se pauzira i incident/change owner uključuje kada se pojavi bilo koji od sledećih uslova: neplanirani vLCM remediation; host izlazi iz očekivanog stanja; control plane VM se raspoređuje na pogrešan datastore ili mrežu; primećen je IP konflikt; load balancer kreira objekte izvan odobrenog pool-a; ponavlja se isti destruktivni task; ili je jedini predloženi nastavak ručna promena sistemske VM instance.</p>
+
+<p>Posebno su zabranjene sledeće improvizacije:</p>
+
+<ul>
+  <li>ručna instalacija Supervisor/Spherelet VIB-a na image-managed hostu; vLCM takvu promenu vidi kao nedozvoljeni drift i može je ukloniti;</li>
+  <li>brisanje EAM agency objekta da bi se „ponovo kreirale” control plane VM instance — brisanje agency-ja može obrisati Supervisor control plane VM i nije validan troubleshooting metod;</li>
+  <li>ručno menjanje CPU-a, memorije, NIC-a, diska ili power operacija na control plane VM bez dokumentovanog Broadcom postupka;</li>
+  <li>restartovanje WCP/vCenter/NSX servisa bez potvrđenog uzroka, impact analize i evidencije;</li>
+  <li>višestruko pritiskanje enable/disable ili prekidanje taska zato što interfejs izgleda „zamrznuto”.</li>
+</ul>
+
+<h3>9. Automatizacija PowerCLI-jem: ponovljivost uz strogu kontrolu</h3>
+
+<p>PowerCLI modul za Workload Management nudi <code>Get-WMCluster</code>, <code>Enable-WMCluster</code>, <code>Set-WMCluster</code>, <code>Disable-WMCluster</code> i pomoćne cmdlet-e kao što je <code>New-WMNamespaceNetworkSpec</code>. Automatizacija je pogodna kada su parametri verzionisani, peer-reviewed i testirani na istom build-u. Ona nije bezbednija sama po sebi: pogrešan CIDR ili port group može biti primenjen brže i doslednije.</p>
+
+<p>Sledeći primer je <strong>laboratorijski obrazac</strong> za VDS model, ne gotova produkciona skripta. Parametri <code>Enable-WMCluster</code> menjaju se između verzija PowerCLI-ja i platforme; obavezno proverite <code>Get-Help Enable-WMCluster -Full</code> na instaliranoj verziji i zvanični primer za tačan load balancer. Tajne se preuzimaju iz odobrenog secret store-a, ne čuvaju u fajlu.</p>
+
+<pre><code class="language-powershell"># Read-only priprema i validacija objekata
+$cluster = Get-Cluster -Name "LAB-Compute-01"
+$mgmtNetwork = Get-VirtualNetwork -Name "DVPG-SUP-MGMT"
+$contentLibrary = Get-ContentLibrary -Name "Kubernetes-Images"
+
+$primaryWorkloadNetwork = New-WMNamespaceNetworkSpec `
+  -Name "workload-primary" `
+  -Gateway "10.20.30.1" `
+  -Subnet "255.255.255.0" `
+  -AddressRanges "10.20.30.50-10.20.30.149" `
+  -DistributedPortGroup "DVPG-WORKLOAD-01"
+
+# STATE-CHANGING: pokretati samo u odobrenoj laboratoriji i sa parametrima
+# potvrđenim za instalirani PowerCLI/vSphere build.
+$cluster | Enable-WMCluster `
+  -SizeHint Tiny `
+  -ManagementVirtualNetwork $mgmtNetwork `
+  -ManagementNetworkMode StaticRange `
+  -ManagementNetworkStartIPAddress "10.20.14.21" `
+  -ManagementNetworkSubnetMask "255.255.255.0" `
+  -ManagementNetworkGateway "10.20.14.1" `
+  -ManagementNetworkDNS "10.20.1.10" `
+  -ManagementNetworkNTP "10.20.1.20" `
+  -ManagementNetworkFloatingIPAddress "10.20.14.20" `
+  -ServiceCIDR "10.96.0.0/24" `
+  -MasterStoragePolicy "SUP-CP-GOLD" `
+  -EphemeralStoragePolicy "SUP-EPHEMERAL" `
+  -ImageStoragePolicy "SUP-IMAGE" `
+  -ContentLibrary $contentLibrary `
+  -PrimaryWorkloadNetworkSpecification $primaryWorkloadNetwork `
+  -Confirm</code></pre>
+
+<p>Primer namerno ne prikazuje load balancer tajne niti tvrdi da je skup parametara univerzalan. Ako <code>Get-Help</code> ne prikazuje neki parametar ili dokumentacija za build koristi drugi parameter set, skripta se ne „popravlja” nagađanjem. Najpre se usklađuju PowerCLI modul, platforma i podržani primer.</p>
+
+<p>Tokom automatizovane implementacije stanje se čita odvojeno:</p>
+
+<pre><code class="language-powershell"># Read-only nadzor; ne pokreće novu promenu
+Get-WMCluster -Cluster (Get-Cluster -Name "LAB-Compute-01") |
+  Format-List *
+
+Get-Task |
+  Where-Object { $_.Name -match "Workload|Supervisor|WCP|Remediate" } |
+  Sort-Object StartTime -Descending |
+  Select-Object -First 20 Name, State, StartTime, FinishTime, PercentComplete</code></pre>
+
+<p>Uspeh automatizacije nije exit code samog cmdlet-a. Kriterijum je isti kao u GUI toku: završen orchestration task, zdrav Supervisor, pripremljeni hostovi, dosegljiv API endpoint i spremne sistemske komponente.</p>
+
+<h3>10. Tipični zastoji tokom enablement-a</h3>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Prva hipoteza</th><th>Dokazi</th><th>Bezbedna korekcija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Host Config ostaje <code>Configuring</code></td><td>vLCM/PMan ne može da pripremi host ili Spherelet</td><td><code>wcpsvc.log</code>, vLCM compliance/depot, EAM status, host connectivity</td><td>Ispraviti depot/proxy/compliance uzrok; pustiti orkestraciju da nastavi</td></tr>
+    <tr><td>Control plane VM je uključena, Supervisor ne napreduje</td><td>vCenter ne doseže floating/API adresu ili je routing asimetričan</td><td>Ruta sa VCSA, firewall hitovi, ARP, LB health, kernel tragovi za martian source</td><td>Ispraviti rutu/firewall bez ručne izmene VM-a</td></tr>
+    <tr><td>Provisioning VM-a ne uspeva</td><td>Storage policy/placement/kapacitet</td><td>SPBM compatibility, datastore alarm, DRS/placement događaj</td><td>Vratiti storage/compute u odobreno kompatibilno stanje</td></tr>
+    <tr><td>Load balancer korak se ponavlja</td><td>Sertifikat, kredencijali, endpoint ili pool</td><td>Provider audit/log, health monitor, WCP opID, certificate chain</td><td>Ispraviti tačnu integracionu grešku i ponovo validirati endpoint</td></tr>
+    <tr><td>DNS health greška</td><td>Control plane koristi workload putanju do DNS-a ili pogrešan resolver</td><td>Resolver stanje, <code>nslookup</code> sa CPVM-a, firewall/ruting</td><td>Ispraviti DNS dostupnost; restart komponenti samo po dokumentovanom postupku</td></tr>
+    <tr><td>NSX segmenti se ne realizuju</td><td>NCP/NSX stanje, edge kapacitet ili prethodni restore</td><td>NSX alarms, NCP pod/log, restore status, realizacija objekta</td><td>Primena odgovarajućeg KB postupka za potvrđeni uzrok; ne brisati nasumične objekte</td></tr>
+  </tbody>
+</table>
+
+<p>Broadcom KB primeri pokazuju da naizgled isti status može imati različite uzroke. Na primer, zastoj u „Configured Supervisor” fazi u okruženju sa NSX i Avi može poticati od NCP-a koji je ostao u restore režimu nakon NSX Manager restore-a; drugi zastoj može poticati od pogrešnog vLCM depot URL-a zbog kog mandatory compliance provera ne prolazi. KB korekcija se primenjuje samo kada se poklapaju verzija, simptomi i potvrđen uzrok.</p>
+
+<h3>11. Rollback i recovery odluka</h3>
+
+<p>Enablement nema univerzalno „Undo” dugme koje bez rizika vraća svaku delimičnu fazu. Najbezbedniji rollback je zaustavljanje pre pokretanja kada pre-check ne prolazi. Posle kreiranja sistemskih objekata odluka zavisi od dostignute faze i podržanog stanja proizvoda.</p>
+
+<ol>
+  <li><strong>Pre pokretanja:</strong> zatvorite čarobnjak, ispravite plan i ponovite kontrolnu kapiju. Nema platformskog rollback-a jer stanje nije promenjeno.</li>
+  <li><strong>Orkestracija aktivno napreduje:</strong> ne prekidajte je napamet. Prikupite task/opID i utvrdite da li sistem ponavlja bezbedan korak ili je zaista zaglavljen.</li>
+  <li><strong>Potvrđena spoljašnja zavisnost:</strong> ispravite DNS, rutu, sertifikat, vLCM depot ili kapacitet u okviru odobrene korektivne promene; zatim posmatrajte da li orkestracija nastavlja.</li>
+  <li><strong>Delimična implementacija bez podržanog nastavka:</strong> otvorite Broadcom Support slučaj pre ručnog uklanjanja EAM, NSX, vLCM ili control plane objekata. Priložite support bundle, vremensku liniju, opID i spisak promena.</li>
+  <li><strong>Disable Supervisor:</strong> <code>Disable-WMCluster</code> ili GUI disable je destruktivna operacija, ne rutinski rollback. Može ukloniti Supervisor resurse i utiče na namespace/workload objekte. Koristi se samo uz potvrđeno prazno okruženje, backup, odobren plan i dokumentaciju za verziju.</li>
+</ol>
+
+<p>Snapshot VCSA ili control plane VM-a nije opšti zamenski rollback plan. vCenter backup/restore, NSX backup/restore i stanje distribuiranih komponenti moraju biti transakciono i verzijski usklađeni prema zvaničnim procedurama. Ručno vraćanje pojedinačne sistemske VM instance može proizvesti nekonzistentno etcd i orkestraciono stanje.</p>
+
+<hr>
+
+<h3>Praktikum: kontrolisana implementacija Supervisor-a u laboratoriji</h3>
+
+<p><strong>Cilj:</strong> omogućiti Supervisor nad jednim laboratorijskim vSphere klasterom koristeći unapred odobren VDS ili NSX model, prikupiti dokaze po fazama, dijagnostikovati jednu bezbedno simuliranu pre-check grešku i završiti sa proverljivim zdravim stanjem. Vežba ne zahteva namerno kvarenje control plane VM-a, brisanje EAM agency-ja ni ručnu instalaciju VIB-a.</p>
+
+<h4>Topologija i preduslovi</h4>
+
+<ul>
+  <li>jedan podržani vCenter i najmanje onoliko ESXi hostova koliko zahteva izabrani laboratorijski model;</li>
+  <li>vSphere HA/DRS i zajednički storage prema dokumentaciji za build;</li>
+  <li>VDS sa management i workload port group-ama ili potpuno pripremljen NSX transport/edge/T0 dizajn;</li>
+  <li>podržani load balancer za izabrani model, sa važećim sertifikatom i slobodnim pool-om;</li>
+  <li>rezervisane management, API, ingress/egress/workload adrese i jedinstven Service CIDR;</li>
+  <li>funkcionalni DNS i NTP; vCenter FQDN razrešiv sa relevantnih mreža;</li>
+  <li>PowerCLI radna stanica i nalog sa odobrenim privilegijama;</li>
+  <li>svež konfiguracioni backup i potvrda da je laboratorija izolovana od produkcionih IP opsega.</li>
+</ul>
+
+<p><strong>Rizik:</strong> srednji u namenskoj laboratoriji, visok u deljenom klasteru. Vežba menja ESXi/vCenter klastersko stanje i kreira sistemske VM, mrežne i storage objekte. Ne izvoditi na produkcionom klasteru kao probu.</p>
+
+<h4>Vežba 1 — dokaz početnog stanja i bezbedna negativna provera</h4>
+
+<ol>
+  <li>Pokrenite read-only PowerCLI snimak iz odeljka 4 i sačuvajte izlaz uz datum, build i change/lab ID.</li>
+  <li>U radnom listu namerno unesite jednu očigledno nevažeću, ali <strong>neprimenjenu</strong> vrednost — na primer Service CIDR koji se preklapa sa management mrežom.</li>
+  <li>Peer reviewer mora da otkrije konflikt pre unosa u čarobnjak. Ne pokrećite enablement sa tom vrednošću.</li>
+  <li>Zabeležite: simptom (konflikt u dokumentu), obim (plan, bez promene platforme), neposredni uzrok (pogrešan CIDR), osnovni uzrok (nedostaje automatska/procesna provera), korekciju (jedinstven CIDR) i preventivnu meru (IPAM review).</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> greška je pronađena pre promene stanja. Kriterijum završetka je potpisan radni list bez preklapanja i kompletan read-only baseline.</p>
+
+<h4>Vežba 2 — pre-check i go/no-go sastanak</h4>
+
+<ol>
+  <li>Otvorite <em>Workload Management</em>, izaberite tačan vCenter, klaster/zone i mrežni stack.</li>
+  <li>Pokrenite ugrađeni pre-check gde je dostupan. Sačuvajte rezultat, upozorenja i task ID.</li>
+  <li>Proverite VDS/NSX health, storage policy compatibility, load balancer health i IPAM rezervacije.</li>
+  <li>Izvršite peer review svih polja. Za svako upozorenje unesite odluku: prihvaćeno sa obrazloženjem ili no-go.</li>
+  <li>Ako postoji blokirajuća greška, ne popravljajte nasumično. Odredite vlasnika zavisnosti i ponovite samo relevantnu proveru posle korekcije.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> nema blokirajućih grešaka, sva upozorenja imaju vlasnika i obrazloženje, a odobrenje za početak je vremenski označeno.</p>
+
+<h4>Vežba 3 — standardna GUI implementacija sa faznim dokazima</h4>
+
+<ol>
+  <li>Unesite control plane size i tri storage politike prema laboratorijskom radnom listu.</li>
+  <li>Unesite management mrežu, adrese, gateway, DNS, NTP, search domain i API/floating adresu.</li>
+  <li>Unesite workload i load balancer/NSX parametre. Ponovo proverite raspone i sertifikat.</li>
+  <li>Na summary stranici izvršite „četiri oka” čitanje. Sačuvajte summary kao dokaz.</li>
+  <li>Pokrenite enablement i zabeležite početno vreme.</li>
+  <li>Na svakih nekoliko minuta zabeležite poslednju uspešnu fazu, bez refresh petlje i paralelnih promena.</li>
+  <li>Kada se pojave control plane VM instance, proverite placement, mrežne adaptere i storage bez ručne izmene.</li>
+  <li>Pratite Workload Management status, Recent Tasks i alarme do završetka ili stop uslova.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> host preparation i control plane bootstrap napreduju, a Supervisor završava u zdravom stanju koje koristi konkretna verzija (<code>Running</code>, <code>Healthy</code> ili ekvivalent). Kriterijum nije samo završeni GUI task.</p>
+
+<h4>Vežba 4 — fazna validacija i korelacija dokaza</h4>
+
+<ol>
+  <li>PowerCLI-jem pročitajte <code>Get-WMCluster</code> stanje i sačuvajte rezultat.</li>
+  <li>U vSphere Client-u proverite Supervisor, Host Config, control plane VM power/placement i odsustvo novih kritičnih alarma.</li>
+  <li>Sa administratorske mreže proverite DNS ime i TCP dostupnost Kubernetes API endpoint-a. Ako pristup još nije konfigurisan, ne zaobilazite autentikaciju; samo proverite odobreni mrežni tok.</li>
+  <li>Kada lekcija 20 obezbedi bezbedan kubeconfig/kontekst, Kubernetes nivo se potvrđuje komandama <code>kubectl get nodes</code> i proverom sistemskih podova. U ovoj fazi dovoljno je evidentirati da je API endpoint formiran i da vSphere health provere prolaze.</li>
+  <li>Korelišite isto vreme kroz vCenter task, WCP log i load balancer/NSX audit zapis.</li>
+</ol>
+
+<pre><code class="language-bash"># Read-only mrežna provera; izvršava se sa odobrene admin radne stanice
+nslookup supervisor-api.lab.example.com
+curl -kI --connect-timeout 5 https://supervisor-api.lab.example.com:6443
+
+# -k je ovde samo laboratorijska dijagnostika TLS dosegljivosti.
+# U produkciji validirajte puni CA lanac i ne prihvatajte nepouzdan sertifikat.</code></pre>
+
+<p>HTTP status kao <code>401</code>, <code>403</code> ili drugi Kubernetes API odgovor može dokazati da TCP/TLS putanja postoji, ali nije dokaz autorizacije ni ukupnog zdravlja. Timeout ukazuje na mrežu, VIP, load balancer ili servis; certificate error ukazuje na trust/SAN/ime. Razdvojite te simptome.</p>
+
+<h4>Vežba 5 — troubleshooting scenario bez destruktivne simulacije</h4>
+
+<p><strong>Scenario:</strong> status se nije promenio 15 minuta i poslednja prikazana faza je host preparation. Ne izazivajte stvarni kvar. Instruktor daje unapred pripremljen isečak u kome se pojavljuje PMan/vLCM depot greška.</p>
+
+<pre><code class="language-none">Simptom: Host Config = Configuring
+Obim: svi hostovi ciljnog klastera
+Poslednja uspešna faza: compatibility pre-check
+Log obrazac: PMan / depot / compliance / unable to import
+Promena pre incidenta: izmenjen vLCM proxy ili depot URL</code></pre>
+
+<ol>
+  <li>Formulišite hipotezu da WCP ne može da završi obaveznu vLCM compliance pripremu.</li>
+  <li>Proverite vLCM depot/proxy dostupnost i compliance bez instaliranja VIB-a ručno.</li>
+  <li>Uporedite vreme greške sa promenom depot konfiguracije.</li>
+  <li>Korektivna akcija je vraćanje ispravnog, podržanog depot/proxy podešavanja i ponovna compliance provera.</li>
+  <li>Tek ako se enablement ne nastavi i KB za tačan simptom/build to zahteva, razmatra se kontrolisan restart WCP servisa uz impact procenu. Restart nije prvi korak.</li>
+  <li>Validirajte da Host Config napreduje i dokumentujte osnovni uzrok: nekontrolisana promena depot konfiguracije, ne samo „Spherelet se nije instalirao”.</li>
+</ol>
+
+<p><strong>Rollback:</strong> vratiti laboratorijski depot/proxy na početnu ispravnu vrednost. <strong>Kriterijum završetka:</strong> tim ume da objasni zašto ručna VIB instalacija ne rešava desired-state uzrok i može biti uklonjena sledećom vLCM proverom.</p>
+
+<h4>Vežba 6 — incident response paket</h4>
+
+<p>Napravite paket dokaza koji bi mogao da se preda internom L3 timu ili Broadcom Support-u:</p>
+
+<ul>
+  <li>vCenter, ESXi, NSX/Avi i PowerCLI build/verzije;</li>
+  <li>topologija i redigovani radni list bez tajni;</li>
+  <li>UTC vremenska linija, change ID, operator i poslednja uspešna faza;</li>
+  <li>task/event ID, WCP <code>opID</code>, relevantni EAM/vpxd/vLCM tragovi;</li>
+  <li>Supervisor i Host Config status, VM placement i storage/network alarmi;</li>
+  <li>mrežni testovi iz stvarnog izvornog segmenta i load balancer/NSX health;</li>
+  <li>spisak svih pokušaja korekcije i njihov rezultat;</li>
+  <li>support bundle prema zvaničnoj proceduri, bez nekontrolisanog kopiranja tajni.</li>
+</ul>
+
+<p><strong>Kriterijum završetka praktikuma:</strong> Supervisor je zdrav ili je vežba kontrolisano zaustavljena na dokumentovanom no-go uslovu; nema nedokumentovanih ručnih promena sistemskih objekata; svi dokazi omogućavaju drugom administratoru da rekonstruiše tok.</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Enablement vodite kao change sa peer review-om, vlasnicima zavisnosti i stop uslovima.</li>
+  <li>Parametre čuvajte u verzionisanom radnom listu; tajne držite u odobrenom secret store-u.</li>
+  <li>Proveravajte konkretan build i parameter set. Dokumentacija za vSphere 7 nije automatski postupak za vSphere 8/VCF 9.</li>
+  <li>Pre svake korekcije prikupite task, događaje, metrike i logove; menjajte jednu hipotezu odjednom.</li>
+  <li>Ne uređujte ručno Supervisor control plane VM, EAM agency, Spherelet VIB ni NSX objekte koje poseduje orkestrator.</li>
+  <li>Razdvojite laboratorijsku TLS proveru sa <code>curl -k</code> od produkcione validacije poverljivog CA lanca.</li>
+  <li>Posle implementacije predajte platformu operativi sa IPAM/DNS evidencijom, monitoringom, backup odgovornošću i poznatim kontaktima.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Administrator je završio lekciju kada može da:</p>
+
+<ul>
+  <li>objasni uloge WCP-a, vLCM/PMan-a, EAM-a, ESXi hostova, control plane VM instanci, mrežnog stack-a, load balancer-a i storage politika u enablement toku;</li>
+  <li>razlikuje single-cluster i zonalni Supervisor, VDS i NSX model, kao i vSphere 8.x i VCF/vSphere 9.x licencnu/terminološku proveru;</li>
+  <li>izradi go/no-go radni list bez IP preklapanja i dokaže DNS, NTP, rutiranje, MTU, storage i kapacitet;</li>
+  <li>izvede GUI implementaciju uz peer review i fazne dokaze, ili bezbedno koristi provereni <code>Enable-WMCluster</code> parameter set;</li>
+  <li>razdvoji read-only komande od state-changing postupaka i objasni njihov rizik;</li>
+  <li>koreliše Workload Management status sa vCenter taskovima, <code>wcpsvc.log</code>, EAM/vpxd/vLCM i mrežnim dokazima;</li>
+  <li>prepozna kada treba ispraviti spoljašnju zavisnost, kada zaustaviti promenu i kada eskalirati bez ručnog brisanja sistemskih objekata;</li>
+  <li>dokumentuje uspeh ili incident tako da drugi administrator može nezavisno da potvrdi nalaz.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Omogućavanje vSphere Supervisor-a nije administrativni čarobnjak već orkestrisana promena preko compute, lifecycle, mrežnog, storage i Kubernetes sloja. Profesionalna implementacija počinje od verzijski tačnog dizajna i pre-check dokaza, nastavlja se kontrolisanim unosom i praćenjem faza, a završava nezavisnom validacijom i operativnom predajom. Najveći rizik nije samo pogrešna vrednost već pokušaj da se posledica popravi ručnim menjanjem objekata kojima upravlja platforma.</p>
+
+<p>U sledećoj lekciji control plane posmatramo posle implementacije: njegove VM instance, statuse, sistemske komponente i signale zdravlja. Lekcija 16 zatim razvija pun pre-check/post-check i troubleshooting tok neuspele inicijalizacije. Ovde je najvažnija stečena disciplina: ništa se ne pokreće bez poznatog početnog stanja, ništa se ne „popravlja” bez hipoteze i dokaza, a uspeh se ne proglašava samo zato što je task nestao iz prikaza.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Supervisor vodiči za koncepte, preduslove i instalaciju; dokumentacija za VDS, NSX i NSX Advanced Load Balancer mrežne modele; vSphere Lifecycle Manager i ESX Agent Manager administrativne reference; VCF/VMware PowerCLI Workload Management cmdlet reference; vSphere Automation API dokumentacija; zvanični Knowledge Base članci za WCP, PMan, Spherelet, control plane VM, DNS, load balancer i Supervisor enablement dijagnostiku; dokumentacija za licenciranje vSphere 8.x i VCF/vSphere 9.x
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-13-planiranje-implementacije-supervisor-a.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-15-supervisor-control-plane-i-status.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,568 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-25-mrezni-model-cni.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kubernetes mrežni model i CNI – Pod mreža, rutiranje i MTU | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes mrežni model i CNI: Pod mreža, network namespace, IPAM, rutiranje, overlay i underlay pristupi, MTU, dual-stack, validacija i troubleshooting.">
+
+  <meta name="keywords"
+        content="Kubernetes mrežni model, CNI, Container Network Interface, Pod mreža, Pod CIDR, IPAM, network namespace, veth, rutiranje, overlay, underlay, VXLAN, MTU, PMTUD, dual-stack, containerd, CRI-O, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-25-mrezni-model-cni.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+  <meta property="og:locale"
+        content="sr_RS">
+  <meta property="og:type"
+        content="article">
+  <meta property="og:title"
+        content="Kubernetes mrežni model i CNI – Pod mreža, rutiranje, MTU i odgovornost dodatka">
+  <meta property="og:description"
+        content="Razumejte kako Pod dobija mrežni identitet, kako paket prelazi čvorove, gde nastaje MTU problem i šta zaista pripada CNI dodatku.">
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-25-mrezni-model-cni.html">
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-25-mrezni-model-cni.png">
+  <meta property="og:image:type"
+        content="image/png">
+  <meta property="og:image:width"
+        content="1200">
+  <meta property="og:image:height"
+        content="630">
+  <meta property="og:image:alt"
+        content="Kubernetes mrežni model, CNI, Pod mreža, rutiranje i MTU">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-25-mrezni-model-cni.png"
+       target="_blank"
+       rel="noopener">
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-25-mrezni-model-cni.png"
+           alt="Kubernetes mrežni model, CNI, Pod mreža, rutiranje i MTU">
+    </a>
+
+    <div class="page-subtitle">
+      VI. Mreža, DNS i pristup aplikacijama
+    </div>
+    <div class="page-subtitle">
+      25. Kubernetes mrežni model i CNI – Pod mreža, rutiranje, MTU i odgovornost dodatka
+    </div>
+
+    <p>
+      Prethodne lekcije izgradile su workload platformu: Pod je izvršna jedinica, Service daje stabilan identitet grupi promenljivih backend-a, a scheduler bira čvor na kome će novi Pod raditi. Od ovog trenutka pitanje više nije samo <em>gde</em> je Pod raspoređen, već <strong>kako dobija mrežni interfejs i adresu, kako paket stiže do drugog Poda i ko je odgovoran kada veza ne radi</strong>. Kubernetes definiše željeni mrežni model, ali njegov data plane ne implementira sam. Tu odgovornost preuzima mrežni dodatak, najčešće CNI-kompatibilno rešenje povezano sa container runtime-om i operativnim sistemom čvora.
+    </p>
+    <p>
+      Mreža klastera nije jedna funkcija niti jedan proces. Ona obuhvata network namespace Poda, virtuelne interfejse, IPAM, rute ili enkapsulaciju između čvorova, filtriranje saobraćaja, node firewall, fizičku ili virtuelnu underlay mrežu, DNS i odvojeni Service data plane. Zato poruka „CNI problem” nije dijagnoza. Odgovoran administrator najpre određuje ravan kvara, putanju paketa i granicu vlasništva, pa tek onda menja konfiguraciju.
+    </p>
+
+    <h3>Kubernetes mrežni model – ugovor koji implementacija mora da ispuni</h3>
+    <p>
+      Osnovni Kubernetes model polazi od toga da svaki Pod dobija jedinstvenu adresu u opsegu klastera i sopstveni network namespace. Svi aplikacioni kontejneri u istom Podu dele taj namespace, IP adresu, interfejse i tabelu ruta, pa međusobno razgovaraju preko <code>localhost</code> i moraju uskladiti portove. Između različitih podova očekuje se direktna IP komunikacija bez obaveze da aplikacija sama prevodi adrese. Node agenti i procesi na čvoru takođe moraju moći da komuniciraju sa podovima, uz izuzetke koje konkretna platforma dokumentuje.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Putanja</th><th>Očekivanje modela</th><th>Najčešća realizacija</th><th>Tipična tačka kvara</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Kontejner → kontejner u istom Podu</td><td>Zajednički IP stek i <code>localhost</code></td><td>Isti network namespace</td><td>Pogrešan bind ili konflikt porta</td></tr>
+        <tr><td>Pod → Pod na istom čvoru</td><td>Direktna komunikacija Pod adresama</td><td>veth i bridge, eBPF ili host rutiranje</td><td>Interfejs, lokalna ruta ili policy</td></tr>
+        <tr><td>Pod → Pod na drugom čvoru</td><td>Jedinstvena Pod mreža klastera</td><td>Overlay tunel ili routable underlay</td><td>Ruta, tunel, firewall, MTU ili povratna putanja</td></tr>
+        <tr><td>Pod → spoljna mreža</td><td>Izlaz prema dizajnu platforme</td><td>SNAT/masquerade ili routable Pod CIDR</td><td>Egress policy, NAT, gateway ili DNS</td></tr>
+        <tr><td>Klijent → Service VIP</td><td>Stabilan virtuelni frontend</td><td>kube-proxy, eBPF ili drugi Service proxy</td><td>Service/EndpointSlice data plane; tema naredne lekcije</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Pod IP je identitet jedne instance, ne trajna adresa aplikacije. Kada Pod bude zamenjen, nova instanca može dobiti drugu adresu; stabilnost obezbeđuju Service i DNS, koji se detaljnije obrađuju u narednim lekcijama. Host-network Pod predstavlja svesno odstupanje: sa <code>hostNetwork: true</code> deli mrežni prostor čvora, nasleđuje njegovu površinu napada i može izazvati konflikt host portova. To nije univerzalni lek za neispravan CNI.
+    </p>
+
+    <h3>Od Pod sandbox-a do mrežnog interfejsa</h3>
+    <p>
+      Kubelet preko CRI-ja traži od container runtime-a da napravi Pod sandbox. Runtime kreira ili priprema network namespace i poziva konfigurisan CNI lanac. Plugin dobija operaciju, identitet kontejnera, putanju namespace-a, željeno ime interfejsa i mrežnu konfiguraciju. IPAM komponenta bira adresu i vraća adresu, gateway i rute; glavni plugin pravi ili priključuje interfejs, postavlja ga u namespace i programira potrebni lokalni data plane. Tek kada mrežna priprema uspe, sandbox može preći u spremno stanje i aplikacioni kontejneri mogu biti pokrenuti.
+    </p>
+    <pre><code class="language-none">kubelet
+  │  CRI: RunPodSandbox
+  ▼
+container runtime
+  │  CNI ADD + JSON konfiguracija
+  ▼
+CNI lanac ──► IPAM ──► interfejs, IP adresa, gateway i rute
+  │
+  └────────► node/cluster data plane</code></pre>
+    <p>
+      Pri brisanju sandbox-a runtime poziva CNI <code>DEL</code> kako bi plugin uklonio mrežne resurse i oslobodio adresu. CNI specifikacija takođe definiše <code>CHECK</code> za proveru postojećeg stanja i <code>VERSION</code> za pregovaranje podržane verzije, ali podrška i stvarna upotreba <code>CHECK</code> operacije zavise od runtime-a i plugin-a. Ne treba je pretpostaviti kao univerzalni Kubernetes health check.
+    </p>
+    <p>
+      Na Linux čvorovima konfiguracije se često nalaze u <code>/etc/cni/net.d</code>, a izvršni plugin-i u <code>/opt/cni/bin</code>, ali obe putanje mogu biti promenjene runtime konfiguracijom ili načinom instalacije. Redosled i izbor konfiguracije takođe pripadaju runtime implementaciji. Zbog toga se fajlovi ne menjaju ručno dok se ne utvrdi ko ih održava: kubeadm dodatak, paket menadžer, operator, Helm release, GitOps kontroler ili image-based node konfiguracija.
+    </p>
+
+    <h3>CNI specifikacija i odgovornost mrežnog dodatka</h3>
+    <p>
+      CNI je specifikacija poziva i formata konfiguracije, a ne naziv jedne Kubernetes mreže. Ona opisuje kako runtime izvršava plugin-e i kako oni vraćaju rezultat; ne propisuje da li će klaster koristiti bridge, BGP, VXLAN, Geneve, eBPF ili cloud-native rutiranje. Produkciono „CNI rešenje” obično je širi sistem: node agent, kontroleri, CRD objekti, IPAM, policy engine, observability i ponekad zamena za kube-proxy. Njegove mogućnosti nisu jednake samoj CNI specifikaciji.
+    </p>
+    <table>
+      <thead><tr><th>Oblast</th><th>Ko tipično nosi odgovornost</th><th>Važna napomena</th></tr></thead>
+      <tbody>
+        <tr><td>Network namespace i poziv CNI-ja</td><td>Container runtime uz kubelet/CRI tok</td><td>Kubelet ne izvršava nužno plugin direktno</td></tr>
+        <tr><td>Interfejs, Pod IP i lokalne rute</td><td>CNI plugin i IPAM</td><td>Način zavisi od implementacije</td></tr>
+        <tr><td>Među-nodalni Pod transport</td><td>CNI data plane i underlay mreža</td><td>Overlay i native routing imaju različite zahteve</td></tr>
+        <tr><td>NetworkPolicy</td><td>Plugin koji podržava policy</td><td>Samo postojanje CNI-ja ne garantuje enforcement</td></tr>
+        <tr><td>Service VIP i backend izbor</td><td>kube-proxy ili alternativni data plane</td><td>Može biti integrisan u isto rešenje, ali je logički odvojen</td></tr>
+        <tr><td>DNS ime i rezolucija</td><td>CoreDNS, kubelet DNS podešavanje i mrežna dostupnost</td><td>CNI prenosi pakete, ne stvara DNS zapise</td></tr>
+        <tr><td>Fizički link, VLAN, cloud route i firewall</td><td>Infrastrukturna mreža/cloud platforma</td><td>CNI ne može popraviti blokiran underlay</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Konfiguraciona lista može ulančati više plugin-a: jedan obezbeđuje osnovni interfejs, drugi podešava port mapping ili bandwidth capability, a IPAM se poziva kao delegirani plugin. Polje <code>cniVersion</code> mora biti kompatibilno sa runtime-om i svim elementima lanca. Primer je ilustrativan; ne kopira se preko konfiguracije produkcionog dodatka:
+    </p>
+    <pre><code class="language-json">{
+  "cniVersion": "1.0.0",
+  "name": "lab-network",
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "cni0",
+      "isGateway": true,
+      "ipMasq": true,
+      "ipam": {
+        "type": "host-local",
+        "ranges": [[{"subnet": "10.244.1.0/24"}]],
+        "routes": [{"dst": "0.0.0.0/0"}]
+      }
+    },
+    {
+      "type": "portmap",
+      "capabilities": {"portMappings": true}
+    }
+  ]
+}</code></pre>
+    <p>
+      Produkcioni dodatak treba instalirati isključivo njegovim podržanim postupkom i verzijom sertifikovanom za ciljnu Kubernetes, kernel i runtime kombinaciju. Dva primarna CNI rešenja ne smeju nekontrolisano upravljati istim default Pod interfejsom. Migracija menja data plane čitavog klastera i zahteva dokumentovan redosled po čvorovima, drain, proveru postojećih podova i povratni plan; prosta zamena fajla u <code>/etc/cni/net.d</code> može ostaviti čvor sa mešanim stanjem.
+    </p>
+
+    <h3>IPAM, Pod CIDR i sprečavanje preklapanja</h3>
+    <p>
+      IP Address Management dodeljuje i oslobađa Pod adrese. U čestom modelu svaki Node dobija sopstveni <code>spec.podCIDR</code>, a lokalni IPAM izdaje adrese iz tog opsega. Drugi dodaci koriste centralizovani pool, cloud subnet, CRD blokove ili više pool-ova. Prisustvo <code>spec.podCIDR</code> zato ne dokazuje da ga aktivni dodatak zaista koristi. Izvor istine utvrđuje se iz zvanične konfiguracije konkretnog rešenja.
+    </p>
+    <pre><code class="language-bash"># Read-only: API pogled na dodeljene Node Pod CIDR opsege
+kubectl get nodes \
+  -o custom-columns='NODE:.metadata.name,POD_CIDR:.spec.podCIDR,POD_CIDRS:.spec.podCIDRs'
+
+# Read-only: stvarne adrese podova i čvorovi na kojima rade
+kubectl get pods -A -o wide
+
+# Read-only: Service CIDR se ne zaključuje iz Pod CIDR-a
+kubectl get svc kubernetes -n default -o wide</code></pre>
+    <p>
+      Pod CIDR, Service CIDR, Node/LAN opsezi, VPN, data-centar, cloud VPC/VNet, administratorske mreže i mreže povezanih klastera ne smeju se preklapati. Preklapanje stvara ambivalentne rute, pogrešan NAT i kvarove koji zavise od odredišta. Opsezi se zato biraju pre izgradnje klastera i vode u IPAM/CMDB sistemu. Naknadna promena cluster CIDR-a često nije običan in-place zahvat i može zahtevati migraciju ili izgradnju novog klastera.
+    </p>
+    <p>
+      Iscrpljen IP pool se manifestuje kao neuspešno kreiranje Pod sandbox-a, iako CPU i memorija postoje. Brisanje nasumičnih CNI state fajlova nije bezbedan recovery: može duplirati adresu. Najpre se proveravaju pool kapacitet, curenje alokacija, neuspešni <code>DEL</code> pozivi, broj Podova po čvoru i ograničenje <code>maxPods</code>, pa se stanje usaglašava postupkom koji podržava konkretan IPAM.
+    </p>
+
+    <h3>Rutiranje između podova – overlay, underlay i native pristup</h3>
+    <p>
+      Na istom Linux čvoru Pod je često povezan parom virtuelnih Ethernet interfejsa: jedan kraj ulazi u namespace Poda, drugi ostaje na hostu i povezuje se na bridge, rutu ili programski data plane. Za drugi čvor paket mora preći fizičku ili virtuelnu mrežu. Dva glavna pristupa razlikuju se po tome da li underlay poznaje Pod prefikse.
+    </p>
+    <table>
+      <thead><tr><th>Pristup</th><th>Kako paket prelazi čvorove</th><th>Prednosti</th><th>Troškovi i zahtevi</th></tr></thead>
+      <tbody>
+        <tr><td>Overlay</td><td>Originalni paket se enkapsulira, npr. VXLAN/Geneve, između node tunel endpoint-a</td><td>Ne zahteva da underlay rutira svaki Pod CIDR; prenosiv dizajn</td><td>Header overhead, manji efektivni MTU, tunel portovi i dodatna obrada</td></tr>
+        <tr><td>Native/underlay routing</td><td>Pod prefiksi se rutiraju direktno statički, preko BGP-a ili cloud ruta</td><td>Bez tunelskog overhead-a; bolja vidljivost originalnih adresa</td><td>Mreža mora prihvatiti i pravilno distribuirati Pod rute</td></tr>
+        <tr><td>Cloud-native/VPC integracija</td><td>Pod dobija adresu ili interfejs iz cloud mreže</td><td>Integracija sa cloud rutama i kontrolama</td><td>Kvote adresa/interfejsa, subnet kapacitet i zavisnost od platforme</td></tr>
+      </tbody>
+    </table>
+    <p>
+      U oba modela povratna putanja je jednako važna kao odlazna. Asimetrično rutiranje može aktivirati reverse-path filter, stateful firewall ili policy kontrolu i stvoriti jednostrani kvar. Encapsulation portovi moraju biti dopušteni između svih relevantnih čvorova, a BGP susedstva i cloud route tabele moraju biti konvergentne. Kubernetes Node status <code>Ready</code> ne potvrđuje automatski da je svaki Pod CIDR međusobno dostupan.
+    </p>
+
+    <h3>MTU – granica koja često stvara „misteriozne” kvarove</h3>
+    <p>
+      Maximum Transmission Unit određuje najveći IP paket koji interfejs može poslati bez fragmentacije na tom linku. Overlay dodaje spoljne IP, UDP i tunelske headere, pa Pod interfejs obično mora imati MTU manji od underlay interfejsa. Tačan overhead zavisi od enkapsulacije i porodice adresa; zato se vrednost ne bira napamet formulom preuzetom iz drugog okruženja, već prema dokumentaciji dodatka i najmanjem MTU-u cele fizičke putanje.
+    </p>
+    <p>
+      Prevelik MTU može dozvoliti male ping i TCP SYN pakete, a blokirati veće odgovore, TLS handshake, image registry ili DNS odgovor sa više zapisa. Path MTU Discovery zavisi od povratnih ICMP poruka: za IPv4 je važna poruka „fragmentation needed”, a za IPv6 „Packet Too Big”. Firewall koji ih odbacuje stvara PMTUD black hole. Smanjivanje MTU-a može ublažiti simptom, ali trajna mera mora uskladiti underlay, tunel, Pod interfejs i ICMP politiku.
+    </p>
+    <pre><code class="language-bash"># Read-only na Linux čvoru: interfejsi, MTU i rute
+ip -details link show
+ip -4 route show
+ip -6 route show
+
+# Read-only iz dijagnostičkog Poda: otkrivanje najvećeg IPv4 paketa bez fragmentacije
+# -M do zabranjuje fragmentaciju; -s je ICMP payload, ne ukupan IP paket
+ping -4 -M do -s 1472 POD_IP_NA_DRUGOM_CVORU
+ping -4 -M do -s 1400 POD_IP_NA_DRUGOM_CVORU
+
+# Read-only: prikaz procenjenog path MTU-a ako je tracepath dostupan
+tracepath POD_IP_NA_DRUGOM_CVORU</code></pre>
+    <p>
+      Vrednost <code>1472</code> odgovara payload-u uz 20 bajtova IPv4 i 8 bajtova ICMP zaglavlja na putanji MTU 1500; nije univerzalna preporuka za Pod mrežu. IPv6 ima drugačije zaglavlje i ne oslanja se na rutere da fragmentiraju paket. Test se radi u oba smera, preko iste klase odredišta koja pokazuje simptom, a nalaz se potvrđuje packet capture-om i brojačima interfejsa. Promena MTU-a na živom CNI-ju je cluster-wide promena: novi i postojeći podovi mogu privremeno imati različite vrednosti, pa je potreban kontrolisani restart workload-a ili node rollout prema uputstvu dodatka.
+    </p>
+
+    <h3>IPv4, IPv6 i dual-stack dizajn</h3>
+    <p>
+      Kubernetes podržava IPv4 single-stack, IPv6 single-stack i dual-stack. Dual-stack je stabilan od Kubernetes 1.23 i zahteva usklađene Pod i Service CIDR parove, dual-stack node/underlay podršku i mrežni dodatak koji tu funkciju stvarno implementira. Polje <code>status.podIPs</code> može sadržati obe adrese, dok <code>status.podIP</code> ostaje kompatibilni primarni prikaz. Redosled porodica utiče na primarnu porodicu i Service politiku; nije dovoljno samo dodati drugi CIDR posle izgradnje klastera.
+    </p>
+    <pre><code class="language-bash"># Read-only: obe porodice adresa po Podu
+kubectl get pods -A \
+  -o custom-columns='NS:.metadata.namespace,POD:.metadata.name,NODE:.spec.nodeName,IPS:.status.podIPs[*].ip'
+
+# Read-only: Node adrese i dodeljeni Pod CIDR parovi
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDRs}{"\t"}{.status.addresses}{"\n"}{end}'</code></pre>
+    <p>
+      NetworkPolicy, egress, NAT, monitoring i testovi moraju obuhvatiti obe porodice; uspešan IPv4 test ne dokazuje IPv6 putanju. Windows čvorovi imaju posebna HNS/HCS ograničenja, a podržane kombinacije overlay-a i dual-stack-a zavise od verzije Windows-a i dodatka. Mešoviti Linux/Windows klaster projektuje se prema matrici podrške konkretnog dobavljača, ne prema pretpostavci da svi CNI modovi rade identično.
+    </p>
+
+    <h3>Bezbednost i dostupnost mrežnog data plane-a</h3>
+    <p>
+      Pod mreža bez NetworkPolicy enforcement-a u osnovi nudi povezanost, ne mikrosegmentaciju. Kubernetes API može prihvatiti NetworkPolicy objekat čak i kada aktivni plugin ne sprovodi pravila; postojanje YAML-a zato nije dokaz zaštite. Enforcement se potvrđuje dokumentacijom dodatka i pozitivnim i negativnim testovima. NetworkPolicy ne zamenjuje zaštitu node management mreže, cloud security groups, firewall između čvorova niti kontrolu izlaska ka spoljnim servisima.
+    </p>
+    <p>
+      CNI agent je privilegovana komponenta koja često upravlja host interfejsima, rutama, eBPF mapama ili netfilter pravilima. Njegov image, RBAC, hostPath mount-ovi, Linux capabilities i upgrade kanal predstavljaju bezbednosnu granicu. Agent se obično isporučuje kao DaemonSet, ali kontrolni deo može biti Deployment. Visoka dostupnost zato zahteva kompatibilnu verziju na svakom čvoru, nadzor kontrolera i zaštitu IPAM state-a. Restart node agenta nije bezazlen kada dodatak ne podržava hitless reconciliation.
+    </p>
+    <p>
+      Enkripcija Pod saobraćaja nije automatska osobina Kubernetes modela. Neki dodaci nude WireGuard, IPsec ili drugu enkripciju, uz CPU trošak, MTU overhead, upravljanje ključevima i ograničenja offload-a. Zahtev „traffic encrypted in transit” mora navesti obim: Pod–Pod, Node–Node tunel, izlaz iz klastera ili aplikacioni TLS. Mrežna enkripcija i aplikacioni identitet nisu ista kontrola.
+    </p>
+
+    <h3>Inventar, posmatranje i dokazivanje putanje paketa</h3>
+    <p>
+      Pre incidenta treba dokumentovati: aktivni dodatak i verziju, način instalacije, CNI konfiguracioni direktorijum, Pod/Service CIDR, IPAM pool-ove, encapsulation mod i portove, BGP/cloud rute, MTU na svakom sloju, NetworkPolicy podršku, kube-proxy ili njegovu zamenu, dual-stack stanje i vlasnike underlay mreže. Bez ovog inventara troubleshooting počinje nagađanjem.
+    </p>
+    <pre><code class="language-bash"># Read-only: runtime, Pod CIDR i osnovni Node inventar
+kubectl get nodes -o wide
+kubectl describe node NODE_NAME
+
+# Read-only: kandidati za mrežne DaemonSet-ove i njihove image verzije
+kubectl get daemonsets -A -o wide
+kubectl get pods -A -o wide
+kubectl get daemonset -n CNI_NAMESPACE CNI_DAEMONSET \
+  -o jsonpath='{range .spec.template.spec.containers[*]}{.name}{"\t"}{.image}{"\n"}{end}'
+
+# Read-only na Linux čvoru sa administrativnim privilegijama
+sudo ls -la /etc/cni/net.d /opt/cni/bin
+sudo crictl info
+ip -br address
+ip route show table all</code></pre>
+    <p>
+      Naziv namespace-a i DaemonSet-a zavise od izabranog dodatka, pa se ne unose napamet. <code>crictl</code> mora biti usmeren na odgovarajući CRI endpoint. Sadržaj konfiguracionih fajlova može otkriti interne opsege ili parametre, zato se prikuplja u kontrolisani incident zapis i ne objavljuje bez redakcije.
+    </p>
+    <p>
+      Packet capture je dokaz, ali i privilegovana operacija koja može zabeležiti osetljiv payload. Najpre se koriste API stanje, events, rute, brojači i sintetički testovi. Tek zatim se u odobrenom vremenskom prozoru snima uski filter na tačnom interfejsu:
+    </p>
+    <pre><code class="language-bash"># Read-only, ali bezbednosno osetljivo: ograničen capture na Linux čvoru
+sudo tcpdump -ni any -c 100 'host POD_IP and (icmp or tcp port 443)'
+
+# Read-only: greške i drop brojači interfejsa
+ip -s link show
+
+# Read-only: kubelet i runtime događaji u relevantnom vremenskom prozoru
+sudo journalctl -u kubelet --since '-15 min' --no-pager
+sudo journalctl -u containerd --since '-15 min' --no-pager</code></pre>
+
+    <h3>Sistematičan troubleshooting mrežnog incidenta</h3>
+    <p>
+      Incident se najpre klasifikuje: da li Pod nema IP, da li ne radi samo komunikacija na istom čvoru, samo između čvorova, samo prema spolja, samo jedna porodica adresa, samo veliki paketi ili samo Service ime/VIP. Testiranje matrice izvor–odredište–protokol–veličina–IP porodica brzo razdvaja CNI, DNS, Service i aplikacioni problem.
+    </p>
+    <ol>
+      <li><strong>Sačuvati obim i vreme.</strong> Zabeležiti pogođene namespace-e, podove, čvorove, IP adrese, početak simptoma i poslednju promenu. Ne restartovati CNI agent pre prikupljanja dokaza.</li>
+      <li><strong>Proveriti API i sandbox događaje.</strong> Pod u <code>ContainerCreating</code> sa <code>FailedCreatePodSandBox</code> ukazuje na runtime/CNI ADD tok; Pod u <code>Running</code> stanju sa neuspešnom vezom zahteva data-plane analizu.</li>
+      <li><strong>Izolovati lokalnu i udaljenu putanju.</strong> Porediti Pod–Pod test na istom i različitim čvorovima, zatim Pod–Node i Pod–spoljno odredište. Koristiti stvarni Pod IP da bi se DNS i Service sloj privremeno izuzeli.</li>
+      <li><strong>Proveriti adresu, interfejs i rute.</strong> Uporediti Pod status, namespace interfejs, host route i IPAM evidenciju. Duplikat adrese i odsutna povratna ruta imaju različite korektivne mere.</li>
+      <li><strong>Proveriti policy i underlay.</strong> Utvrditi da li je paket odbačen u NetworkPolicy data plane-u, host firewall-u, cloud kontroli ili fizičkoj mreži. Kod overlay-a proveriti tunel port i endpoint; kod routable modela BGP/cloud rutu.</li>
+      <li><strong>Testirati MTU i obe porodice.</strong> Ako mali paketi rade, a veći tokovi zastaju, proveriti PMTUD i ICMP. Dual-stack testirati odvojeno za IPv4 i IPv6.</li>
+      <li><strong>Potvrditi hipotezu minimalnom promenom.</strong> Bezbedna privremena mera može biti preusmeravanje workload-a sa jednog pogođenog čvora posle potvrde uzroka. Masovno brisanje podova samo seli simptom i može povećati incident.</li>
+      <li><strong>Validirati oporavak i osnovni uzrok.</strong> Ponoviti identične testove, proveriti nove sandbox-e, povratnu putanju, metrike/drop brojače i stabilnost posle rollout-a. Dokumentovati tehnički uzrok, osnovni procesni uzrok i trajnu meru.</li>
+    </ol>
+    <table>
+      <thead><tr><th>Simptom</th><th>Prvi dokaz</th><th>Verovatan sloj</th><th>Bezbedna naredna provera</th></tr></thead>
+      <tbody>
+        <tr><td>Pod dugo ostaje <code>ContainerCreating</code></td><td>Events i kubelet/runtime log</td><td>CNI ADD, binarni fajl, konfiguracija ili IPAM</td><td>Agent status, config prisustvo i pool kapacitet</td></tr>
+        <tr><td>Isti čvor radi, drugi ne</td><td>Par testova sa poznatim IP adresama</td><td>Overlay/underlay route, firewall ili MTU</td><td>Rute na oba čvora i capture na izlaznom interfejsu</td></tr>
+        <tr><td>IP radi, ime ne radi</td><td>Direktan IP test uspeva</td><td>DNS, ne osnovna Pod ruta</td><td><code>resolv.conf</code>, CoreDNS i DNS Service putanja</td></tr>
+        <tr><td>Pod IP radi, Service IP ne radi</td><td>Endpoint direktno dostupan</td><td>Service data plane</td><td>Service, EndpointSlice i kube-proxy/zamena</td></tr>
+        <tr><td>Mali paket radi, TLS/download zastaje</td><td>DF ping veličine i tracepath</td><td>MTU/PMTUD</td><td>ICMP capture i MTU svih slojeva</td></tr>
+        <tr><td>Samo novi podovi nemaju adresu</td><td><code>FailedCreatePodSandBox</code></td><td>IPAM iscrpljenje ili neuspešan CNI ADD</td><td>Pool/slobodne adrese i neusaglašene alokacije</td></tr>
+      </tbody>
+    </table>
+
+    <hr>
+
+    <h3>Praktikum – mapiranje i dokazivanje Pod mreže bez promene CNI-ja</h3>
+    <p>
+      <strong>Cilj i kontekst.</strong> Administrator treba da utvrdi aktivnu mrežnu implementaciju, mapira Pod CIDR i MTU, napravi dva bezopasna testna workload-a na različitim čvorovima, dokaže direktnu Pod komunikaciju, razlikuje DNS/Service problem od Pod mreže i izvede kontrolisanu MTU dijagnostiku. Praktikum namerno ne instalira, ne menja niti restartuje CNI: takva promena je platform-specifična i neprihvatljiva za generičku laboratoriju.
+    </p>
+    <p>
+      <strong>Topologija i preduslovi.</strong> Potreban je izolovan klaster sa najmanje dva Linux worker čvora, funkcionalnim postojećim CNI-jem, <code>kubectl</code> pristupom koji može da kreira namespace, Deployment/Pod i Service objekte, kao i odobren pristup jednom čvoru za read-only <code>ip</code>, <code>journalctl</code> i po potrebi <code>tcpdump</code>. Image <code>registry.k8s.io/e2e-test-images/agnhost:2.53</code> mora biti dostupan; ako ciljna organizacija koristi interni registry, unapred mirror-ovati image i zameniti referencu. Proveriti zvaničnu aktuelnu verziju image-a pre produkcionog ponavljanja.
+    </p>
+    <p>
+      <strong>Rizik.</strong> Namespace-scoped testni objekti su nizak rizik. <code>tcpdump</code> zahteva root i može obuhvatiti osetljive podatke; koristi se samo sa uskim filterom. Nikakva promena fajlova u <code>/etc/cni/net.d</code>, ruta, MTU-a, firewall-a, CNI DaemonSet-a ili node konfiguracije nije deo vežbe.
+    </p>
+
+    <ol>
+      <li>
+        <strong>Početni inventar i change dokaz.</strong> Komande su read-only. Sačuvati aktivni kontekst, verzije, runtime, Node Pod CIDR i postojeće mrežne DaemonSet-ove.
+        <pre><code class="language-bash">kubectl config current-context
+kubectl version
+kubectl get nodes -o wide
+kubectl get nodes \
+  -o custom-columns='NODE:.metadata.name,RUNTIME:.status.nodeInfo.containerRuntimeVersion,POD_CIDR:.spec.podCIDR,POD_CIDRS:.spec.podCIDRs'
+kubectl get daemonsets -A -o wide
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 40</code></pre>
+        <strong>Validacija:</strong> svi planirani čvorovi su <code>Ready</code>, runtime i Kubernetes verzije su zabeleženi, a operator može da navede koji DaemonSet predstavlja aktivni mrežni agent. Ako identitet dodatka nije jasan, zaustaviti promene i proveriti cluster build dokumentaciju.
+      </li>
+      <li>
+        <strong>Kreiranje izolovanog prostora i serverskog workload-a.</strong> Sledeće operacije menjaju samo namespace <code>cni-lab</code>.
+        <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: cni-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: net-server
+  namespace: cni-lab
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: net-server
+  template:
+    metadata:
+      labels:
+        app: net-server
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: net-server
+      containers:
+        - name: server
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args: ["netexec", "--http-port=8080", "--udp-port=8081"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: net-server
+  namespace: cni-lab
+spec:
+  selector:
+    app: net-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http</code></pre>
+        Sačuvati kao <code>cni-lab-server.yaml</code>, pa primeniti i proveriti rollout:
+        <pre><code class="language-bash">kubectl apply -f cni-lab-server.yaml
+kubectl rollout status deployment/net-server -n cni-lab --timeout=180s
+kubectl get pods -n cni-lab -o wide
+kubectl get service,endpointslice -n cni-lab -o wide</code></pre>
+        <strong>Očekivani rezultat:</strong> dve replike rade na različitim hostname domenima. Ako klaster nema dva podobna čvora, druga ostaje Pending; ne ublažavati pravilo naslepo, već dokumentovati ograničenje topologije i za ovu laboratoriju koristiti jedan server ili obezbediti drugi čvor.
+      </li>
+      <li>
+        <strong>Klijent i direktan Pod-to-Pod test.</strong>
+        <pre><code class="language-bash">kubectl run net-client -n cni-lab \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --restart=Never --command -- sleep 3600
+kubectl wait -n cni-lab --for=condition=Ready pod/net-client --timeout=120s
+
+kubectl get pods -n cni-lab -o wide
+SERVER_IP=$(kubectl get pods -n cni-lab -l app=net-server \
+  -o jsonpath='{.items[0].status.podIP}')
+kubectl exec -n cni-lab net-client -- /agnhost connect "$SERVER_IP:8080" --protocol http
+kubectl exec -n cni-lab net-client -- /agnhost connect net-server:8080 --protocol http</code></pre>
+        <strong>Validacija:</strong> oba poziva vraćaju uspešan odgovor. Prvi dokazuje osnovnu Pod IP putanju; drugi dodaje DNS i Service sloj. Ako prvi radi, a drugi ne, osnovni CNI transport ne proglašava se uzrokom bez dodatnih dokaza.
+      </li>
+      <li>
+        <strong>Dokaz lokalne i među-nodalne putanje.</strong> Utvrditi čvor klijenta i izabrati po jedan server na istom i, ako postoji, drugom čvoru.
+        <pre><code class="language-bash">CLIENT_NODE=$(kubectl get pod net-client -n cni-lab -o jsonpath='{.spec.nodeName}')
+kubectl get pods -n cni-lab -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP'
+
+kubectl exec -n cni-lab net-client -- ip -br address
+kubectl exec -n cni-lab net-client -- ip route
+kubectl exec -n cni-lab net-client -- cat /etc/resolv.conf</code></pre>
+        Za svaki zabeleženi server IP ponoviti direktan HTTP test. <strong>Kriterijum:</strong> komunikacija radi bez obzira na Node. Ako samo udaljeni server ne radi, prikupiti rute i capture na oba čvora pre bilo kakvog restarta.
+      </li>
+      <li>
+        <strong>MTU i PMTUD provera.</strong> U image-u možda nisu dostupni <code>ping</code> ili <code>tracepath</code>; tada se koristi odobreni interni troubleshooting image sa tim alatima, bez instaliranja paketa u produkcioni Pod. Najpre pročitati MTU:
+        <pre><code class="language-bash">kubectl exec -n cni-lab net-client -- ip link show
+
+# Samo ako troubleshooting image sadrži iputils ping
+kubectl exec -n cni-lab net-client -- \
+  ping -4 -M do -c 3 -s 1400 "$SERVER_IP"</code></pre>
+        Postepeno povećavati payload samo do dokumentovane granice. <strong>Tumačenje:</strong> neuspeh velikog DF paketa uz uspešan mali paket podržava MTU/PMTUD hipotezu, ali je ne dokazuje sam. Potvrda zahteva ICMP capture, Pod/host MTU poređenje i tačnu enkapsulaciju.
+      </li>
+      <li>
+        <strong>Kontrolisani incident bez kvarenja mreže.</strong> Simulirati DNS grešku korišćenjem nepostojećeg imena, a zatim dokazati da direktna IP putanja i dalje radi.
+        <pre><code class="language-bash">kubectl exec -n cni-lab net-client -- \
+  /agnhost connect ne-postoji.cni-lab.svc.cluster.local:8080 --protocol http || true
+kubectl exec -n cni-lab net-client -- \
+  /agnhost connect "$SERVER_IP:8080" --protocol http
+kubectl get events -n cni-lab --sort-by=.metadata.creationTimestamp</code></pre>
+        <strong>Incident zapis:</strong> simptom je neuspešna rezolucija jednog imena; obim je klijent/ime; posledica je nemoguć pristup preko tog FQDN-a; neposredni uzrok je nepostojeći DNS zapis; osnovni uzrok je namerna laboratorijska greška. Nema razloga za restart CNI-ja. Trajna mera u realnom incidentu bila bi korekcija imena ili DNS/Service konfiguracije potvrđena ponovnim testom.
+      </li>
+      <li>
+        <strong>Node-side korelacija.</strong> Na čvoru klijenta, sa odobrenim read-only administratorskim pristupom, prikupiti:
+        <pre><code class="language-bash">ip -br address
+ip -details link show
+ip route show table all
+sudo journalctl -u kubelet --since '-15 min' --no-pager
+sudo journalctl -u containerd --since '-15 min' --no-pager</code></pre>
+        Ako runtime nije containerd, koristiti odgovarajuću systemd jedinicu. Plugin-specifične logove čitati preko <code>kubectl logs</code> iz tačno identifikovanog CNI Poda na pogođenom čvoru, uz <code>--since</code> i odgovarajući container naziv. Ne navoditi generički naziv koji možda ne postoji.
+      </li>
+      <li>
+        <strong>Rollback i cleanup.</strong> Brisanje namespace-a je destruktivno samo za laboratorijske objekte. Pre komande potvrditi njegov sadržaj.
+        <pre><code class="language-bash">kubectl get all -n cni-lab
+kubectl delete namespace cni-lab
+kubectl wait --for=delete namespace/cni-lab --timeout=180s
+kubectl get namespace cni-lab</code></pre>
+        Poslednja komanda treba da vrati <code>NotFound</code>. Nisu menjani CNI, Node rute, firewall, MTU, IPAM ni cluster-scoped objekti; dodatni rollback nije potreban.
+      </li>
+    </ol>
+
+    <h3>Kriterijumi prihvatanja praktikuma</h3>
+    <ul>
+      <li>Aktivni runtime, mrežni dodatak, njegove image verzije i način instalacije identifikovani su dokazima.</li>
+      <li>Node Pod CIDR inventar i stvarne Pod adrese su zabeleženi bez pretpostavke da dodatak nužno koristi <code>spec.podCIDR</code>.</li>
+      <li>Dve serverske replike rade na različitim čvorovima ili je dokumentovano zašto topologija to ne dopušta.</li>
+      <li>Direktna Pod IP komunikacija proverena je odvojeno od DNS i Service komunikacije.</li>
+      <li>Lokalna i među-nodalna putanja upoređene su istim protokolom.</li>
+      <li>MTU vrednosti su očitane, a DF test je protumačen bez proglašavanja jednog pinga konačnom dijagnozom.</li>
+      <li>Namerni DNS incident pravilno je klasifikovan i nije pogrešno pripisan CNI-ju.</li>
+      <li>Node i Pod dokazi pokrivaju isti vremenski prozor i isti tok.</li>
+      <li>Cleanup je uklonio samo namenski laboratorijski namespace i nije menjao cluster data plane.</li>
+    </ul>
+
+    <h3>Administratorske prakse</h3>
+    <p>
+      <strong>Mrežni dizajn kao deo cluster lifecycle-a.</strong> Pod i Service CIDR, Node mreže, dual-stack redosled, encapsulation, route distribucija, MTU i potrebni portovi odobravaju se pre instalacije. Vode se u IPAM-u i CMDB-u zajedno sa vlasnikom i granicama odgovornosti. Promena bilo kog od ovih elemenata prolazi staging i failure test, jer posledice mogu obuhvatiti sve workload-e.
+    </p>
+    <p>
+      <strong>Kompatibilnost i kontrolisan upgrade.</strong> Kubernetes, CNI, kernel, runtime i operativni sistem imaju proverenu matricu verzija. Upgrade se izvodi podržanim mehanizmom dodatka, sa unapred definisanim health signalima, node redosledom i rollback pragom. Mešovite verzije dozvoljene su samo u dokumentovanom upgrade prozoru.
+    </p>
+    <p>
+      <strong>Kapacitet IPAM-a.</strong> Prate se slobodne adrese, zauzeće po pool-u/subnetu, neuspešne alokacije, broj podova po čvoru i stopa kreiranja sandbox-a. Alarm se postavlja pre iscrpljenja, uz rezervu za rollout surge, autoscaling i incidentni failover. Ručno brisanje state-a nije standardna mera oporavka.
+    </p>
+    <p>
+      <strong>MTU i sintetička dostupnost.</strong> Dokumentuje se MTU underlay-a, tunela i Pod interfejsa. Sintetički testovi obuhvataju isti i drugi čvor, male i velike pakete, TCP i po potrebi UDP, IPv4 i IPv6. Promena fizičke mreže, VPN-a ili enkripcije automatski pokreće ponovnu MTU validaciju.
+    </p>
+    <p>
+      <strong>Observability bez gubitka granica.</strong> CNI agent/controller health, IPAM, drop counters, route/BGP stanje, policy verdict-i i sandbox latency korelišu se sa kubelet/runtime događajima i infrastrukturnim monitoringom. DNS, Service i aplikacioni SLO ostaju posebni signali kako naziv „mreža” ne bi sakrio konkretan sloj kvara.
+    </p>
+    <p>
+      <strong>Bezbednost privilegovanog data plane-a.</strong> CNI RBAC, service account, image digest/signatura, capabilities, hostPath mount-ovi, policy funkcije i pristup konfiguraciji periodično se revidiraju. Packet capture i support bundle imaju vremensko ograničenje, kontrolisan pristup, redakciju i rok čuvanja.
+    </p>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Objašnjena je razlika između Kubernetes mrežnog modela, CNI specifikacije i punog mrežnog rešenja.</li>
+      <li>Za svaki Pod može se povezati sandbox, network namespace, interfejs, IPAM alokacija, gateway i putanja do drugog čvora.</li>
+      <li>Pod, Service, Node i povezani infrastrukturni CIDR opsezi su poznati i ne preklapaju se.</li>
+      <li>Izbor overlay, native ili cloud-native rutiranja ima dokumentovane zahteve prema underlay mreži.</li>
+      <li>Efektivni MTU uračunava enkapsulaciju i enkripciju, a ICMP potreban za PMTUD nije blokiran bez opravdanja.</li>
+      <li>Dual-stack je potvrđen kroz CNI, Node, Pod, Service, policy i monitoring sloj, ne samo kroz API konfiguraciju.</li>
+      <li>NetworkPolicy enforcement je funkcionalno testiran ako se koristi; samo postojanje objekta nije prihvaćeno kao dokaz.</li>
+      <li>Postoje dashboard i alarmi za CNI agent/controller, IPAM kapacitet, sandbox greške, drop-ove i route/tunel stanje.</li>
+      <li>Troubleshooting polazi od obima i direktnog Pod IP testa, a zatim razdvaja CNI, DNS, Service i aplikacioni sloj.</li>
+      <li>Upgrade, migracija, MTU promena i recovery imaju staging dokaz, change zapis i proverljiv rollback.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      Kubernetes mrežni model je ugovor o povezivosti, a CNI je standardizovana granica preko koje runtime traži mrežnu pripremu sandbox-a. Stvarni dodatak bira kako će napraviti interfejs, dodeliti adresu, programirati lokalni data plane i preneti paket između čvorova. Overlay, native routing i cloud-native pristupi mogu ispuniti isti model, ali imaju različite zahteve prema underlay-u, MTU-u, rutama, kvotama i operativnim veštinama.
+    </p>
+    <p>
+      Nakon ove lekcije administrator treba da ume da prati put od PodSpec-a do network namespace-a, razlikuje IPAM od transporta, objasni povratnu rutu, izmeri MTU bez pogrešnog tumačenja payload-a, prepozna PMTUD black hole i odvoji direktnu Pod mrežu od Service i DNS ravni. Jednako važno, treba da zna šta CNI ne radi automatski: ne garantuje NetworkPolicy enforcement, DNS, Service proxy, enkripciju, ispravnu fizičku mrežu niti neograničen IP kapacitet.
+    </p>
+    <p>
+      Odgovoran rad počinje inventarom i dokazima. Verzije, CIDR opsezi, rute, tuneli, MTU, policy mogućnosti i granice vlasništva moraju biti poznati pre incidenta. Kada kvar nastane, najmanje invazivna matrica testova—isti/drugi čvor, IP/ime/Service, mali/veliki paket, IPv4/IPv6—pretvara neodređeni „mrežni problem” u proverljivu hipotezu i bezbednu korektivnu meru.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za mrežni model, Pod i Service networking, IPv4/IPv6 dual-stack, NetworkPolicy, container runtime i CNI troubleshooting; CNCF Container Network Interface specifikacija, referentni plugin-i i verzijska pravila; zvanične Linux reference za network namespace, rutiranje, MTU, PMTUD i packet capture; dokumentacija mrežnih dodataka za IPAM, overlay/native data plane, bezbednost, monitoring i upgrade kompatibilnost
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn"
+         href="vanilla-k8s-24-scheduling.html">
+        ← Prethodna lekcija
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s-26-clusterip-nodeport-loadbalancer.html">
+        Sledeća lekcija →
+      </a>
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+</body>
+</html>

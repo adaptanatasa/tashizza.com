@@ -1,0 +1,964 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-29-load-balancer-ingress-i-eksterni-pristup.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Load Balancer – izlaganje aplikacija i raspodela saobraćaja | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Load Balancer omogućava izlaganje Kubernetes aplikacija spoljnim korisnicima i ravnomernu raspodelu mrežnog saobraćaja u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, Load Balancer, Service LoadBalancer, NSX, AVI Load Balancer, VMware NSX Advanced Load Balancer, ingress, networking, DevOps, TKG, cloud native, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-29-load-balancer-ingress-i-eksterni-pristup.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Load Balancer – izlaganje aplikacija i raspodela saobraćaja">
+
+  <meta property="og:description"
+        content="Dvadeset sedma lekcija VMware & Tanzu tutorijala – kako Load Balancer omogućava dostupnost Kubernetes aplikacija korisnicima i raspodelu mrežnog saobraćaja.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-29-load-balancer-ingress-i-eksterni-pristup.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-29-load-balancer.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Load Balancer – izlaganje aplikacija i raspodela saobraćaja">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Implementacija Supervisor-a i VKS klastera
+
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-29-load-balancer.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-29-load-balancer.png"
+           alt="Load Balancer – izlaganje aplikacija i raspodela saobraćaja">
+
+    </a>
+  
+ <div class="page-subtitle">
+  VII. Tanzu mrežna arhitektura i izlaganje servisa
+</div>
+    <div class="page-subtitle">
+ 29. Load Balancer, Ingress i eksterni pristup – objavljivanje aplikacija izvan klastera
+</div>
+<h3>Arhitektonska odluka: LoadBalancer Service, Ingress ili Gateway API</h3>
+<p>Eksterni pristup nije jedan Kubernetes objekat, već projektovana ulazna putanja kroz više administrativnih domena. Pre pisanja manifesta potrebno je odlučiti da li aplikaciji treba zaseban Layer 4 VIP, zajedničko HTTP/HTTPS rutiranje ili savremeniji, ulogama razdvojen model Gateway API-ja. Pogrešan izbor ne mora odmah izazvati kvar, ali kasnije povećava potrošnju IP adresa, broj pravila, operativni rizik i složenost promene.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Mehanizam</th>
+      <th>Najprimerenija namena</th>
+      <th>Ključna zavisnost</th>
+      <th>Važno ograničenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Service</code> tipa <code>LoadBalancer</code></td>
+      <td>Zaseban TCP/UDP servis, poseban VIP, ne-HTTP protokol ili stroga izolacija</td>
+      <td>Load-balancer provider, VIP pool, routing i health monitor</td>
+      <td>Svaki servis može trošiti poseban VIP i infrastrukturne objekte</td>
+    </tr>
+    <tr>
+      <td><code>Ingress</code></td>
+      <td>Deljeni HTTP/HTTPS ulaz sa host, path i TLS pravilima</td>
+      <td>Instaliran Ingress Controller i odgovarajući <code>IngressClass</code></td>
+      <td>API je stabilan, ali funkcionalni skup zavisi od kontrolera i anotacija; Ingress API je zamrznut za nove mogućnosti</td>
+    </tr>
+    <tr>
+      <td>Gateway API</td>
+      <td>Delegiranje između infrastrukturnog i aplikacionog tima, više listener-a i izražajnije politike rutiranja</td>
+      <td>Gateway API CRD-ovi i podržana implementacija/kontroler</td>
+      <td>Nije automatski prisutan u svakom VKS izdanju; podrška i conformance moraju se proveriti po verziji</td>
+    </tr>
+  </tbody>
+</table>
+<p>U VCF 9.x dokumentaciji pojavljuje se naziv <strong>VMware vSphere Kubernetes Service (VKS)</strong>, dok se u starijim podržanim granama i dalje sreću <strong>vSphere with Tanzu</strong>, <strong>Tanzu Kubernetes Grid Service</strong> i <strong>TKG</strong>. Isto tako, proizvod koji se ranije nazivao NSX Advanced Load Balancer danas se dokumentuje kao <strong>VMware Avi Load Balancer</strong>. Naziv nije dovoljan dokaz kompatibilnosti: administrator mora proveriti tačan VCF/VKS release, Kubernetes verziju, izdanje Avi Controller-a i AKO-a, paket Contour-a i licencu pre primene anotacija ili naprednih funkcija.</p>
+
+<h3>Uloga Load Balancer-a u Tanzu okruženju</h3>
+<p>Load Balancer omogućava da aplikacija pokrenuta u Kubernetes klasteru dobije stabilnu pristupnu tačku izvan klastera i da se dolazni saobraćaj raspodeli na raspoložive instance aplikacije. U Kubernetes-u se ova funkcija najčešće zahteva objektom <code>Service</code> tipa <code>LoadBalancer</code>. Kubernetes definiše željeno stanje, ali stvarni virtuelni IP, pravila prosleđivanja, health check mehanizme i data-plane komponente obezbeđuje integrisani load-balancer provajder.</p>
+<p>U VMware i Tanzu arhitekturama provajder može biti VMware Avi Load Balancer, ranije nazivan NSX Advanced Load Balancer, NSX mrežne komponente ili drugo podržano rešenje povezano sa konkretnim modelom klastera. U novijim VMware Cloud Foundation izdanjima administrator će sresti naziv vSphere Kubernetes Service, dok starija okruženja i dokumentacija koriste nazive vSphere with Tanzu, Tanzu Kubernetes Grid Service ili Tanzu Kubernetes Grid. Kubernetes princip ostaje isti, ali način instalacije kontrolera, dodela IP opsega, licence i podržane anotacije zavise od platforme i verzije.</p>
+<p>Važno je razlikovati tri nivoa. Kubernetes <code>Service</code> bira podove preko labela i obezbeđuje stabilan servisni identitet. Integracioni kontroler posmatra Kubernetes API i prevodi zahtev u konfiguraciju infrastrukturnog Load Balancer-a. Data plane, na primer Avi Service Engine, prima pakete na virtuelnoj IP adresi i prosleđuje ih odgovarajućim backend odredištima. Zbog toga uspešno kreiran Kubernetes objekat još ne dokazuje da je aplikacija dostupna korisnicima.</p>
+<p>Load Balancer nije zamena za Ingress ili Gateway API. Servis tipa <code>LoadBalancer</code> najčešće pruža Layer 4 izlaganje pojedinačnog servisa po TCP ili UDP portu. Ingress omogućava Layer 7 HTTP/HTTPS pravila, kao što su rutiranje prema host imenu, URL putanji, TLS terminacija i deljenje jedne spoljne adrese između više aplikacija. Gateway API proširuje taj model eksplicitnim ulogama i resursima kao što su <code>GatewayClass</code>, <code>Gateway</code> i <code>HTTPRoute</code>. Direktan LoadBalancer Service opravdan je za aplikacije kojima je potreban poseban VIP, ne-HTTP protokol, jednostavno TCP izlaganje ili jasno izolovana mrežna granica.</p>
+<h3>Kako Kubernetes obrađuje Service tipa LoadBalancer</h3>
+<p>Kada administrator primeni manifest sa <code>spec.type: LoadBalancer</code>, Kubernetes kreira standardni Service i upisuje zahtev u API. Kontroler odgovarajućeg provajdera registruje promenu, rezerviše ili bira virtuelnu IP adresu iz dozvoljenog VIP opsega, kreira frontend listener, backend pool i health monitor, a zatim dodeljenu adresu upisuje u <code>status.loadBalancer.ingress</code>.</p>
+<p>U mnogim implementacijama Kubernetes istovremeno dodeljuje <code>ClusterIP</code> i jedan ili više <code>NodePort</code> portova. Spoljni Load Balancer tada šalje saobraćaj prema node adresama i dodeljenom NodePort-u, dok Kubernetes mrežni sloj usmerava zahtev do jednog od spremnih podova. Neki provajderi podržavaju direktno usmeravanje prema podovima ili drugačiji data path, pa administrator ne sme pretpostaviti arhitekturu bez provere dokumentacije i stvarne konfiguracije klastera.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Element</th>
+      <th>Uloga</th>
+      <th>Administratorska provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ClusterIP</code></td>
+      <td>Stabilna interna adresa Kubernetes servisa</td>
+      <td><code>kubectl get service</code></td>
+    </tr>
+    <tr>
+      <td><code>NodePort</code></td>
+      <td>Port na node-ovima koji se može koristiti kao backend odredište</td>
+      <td><code>kubectl get service -o yaml</code></td>
+    </tr>
+    <tr>
+      <td>VIP</td>
+      <td>Adresa kojoj pristupaju korisnici ili nadređeni mrežni sistemi</td>
+      <td><code>status.loadBalancer.ingress</code> i konzola provajdera</td>
+    </tr>
+    <tr>
+      <td>Backend pool</td>
+      <td>Skup node-ova, podova ili drugih odredišta koja primaju saobraćaj</td>
+      <td>Provajderska konzola, API i health status</td>
+    </tr>
+    <tr>
+      <td>EndpointSlice</td>
+      <td>Aktuelna odredišta izabrana Service selector-om</td>
+      <td><code>kubectl get endpointslice</code></td>
+    </tr>
+  </tbody>
+</table>
+<p>Polje <code>selector</code> je jedna od najvažnijih tačaka konfiguracije. Ako ne odgovara labelama podova, Service može imati VIP i otvoren port, ali bez backend endpointa. U tom slučaju problem nije u Load Balancer-u, već u vezi između servisa i workload-a. Administrator zato dijagnostiku započinje od podova i EndpointSlice objekata, a ne od spoljne IP adrese.</p>
+<h3>Raspodela saobraćaja i očuvanje izvorne IP adrese</h3>
+<p>Polje <code>externalTrafficPolicy</code> određuje kako se obrađuje saobraćaj koji stiže izvan klastera. Vrednost <code>Cluster</code> omogućava da bilo koji node koji primi zahtev prosledi saobraćaj do spremnog poda na bilo kom node-u. Time se obično postiže ravnomernija iskorišćenost backend-a, ali može nastati dodatni mrežni skok i izvorna IP adresa klijenta može biti zamenjena adresom posrednog sistema.</p>
+<p>Vrednost <code>Local</code> ograničava prosleđivanje na podove koji se nalaze na node-u koji je primio zahtev. Ovo može očuvati izvornu adresu klijenta i ukloniti dodatni međunodeovski skok. Međutim, raspodela opterećenja zavisi od toga na kojim node-ovima postoje spremni podovi. Node bez lokalnog endpointa ne sme primati korisnički saobraćaj.</p>
+<p>Kada je izabrano <code>externalTrafficPolicy: Local</code>, Kubernetes može dodeliti poseban <code>healthCheckNodePort</code>. Spoljni Load Balancer koristi taj port da utvrdi koji node-ovi imaju lokalne spremne endpoint-e. Blokiran health check, pogrešan firewall ili nedostupan node može zato izbaciti ispravan backend iz pool-a.</p>
+<p><code>Local</code> nije automatski bolji izbor. Za malu aplikaciju sa dve replike raspoređene na velikom broju node-ova samo dva node-a mogu biti aktivni backend-i. Pre održavanja node-a ili smanjenja broja replika može doći do neravnomerne raspodele i gubitka kapaciteta. Administrator treba da uskladi broj replika, pod anti-affinity ili topology spread pravila, ponašanje health monitora i očekivani korisnički saobraćaj.</p>
+<h3>Arhitektura VMware Avi Load Balancer integracije</h3>
+<p>Tipična Avi arhitektura sadrži Controller i jedan ili više Service Engine sistema. Controller upravlja konfiguracijom, analitikom i životnim ciklusom objekata, dok Service Engine predstavlja data plane kroz koji prolazi aplikacioni saobraćaj. Kubernetes integraciona komponenta prati Service i druge mrežne objekte i kreira odgovarajuće virtual service, pool i monitor objekte.</p>
+<p>Produkcioni dizajn mora unapred definisati upravljačku mrežu, data mrežu, VIP mrežu, rutiranje, DNS, firewall pravila, MTU, kapacitet Service Engine grupe i raspoloživi IP opseg. VIP opseg ne sme da se preklapa sa node, pod, servisnim ili DHCP opsezima. Mrežna infrastruktura mora znati kako da dostavi pakete do VIP mreže, a povratna putanja mora biti simetrična ili podržana izabranim dizajnom.</p>
+<p>Jedan od čestih modela je one-arm implementacija, u kojoj Service Engine koristi data interfejs za prijem i prosleđivanje saobraćaja kroz povezanu mrežu. Multi-arm model koristi odvojene mrežne segmente za frontend i backend tokove. Izbor utiče na rutiranje, bezbednosne zone, broj interfejsa i operativnu složenost. Administrator Kubernetes klastera ne treba samostalno da menja ovaj dizajn bez koordinacije sa mrežnim, virtuelizacionim i bezbednosnim timovima.</p>
+<p>U velikim okruženjima IP adrese, Service Engine resursi i virtual services predstavljaju ograničene infrastrukturne kapacitete. Nekontrolisano kreiranje zasebnog LoadBalancer servisa za svaku web komponentu troši VIP adrese i povećava broj objekata koje treba pratiti. Za veći broj HTTP aplikacija obično je ekonomičniji centralno upravljan Ingress ili Gateway sloj, dok se zasebni VIP-ovi rezervišu za servise koji zahtevaju izolaciju ili poseban protokol.</p>
+<h3>Preduslovi, prava i bezbednosne granice</h3>
+<p>Pre izlaganja aplikacije administrator proverava da li klaster ima funkcionalan load-balancer provider, da li je dodeljen odgovarajući VIP opseg i da li namespace ili korisnička uloga dozvoljava kreiranje Service objekta tipa <code>LoadBalancer</code>. Potrebno je potvrditi i da mrežna pravila dozvoljavaju health check i korisnički tok između klijenata, VIP-a, Service Engine sistema, node-ova i pod mreže.</p>
+<p>Minimalna Kubernetes prava za aplikacionog administratora obično obuhvataju čitanje podova, deployment-a, Service objekata, EndpointSlice objekata i događaja, kao i kreiranje i izmenu servisa u sopstvenom namespace-u. Pristup Avi Controller-u, promena VIP pool-a, Service Engine grupe ili globalnih mrežnih postavki pripada platformskom ili mrežnom administratoru.</p>
+<p>Javno dostupna adresa ne sme se kreirati samo zato što tehnički postoji slobodan VIP. Potrebno je utvrditi klasifikaciju aplikacije, dozvoljene izvore, TLS odgovornost, zaštitu od zloupotrebe, logging, vlasnika DNS zapisa i proces odobrenja. Kubernetes Service pruža mrežno izlaganje, ali sam po sebi ne obezbeđuje WAF, autentikaciju korisnika, zaštitu API-ja ili potpunu Layer 7 politiku.</p>
+<p>Polje <code>loadBalancerSourceRanges</code> može ograničiti dozvoljene izvorne opsege kada ga konkretni provajder podržava i pravilno primenjuje. Ono nije zamena za koordinisanu firewall politiku. Administrator mora proveriti stvarni rezultat na infrastrukturnom sloju, jer ignorisana anotacija ili nepodržano polje može ostaviti servis otvoren širem opsegu nego što je planirano.</p>
+<h3>Normalno stanje i simptomi problema</h3>
+<p>Normalno stanje podrazumeva da su podovi u stanju <code>Running</code> i <code>Ready</code>, da Deployment ima željeni broj dostupnih replika, da Service ima očekivani selector, da EndpointSlice sadrži spremne adrese, da je dodeljen spoljašnji VIP i da provajderski backend pool prikazuje zdrave članove. Funkcionalni test mora potvrditi i očekivani aplikacioni odgovor, a ne samo uspostavljanje TCP veze.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Najverovatniji sloj</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>EXTERNAL-IP</code> ostaje <code>&lt;pending&gt;</code></td>
+      <td>Provider, IP pool, kvota ili integracioni kontroler</td>
+      <td>Service događaji i logovi kontrolera</td>
+    </tr>
+    <tr>
+      <td>VIP postoji, ali nema konekcije</td>
+      <td>Routing, firewall, listener ili Service Engine</td>
+      <td>Putanja do VIP-a i status virtual service-a</td>
+    </tr>
+    <tr>
+      <td>VIP prihvata vezu, ali vraća grešku aplikacije</td>
+      <td>Pod, port ili aplikaciona konfiguracija</td>
+      <td>EndpointSlice, readiness i logovi aplikacije</td>
+    </tr>
+    <tr>
+      <td>Backend-i su označeni kao down</td>
+      <td>Health monitor, NodePort ili mrežna putanja</td>
+      <td>Monitor rezultat i firewall između data plane-a i backend-a</td>
+    </tr>
+    <tr>
+      <td>Radi samo deo zahteva</td>
+      <td>Jedan neispravan pod ili node</td>
+      <td>Pojedinačni endpoint-i i distribucija replika</td>
+    </tr>
+    <tr>
+      <td>Izvorna IP adresa nije vidljiva</td>
+      <td>SNAT ili <code>externalTrafficPolicy</code></td>
+      <td>Service specifikacija i provajderski profil</td>
+    </tr>
+  </tbody>
+</table>
+<p>Najčešća greška je preskakanje slojeva. Ako <code>curl</code> prema VIP-u ne uspe, nije dovoljno zaključiti da „Load Balancer ne radi”. Administrator mora utvrditi da li DNS vraća očekivanu adresu, da li postoji ruta, da li je port otvoren, da li virtual service sluša, da li backend health prolazi, da li Service ima endpoint-e i da li aplikacija odgovara na <code>targetPort</code>.</p>
+<h3>Integrisani praktikum: produkciono izlaganje web aplikacije</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Interni portal kompanije radi u workload klasteru <code>tkg-prod-01</code>. Aplikacija se nalazi u namespace-u <code>prod-web</code>, ima tri replike i sluša HTTP na portu 8080. Potrebno je obezbediti zaseban interni VIP dostupan samo iz korporativnih mreža <code>10.20.0.0/16</code> i <code>10.30.40.0/24</code>. DNS naziv biće <code>portal.corp.example</code>, ali DNS zapis kreira drugi tim nakon tehničke validacije VIP-a.</p>
+<p><strong>Cilj.</strong> Kreirati Service tipa <code>LoadBalancer</code>, potvrditi dodelu VIP-a, proveriti backend endpoint-e i raspodelu zahteva, izvršiti negativni test pogrešnog porta i dokumentovati povratak na prethodno stanje.</p>
+<p><strong>Referentno okruženje.</strong> Kubernetes klaster ima integrisan VMware Avi Load Balancer, VIP opseg je već dodeljen platformi, a aplikacioni administrator nema pravo da menja Controller, Service Engine grupu ili mrežne pool-ove.</p>
+<p><strong>Preduslovi i prava.</strong> Kubeconfig mora pokazivati na <code>tkg-prod-01</code>. Korisnik mora imati pravo čitanja Deployment, Pod, Service, EndpointSlice i Event objekata, kao i kreiranja i izmene Service objekata u namespace-u <code>prod-web</code>. Mrežni tim je prethodno odobrio port 80 i navedene izvorne opsege. Datoteke praktikuma čuvaju se u direktorijumu <code>~/tashizza-labs/lesson-29/loadbalancer</code>.</p>
+<ol>
+  <li>
+    <strong>Potvrda konteksta i prava.</strong>
+    Pre bilo kakve promene proverava se identitet klastera i efektivno ovlašćenje. Pogrešan kubeconfig može izložiti aplikaciju u pogrešnom okruženju.
+    <pre><code class="language-bash">mkdir -p ~/tashizza-labs/lesson-29/loadbalancer
+cd ~/tashizza-labs/lesson-29/loadbalancer
+
+kubectl config current-context
+kubectl cluster-info
+kubectl auth can-i get deployments -n prod-web
+kubectl auth can-i get endpointslices.discovery.k8s.io -n prod-web
+kubectl auth can-i create services -n prod-web
+kubectl auth can-i patch services -n prod-web</code></pre> <strong>Validacija:</strong> kontekst mora odgovarati klasteru <code>tkg-prod-01</code>, a svaka <code>auth can-i</code> provera mora vratiti <code>yes</code>. Ako pravo za promenu servisa nedostaje, postupak se prekida i traži se namenski RoleBinding; ne koristi se širi administratorski nalog samo radi zaobilaženja RBAC kontrole.
+
+  </li>
+  <li>
+    <strong>Snimanje početnog stanja.</strong>
+    Pre promene čuvaju se Deployment, podovi, postojeći servisi i događaji. Ovaj zapis je deo change evidencije i omogućava poređenje posle implementacije.
+    <pre><code class="language-bash">kubectl get deployment web-portal -n prod-web -o yaml &gt; before-web-portal-deployment.yaml
+kubectl get pods -n prod-web -l app=web-portal -o wide | tee before-pods.txt
+kubectl get services -n prod-web -o wide | tee before-services.txt
+kubectl get events -n prod-web --sort-by=.metadata.creationTimestamp | tee before-events.txt</code></pre>
+    <strong>Validacija:</strong> Deployment mora postojati, a podovi treba da budu <code>Running</code> i spremni. Proverava se i da naziv <code>web-portal-lb</code> nije već zauzet.
+    <pre><code class="language-bash">kubectl get deployment web-portal -n prod-web
+kubectl get pods -n prod-web -l app=web-portal
+kubectl get service web-portal-lb -n prod-web</code></pre>
+    Poslednja komanda treba da vrati <code>NotFound</code>. Drugačiji rezultat zahteva proveru postojećeg vlasnika i konfiguracije; postojeći objekat se ne prepisuje bez analize.
+  </li>
+  <li>
+    <strong>Provera labela i aplikacionog porta.</strong>
+    Service će birati podove sa labelom <code>app=web-portal</code>. Pre kreiranja proverava se da li labela stvarno postoji i da li kontejner deklariše port 8080.
+    <pre><code class="language-bash">kubectl get pods -n prod-web -l app=web-portal --show-labels
+kubectl get deployment web-portal -n prod-web \
+  -o jsonpath='{range .spec.template.spec.containers[*]}{.name}{" ports="}{.ports}{"\n"}{end}'</code></pre>
+    <strong>Validacija:</strong> očekuju se tri pod-a i container port 8080. Ako selector vraća nula podova, manifest servisa se ne primenjuje dok se ne utvrdi ispravna labela. Ako aplikacija sluša na drugom portu, menja se <code>targetPort</code>, a ne sama aplikacija bez odobrene promene.
+  </li>
+  <li>
+    <strong>Kreiranje manifesta.</strong>
+    Koristi se <code>externalTrafficPolicy: Cluster</code> jer je prioritet ravnomerna raspodela na sve tri replike, a očuvanje izvorne IP adrese nije zahtev aplikacije. Izvorni opsezi ograničeni su na odobrene korporativne mreže.
+    <pre><code class="language-bash">cat &gt; web-portal-lb.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-portal-lb
+  namespace: prod-web
+  labels:
+    app: web-portal
+    exposure: internal
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  loadBalancerSourceRanges:
+    - 10.20.0.0/16
+    - 10.30.40.0/24
+  selector:
+    app: web-portal
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+EOF
+
+kubectl apply --dry-run=server -f web-portal-lb.yaml</code></pre> <strong>Validacija:</strong> server-side dry run mora proći bez greške. On potvrđuje API šemu i admission pravila, ali ne potvrđuje da provajder ima slobodnu IP adresu niti da podržava sva navedena polja.
+
+  </li>
+  <li>
+    <strong>Primena i praćenje dodele VIP-a.</strong>
+    Nakon uspešnog dry run-a objekat se kreira. Dodela adrese može zahtevati određeno vreme zbog rada integracionog kontrolera i infrastrukturnog provajdera.
+    <pre><code class="language-bash">kubectl apply -f web-portal-lb.yaml
+kubectl get service web-portal-lb -n prod-web -o wide
+kubectl describe service web-portal-lb -n prod-web</code></pre>
+    <strong>Validacija:</strong> Service mora imati <code>TYPE LoadBalancer</code>, ClusterIP i posle obrade spoljašnju adresu. Adresa se čuva u promenljivoj tek kada postoji.
+    <pre><code class="language-bash">kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].ip}' \
+  service/web-portal-lb -n prod-web --timeout=180s
+
+VIP=$(kubectl get service web-portal-lb -n prod-web \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+test -n "$VIP" &amp;&amp; printf 'Dodeljeni VIP: %s\n' "$VIP"</code></pre>
+Ako provajder vraća hostname umesto IP adrese, koristi se <code>.status.loadBalancer.ingress[0].hostname</code>. Ako Service ostane u stanju <code>&lt;pending&gt;</code>, ne menja se nasumično manifest; analiziraju se događaji i logovi kontrolera.
+
+  </li>
+  <li>
+    <strong>Provera endpoint-a pre spoljnog testa.</strong>
+    Dodeljeni VIP nema vrednost ako Service nema zdrava odredišta.
+    <pre><code class="language-bash">kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-portal-lb -o wide
+
+kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-portal-lb \
+  -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}{" ready="}{.conditions.ready}{" node="}{.nodeName}{"\n"}{end}'</code></pre> <strong>Validacija:</strong> očekuju se tri endpoint adrese sa stanjem <code>ready=true</code>. Manji broj zahteva proveru readiness probe-a i odgovarajućih podova. <pre><code class="language-bash">kubectl get pods -n prod-web -l app=web-portal -o wide
+kubectl describe pods -n prod-web -l app=web-portal</code></pre>
+
+  </li>
+  <li>
+    <strong>Funkcionalni test iz dozvoljene mreže.</strong>
+    Test se izvršava sa administrativne stanice čija izvorna adresa pripada jednom od odobrenih opsega. Ne koristi se samo ICMP, jer VIP ne mora odgovarati na ping.
+    <pre><code class="language-bash">curl --connect-timeout 5 --max-time 10 \
+  -sS -D response-headers.txt \
+  "http://${VIP}/healthz" \
+  -o response-body.txt
+
+cat response-headers.txt
+cat response-body.txt</code></pre> <strong>Validacija:</strong> aplikacija treba da vrati HTTP 200 i očekivani health sadržaj, na primer <code>ok</code>. TCP konekcija bez validnog aplikacionog odgovora nije dovoljan kriterijum prihvatanja.
+
+  </li>
+  <li>
+    <strong>Provera raspodele zahteva.</strong>
+    Pretpostavka praktikuma je da aplikacija na putanji <code>/instance</code> vraća ime pod-a koji je obradio zahtev. Serija zahteva proverava da li je više replika uključeno u obradu.
+    <pre><code class="language-bash">for i in $(seq 1 12); do
+  curl --connect-timeout 3 --max-time 5 -sS "http://${VIP}/instance"
+  printf '\n'
+done | tee distribution-test.txt
+
+sort distribution-test.txt | uniq -c</code></pre> <strong>Validacija:</strong> u rezultatu treba da se pojavi više od jedne instance, idealno sve tri. Savršeno jednaka raspodela nije obavezna za mali uzorak, jer algoritam, postojeće konekcije i keep-alive utiču na rezultat. Ako svi zahtevi trajno završavaju na jednoj replici, proveravaju se session persistence, backend health i ponašanje klijentskih konekcija.
+
+  </li>
+  <li>
+    <strong>Negativni test konfiguracije porta.</strong>
+    Da bi se pokazala razlika između ispravnog VIP-a i pogrešnog backend porta, pravi se kopija manifesta sa nepostojećim <code>targetPort: 9090</code>. Test se izvodi u istom namespace-u pod drugim imenom i zatim odmah uklanja.
+    <pre><code class="language-bash">cat &gt; web-portal-lb-negative.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-portal-lb-negative
+  namespace: prod-web
+spec:
+  type: LoadBalancer
+  selector:
+    app: web-portal
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 9090
+EOF
+
+kubectl apply -f web-portal-lb-negative.yaml
+kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].ip}' \
+  service/web-portal-lb-negative -n prod-web --timeout=180s
+
+NEGATIVE_VIP=$(kubectl get service web-portal-lb-negative -n prod-web \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+curl --connect-timeout 5 --max-time 10 -v "http://${NEGATIVE_VIP}/healthz"</code></pre> <strong>Očekivani rezultat:</strong> Service i VIP mogu biti kreirani, ali aplikaciona provera ne treba da uspe jer podovi ne slušaju na portu 9090. Time se potvrđuje da dodela VIP-a nije dokaz ispravnog end-to-end toka. <p><strong>Upozorenje:</strong> negativni test privremeno troši dodatnu VIP adresu i provajderske resurse. U okruženju sa ograničenim pool-om izvodi se samo uz odobrenje platformskog tima.</p> <pre><code class="language-bash">kubectl delete service web-portal-lb-negative -n prod-web
+kubectl wait --for=delete service/web-portal-lb-negative \
+  -n prod-web --timeout=120s</code></pre> <strong>Validacija cleanup-a:</strong> objekat mora nestati iz Kubernetes API-ja, a platformski administrator po potrebi potvrđuje da su uklonjeni odgovarajući virtual service i rezervacija VIP-a.
+
+  </li>
+  <li>
+    <strong>Provera događaja i logova.</strong>
+    Kubernetes događaji prikazuju probleme sa dodelom adrese, nevažećim parametrima i radom kontrolera.
+    <pre><code class="language-bash">kubectl describe service web-portal-lb -n prod-web
+kubectl get events -n prod-web \
+  --field-selector involvedObject.kind=Service,involvedObject.name=web-portal-lb \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+    <p>Logovi aplikacije čitaju se komandom <code>kubectl logs</code> i služe za potvrdu da zahtevi stižu do podova. Logovi integracionog kontrolera nalaze se u namespace-u i komponenti koje je definisao platformski tim; njihov naziv nije univerzalan za sva Tanzu i Avi izdanja. Avi Controller i Service Engine logovi koriste se za proveru kreiranja virtual service-a, health monitora, grešaka pool članova, konekcija i odbijenih zahteva.</p>
+    <pre><code class="language-bash">kubectl logs -n prod-web -l app=web-portal \
+  --since=10m --prefix=true | tee application-access.log</code></pre>
+    <strong>Validacija:</strong> logovi treba da pokažu uspešne zahteve sa administratorske stanice. Ako VIP nije dodeljen, traže se poruke o IP pool-u, kvoti, cloud konfiguraciji ili komunikaciji kontrolera. Ako je VIP dodeljen, ali backend nije zdrav, proveravaju se monitor, port 8080, node putanja i readiness stanje.
+  </li>
+  <li>
+    <strong>Završna dokumentacija i DNS zahtev.</strong>
+    Čuva se finalni manifest i kompletno stanje servisa. DNS timu se prosleđuju samo odobreni naziv, VIP, vlasnik servisa, okruženje i planirani rok važenja.
+    <pre><code class="language-bash">kubectl get service web-portal-lb -n prod-web -o yaml \
+  &gt; after-web-portal-lb.yaml
+
+kubectl get endpointslice -n prod-web \
+  -l kubernetes.io/service-name=web-portal-lb -o yaml \
+  &gt; after-web-portal-endpointslices.yaml
+
+printf 'DNS name: portal.corp.example\nVIP: %s\nNamespace: prod-web\nService: web-portal-lb\n' 
+"$VIP" | tee dns-request.txt</code></pre> <strong>Kriterijumi prihvatanja:</strong> Service ima dodeljen VIP; postoje tri spremna endpoint-a; zahtev sa dozvoljene mreže vraća HTTP 200; u testu raspodele odgovara više replika; privremeni negativni Service je uklonjen; događaji ne sadrže aktivne provisioning greške; manifest, izlazi komandi i DNS zahtev sačuvani su uz evidenciju promene.
+
+  </li>
+</ol>
+<h3>Rollback i bezbedan povratak na prethodno stanje</h3>
+<p>Ako aplikacija ne sme ostati spolja izložena, najbrži Kubernetes rollback je brisanje Service objekta <code>web-portal-lb</code>. To uklanja spoljašnju pristupnu tačku, ali ne briše Deployment ni podove. Brisanje je ipak produkciona promena koja prekida pristup korisnicima i može pokrenuti oslobađanje VIP adrese.</p>
+<p><strong>Upozorenje:</strong> komandu izvršiti samo uz odobren rollback i prethodno uklonjen ili suspendovan DNS zapis. Ponovna kreacija servisa ne garantuje istu dinamički dodeljenu IP adresu.</p>
+<pre><code class="language-bash">kubectl delete service web-portal-lb -n prod-web
+kubectl wait --for=delete service/web-portal-lb \
+  -n prod-web --timeout=120s</code></pre>
+<p>Bezbednija alternativa, kada aplikacija mora ostati dostupna unutar klastera, jeste promena tipa servisa u <code>ClusterIP</code>. Ova promena takođe uklanja spoljni VIP i mora biti usklađena sa provajderom i change procedurom.</p>
+<pre><code class="language-bash">kubectl patch service web-portal-lb -n prod-web \
+  --type=merge \
+  -p '{"spec":{"type":"ClusterIP"}}'
+
+kubectl get service web-portal-lb -n prod-web -o wide</code></pre>
+
+<p>Nakon rollback-a platformski administrator proverava da li je provajderski virtual service uklonjen i da li je VIP vraćen u pool. DNS, CMDB, monitoring i firewall evidencije moraju biti ažurirani; u suprotnom ostaju zastarele konfiguracije koje otežavaju sledeću dijagnostiku.</p>
+<h3>Tipične greške i način razlikovanja</h3>
+<ul>
+  <li><strong>Pogrešan selector.</strong> VIP postoji, ali EndpointSlice nema adrese. Uporediti <code>spec.selector</code> sa labelama podova.</li>
+  <li><strong>Pogrešan <code>targetPort</code>.</strong> Endpoint-i postoje, ali konekcija do aplikacije ne uspeva ili health monitor označava backend kao down. Potvrditi port na kojem proces stvarno sluša.</li>
+  <li><strong>Iscrpljen VIP pool.</strong> <code>EXTERNAL-IP</code> ostaje <code>&lt;pending&gt;</code>, a događaji ili kontrolerski logovi ukazuju da nema dostupne adrese.</li>
+  <li><strong>Blokiran health check.</strong> Virtual service postoji, ali backend članovi su nezdravi. Proveriti firewall od Service Engine data mreže do NodePort-a ili drugog stvarnog backend odredišta.</li>
+  <li><strong>Asimetrično rutiranje.</strong> Zahtev stiže do backend-a, ali odgovor se vraća drugom putanjom. Simptom su timeout-i uprkos vidljivim ulaznim paketima.</li>
+  <li><strong>Pogrešna pretpostavka o <code>externalTrafficPolicy</code>.</strong> Prelazak na <code>Local</code> može ukloniti node-ove bez lokalnih podova iz pool-a i smanjiti efektivni kapacitet.</li>
+  <li><strong>Nepodržana anotacija.</strong> Manifest je prihvaćen, ali provider ignoriše željenu opciju. Rezultat se proverava u stvarnom virtual service objektu, a ne samo u YAML-u.</li>
+  <li><strong>DNS pokazuje na staru adresu.</strong> Direktan pristup novom VIP-u radi, ali hostname ne radi. Proveriti DNS odgovor, TTL i proceduru promene zapisa.</li>
+  <li><strong>Readiness probe nije usklađen sa aplikacijom.</strong> Pod je <code>Running</code>, ali nije <code>Ready</code>, pa se ne pojavljuje kao aktivan endpoint.</li>
+  <li><strong>Prevelik broj zasebnih VIP-ova.</strong> Okruženje troši IP adrese i Service Engine kapacitet za aplikacije koje su mogle koristiti zajednički Ingress ili Gateway.</li>
+</ul>
+<h3>Operativne prakse za LoadBalancer servise</h3>
+<ul>
+  <li><strong>Praćenje stanja LoadBalancer servisa.</strong> Komandama <code>kubectl get services -A</code> i ciljanim upitima proveravaju se servisi bez dodeljenog VIP-a. Provera se automatizuje najmanje na svakih nekoliko minuta i neposredno nakon deploy-a. Stanje <code>&lt;pending&gt;</code> duže od organizacionog provisioning praga zahteva pregled događaja, kontrolerskih logova i kapaciteta IP pool-a. Incident i uzrok dokumentuju se u ticket sistemu, a uspešnost se meri vremenom od kreiranja servisa do dodele funkcionalnog VIP-a.</li>
+  <li><strong>Praćenje zdravlja backend-a.</strong> U Avi Controller-u ili odgovarajućem monitoring sistemu prate se virtual service status, pool health, broj zdravih članova, greške health monitora i resetovane konekcije. Provera je kontinuirana, uz alarm kada nema zdravih backend-a ili kada njihov broj padne ispod minimalnog broja replika. Prva reakcija je poređenje provider pool članova sa Kubernetes EndpointSlice objektima.</li>
+  <li><strong>Kontrola IP kapaciteta.</strong> VIP pool se proverava nedeljno i pre većeg onboarding-a aplikacija. Prag za reakciju treba definisati prema vremenu potrebnom za proširenje mreže; praktičan operativni alarm postavlja se pre nego što slobodan kapacitet padne ispod planirane rezerve. Dokumentuju se zauzete adrese, vlasnici, servisi i zastareli objekti. Uspešnost se meri odsustvom provisioning incidenata izazvanih iscrpljenim pool-om.</li>
+  <li><strong>Validacija posle promene.</strong> Nakon promene Deployment-a, Service-a, node pool-a, CNI konfiguracije, firewall-a ili Load Balancer platforme ponavljaju se test VIP-a, EndpointSlice-a, health statusa i aplikacionog odgovora. Svako odstupanje od očekivanog broja endpoint-a ili povećanje grešaka zahteva zaustavljanje change-a i procenu rollback-a.</li>
+  <li><strong>Kontrola dozvoljenih izvora.</strong> <code>loadBalancerSourceRanges</code>, firewall pravila i stvarna provajderska konfiguracija porede se pri svakom izlaganju i kvartalnom access review-u. Neočekivani opseg kao <code>0.0.0.0/0</code> za interni servis zahteva trenutno ograničavanje pristupa i bezbednosnu procenu.</li>
+  <li><strong>Praćenje performansi.</strong> Posmatraju se konekcije u sekundi, throughput, latencija, odbijene konekcije, health monitor greške, CPU i memorija Service Engine sistema. Pragovi se zasnivaju na izmerenom normalnom opterećenju i projektovanom kapacitetu, a ne na proizvoljnoj vrednosti. Trend približavanja kapacitetu pokreće skaliranje ili redistribuciju pre korisničkog incidenta.</li>
+  <li><strong>Čuvanje konfiguracije i oporavak.</strong> Kubernetes manifesti čuvaju se u kontrolisanom Git repozitorijumu pri svakoj odobrenoj promeni. Konfiguracija i backup Avi Controller-a čuvaju se prema zvanično podržanoj proceduri platformskog tima, u odvojenom i zaštićenom skladištu. Integritet se proverava evidentiranim uspehom backup posla, proverom čitljivosti i periodičnim probnim restore-om u izolovanom okruženju. Backup je upotrebljiv tek kada restore vrati očekivane objekte i omogući validaciju kontrolnog sloja bez uticaja na produkciju.</li>
+  <li><strong>Vlasništvo i audit.</strong> Svaki VIP mora imati poslovnog vlasnika, tehničkog vlasnika, namespace, DNS naziv, klasifikaciju dostupnosti i datum poslednje provere. Podaci se vode u CMDB-u ili servisnom katalogu. Uspešnost prakse meri se time da se svaki aktivni VIP može povezati sa odobrenim servisom i vlasnikom, bez neidentifikovanih ili napuštenih objekata.</li>
+</ul>
+<h3>Kontrolna tačka: LoadBalancer servis</h3>
+<ul>
+  <li>☐ Komanda <code>kubectl config current-context</code> potvrđuje očekivani produkcioni klaster.</li>
+  <li>☐ RBAC provere potvrđuju samo prava potrebna za čitanje workload-a i upravljanje Service objektom u ciljnom namespace-u.</li>
+  <li>☐ Service selector vraća očekivane podove sa stanjem <code>Ready</code>.</li>
+  <li>☐ <code>port</code>, <code>targetPort</code> i protokol odgovaraju stvarnom aplikacionom listener-u.</li>
+  <li>☐ Service ima dodeljen VIP i nema aktivne provisioning greške u događajima.</li>
+  <li>☐ EndpointSlice sadrži očekivani broj endpoint-a sa <code>ready=true</code>.</li>
+  <li>☐ Provajderski virtual service i backend pool prikazuju zdravo stanje.</li>
+  <li>☐ HTTP ili protokolski test sa dozvoljene mreže vraća očekivani aplikacioni odgovor.</li>
+  <li>☐ Pristup iz nedozvoljenog izvornog opsega je odbijen kada je takav test odobren.</li>
+  <li>☐ Raspodela zahteva uključuje više spremnih replika i nema trajno neaktivnih backend-a.</li>
+  <li>☐ DNS zapis, VIP, vlasnik servisa, monitoring i rollback postupak evidentirani su u change dokumentaciji.</li>
+  <li>☐ Privremeni test objekti su uklonjeni, a oslobađanje njihovih VIP adresa potvrđeno.</li>
+</ul>
+<h3>Međuzaključak: dokazivanje Layer 4 putanje</h3>
+<p>Administrator nakon ove lekcije treba da razume da Kubernetes Service tipa <code>LoadBalancer</code> predstavlja deklarativni zahtev, a ne samostalni load-balancing uređaj. Funkcionalno rešenje nastaje tek kada Kubernetes selector-i, EndpointSlice objekti, node ili pod mreža, integracioni kontroler, VIP pool, data plane, rutiranje, firewall i aplikacioni port rade kao povezan sistem.</p>
+<p>Administrator mora umeti da kreira kontrolisan LoadBalancer Service, izabere odgovarajući <code>externalTrafficPolicy</code>, ograniči izvorne mreže, proveri dodelu VIP-a i potvrdi end-to-end aplikacioni odgovor. Mora razlikovati problem aplikacije od problema servisa, backend health-a, IP kapaciteta, rutiranja ili provajderske integracije i mora sačuvati dokaze pre i posle promene.</p>
+<p>Produkcioni rizici uključuju nenamerno javno izlaganje, pogrešan target port, gubitak izvorne IP adrese, iscrpljivanje VIP pool-a, neusklađen health check, asimetrično rutiranje i uklanjanje adrese koju još koristi DNS. Load Balancer takođe nije univerzalno rešenje za veliki broj HTTP aplikacija; u takvom slučaju Ingress ili Gateway arhitektura može biti operativno i kapacitivno prikladnija.</p>
+<p>Granica odgovornosti aplikacionog administratora završava se tamo gde počinju globalni VIP pool, Service Engine grupa, fizičko ili virtuelno rutiranje, firewall zone i Controller platforma. Takve promene zahtevaju saradnju sa platformskim, mrežnim i bezbednosnim timovima. Razlog za eskalaciju postoji kada nema dostupnih IP adresa, integracioni kontroler ne obrađuje objekte, backend putanja nije mrežno dostupna, Service Engine nema kapacitet ili zahtevi aplikacije prevazilaze odobreni model izlaganja.</p>
+
+<p>Kubernetes Service obezbeđuje stabilnu mrežnu tačku unutar klastera, ali sam po sebi ne rešava način na koji korisnik sa korporativne mreže, interneta ili druge spoljne zone dolazi do web-aplikacije. Za HTTP i HTTPS saobraćaj taj zadatak se tradicionalno rešava resursom <strong>Ingress</strong> i odgovarajućim <strong>Ingress Controller-om</strong>. Ingress opisuje pravila rutiranja, dok kontroler ta pravila pretvara u stvarnu konfiguraciju proxy-ja, load balancer-a ili spoljnog mrežnog sistema.</p>
+<p>Ova razlika je operativno presudna. Kreiranje Ingress objekta ne otvara automatski aplikaciju prema spoljnjem svetu. Ako u klasteru nema kompatibilnog kontrolera, odgovarajuće IngressClass definicije, dostupne ulazne IP adrese, DNS zapisa i pravilno konfigurisanog Service objekta, YAML može biti prihvaćen bez greške, a aplikacija ipak ostati nedostupna.</p>
+
+<h3>Uloga Ingress-a u Kubernetes mrežnom modelu</h3>
+<p>Ingress je Kubernetes API resurs namenjen prvenstveno rutiranju dolaznog HTTP i HTTPS saobraćaja prema Service objektima. On ne prosleđuje zahteve direktno Pod-ovima i ne zamenjuje Service. Tipičan tok zahteva izgleda ovako: klijent pronalazi DNS ime, DNS ga usmerava na adresu ulazne platforme, load balancer ili Envoy prihvata vezu, Ingress Controller primenjuje pravila iz Ingress resursa, a zatim zahtev prosleđuje odgovarajućem Service-u i njegovim endpoint-ima.</p>
+<pre><code class="language-none">Korisnik
+   |
+   v
+DNS ime: portal.prod.example.com
+   |
+   v
+Spoljna ili interna VIP adresa
+   |
+   v
+Ingress Controller / Envoy data plane
+   |
+   v
+Ingress pravilo za host i putanju
+   |
+   v
+Service: portal-web
+   |
+   v
+EndpointSlice
+   |
+   v
+Pod replike aplikacije</code></pre>
+<p>Ingress donosi najveću vrednost kada više HTTP aplikacija treba objaviti kroz mali broj ulaznih IP adresa. Umesto posebnog Service-a tipa LoadBalancer za svaku aplikaciju, jedan kontroler može na osnovu DNS imena i URL putanje razdvajati saobraćaj prema različitim servisima. Na primer, <code>portal.prod.example.com</code> može voditi na korisnički portal, dok <code>api.prod.example.com</code> vodi na API, iako obe aplikacije ulaze kroz istu virtualnu IP adresu.</p>
+<p>Ingress nije opšti mehanizam za svaki mrežni protokol. Standardni Ingress API modeluje HTTP i HTTPS. Prosleđivanje sirovog TCP ili UDP saobraćaja, napredne L4 politike, složeni modeli delegiranja i pojedine funkcije autentikacije zavise od kontrolera, njegovih dodatnih resursa ili druge tehnologije. Administrator zato ne sme pretpostaviti da anotacija ili mogućnost koja postoji u jednom kontroleru postoji i u drugom.</p>
+
+<h3>Ingress resurs i Ingress Controller nisu isto</h3>
+<p><strong>Ingress resurs</strong> je deklaracija željenog stanja. U njemu se navode host, putanja, Service i port odredišta, kao i opcioni TLS sertifikat. <strong>Ingress Controller</strong> je izvršna komponenta koja posmatra Kubernetes API, prepoznaje Ingress objekte za svoju klasu, validira ih i konfiguriše odgovarajući data plane.</p>
+<p>Kontroler se ne pokreće kao deo standardnog <code>kube-controller-manager</code> procesa i ne postoji automatski u svakom klasteru. Platformski tim mora da ga instalira, ažurira, zaštiti, nadgleda i poveže sa mrežnom infrastrukturom. U Tanzu Kubernetes Grid okruženjima čest izbor je podržani Contour paket. Contour predstavlja control plane koji obrađuje Kubernetes konfiguraciju, dok Envoy prihvata i prosleđuje korisnički saobraćaj. Drugi proizvodi mogu koristiti drugačiju arhitekturu, anotacije, dodatne CRD objekte i modele objavljivanja adrese.</p>
+<p>Kada se Ingress kreira bez funkcionalnog kontrolera, API server obično prihvata objekat zato što je njegov format validan. Međutim, u statusu neće biti korisne ulazne adrese, neće postojati data plane koji sluša zahtev, niti će DNS imati ispravno odredište. To je normalno ponašanje deklarativnog API-ja, a ne dokaz da je mreža ispravna.</p>
+
+<h3>IngressClass i izbor kontrolera</h3>
+<p><code>IngressClass</code> povezuje Ingress resurs sa konkretnom implementacijom. U savremenoj konfiguraciji koristi se polje <code>spec.ingressClassName</code>. Starije anotacije za izbor klase mogu još postojati zbog kompatibilnosti, ali ih ne treba birati kao osnovu nove standardizovane implementacije kada kontroler podržava aktuelno polje.</p>
+<p>Klaster može imati više kontrolera, na primer jedan interni i jedan javni. Interni kontroler može objavljivati aplikacije samo na korporativnoj mreži, dok javni koristi zasebnu mrežnu zonu, WAF i strože bezbednosne politike. Tada pogrešan <code>ingressClassName</code> može aplikaciju učiniti nedostupnom ili je, što je ozbiljnije, izložiti u pogrešnoj zoni.</p>
+<pre><code class="language-bash">kubectl get ingressclass
+kubectl describe ingressclass contour</code></pre>
+<p>Administrator proverava naziv klase, vrednost <code>spec.controller</code>, anotaciju koja eventualno označava podrazumevanu klasu i vlasništvo nad kontrolerom. Ako je samo jedna klasa označena kao podrazumevana, Ingress bez eksplicitnog naziva može joj biti dodeljen. U enterprise okruženju je ipak bezbednije eksplicitno navesti klasu jer konfiguracija ostaje razumljiva i nakon instalacije dodatnog kontrolera.</p>
+
+<h3>Rutiranje prema hostu i URL putanji</h3>
+<p>Ingress može birati backend prema DNS imenu iz HTTP <code>Host</code> zaglavlja i prema putanji zahteva. Host-based routing odvaja aplikacije domenima, dok path-based routing deli jedan domen na više servisa. Na primer, putanja <code>/</code> može voditi ka web portalu, a <code>/api</code> ka API servisu.</p>
+<p>Svaka putanja mora imati <code>pathType</code>. Vrednost <code>Exact</code> zahteva tačno podudaranje putanje. Vrednost <code>Prefix</code> poredi putanju po segmentima razdvojenim znakom <code>/</code>. Vrednost <code>ImplementationSpecific</code> prepušta tumačenje kontroleru i zato smanjuje prenosivost konfiguracije. Za standardne rute administrator najčešće bira <code>Prefix</code> ili <code>Exact</code>.</p>
+<p>Redosled i prioritet preklapajućih pravila moraju se proveriti u dokumentaciji konkretnog kontrolera. Posebnu pažnju zahtevaju kombinacije kao što su <code>/</code>, <code>/api</code> i <code>/api/admin</code>, kao i pravila raspoređena u više Ingress objekata. Konflikt može dovesti do odbijanja konfiguracije, spajanja pravila ili izbora jednog objekta prema pravilima implementacije.</p>
+<p>Backend se navodi imenom Service-a i njegovim portom. Service mora biti u istom namespace-u kao standardni Ingress resurs. Ingress ne treba usmeravati direktno na Pod IP adrese jer bi time bila izgubljena stabilnost i selekcija endpoint-a koju obezbeđuje Service.</p>
+
+<h3>TLS terminacija i zaštita identiteta aplikacije</h3>
+<p>Ingress često završava TLS vezu na ulaznom proxy-ju. Klijent tada uspostavlja HTTPS sesiju sa Ingress data plane-om, koji koristi sertifikat i privatni ključ iz Kubernetes Secret objekta tipa <code>kubernetes.io/tls</code>. Posle terminacije kontroler može slati HTTP ili, kada implementacija i politika to podržavaju, ponovo šifrovan saobraćaj prema backend-u.</p>
+<p>TLS Secret mora sadržati ključeve <code>tls.crt</code> i <code>tls.key</code> i u standardnom Ingress modelu nalazi se u istom namespace-u kao Ingress. Sertifikat mora odgovarati DNS imenu koje korisnik otvara, imati važeći lanac poverenja i ne sme biti istekao. Prisustvo Secret objekta nije dokaz da su sertifikat i privatni ključ ispravan par.</p>
+<p>Privatni ključ ne treba zapisivati u Git repozitorijum, tiket, komandnu istoriju niti dokumentaciju promene. U produkciji sertifikate treba izdavati i obnavljati kroz odobreni PKI proces, sertifikacioni sistem ili kontroler kao što je cert-manager, kada je on deo podržane arhitekture. RBAC pristup Secret objektima mora biti stroži od prava za čitanje obične aplikacione konfiguracije.</p>
+<p>Administrator mora razlikovati nekoliko problema: DNS greška nastaje pre uspostavljanja veze; istekao ili nepouzdan sertifikat javlja TLS upozorenje; nepodudaranje imena javlja grešku identiteta; pogrešan backend obično vraća HTTP status kontrolera, kao što su 404, 502 ili 503. Ove greške ne treba rešavati istom intervencijom.</p>
+
+<h3>Spoljna adresa, DNS i mrežne zavisnosti</h3>
+<p>Ingress Controller mora imati način da primi saobraćaj iz odgovarajuće mrežne zone. Njegov data plane se često objavljuje Service objektom tipa <code>LoadBalancer</code>. Integracija klastera sa NSX Advanced Load Balancer-om, drugim cloud provider-om, MetalLB-om ili spoljnim load balancer sistemom zatim dodeljuje adresu. U drugim arhitekturama koriste se NodePort, host networking ili unapred konfigurisani spoljašnji uređaji.</p>
+<p>Status <code>EXTERNAL-IP: &lt;pending&gt;</code> nije Ingress greška sam po sebi. On najčešće pokazuje da Service tipa LoadBalancer nije dobio adresu od infrastrukturnog provajdera. Administrator tada proverava load balancer integraciju, opseg slobodnih adresa, mrežne rute, prava kontrolera i događaje na Service objektu.</p>
+<p>Nakon dobijanja adrese potrebno je kreirati odgovarajući DNS A ili CNAME zapis. DNS TTL utiče na trajanje migracije i rollback-a. Promena zapisa neposredno pre produkcione promene može ostaviti deo korisnika na staroj adresi dok keš ne istekne. Zbog toga se TTL smanjuje planski, dovoljno rano pre migracije, a nakon stabilizacije vraća na standardnu vrednost.</p>
+<p>Firewall mora dozvoliti samo potrebne izvore, odredišne adrese i portove, najčešće TCP 443, a TCP 80 samo kada se koristi redirekcija ili kontrolisani HTTP pristup. Mrežna dostupnost ulazne adrese ne znači da su backend Pod-ovi zdravi. Potrebno je proveriti svaki sloj zasebno.</p>
+
+<h3>Statusi, događaji i normalno operativno stanje</h3>
+<p>Osnovna provera počinje pregledom objekta, njegove klase, pravila, adrese i događaja:</p>
+<pre><code class="language-bash">kubectl get ingress -n prod-web
+kubectl describe ingress portal-web -n prod-web
+kubectl get events -n prod-web --sort-by=.metadata.creationTimestamp</code></pre>
+<p>Normalno stanje uključuje postojeći IngressClass, prihvaćeno pravilo, poznatu ulaznu adresu ili hostname, Service sa odgovarajućim portom i EndpointSlice sa spremnim adresama Pod-ova. HTTP zahtev sa pravilnim hostom treba da stigne do očekivanog backenda, a zahtev sa nepoznatim hostom treba da bude odbijen ili obrađen podrazumevanom politikom kontrolera.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatni sloj problema</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DNS ime se ne razrešava</td>
+      <td>DNS zapis ili delegacija zone</td>
+      <td><code>dig portal.prod.example.com</code></td>
+    </tr>
+    <tr>
+      <td>TCP veza ističe</td>
+      <td>Ruta, firewall, VIP ili load balancer</td>
+      <td><code>curl -vk --connect-timeout 5</code></td>
+    </tr>
+    <tr>
+      <td>TLS upozorenje</td>
+      <td>Sertifikat, lanac, datum ili SAN</td>
+      <td><code>openssl s_client</code></td>
+    </tr>
+    <tr>
+      <td>HTTP 404 kontrolera</td>
+      <td>Host, putanja, klasa ili pravilo</td>
+      <td><code>kubectl describe ingress</code></td>
+    </tr>
+    <tr>
+      <td>HTTP 502 ili 503</td>
+      <td>Service port, endpoint-i ili backend zdravlje</td>
+      <td><code>kubectl get endpointslice</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Bezbednosne i arhitektonske granice</h3>
+<p>Ingress nije zamena za WAF, DDoS zaštitu, API gateway, identity-aware proxy, service mesh niti kompletnu zero-trust arhitekturu. Kontroler može podržavati neke od tih funkcija, ali njihovo postojanje ne treba pretpostaviti samo zato što je saobraćaj objavljen preko HTTPS-a.</p>
+<p>Javno izlaganje aplikacije menja njen rizik. Pre promene moraju biti poznati vlasnik aplikacije, klasifikacija podataka, dozvoljeni korisnici, zahtev za autentikacijom, izvorne mreže, sertifikaciona politika, logovanje i plan incidentnog odgovora. Administrator klastera ne treba samostalno da odobrava poslovnu odluku o javnoj dostupnosti ako to nije deo njegovih ovlašćenja.</p>
+<p>Anotacije kontrolera zahtevaju poseban nadzor jer mogu uključiti prepisivanje putanja, prilagođena zaglavlja, eksternu autentikaciju, timeout vrednosti ili umetanje delova konfiguracije. Neke implementacije ograničavaju rizične anotacije, a neke ih tretiraju kao privilegovanu mogućnost. U produkciji treba dozvoliti samo odobreni skup kroz admission politike i pregled koda.</p>
+<p>NetworkPolicy i Ingress nisu ista vrsta kontrole. Ingress određuje L7 usmeravanje na ulazu, dok NetworkPolicy, kada je CNI podržava, ograničava mrežnu komunikaciju između izvora i Pod-ova. HTTPS na ulazu ne sprečava neautorizovanu komunikaciju unutar klastera.</p>
+
+<h3>Ingress i Gateway API</h3>
+<p>Kubernetes Ingress API je stabilan i široko korišćen, ali je njegov funkcionalni model zamrznut; nove sposobnosti se razvijaju kroz Gateway API. Gateway API odvaja infrastrukturnu ulaznu tačku od aplikacionih ruta kroz resurse kao što su <code>GatewayClass</code>, <code>Gateway</code> i <code>HTTPRoute</code>. Time omogućava jasnije razdvajanje odgovornosti između infrastrukturnog, platformskog i aplikacionog tima.</p>
+<p>To ne znači da postojeće Ingress implementacije treba neplanski ukloniti. Ingress ostaje opravdan za jednostavne i podržane HTTP/HTTPS slučajeve, naročito kada organizacija već ima standardizovan kontroler, monitoring i automatizaciju. Za nove platforme sa više timova, složenim rutama, delegiranjem i zahtevom za prenosivošću treba proceniti Gateway API i stvarni nivo njegove podrške u izabranoj implementaciji.</p>
+<p>Migracija se ne radi samo konverzijom YAML-a. Potrebno je proveriti funkcionalnu ekvivalenciju, podržane filtere, TLS model, način dodele adrese, RBAC, politike, observability i rollback. Administrator mora razlikovati standardne funkcije od eksperimentalnih ili vendorskih proširenja.</p>
+
+<hr>
+
+<h3>Integrisani praktikum: objavljivanje produkcionog portala preko Contour Ingress-a</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Tim za interne poslovne aplikacije završio je portal koji radi u Tanzu Kubernetes Grid workload klasteru. Aplikacija treba da bude dostupna korisnicima korporativne mreže preko adrese <code>https://portal.prod.example.com</code>. Platformski tim koristi Contour i Envoy kao odobreni ingress sloj. DNS i PKI administratori će nakon tehničke validacije zameniti laboratorijski sertifikat produkcionim i kreirati zvanični DNS zapis.</p>
+<p><strong>Cilj.</strong> Implementirati aplikaciju sa dve replike, ClusterIP Service, TLS Secret i Ingress pravilom klase <code>contour</code>; proveriti svaki sloj, izvesti pozitivan i negativan test, prikupiti relevantne logove i pripremiti bezbedan rollback.</p>
+<p><strong>Referentno okruženje.</strong> Koristi se namenski laboratorijski namespace <code>lesson29-ingress</code>, Deployment i Service <code>portal-web</code>, Ingress <code>portal-web</code>, host <code>portal.prod.example.com</code>, TLS Secret <code>portal-prod-tls</code> i radni direktorijum <code>$HOME/tashizza-labs/lesson-29/ingress</code>. Contour je instaliran u namespace-u <code>tanzu-system-ingress</code>. U nekim izdanjima ili drugačijim instalacijama namespace i nazivi resursa mogu biti različiti, pa se pre rada moraju utvrditi stvarne vrednosti.</p>
+<p><strong>Preduslovi i prava.</strong> Administrator mora imati pravo da čita IngressClass i stanje kontrolera, kao i da kreira Namespace, Deployment, Service, Secret i Ingress u ciljnom namespace-u. Za produkciju treba koristiti namespace-scoped RBAC gde god je moguće. Pravo čitanja Secret podataka ne treba dodeljivati samo radi pregleda statusa Ingress-a. Potrebni su <code>kubectl</code>, <code>curl</code>, <code>openssl</code> i pristup API serveru klastera.</p>
+
+<ol>
+  <li>
+    <strong>Potvrditi klaster, kontekst i prisustvo Ingress Controller-a.</strong>
+    Pre bilo kakve promene proverava se da li je izabran pravi workload klaster i koja IngressClass je dostupna. Komande za Contour koriste stvarne namespace vrednosti utvrđene u okruženju.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get ingressclass
+kubectl get namespaces
+kubectl get pods -n tanzu-system-ingress
+kubectl get services -n tanzu-system-ingress</code></pre>
+    <strong>Validacija:</strong> kontekst mora odgovarati odobrenom workload klasteru; mora postojati IngressClass <code>contour</code>; Contour i Envoy Pod-ovi treba da budu u stanju <code>Running</code> i spremni. Envoy Service mora imati način objavljivanja saobraćaja. Ako namespace ne postoji, ne treba instalirati novu kopiju naslepo, već proveriti dokumentaciju platforme i paket instaliran u konkretnom klasteru.
+  </li>
+  <li>
+    <strong>Napraviti radni direktorijum i sačuvati početno stanje.</strong>
+    Snimak stanja omogućava audit i poređenje pre i posle promene. Ne čuvaju se dekodirane tajne.
+    <pre><code class="language-bash">mkdir -p "$HOME/tashizza-labs/lesson-29/ingress"
+cd "$HOME/tashizza-labs/lesson-29/ingress"
+kubectl get ingressclass -o yaml &gt; ingressclass-before.yaml
+kubectl get pods,services -n tanzu-system-ingress -o wide &gt; controller-before.txt
+kubectl auth can-i create namespaces
+kubectl auth can-i create deployments -n lesson29-ingress
+kubectl auth can-i create services -n lesson29-ingress
+kubectl auth can-i create secrets -n lesson29-ingress
+kubectl auth can-i create ingresses.networking.k8s.io -n lesson29-ingress</code></pre>
+    <strong>Validacija:</strong> prva provera treba da vrati <code>yes</code> ako korisnik kreira namespace. Namespace-scoped provere mogu vratiti <code>no</code> dok namespace još ne postoji ili zbog ograničenog RBAC-a. U produkciji nedostajuća prava rešavaju se odobrenim zahtevom za pristup, a ne korišćenjem tuđeg administratorskog naloga.
+  </li>
+  <li>
+    <strong>Kreirati namespace i aplikacioni manifest.</strong>
+    Primer koristi zvaničnu Kubernetes test sliku <code>agnhost</code> samo za demonstraciju HTTP backenda. U stvarnom sistemu koristi se odobrena, skenirana i verzionisana slika iz internog registra.
+    <pre><code class="language-bash">cat &gt; namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lesson29-ingress
+  labels:
+    app.kubernetes.io/part-of: internal-portal
+    environment: production
+EOF
+
+cat &gt; application.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal-web
+  namespace: lesson29-ingress
+  labels:
+    app.kubernetes.io/name: portal-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portal-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portal-web
+    spec:
+      containers:
+        - name: portal-web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal-web
+  namespace: lesson29-ingress
+  labels:
+    app.kubernetes.io/name: portal-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: portal-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+EOF
+
+kubectl apply -f namespace.yaml
+kubectl apply -f application.yaml
+kubectl rollout status deployment/portal-web -n lesson29-ingress --timeout=120s</code></pre> <strong>Validacija:</strong> Deployment mora imati dve dostupne replike, Service ClusterIP adresu, a EndpointSlice dve spremne endpoint adrese. <pre><code class="language-bash">kubectl get deployment,pods,service -n lesson29-ingress -o wide
+kubectl get endpointslice -n lesson29-ingress -l kubernetes.io/service-name=portal-web
+kubectl describe service portal-web -n lesson29-ingress</code></pre>
+
+  </li>
+  <li>
+    <strong>Proveriti Service pre uvođenja Ingress-a.</strong>
+    Ovim se izdvaja aplikacioni sloj od ingress sloja. Ako Service nije funkcionalan unutar klastera, Ingress neće ispraviti problem.
+    <pre><code class="language-bash">kubectl run service-test \
+  --namespace lesson29-ingress \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never \
+  --rm -i \
+  --command -- curl -fsS http://portal-web/hostname</code></pre>
+    <strong>Validacija:</strong> zahtev treba da vrati identitet jednog backend Pod-a i da se test Pod automatski ukloni. Ako test ne uspe, proveravaju se readiness, Service selektor, <code>targetPort</code>, EndpointSlice i eventualna NetworkPolicy pre nastavka.
+  </li>
+  <li>
+    <strong>Kreirati laboratorijski TLS sertifikat bez izlaganja privatnog ključa.</strong>
+    Sledeći samopotpisani sertifikat služi samo za tehnički praktikum. Produkcioni korisnici mu neće verovati. U realnom sistemu koristi se sertifikat koji izdaje odobreni interni ili javni CA.
+    <pre><code class="language-bash">openssl req -x509 -nodes -newkey rsa:3072 \
+  -keyout portal.prod.example.com.key \
+  -out portal.prod.example.com.crt \
+  -days 30 \
+  -subj "/CN=portal.prod.example.com" \
+  -addext "subjectAltName=DNS:portal.prod.example.com"
+
+chmod 600 portal.prod.example.com.key
+
+kubectl create secret tls portal-prod-tls \
+  --namespace lesson29-ingress \
+  --cert=portal.prod.example.com.crt \
+  --key=portal.prod.example.com.key</code></pre> <strong>Validacija:</strong> Secret mora biti tipa <code>kubernetes.io/tls</code>. Sertifikat se proverava lokalno bez prikazivanja privatnog ključa. <pre><code class="language-bash">kubectl get secret portal-prod-tls -n lesson29-ingress
+openssl x509 -in portal.prod.example.com.crt 
+-noout -subject -issuer -dates -ext subjectAltName</code></pre>
+Očekuje se SAN vrednost <code>DNS:portal.prod.example.com</code> i datum isteka 30 dana od kreiranja. Privatni ključ ostaje sa dozvolama <code>600</code> i ne unosi se u repozitorijum.
+
+  </li>
+  <li>
+    <strong>Kreirati Ingress pravilo.</strong>
+    Pravilo eksplicitno bira Contour klasu, koristi host-based routing i šalje sve putanje portala na Service port 80. TLS sekcija povezuje host sa prethodno kreiranim Secret objektom.
+    <pre><code class="language-bash">cat &gt; ingress.yaml &lt;&lt;'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portal-web
+  namespace: lesson29-ingress
+  labels:
+    app.kubernetes.io/name: portal-web
+spec:
+  ingressClassName: contour
+  tls:
+    - hosts:
+        - portal.prod.example.com
+      secretName: portal-prod-tls
+  rules:
+    - host: portal.prod.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portal-web
+                port:
+                  name: http
+EOF
+
+kubectl apply --server-side --dry-run=server -f ingress.yaml
+kubectl apply -f ingress.yaml</code></pre> <strong>Validacija:</strong> server-side dry-run mora završiti bez greške, a zatim se proveravaju pravila, klasa, backend i događaji. <pre><code class="language-bash">kubectl get ingress portal-web -n lesson29-ingress -o wide
+kubectl describe ingress portal-web -n lesson29-ingress
+kubectl get events -n lesson29-ingress --sort-by=.metadata.creationTimestamp</code></pre>
+Očekuje se host <code>portal.prod.example.com</code>, klasa <code>contour</code>, backend <code>portal-web:http</code> i odsustvo događaja koji prijavljuju nepostojeći Service, nevažeći port ili nečitljiv TLS Secret.
+
+  </li>
+  <li>
+    <strong>Utvrditi ulaznu adresu bez oslanjanja na DNS.</strong>
+    U različitim instalacijama adresa može biti zabeležena u statusu Ingress-a ili na Envoy Service objektu. Najpre se proverava Ingress status.
+    <pre><code class="language-bash">kubectl get ingress portal-web -n lesson29-ingress \
+  -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{.hostname}{"\n"}{end}'
+
+kubectl get services -n tanzu-system-ingress -o wide</code></pre> <strong>Validacija:</strong> mora biti poznata IP adresa ili hostname preko kojeg je Envoy dostupan iz testne mreže. Ako nema adrese, proveravaju se Service događaji i load balancer integracija: <pre><code class="language-bash">kubectl describe service -n tanzu-system-ingress
+kubectl get events -n tanzu-system-ingress \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+Stanje <code>&lt;pending&gt;</code>, poruke o nedostupnom IP opsegu ili neuspešnom kreiranju load balancer-a zahtevaju intervenciju infrastrukturnog tima pre DNS promene.
+
+  </li>
+  <li>
+    <strong>Izvesti funkcionalni HTTPS test pre kreiranja produkcionog DNS zapisa.</strong>
+    U sledećoj komandi vrednost <code>INGRESS_IP</code> zamenjuje se stvarnom adresom utvrđenom u prethodnom koraku. Opcija <code>--resolve</code> zaobilazi DNS, ali zadržava ispravan host i SNI.
+    <pre><code class="language-bash">INGRESS_IP="192.0.2.40"
+
+curl --resolve portal.prod.example.com:443:"$INGRESS_IP" \
+  --cacert portal.prod.example.com.crt \
+  --connect-timeout 5 \
+  --max-time 15 \
+  -sS -D response-headers.txt \
+  https://portal.prod.example.com/hostname \
+  -o response-body.txt
+
+cat response-headers.txt
+cat response-body.txt</code></pre> <strong>Validacija:</strong> TCP i TLS povezivanje moraju uspeti, HTTP status mora biti uspešan, a telo treba da sadrži identitet backend Pod-a. Test se ponavlja nekoliko puta radi potvrde da obe replike mogu primiti saobraćaj: <pre><code class="language-bash">for attempt in 1 2 3 4 5 6; do
+curl --resolve portal.prod.example.com:443:"$INGRESS_IP" \
+  --cacert portal.prod.example.com.crt \
+    -fsS https://portal.prod.example.com/hostname
+done</code></pre>
+
+  </li>
+  <li>
+    <strong>Izvesti negativne testove.</strong>
+    Prvi test koristi nepoznat host i potvrđuje da kontroler ne prosleđuje zahtev portalu samo zato što je pogođena ista IP adresa. Drugi test koristi pogrešnu putanju sertifikata i potvrđuje da TLS provera zaista radi.
+    <pre><code class="language-bash">curl --resolve unknown.prod.example.com:443:"$INGRESS_IP" \
+  -k -sS -o /dev/null -w '%{http_code}\n' \
+  https://unknown.prod.example.com/
+
+curl --resolve portal.prod.example.com:443:"$INGRESS_IP" \
+  --connect-timeout 5 \
+  https://portal.prod.example.com/hostname</code></pre> <strong>Validacija:</strong> nepoznat host ne sme vratiti sadržaj portala. Druga komanda treba da prijavi da samopotpisani sertifikat nije pouzdan zato što nije naveden laboratorijski CA fajl. Neočekivani uspeh drugog testa može značiti da je klijentska provera sertifikata isključena ili da se koristi drugi trust store.
+
+  </li>
+  <li>
+    <strong>Pregledati logove i povezati ih sa zahtevom.</strong>
+    Contour logovi služe za proveru obrade Kubernetes konfiguracije i xDS komunikacije, dok Envoy access logovi, kada su uključeni u paket konfiguraciji, pokazuju primljene zahteve, status i backend. Nazivi labela mogu zavisiti od verzije paketa, pa se prvo pregledaju resursi.
+    <pre><code class="language-bash">kubectl get deployments,daemonsets,pods \
+  -n tanzu-system-ingress --show-labels
+
+kubectl logs -n tanzu-system-ingress \
+  -l app.kubernetes.io/name=contour \
+  --all-containers=true \
+  --since=15m --tail=200
+
+kubectl logs -n tanzu-system-ingress \
+  -l app.kubernetes.io/name=envoy \
+  --all-containers=true \
+  --since=15m --tail=200</code></pre> <strong>Validacija:</strong> ne sme biti ponavljanih grešaka pri čitanju Secret-a, odbijenih ruta, neuspešne xDS komunikacije ili stalnog restartovanja procesa. Ako label selektori ne vraćaju Pod-ove, koriste se stvarna imena iz prve komande, a ne pretpostavljene oznake.
+
+  </li>
+  <li>
+    <strong>Pripremiti DNS promenu i kriterijume prihvatanja.</strong>
+    Tek nakon tehničkog testa DNS administratoru se dostavljaju odobreni host, ciljna VIP adresa, planirani TTL, vlasnik usluge i rollback vrednost. Nakon kreiranja zapisa proveravaju se različiti resolver-i.
+    <pre><code class="language-bash">dig +short portal.prod.example.com
+dig portal.prod.example.com
+curl --cacert portal.prod.example.com.crt \
+  --connect-timeout 5 \
+  --max-time 15 \
+  -fsS https://portal.prod.example.com/hostname</code></pre>
+    <strong>Merljivi kriterijumi prihvatanja:</strong>
+    <ul>
+      <li>DNS vraća odobrenu ulaznu adresu sa očekivanih korporativnih resolver-a.</li>
+      <li>TLS pregovaranje uspeva za tačan host i klijent dobija očekivani sertifikat.</li>
+      <li>Najmanje 20 uzastopnih zahteva završava bez 5xx odgovora.</li>
+      <li>Obe aplikacione replike su <code>Ready</code>, a EndpointSlice sadrži dve spremne adrese.</li>
+      <li>Nepoznati host ne dobija sadržaj portala.</li>
+      <li>Contour i Envoy nemaju nove ponavljane greške tokom validacionog intervala.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Rollback i cleanup laboratorije.</strong>
+    Ako aplikacija vraća pogrešan sadržaj, sertifikat nije prihvatljiv ili se pojave 5xx greške, prvo se zaustavlja DNS promena ili DNS vraća na prethodnu vrednost. Ingress se može ukloniti bez brisanja aplikacije i Service-a.
+    <p><strong>Upozorenje:</strong> naredne komande prekidaju spoljni pristup laboratorijskom portalu. U produkciji se izvršavaju samo uz odobrenu promenu i potvrđen DNS rollback.</p>
+    <pre><code class="language-bash">kubectl delete ingress portal-web -n lesson29-ingress
+kubectl get ingress -n lesson29-ingress
+kubectl get deployment,service,pods -n lesson29-ingress</code></pre>
+    <strong>Validacija:</strong> Ingress više ne postoji, dok Deployment i Service ostaju funkcionalni unutar klastera. Za potpuno uklanjanje laboratorije briše se namespace:
+    <pre><code class="language-bash">kubectl delete namespace lesson29-ingress
+kubectl get namespace lesson29-ingress</code></pre>
+    Očekivani završni rezultat je <code>NotFound</code>. Lokalni privatni ključ zatim se bezbedno uklanja prema pravilima radne stanice i organizacije.
+  </li>
+</ol>
+
+<h3>Tipične greške i sistematska dijagnostika</h3>
+<p><strong>Ingress nema adresu.</strong> Proveravaju se IngressClass, status kontrolera, Envoy Service, Service događaji i load balancer provider. Promena DNS-a nema smisla dok nije poznata stabilna ciljna adresa.</p>
+<p><strong>Kontroler vraća 404.</strong> Zahtev je verovatno stigao do data plane-a, ali se host ili putanja ne poklapaju ni sa jednim prihvaćenim pravilom. Treba proveriti <code>Host</code> zaglavlje, SNI, <code>pathType</code>, klasu i eventualni konflikt sa drugim Ingress objektom.</p>
+<p><strong>Kontroler vraća 503.</strong> Ruta može biti poznata, ali nema zdravog backenda. Proveravaju se Service selektor, EndpointSlice, readiness probe, ciljni port i NetworkPolicy. Prazan EndpointSlice nije Ingress problem.</p>
+<p><strong>TLS radi sa pogrešnim sertifikatom.</strong> Mogući uzroci su pogrešan Secret, pogrešan host, podrazumevani sertifikat kontrolera ili neuspešno učitavanje nove konfiguracije. Sertifikat koji se stvarno prezentuje proverava se komandom:</p>
+<pre><code class="language-bash">openssl s_client \
+  -connect 192.0.2.40:443 \
+  -servername portal.prod.example.com \
+  -showcerts &lt; /dev/null</code></pre>
+<p><strong>Promena YAML-a nema efekta.</strong> Ingress možda obrađuje drugi kontroler, klasa nije prihvaćena, objekat je odbijen ili se testira pogrešna VIP adresa zbog DNS keša. Porede se generacija objekta, događaji, status, kontrolerski logovi i rezultat testa sa <code>curl --resolve</code>.</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola Ingress inventara.</strong> Jednom dnevno i nakon svake promene izvršava se <code>kubectl get ingress -A -o wide</code> i poredi sa CMDB ili GitOps evidencijom. Reakciju zahtevaju Ingress bez vlasničkih oznaka, bez klase, bez adrese ili sa hostom iz neodobrene zone. Prvi korak je identifikovanje vlasnika i obustavljanje neodobrene DNS ili firewall promene. Dokumentuju se namespace, host, klasa, VIP, poslovni vlasnik i tiket. Uspeh se meri potpunim podudaranjem inventara i odobrene evidencije.</li>
+  <li><strong>Nadzor sertifikata.</strong> Najmanje dnevno automatizacija prati datum isteka sertifikata koji se stvarno prezentuje na ulazu, a ne samo datum u Secret-u. Prag za reakciju treba uskladiti sa PKI procesom; čest operativni prag je upozorenje 30 dana pre isteka i kritično stanje 14 dana pre isteka. Prva reakcija je potvrda da automatizovano obnavljanje radi i otvaranje PKI incidenta ako ne radi. Beleže se host, issuer, serijski broj, datum isteka i plan zamene. Uspeh se meri odsustvom isteka u produkciji i uspešnim testom novog sertifikata pre aktivacije.</li>
+  <li><strong>Praćenje HTTP grešaka i latencije.</strong> Monitoring sistem prikuplja Envoy ili kontrolerske metrike za broj zahteva, 4xx, 5xx, p95/p99 latenciju, aktivne veze i resetovanja. Provera se radi kontinuirano, sa poređenjem prema poznatoj osnovnoj liniji aplikacije. Nagli rast 5xx, odsustvo saobraćaja ili višestruko povećanje p95 latencije zahteva proveru endpoint-a, resursa kontrolera i poslednje promene. U incidentu se dokumentuju vremenski interval, pogođeni hostovi, verzija konfiguracije i korelacija sa backend metrikama. Uspeh se meri ispunjenjem definisanog SLO-a.</li>
+  <li><strong>Kapacitet i raspoloživost kontrolera.</strong> Posle upgrade-a, promene broja aplikacija ili povećanja prometa proveravaju se replike, CPU, memorija, restartovanja, raspored po node-ovima i PodDisruptionBudget. Reakciju zahtevaju OOMKilled događaji, učestali restarti, dugotrajna zasićenost resursa ili sve replike na jednom failure domenu. Prva reakcija je stabilizovanje kapaciteta bez menjanja aplikacionih ruta. Promena se dokumentuje u platformskom repozitorijumu i evidenciji kapaciteta. Uspeh se meri održavanjem dostupnosti tokom planiranog održavanja jednog node-a.</li>
+  <li><strong>Kontrola konfiguracionih promena.</strong> Ingress manifesti se čuvaju u verzionisanom repozitorijumu, proveravaju server-side dry-run-om, admission politikama i pregledom najmanje još jednog administratora za produkciju. Provera se radi za svaku promenu. Host van dozvoljenog domena, wildcard sertifikat bez odobrenja, vendorska anotacija visokog rizika ili promena klase zahtevaju zaustavljanje pipeline-a. Dokumentuju se diff, rezultat validacije, test, vlasnik i rollback commit. Uspeh se meri promenama bez nedokumentovanog odstupanja i mogućnošću brzog vraćanja prethodne verzije.</li>
+  <li><strong>Backup i oporavak.</strong> Čuvaju se deklarativni manifesti, paket konfiguracija kontrolera, IngressClass, relevantne politike i metapodaci TLS resursa. Privatni ključevi se čuvaju samo kroz odobreni secrets ili PKI sistem, ne u običnom backup-u Git repozitorijuma. Backup se radi prema RPO-u platforme i pre upgrade-a kontrolera. Integritet se proverava hash vrednostima i probnim restore-om u izolovanom klasteru ili namespace-u. Upotrebljiv backup potvrđuje da obnovljeni kontroler prihvata testnu rutu, prezentuje očekivani testni sertifikat i prosleđuje zahtev zdravom Service-u.</li>
+  <li><strong>Periodični negativni test.</strong> Nakon uvođenja nove klase, promene kontrolera ili firewall politike proverava se da nepoznat host, neodobrena putanja i nedozvoljena mrežna zona ne dobijaju zaštićeni sadržaj. Neočekivani HTTP 200 ili sadržaj druge aplikacije zahteva hitnu analizu pravila i podrazumevanog backenda. Rezultat se evidentira uz datum, testnu adresu i očekivani status. Uspeh se meri doslednim odbijanjem neodobrenog zahteva bez uticaja na legitimne korisnike.</li>
+</ul>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Proveren je tačan <code>kubectl</code> kontekst i potvrđen naziv workload klastera.</li>
+  <li><code>kubectl get ingressclass</code> prikazuje odobrenu klasu <code>contour</code>.</li>
+  <li>Contour i Envoy Pod-ovi su <code>Running</code>, spremni i bez učestalih restartovanja.</li>
+  <li>Service <code>portal-web</code> ima port 80 i EndpointSlice sa dve spremne backend adrese.</li>
+  <li>TLS Secret je tipa <code>kubernetes.io/tls</code>, a sertifikat sadrži SAN za <code>portal.prod.example.com</code>.</li>
+  <li>Ingress koristi eksplicitni <code>ingressClassName</code>, tačan host, <code>Prefix</code> putanju i postojeći Service port.</li>
+  <li><code>kubectl describe ingress</code> ne prikazuje grešku klase, Service-a, porta ili Secret-a.</li>
+  <li>Ulazna VIP adresa je dodeljena i dostupna iz dozvoljene mrežne zone.</li>
+  <li>Test sa <code>curl --resolve</code> vraća uspešan odgovor preko HTTPS-a pre DNS promene.</li>
+  <li>Nepoznati host ne dobija sadržaj aplikacije.</li>
+  <li>DNS zapis vraća odobrenu VIP adresu sa relevantnih resolver-a.</li>
+  <li>Kontrolerski i access logovi ne pokazuju ponavljane greške nakon promene.</li>
+  <li>Vlasnik aplikacije, TLS rok, VIP, DNS zapis, testni rezultat i rollback postupak evidentirani su u odobrenoj dokumentaciji promene.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razume da Ingress nije samostalni mrežni uređaj, već deklaracija L7 pravila koju mora realizovati odgovarajući kontroler. Dostupnost aplikacije zavisi od čitavog lanca: DNS-a, ulazne adrese, load balancer integracije, IngressClass izbora, kontrolera, TLS konfiguracije, Service-a, EndpointSlice objekata i zdravlja Pod-ova.</p>
+<p>Praktična administratorska veština nije samo pisanje Ingress YAML-a. Potrebno je umeti proveriti postojeću platformu, izolovati kvar po mrežnim slojevima, testirati host i SNI bez čekanja na DNS, razlikovati 404 od 503 problema, pregledati sertifikat koji se stvarno prezentuje, koristiti logove Contour-a i Envoy-a i sprovesti rollback bez nepotrebnog brisanja aplikacije.</p>
+<p>Produkcioni rizici obuhvataju izlaganje aplikacije u pogrešnoj mrežnoj zoni, pogrešan ili istekao sertifikat, konflikt ruta, preširoke anotacije, nepostojeće backend endpoint-e, nedokumentovane DNS promene i zavisnost od jednog kontrolerskog failure domena. Zbog toga svaka promena mora imati tehničkog i poslovnog vlasnika, merljive kriterijume prihvatanja, negativni test i dokumentovan povratak na prethodno stanje.</p>
+<p>Ingress treba koristiti za podržane HTTP i HTTPS scenarije. Za složenije višeteamsko delegiranje, napredne politike ili nove platforme administrator treba da proceni Gateway API i podršku konkretne implementacije. Zahtevi za javno objavljivanje, WAF, DDoS zaštitu, identitetsku kontrolu, PKI izuzetke ili promenu spoljne mrežne zone predstavljaju razlog za koordinaciju ili eskalaciju prema bezbednosnom, mrežnom, PKI i aplikacionom timu. Tehnička mogućnost da se ruta kreira nije isto što i ovlašćenje da se aplikacija izloži.</p>
+
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija i API reference za Service, EndpointSlice, Ingress, IngressClass i Gateway API; VMware Cloud Foundation i VMware vSphere Kubernetes Service arhitektonski, administrativni i release vodiči; VMware Avi Load Balancer i Avi Kubernetes Operator dokumentacija; Contour i Envoy administrativne reference; Broadcom Knowledge Base članci za load-balancer, health-monitor, sertifikacione i ingress kvarove; kao i zvanični vodiči za bezbednost, monitoring, troubleshooting i oporavak konfiguracije
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-28-cni-pod-i-service-mreze.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-30-network-policy-i-mrezna-dijagnostika.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

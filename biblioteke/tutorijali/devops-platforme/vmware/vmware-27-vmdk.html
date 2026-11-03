@@ -1,0 +1,2348 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-27-vmdk.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>VMDK – virtuelni disk i njegova uloga u radu VM-a | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMDK format virtuelnog diska u VMware okruženju i saznajte kako se u njemu čuvaju operativni sistem, aplikacije i podaci virtuelne mašine.">
+
+  <meta name="keywords"
+        content="VMDK, VMware VMDK, virtuelni disk, VMware disk, virtuelna mašina, VM disk, datastore, VMFS, virtual machine disk, VMDK datoteka, ESXi storage, vSphere storage, snapshot, VMware administracija, ESXi, vCenter, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-27-vmdk.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="VMDK – virtuelni disk i njegova uloga u radu VM-a">
+
+  <meta property="og:description"
+        content="Upoznajte ulogu VMDK virtuelnog diska u čuvanju operativnog sistema, aplikacija i podataka VMware virtuelne mašine.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-27-vmdk.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-27-vmdk.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="VMDK – virtuelni disk i njegova uloga u radu VM-a">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-27-vmdk.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-27-vmdk.png"
+           alt="VMDK – virtuelni disk i njegova uloga u radu VM-a">
+
+    </a>
+
+   <div class="page-subtitle">
+  VI. Skladištenje, politike i integritet podataka
+</div>
+
+<div class="page-subtitle">
+ 27. VMDK – virtuelni disk, lanci datoteka i životni ciklus podataka
+</div>
+
+<p>
+VMDK, odnosno Virtual Machine Disk, predstavlja virtuelni disk koji VMware ESXi prikazuje operativnom sistemu virtuelne mašine kao da je reč o fizičkom HDD, SSD ili NVMe uređaju. Gostujući operativni sistem na tom disku kreira particije, filesystem-e, boot zapise, direktorijume, aplikacije i podatke, dok ESXi te operacije prevodi u čitanje i upis blokova na datastore-u.
+</p>
+
+<p>
+Iz perspektive Windows ili Linux operativnog sistema, VMDK izgleda kao standardni disk priključen na virtuelni storage kontroler. Iz perspektive VMware administratora, VMDK je skup međusobno povezanih metapodataka, podatkovnih blokova, snapshot veza, storage politika i konfiguracionih referenci.
+</p>
+
+<p>
+Razumevanje VMDK-a neophodno je za:
+</p>
+
+<ul>
+  <li>kreiranje i proširivanje virtuelnih diskova;</li>
+  <li>planiranje datastore kapaciteta;</li>
+  <li>rad sa thin i thick provisioning modelima;</li>
+  <li>kreiranje i konsolidaciju snapshot-a;</li>
+  <li>Storage vMotion i migraciju diskova;</li>
+  <li>backup i restore virtuelnih mašina;</li>
+  <li>analizu zaključanih, oštećenih ili izgubljenih diskova;</li>
+  <li>odvajanje sistemskih, aplikacionih i podatkovnih diskova;</li>
+  <li>optimizaciju storage performansi.</li>
+</ul>
+
+<p>
+VMDK nije samo jedna obična datoteka koju administrator može proizvoljno da kopira, preimenuje ili obriše. U zavisnosti od tipa datastore-a, provisioning formata i postojanja snapshot-a, jedan virtuelni disk može obuhvatati više povezanih datoteka ili storage objekata.
+</p>
+
+<p>
+Životni ciklus VMDK-a počinje zahtevom za kapacitetom i izborom kontrolera, datastore-a, storage politike, provisioning formata i disk režima. Nastavlja se inicijalizacijom u gostu, redovnim rastom, snapshot i backup operacijama, migracijama, promenama kapaciteta i performansnim praćenjem, a završava se kontrolisanim odvajanjem, zadržavanjem ili brisanjem. Svaka faza menja skup dokaza koje administrator mora proveriti: VM konfiguraciju, aktivni disk lanac, zauzeće storage-a, zaštitu podataka i mapiranje do guest volumena.
+</p>
+
+<p>
+Ova lekcija zato VMDK posmatra kao upravljani podatkovni objekat, a ne samo kao ekstenziju datoteke. Lekcija 26 dala je kontekst datastore-a; naredna lekcija detaljno razdvaja thin i thick alokaciju, dok se ovde provisioning obrađuje samo koliko je potrebno za bezbedan životni ciklus diska.
+</p>
+
+<h3>Kako virtuelna mašina vidi VMDK</h3>
+
+<p>
+Kada se virtuelni disk doda virtuelnoj mašini, on se priključuje na virtuelni kontroler, na primer:
+</p>
+
+<ul>
+  <li>LSI Logic SAS;</li>
+  <li>VMware Paravirtual SCSI – PVSCSI;</li>
+  <li>SATA kontroler;</li>
+  <li>virtuelni NVMe kontroler;</li>
+  <li>IDE kontroler u starijim konfiguracijama.</li>
+</ul>
+
+<p>
+Disk zatim dobija adresu koja se sastoji od broja kontrolera i broja uređaja.
+</p>
+
+<pre><code class="language-none">SCSI (0:0) – prvi disk na prvom SCSI kontroleru
+SCSI (0:1) – drugi disk na prvom SCSI kontroleru
+SCSI (1:0) – prvi disk na drugom SCSI kontroleru
+NVMe (0:0) – prvi disk na prvom NVMe kontroleru</code></pre>
+
+<p>
+Operativni sistem gosta ne poznaje naziv datastore-a niti direktno radi sa VMDK datotekom. On šalje I/O zahteve virtuelnom kontroleru, dok ESXi upravlja njihovim prosleđivanjem storage sloju.
+</p>
+
+<pre><code class="language-none">Aplikacija u virtuelnoj mašini
+              │
+              ▼
+Filesystem gosta
+              │
+              ▼
+Virtuelni disk operativnog sistema
+              │
+              ▼
+Virtuelni SCSI, SATA ili NVMe kontroler
+              │
+              ▼
+VMDK
+              │
+              ▼
+VMFS, NFS, vSAN ili vVol datastore
+              │
+              ▼
+Fizički storage uređaji</code></pre>
+
+<h3>VMDK descriptor i podatkovna datoteka</h3>
+
+<p>
+Kod klasičnog VMFS datastore-a bazni virtuelni disk se često sastoji od najmanje dve povezane datoteke:
+</p>
+
+<pre><code class="language-none">APP-SRV01.vmdk
+APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+Datoteka:
+</p>
+
+<pre><code class="language-none">APP-SRV01.vmdk</code></pre>
+
+<p>
+predstavlja mali tekstualni descriptor. Ona sadrži metapodatke o virtuelnom disku, uključujući njegov kapacitet, tip, podatkovnu datoteku, adapter i identifikatore koji se koriste za održavanje integriteta disk i snapshot lanca.
+</p>
+
+<p>
+Datoteka:
+</p>
+
+<pre><code class="language-none">APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+sadrži stvarne blokove podataka baznog virtuelnog diska.
+</p>
+
+<p>
+Datastore Browser često prikazuje ove komponente kao jedan logički objekat, zbog čega administrator ne treba da zaključuje da podatkovna datoteka ne postoji samo zato što je ne vidi odvojeno u grafičkom interfejsu.
+</p>
+
+<p>
+Kroz ESXi Shell mogu se videti fizičke datoteke:
+</p>
+
+<pre><code class="language-bash">cd /vmfs/volumes/PROD-VMFS01/APP-SRV01
+ls -lah</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">-rw-------  1 root root  549 Jul 21 10:15 APP-SRV01.vmdk
+-rw-------  1 root root  80G Jul 21 10:15 APP-SRV01-flat.vmdk
+-rw-------  1 root root 3.2K Jul 21 10:15 APP-SRV01.vmx
+-rw-------  1 root root 8.5K Jul 21 10:20 vmware.log</code></pre>
+
+<p>
+Prikazana dužina <code>-flat.vmdk</code> datoteke predstavlja logički kapacitet virtuelnog diska. Kod thin provisioned diska stvarno alocirani blokovi na datastore-u mogu zauzimati manje fizičkog prostora; zato se logička veličina iz <code>ls -l</code> ne sme tumačiti kao stvarna potrošnja. Za dokaz potrošnje koriste se vSphere prikaz, datastore metrike i, kada je primenljivo, <code>du</code>, uz razumevanje sparse ponašanja storage sloja.
+</p>
+
+<h3>Primer sadržaja VMDK descriptor-a</h3>
+
+<p>
+Descriptor se može pregledati komandom:
+</p>
+
+<pre><code class="language-bash">cat APP-SRV01.vmdk</code></pre>
+
+<p>
+Pojednostavljeni primer:
+</p>
+
+<pre><code class="language-none"># Disk DescriptorFile
+version=1
+encoding="UTF-8"
+CID=4ac3812f
+parentCID=ffffffff
+createType="vmfs"
+
+RW 167772160 VMFS "APP-SRV01-flat.vmdk"
+
+ddb.adapterType = "lsilogic"
+ddb.geometry.cylinders = "10443"
+ddb.geometry.heads = "255"
+ddb.geometry.sectors = "63"
+ddb.virtualHWVersion = "21"</code></pre>
+
+<p>
+Važni elementi su:
+</p>
+
+<ul>
+  <li><strong>CID</strong> – identifikator trenutnog sadržaja diska;</li>
+  <li><strong>parentCID</strong> – identifikator roditeljskog diska; kod baznog diska obično je <code>ffffffff</code>;</li>
+  <li><strong>createType</strong> – format virtuelnog diska;</li>
+  <li><strong>RW</strong> – broj sektora i naziv povezane podatkovne datoteke;</li>
+  <li><strong>ddb.adapterType</strong> – tip adaptera za koji je descriptor kreiran;</li>
+  <li><strong>ddb.virtualHWVersion</strong> – povezana verzija virtuelnog hardvera.</li>
+</ul>
+
+<p>
+Descriptor se u redovnom radu ne menja ručno. Ručna izmena je napredna recovery procedura koja zahteva tačno poznavanje kapaciteta, tipa diska, snapshot lanca i CID odnosa. Pogrešna vrednost može učiniti disk ili čitavu snapshot hijerarhiju neupotrebljivom.
+</p>
+
+<p>
+Vrednost iza <code>RW</code> izražena je u sektorima od 512 bajtova, pa se kapacitet ne prepisuje napamet. Primer <code>167772160 × 512</code> daje 80 GiB. Geometrijska polja su pre svega kompatibilnosni metapodaci i nisu pouzdan izvor za zaključivanje o fizičkoj geometriji savremenog storage-a.
+</p>
+
+<h3>VMDK i VMX konfiguracija</h3>
+
+<p>
+Virtuelna mašina ne pronalazi disk samo zato što se on nalazi u istom direktorijumu. VMX konfiguracioni fajl sadrži referencu na odgovarajući VMDK descriptor.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">scsi0:0.present = "TRUE"
+scsi0:0.fileName = "APP-SRV01.vmdk"
+scsi0:0.deviceType = "scsi-hardDisk"
+
+scsi0:1.present = "TRUE"
+scsi0:1.fileName = "APP-SRV01-DATA01.vmdk"
+scsi0:1.deviceType = "scsi-hardDisk"</code></pre>
+
+<p>
+Reference na diskove mogu se pregledati komandom:
+</p>
+
+<pre><code class="language-bash">grep -Ei 'scsi[0-9]+:[0-9]+\.fileName|sata[0-9]+:[0-9]+\.fileName|nvme[0-9]+:[0-9]+\.fileName' \
+APP-SRV01.vmx</code></pre>
+
+<p>
+Ako VMX referencira nepostojeći descriptor ili pogrešnu putanju, virtuelna mašina neće moći da otvori disk.
+</p>
+
+<h3>Bazni disk i snapshot diskovi</h3>
+
+<p>
+Kada virtuelna mašina nema snapshot, aktivni disk najčešće pokazuje direktno na bazni VMDK. Kreiranjem snapshot-a bazni disk se zadržava kao roditelj, a novi upisi preusmeravaju se u child, odnosno delta disk.
+</p>
+
+<pre><code class="language-none">APP-SRV01.vmdk
+        │
+        ▼
+APP-SRV01-000001.vmdk
+        │
+        ▼
+APP-SRV01-000002.vmdk</code></pre>
+
+<p>
+Svaki snapshot disk ima descriptor i podatkovnu komponentu. U zavisnosti od formata i veličine diska, podatkovna datoteka može imati naziv:
+</p>
+
+<pre><code class="language-none">APP-SRV01-000001-delta.vmdk</code></pre>
+
+<p>
+ili:
+</p>
+
+<pre><code class="language-none">APP-SRV01-000001-sesparse.vmdk</code></pre>
+
+<p>
+Aktivno stanje VM-a predstavlja kombinaciju baznog diska i svih promena zapisanih u lancu do najnovijeg child diska.
+</p>
+
+<p>
+Zbog toga se snapshot datoteke ne smeju ručno brisati. Brisanje jedne karike može prekinuti lanac i onemogućiti pristup novijim podacima.
+</p>
+
+<h3>CID i parentCID veza</h3>
+
+<p>
+Snapshot descriptor sadrži:
+</p>
+
+<ul>
+  <li>sopstveni <code>CID</code>;</li>
+  <li><code>parentCID</code> koji mora odgovarati CID vrednosti njegovog neposrednog roditelja;</li>
+  <li><code>parentFileNameHint</code> koji upućuje na roditeljski descriptor.</li>
+</ul>
+
+<p>
+Pojednostavljeni primer snapshot descriptor-a:
+</p>
+
+<pre><code class="language-none">CID=8f9184a2
+parentCID=4ac3812f
+createType="vmfsSparse"
+
+parentFileNameHint="APP-SRV01.vmdk"</code></pre>
+
+<p>
+Ako <code>parentCID</code> child diska ne odgovara <code>CID</code> vrednosti roditelja, ESXi može prijaviti:
+</p>
+
+<pre><code class="language-none">The parent virtual disk has been modified since the child was created.</code></pre>
+
+<p>
+Takav problem se ne rešava nasumičnim menjanjem CID vrednosti. Prvo se utvrđuje ispravan redosled snapshot lanca, prave rezervne kopije descriptor datoteka i proverava da li je neki disk kloniran, menjan ili zamenjen.
+</p>
+
+<h3>VMDK provisioning formati</h3>
+
+<p>
+Na VMFS datastore-u najčešće se koriste:
+</p>
+
+<ul>
+  <li><strong>Thin Provision</strong> – prostor se zauzima postepeno, kako gost upisuje nove blokove;</li>
+  <li><strong>Thick Provision Lazy Zeroed</strong> – puni kapacitet rezerviše se odmah, dok se blokovi nuliraju pri prvom upisu;</li>
+  <li><strong>Thick Provision Eager Zeroed</strong> – puni kapacitet se rezerviše i blokovi se unapred nuliraju.</li>
+</ul>
+
+<p>
+Provisioning format utiče na zauzeće datastore-a, vreme kreiranja, operativne karakteristike i mogućnost korišćenja određenih funkcionalnosti. Detaljna razlika između thin i thick modela obrađuje se u sledećoj lekciji.
+</p>
+
+<h3>Persistent i Independent disk režimi</h3>
+
+<p>
+Pored provisioning formata, virtuelni disk može imati i različit disk mode.
+</p>
+
+<h4>Dependent</h4>
+
+<p>
+Standardni režim. Disk učestvuje u snapshot operacijama virtuelne mašine.
+</p>
+
+<h4>Independent Persistent</h4>
+
+<p>
+Promene se trajno zapisuju, ali disk ne učestvuje u snapshot-u virtuelne mašine. Koristi se samo kada postoji jasno opravdan dizajn i administrator razume posledice za backup i recovery.
+</p>
+
+<h4>Independent Nonpersistent</h4>
+
+<p>
+Promene se tokom rada privremeno zapisuju, ali se odbacuju kada se virtuelna mašina isključi. Nije namenjen čuvanju trajnih produkcionih podataka. Bezbednosno je posebno problematičan jer gašenje može ukloniti i tragove aktivnosti napadača, pa zvanične hardening smernice preporučuju izbegavanje ovog režima osim u strogo kontrolisanim, namenskim laboratorijskim scenarijima.
+</p>
+
+<p>
+Independent disk može biti izostavljen iz VM snapshot-a i iz određenih backup postupaka koji se oslanjaju na snapshot mehanizam. Njegova upotreba mora biti dokumentovana.
+</p>
+
+<h3>Virtuelni disk i storage kontroler</h3>
+
+<p>
+Izbor kontrolera utiče na kompatibilnost, broj podržanih diskova, performanse i potrebne drajvere u gostujućem operativnom sistemu.
+</p>
+
+<h4>LSI Logic SAS</h4>
+
+<p>
+Široko kompatibilan kontroler koji se često koristi za sistemske diskove Windows i Linux virtuelnih mašina.
+</p>
+
+<h4>VMware Paravirtual SCSI</h4>
+
+<p>
+PVSCSI je optimizovan za velika I/O opterećenja i može smanjiti CPU overhead u odnosu na tradicionalne emulirane kontrolere. Gostujući operativni sistem mora imati odgovarajući drajver.
+</p>
+
+<p>
+Kod baza podataka i intenzivnih aplikacija diskovi se mogu rasporediti na više PVSCSI kontrolera kako bi se povećala paralelnost i izbeglo oslanjanje na jedan virtuelni red zahteva.
+</p>
+
+<h4>Virtuelni NVMe</h4>
+
+<p>
+Virtuelni NVMe kontroler pogodan je za savremene gostujuće sisteme koji podržavaju NVMe drajvere. Njegova upotreba treba da bude usklađena sa verzijom virtuelnog hardvera, operativnim sistemom gosta i zahtevima aplikacije.
+</p>
+
+<h3>Sistemski i podatkovni diskovi</h3>
+
+<p>
+Produkcione virtuelne mašine često koriste više VMDK diskova:
+</p>
+
+<pre><code class="language-none">SCSI 0:0 – operativni sistem
+SCSI 0:1 – aplikacije
+SCSI 0:2 – podaci
+SCSI 1:0 – transakcioni logovi
+SCSI 1:1 – privremeni ili radni podaci</code></pre>
+
+<p>
+Odvajanje diskova omogućava:
+</p>
+
+<ul>
+  <li>različito upravljanje kapacitetom;</li>
+  <li>jednostavnije proširenje pojedinačnih volumena;</li>
+  <li>primenu različitih storage politika;</li>
+  <li>raspoređivanje diskova na različite datastore-e;</li>
+  <li>bolju organizaciju backup i restore procesa;</li>
+  <li>odvajanje različitih I/O obrazaca;</li>
+  <li>lakšu identifikaciju podataka tokom incidenta.</li>
+</ul>
+
+<p>
+Samo kreiranje više VMDK diskova na istom datastore-u ne garantuje fizičko odvajanje performansi. Ako svi diskovi koriste isti storage pool, iste kontrolere i iste fizičke uređaje, osnovno ograničenje može ostati zajedničko.
+</p>
+
+<h3>VMDK na različitim datastore tipovima</h3>
+
+<h4>VMFS</h4>
+
+<p>
+Descriptor i podatkovna datoteka najčešće se vide kao odvojene datoteke kroz ESXi Shell.
+</p>
+
+<h4>NFS</h4>
+
+<p>
+Na NFS datastore-u način predstavljanja zavisi od disk formata i mogućnosti storage sistema. ESXi upravlja virtuelnim diskom kao VMDK objektom, dok stvarno zauzeće može zavisiti od NFS servera i njegovih funkcionalnosti.
+</p>
+
+<h4>vSAN</h4>
+
+<p>
+Na vSAN-u VMDK predstavlja distribuirani storage objekat kojim upravlja vSAN. Njegove komponente mogu biti raspoređene na više hostova u skladu sa storage politikom. Descriptor može sadržati <code>vsan://</code> referencu, ali se objektni podaci ne smeju tretirati kao klasična lokalna <code>-flat.vmdk</code> datoteka. OSA i ESA mogu imati različite snapshot implementacije i servisne procedure; u incidentu se koristi procedura tačno za arhitekturu i izdanje klastera.
+</p>
+
+<h4>vVol</h4>
+
+<p>
+Na vVol datastore-u virtuelni disk se mapira na data vVol kojim upravlja storage sistem preko VASA integracije. Tradicionalni prikaz velikog VMFS LUN-a zamenjen je granularnijim upravljanjem objektima pojedinačnih virtuelnih mašina. Datoteka ili descriptor koji se vidi kroz vSphere može biti referenca na <code>vvol://</code> objekat, pa se VMFS recovery postupci ne prenose automatski na vVol.
+</p>
+
+<h3>RDM i VMDK</h3>
+
+<p>
+Raw Device Mapping, odnosno RDM, omogućava virtuelnoj mašini pristup SAN LUN-u preko male mapping VMDK datoteke. Mapping datoteka sadrži informacije potrebne da ESXi poveže virtuelni uređaj sa fizičkim LUN-om.
+</p>
+
+<p>
+RDM se istorijski koristio za određene clustering, storage alatke i specifične aplikacione zahteve. Za nove implementacije treba proveriti da li je RDM zaista potreban ili standardni VMDK može da ispuni zahtev jednostavnije i uz bolju podršku VMware funkcionalnosti.
+</p>
+
+<h3>Pregled diskova kroz vSphere Client</h3>
+
+<p>
+Diskovi virtuelne mašine proveravaju se kroz:
+</p>
+
+<pre><code class="language-none">Virtual Machine → Actions → Edit Settings</code></pre>
+
+<p>
+Za svaki disk treba proveriti:
+</p>
+
+<ul>
+  <li>kapacitet;</li>
+  <li>provisioning format;</li>
+  <li>datastore ili storage policy;</li>
+  <li>virtuelni device node;</li>
+  <li>disk mode;</li>
+  <li>sharing režim, ako se koristi;</li>
+  <li>IOPS limit, ako je podešen;</li>
+  <li>povezani kontroler;</li>
+  <li>da li disk pripada snapshot lancu.</li>
+</ul>
+
+<h3>Pregled VMDK diskova kroz PowerCLI</h3>
+
+<p>
+Povezivanje sa vCenter Serverom:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local</code></pre>
+
+<p>
+Prikaz svih diskova jednog VM-a:
+</p>
+
+<pre><code class="language-powershell">Get-VM -Name "APP-SRV01" |
+Get-HardDisk</code></pre>
+
+<p>
+Detaljan prikaz:
+</p>
+
+<pre><code class="language-powershell">Get-VM -Name "APP-SRV01" |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename</code></pre>
+
+<p>
+Prikaz svih VM diskova u okruženju:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename |
+Sort-Object Parent, Name</code></pre>
+
+<p>
+Izvoz u CSV:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename |
+Export-Csv "./vmdk-inventory.csv" -NoTypeInformation</code></pre>
+
+<h3>Kreiranje novog diska kroz PowerCLI</h3>
+
+<p>
+Dodavanje thin provisioned diska od 100 GB:
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "APP-SRV01"
+
+New-HardDisk -VM $vm `
+             -CapacityGB 100 `
+             -StorageFormat Thin</code></pre>
+
+<p>
+Kreiranje diska na određenom datastore-u:
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "APP-SRV01"
+$datastore = Get-Datastore -Name "PROD-VMFS02"
+
+New-HardDisk -VM $vm `
+             -CapacityGB 200 `
+             -Datastore $datastore `
+             -StorageFormat Thin</code></pre>
+
+<p>
+U produkciji pre dodavanja diska treba proveriti slobodan prostor, storage politiku, backup obuhvat, naming standard, aplikacioni zahtev i plan proširenja filesystem-a u gostujućem sistemu.
+</p>
+
+<h3>Proširivanje postojećeg VMDK-a</h3>
+
+<p>
+Virtuelni disk može se proširiti kroz vSphere Client, PowerCLI ili u određenim servisnim situacijama kroz <code>vmkfstools</code>.
+</p>
+
+<p>
+PowerCLI primer:
+</p>
+
+<pre><code class="language-powershell">$disk = Get-VM -Name "APP-SRV01" |
+        Get-HardDisk |
+        Where-Object { $_.Name -eq "Hard disk 2" }
+
+Set-HardDisk -HardDisk $disk `
+             -CapacityGB 300 `
+             -Confirm:$false</code></pre>
+
+<p>
+Proširenje VMDK-a ne proširuje automatski particiju i filesystem unutar operativnog sistema gosta. Posle VMware izmene potrebno je proširenje izvršiti i u gostu.
+</p>
+
+<p>
+Na Linux sistemu početna provera može uključivati:
+</p>
+
+<pre><code class="language-bash">lsblk
+sudo fdisk -l
+df -h
+sudo pvs
+sudo vgs
+sudo lvs</code></pre>
+
+<p>
+Na Windows sistemu koristi se Disk Management ili PowerShell:
+</p>
+
+<pre><code class="language-powershell">Get-Disk
+Get-Partition
+Get-Volume</code></pre>
+
+<p>
+Proširivanje mora uzeti u obzir tip particione tabele, raspored particija, LVM, filesystem i podršku operativnog sistema za online resize.
+</p>
+
+<h3>Važna pravila pri proširivanju</h3>
+
+<ul>
+  <li>VMDK se kroz standardne VMware operacije može povećati, ali se ne smanjuje jednostavnim unošenjem manje vrednosti.</li>
+  <li>Pre promene treba proveriti backup i mogućnost oporavka.</li>
+  <li>Treba proveriti slobodan prostor na datastore-u.</li>
+  <li>Aktivni snapshot-i mogu blokirati ili komplikovati operaciju.</li>
+  <li>Ne treba proširivati bazni disk ručno dok postoji snapshot lanac.</li>
+  <li>Posle proširenja treba proširiti particiju, LVM ili filesystem u gostu.</li>
+  <li>Promenu treba dokumentovati u CMDB-u ili evidenciji infrastrukture.</li>
+</ul>
+
+<h3>Upravljanje VMDK-om pomoću vmkfstools</h3>
+
+<p>
+Komanda <code>vmkfstools</code> predstavlja jedan od najvažnijih ESXi alata za pregled i servisiranje VMFS filesystem-a i virtuelnih diskova.
+</p>
+
+<p>
+Izvršava se u ESXi Shell-u ili SSH sesiji sa administrativnim ovlašćenjima. Komande <code>--help</code>, <code>-q</code>, <code>-x check</code> i <code>-D</code> prvenstveno čitaju stanje; <code>-c</code>, <code>-i</code> i <code>-X</code> kreiraju ili menjaju podatke i zahtevaju change kontrolu, potvrđenu putanju i dovoljan odredišni kapacitet. Podržane opcije mogu se razlikovati između ESXi izdanja, zato je lokalni <code>vmkfstools --help</code> autoritativna početna provera za konkretan host.
+</p>
+
+<p>
+Pomoć:
+</p>
+
+<pre><code class="language-bash">vmkfstools --help</code></pre>
+
+<p>
+Pregled disk lanca:
+</p>
+
+<pre><code class="language-bash">vmkfstools -q APP-SRV01.vmdk</code></pre>
+
+<p>
+Detaljniji pregled lanca:
+</p>
+
+<pre><code class="language-bash">vmkfstools -q -v10 APP-SRV01.vmdk</code></pre>
+
+<p>
+Provera integriteta virtuelnog diska:
+</p>
+
+<pre><code class="language-bash">vmkfstools -x check APP-SRV01.vmdk</code></pre>
+
+<p>
+Ova provera ne popravlja disk i ne potvrđuje aplikacionu konzistentnost podataka. Pokreće se nad descriptor-om, a rezultat se koreliše sa aktivnom VMX referencom i <code>vmware.log</code>. Na zauzetom produkcionom disku prvo se potvrđuje podržan operativni postupak i izbegava svaka varijanta koja bi menjala stanje.
+</p>
+
+<p>
+Provera da li je disk zaključan:
+</p>
+
+<pre><code class="language-bash">vmkfstools -D APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+Kloniranje virtuelnog diska:
+</p>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/PROD-VMFS01/APP-SRV01/APP-SRV01.vmdk \
+/vmfs/volumes/RECOVERY-VMFS01/APP-SRV01-RECOVERED.vmdk \
+-d thin</code></pre>
+
+<p>
+Kreiranje novog thin VMDK-a od 20 GB:
+</p>
+
+<pre><code class="language-bash">vmkfstools -c 20G -d thin LAB-DISK01.vmdk</code></pre>
+
+<p>
+Kreiranje eager-zeroed thick diska:
+</p>
+
+<pre><code class="language-bash">vmkfstools -c 20G -d eagerzeroedthick LAB-DISK02.vmdk</code></pre>
+
+<p>
+Proširivanje diska:
+</p>
+
+<pre><code class="language-bash">vmkfstools -X 120G APP-SRV01-DATA01.vmdk</code></pre>
+
+<p>
+Direktne <code>vmkfstools</code> promene nad produkcionim diskovima izvode se samo kada je postupak opravdan, dokumentovan i usklađen sa stanjem VM-a i snapshot lanca. Uobičajene izmene treba raditi kroz vCenter Server ili PowerCLI.
+</p>
+
+<p>
+Komanda <code>vmkfstools -X</code> povećava logički kapacitet; ne smanjuje disk i ne proširuje guest particiju ili filesystem. Ne izvršava se nad roditeljskim diskom dok postoji snapshot lanac. Za rollback nakon pogrešno dodatog kapaciteta ne postoji simetrična operacija „umanji VMDK”; bezbedan povratak obično znači migraciju podataka na novi disk odgovarajuće veličine ili restore prema odobrenom planu.
+</p>
+
+<h3>Zaključavanje VMDK datoteka</h3>
+
+<p>
+ESXi zaključava aktivne VM datoteke kako bi sprečio istovremeni neispravan upis sa više hostova. Ako je disk zaključan sa neočekivanog hosta ili procesa, VM može prijaviti:
+</p>
+
+<pre><code class="language-none">Failed to lock the file
+
+Cannot open the disk
+
+Unable to access file since it is locked</code></pre>
+
+<p>
+Početna provera:
+</p>
+
+<pre><code class="language-bash">vmkfstools -D APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+Za VMFS datastore može se koristiti i:
+</p>
+
+<pre><code class="language-bash">vmfsfilelockinfo -p APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+Treba utvrditi:
+</p>
+
+<ul>
+  <li>da li VM već radi na drugom hostu;</li>
+  <li>da li je ostao aktivan backup proxy ili hot-add disk;</li>
+  <li>da li je prethodni host pao bez urednog oslobađanja zaključavanja;</li>
+  <li>da li je VM dvostruko registrovan;</li>
+  <li>da li postoji aktivna snapshot, clone ili migration operacija.</li>
+</ul>
+
+<p>
+ESXi host ne treba restartovati samo zato što je pronađen lock. Prvo treba identifikovati vlasnika i proveriti da li taj host ili proces legitimno koristi disk.
+</p>
+
+<p>
+Forsirano razbijanje VMFS/LVM zaključavanja nije rutinski VMDK postupak i ne izvodi se samo na osnovu poruke „locked”. Pogrešno uklanjanje legitimnog zaključavanja može omogućiti konkurentne upise i korupciju. Takva intervencija zahteva potvrdu da nijedan host ne koristi objekat, tačnu Broadcom proceduru za konkretan tip zaključavanja i, kada postoji sumnja, uključivanje podrške.
+</p>
+
+<h3>Dokazi, događaji i logovi za VMDK incidente</h3>
+
+<p>
+Pre prve promene beleže se UTC ili lokalno vreme simptoma, VM, ESXi host, datastore, aktivni zadatak i tačna VMDK putanja. Najvažniji VM-specifičan izvor je <code>vmware.log</code> u home direktorijumu virtuelne mašine; stvara ga VMX proces i u njemu se traže obrasci <code>DISKLIB</code>, <code>Content ID mismatch</code>, <code>Cannot open the disk</code>, <code>Failed to lock</code> i <code>consolidat</code>. Rotirani <code>vmware-*.log</code> fajlovi čuvaju raniji kontekst.
+</p>
+
+<pre><code class="language-bash">cd /vmfs/volumes/PROD-VMFS01/APP-SRV01
+grep -Ei 'DISKLIB|Content ID|Cannot open|Failed to lock|consolidat' vmware*.log</code></pre>
+
+<p>
+Na ESXi hostu se zatim korelišu <code>/var/run/log/hostd.log</code> za lokalne VM operacije, <code>/var/run/log/vmkernel.log</code> za VMkernel/storage putanju i <code>/var/run/log/vobd.log</code> za sistemske opservacije i događaje. U vCenter okruženju zadaci i događaji potvrđuju ko je i kada pokrenuo reconfiguration, snapshot, consolidate, clone ili migration. Pretraga mora obuhvatiti nekoliko minuta pre i posle simptoma i sve hostove između kojih se VM kretala.
+</p>
+
+<pre><code class="language-bash">grep -Ei 'APP-SRV01|DISKLIB|lock|snapshot|consolidat' /var/run/log/hostd.log
+grep -Ei 'naa\.|I/O|APD|PDL|NMP|HPP' /var/run/log/vmkernel.log</code></pre>
+
+<p>
+Log nalaz nije samostalan dokaz osnovnog uzroka. Na primer, <code>Cannot open the disk</code> opisuje posledicu; tek VMX referenca, postojanje datoteke ili objekta, chain provera, lock vlasnik, datastore stanje i istorija zadataka razdvajaju nedostajući descriptor, prekinut lanac, legitimni lock i nedostupan storage.
+</p>
+
+<h3>Brisanje VMDK-a</h3>
+
+<p>
+Uklanjanje diska iz VM konfiguracije i trajno brisanje podatkovne datoteke nisu ista operacija.
+</p>
+
+<p>
+vSphere Client može ponuditi mogućnosti:
+</p>
+
+<ul>
+  <li>ukloniti disk iz virtuelne mašine, ali zadržati VMDK na datastore-u;</li>
+  <li>ukloniti disk i trajno obrisati njegove datoteke.</li>
+</ul>
+
+<p>
+PowerCLI prikaz diska:
+</p>
+
+<pre><code class="language-powershell">$disk = Get-VM -Name "APP-SRV01" |
+        Get-HardDisk |
+        Where-Object { $_.Name -eq "Hard disk 3" }
+
+$disk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              Filename</code></pre>
+
+<p>
+Uklanjanje iz konfiguracije bez trajnog brisanja:
+</p>
+
+<pre><code class="language-powershell">Remove-HardDisk -HardDisk $disk -Confirm:$false</code></pre>
+
+<p>
+Trajno brisanje:
+</p>
+
+<pre><code class="language-powershell">Remove-HardDisk -HardDisk $disk `
+                -DeletePermanently `
+                -Confirm:$false</code></pre>
+
+<p>
+Opcija <code>DeletePermanently</code> je destruktivna. Pre njenog korišćenja obavezno treba proveriti:
+</p>
+
+<ul>
+  <li>tačno ime VM-a;</li>
+  <li>tačan broj i kapacitet diska;</li>
+  <li>VMDK putanju;</li>
+  <li>device node;</li>
+  <li>da li disk koristi druga VM;</li>
+  <li>da li postoje potrebni podaci;</li>
+  <li>da li je backup provereno upotrebljiv;</li>
+  <li>da li je odobren change zahtev.</li>
+</ul>
+
+<h3>Pronalaženje orphaned VMDK diskova</h3>
+
+<p>
+Orphaned VMDK je disk koji postoji na datastore-u, ali nije povezan ni sa jednom očekivanom virtuelnom mašinom. Može nastati nakon:
+</p>
+
+<ul>
+  <li>neuspelog kloniranja;</li>
+  <li>neuspele migracije;</li>
+  <li>uklanjanja diska iz VM konfiguracije bez brisanja;</li>
+  <li>ručne administrativne intervencije;</li>
+  <li>restore ili test postupka;</li>
+  <li>nepotpunog brisanja virtuelne mašine.</li>
+</ul>
+
+<p>
+Samo odsustvo VMDK-a iz aktivnog VMX fajla nije dovoljan dokaz da je disk nepotreban. Disk može biti:
+</p>
+
+<ul>
+  <li>odvojen radi kasnijeg ponovnog povezivanja;</li>
+  <li>deo backup ili recovery postupka;</li>
+  <li>povezan sa drugom virtuelnom mašinom;</li>
+  <li>deo snapshot lanca;</li>
+  <li>čuvan zbog pravnih ili operativnih razloga.</li>
+</ul>
+
+<p>
+Pre brisanja potrebno je pronaći vlasnika, proveriti istoriju zadataka, backup evidenciju, datum poslednje izmene i eventualne reference.
+</p>
+
+<h3>VMDK i backup</h3>
+
+<p>
+Većina image-level backup rešenja koristi VMware API-je i privremeni snapshot kako bi konzistentno čitala VMDK. Backup može koristiti različite transportne režime, ali je osnovni objekat zaštite virtuelni disk i njegova konfiguracija.
+</p>
+
+<p>
+Administrator treba da zna:
+</p>
+
+<ul>
+  <li>koji VMDK diskovi ulaze u backup;</li>
+  <li>da li postoje independent diskovi koji su izostavljeni;</li>
+  <li>da li su veliki podatkovni diskovi pokriveni politikom;</li>
+  <li>koliko traje snapshot tokom backup-a;</li>
+  <li>da li snapshot ostaje posle neuspelog posla;</li>
+  <li>da li je restore VMDK-a testiran;</li>
+  <li>da li backup omogućava vraćanje samo jednog diska.</li>
+</ul>
+
+<p>
+Postojanje backup posla sa statusom „Success” nije dovoljno bez periodičnog testiranja restore-a.
+</p>
+
+<h3>VMDK i Storage vMotion</h3>
+
+<p>
+Storage vMotion može premestiti sve VM datoteke ili pojedinačne diskove na drugi datastore, u zavisnosti od izabrane konfiguracije. Tokom migracije moguće je promeniti i provisioning format, na primer thick disk pretvoriti u thin ili obrnuto, ako odredišni storage i odabrana operacija to podržavaju.
+</p>
+
+<p>
+Pre migracije treba proveriti:
+</p>
+
+<ul>
+  <li>slobodan prostor na odredištu;</li>
+  <li>storage policy kompatibilnost;</li>
+  <li>aktivne snapshot-e;</li>
+  <li>trenutno I/O opterećenje;</li>
+  <li>backup i druge migracione poslove;</li>
+  <li>tip datastore-a;</li>
+  <li>očekivano vreme i uticaj operacije.</li>
+</ul>
+
+<h3>VMDK performanse</h3>
+
+<p>
+Performanse virtuelnog diska zavise od više slojeva:
+</p>
+
+<ul>
+  <li>aplikacionog obrasca čitanja i upisa;</li>
+  <li>filesystem-a gosta;</li>
+  <li>broja i tipa virtuelnih kontrolera;</li>
+  <li>queue depth vrednosti;</li>
+  <li>provisioning formata;</li>
+  <li>postojanja snapshot-a;</li>
+  <li>latencije datastore-a;</li>
+  <li>storage putanja i multipathing politike;</li>
+  <li>performansi fizičkog storage sistema;</li>
+  <li>konkurentnog opterećenja drugih VM-ova.</li>
+</ul>
+
+<p>
+Visoka latencija jednog VMDK-a ne znači automatski da je sama VMDK datoteka oštećena. Najčešće je potrebno analizirati čitav I/O put od aplikacije do fizičkog storage uređaja.
+</p>
+
+<h3>Monitoring VMDK performansi</h3>
+
+<p>
+U vSphere Client-u mogu se pratiti VM disk metrike kroz:
+</p>
+
+<pre><code class="language-none">Virtual Machine → Monitor → Performance → Advanced</code></pre>
+
+<p>
+Važne metrike uključuju:
+</p>
+
+<ul>
+  <li>read latency;</li>
+  <li>write latency;</li>
+  <li>read IOPS;</li>
+  <li>write IOPS;</li>
+  <li>read throughput;</li>
+  <li>write throughput;</li>
+  <li>outstanding I/O zahteve;</li>
+  <li>disk usage i maksimalnu latenciju.</li>
+</ul>
+
+<p>
+Za analizu na ESXi hostu koristi se:
+</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>
+Taster:
+</p>
+
+<pre><code class="language-none">v</code></pre>
+
+<p>
+prikazuje virtuelne diskove, dok:
+</p>
+
+<pre><code class="language-none">u</code></pre>
+
+<p>
+prikazuje storage uređaje. Analiza oba prikaza pomaže da se razlikuje problem jednog VMDK-a od problema zajedničkog datastore-a ili storage uređaja.
+</p>
+
+<h3>Praktikum 1 – Inventar VMDK diskova u VMware okruženju</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Napraviti pregled svih virtuelnih diskova, njihovog kapaciteta, provisioning formata, režima i datastore lokacije.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>pristup vCenter Serveru;</li>
+  <li>instaliran VCF PowerCLI;</li>
+  <li>nalog sa read pristupom inventory-ju;</li>
+  <li>najmanje nekoliko virtuelnih mašina.</li>
+</ul>
+
+<h4>Korak 1 – Povezivanje</h4>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local</code></pre>
+
+<h4>Korak 2 – Pregled svih diskova</h4>
+
+<pre><code class="language-powershell">$disks = Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename
+
+$disks | Format-Table -AutoSize</code></pre>
+
+<h4>Korak 3 – Pronalaženje velikih diskova</h4>
+
+<pre><code class="language-none">$disks |
+Where-Object { $_.CapacityGB -ge 500 } |
+Sort-Object CapacityGB -Descending |
+Format-Table -AutoSize</code></pre>
+
+<h4>Korak 4 – Pronalaženje independent diskova</h4>
+
+<pre><code class="language-none">$disks |
+Where-Object {
+    $_.Persistence -match "Independent"
+} |
+Format-Table -AutoSize</code></pre>
+
+<h4>Korak 5 – Izvoz dokumentacije</h4>
+
+<pre><code class="language-powershell">$disks |
+Export-Csv "./vmdk-inventory.csv" -NoTypeInformation</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Dobijen je centralni izveštaj iz kojeg se vidi koji VM poseduje koji disk, koliko je disk velik, gde se nalazi i koji provisioning ili persistence režim koristi.
+</p>
+
+<h4>Administratorska analiza</h4>
+
+<p>
+Posebno evidentirati:
+</p>
+
+<ul>
+  <li>diskove bez jasnog naming standarda;</li>
+  <li>izuzetno velike VMDK diskove;</li>
+  <li>independent diskove;</li>
+  <li>diskove na neočekivanim datastore-ima;</li>
+  <li>VM-ove čiji diskovi koriste više različitih datastore-a.</li>
+</ul>
+
+<h3>Praktikum 2 – Dodavanje novog podatkovnog VMDK diska</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Dodati novi disk virtuelnoj mašini, proveriti ga u VMware sloju i pripremiti za korišćenje u Linux gostu.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>test virtuelna mašina;</li>
+  <li>dovoljno slobodnog prostora na datastore-u;</li>
+  <li>pristup gostujućem operativnom sistemu;</li>
+  <li>aktuelan backup ili snapshot samo ako je deo kontrolisane laboratorijske procedure.</li>
+</ul>
+
+<h4>Korak 1 – Dodavanje kroz PowerCLI</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "LAB-LINUX01"
+$datastore = Get-Datastore -Name "LAB-VMFS01"
+
+New-HardDisk -VM $vm `
+             -CapacityGB 20 `
+             -Datastore $datastore `
+             -StorageFormat Thin</code></pre>
+
+<h4>Korak 2 – VMware provera</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-LINUX01" |
+Get-HardDisk |
+Select-Object Name,
+              CapacityGB,
+              StorageFormat,
+              Filename</code></pre>
+
+<h4>Korak 3 – Detekcija diska u Linux gostu</h4>
+
+<pre><code class="language-bash">lsblk
+sudo fdisk -l
+dmesg | tail -n 30</code></pre>
+
+<p>
+Ako novi SCSI disk nije odmah prikazan, može se izvršiti kontrolisani SCSI rescan u gostu:
+</p>
+
+<pre><code class="language-bash">for host in /sys/class/scsi_host/host*; do
+  echo "- - -" | sudo tee "$host/scan"
+done</code></pre>
+
+<p>
+Zatim:
+</p>
+
+<pre><code class="language-none">lsblk</code></pre>
+
+<h4>Korak 4 – Kreiranje particije i filesystem-a</h4>
+
+<p>
+Primer za disk <code>/dev/sdb</code> u laboratoriji:
+</p>
+
+<pre><code class="language-bash">sudo parted /dev/sdb --script mklabel gpt
+sudo parted /dev/sdb --script mkpart primary xfs 0% 100%
+sudo mkfs.xfs /dev/sdb1</code></pre>
+
+<h4>Korak 5 – Mount</h4>
+
+<pre><code class="language-bash">sudo mkdir -p /data
+sudo mount /dev/sdb1 /data
+df -h /data</code></pre>
+
+<h4>Korak 6 – Trajni mount</h4>
+
+<pre><code class="language-bash">sudo blkid /dev/sdb1</code></pre>
+
+<p>
+UUID se zatim pažljivo unosi u <code>/etc/fstab</code>.
+</p>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Novi VMDK je dodat VM-u, detektovan u operativnom sistemu gosta, formatiran i montiran kao poseban podatkovni filesystem.
+</p>
+
+<h3>Praktikum 3 – Online proširenje VMDK-a i Linux filesystem-a</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Povećati postojeći podatkovni VMDK i proširiti filesystem u Linux gostu bez gubitka postojećih podataka.
+</p>
+
+<h4>Bezbednosna provera</h4>
+
+<ul>
+  <li>potvrditi tačan VM i disk;</li>
+  <li>proveriti backup;</li>
+  <li>proveriti da disk nema snapshot ograničenje;</li>
+  <li>proveriti slobodan datastore kapacitet;</li>
+  <li>utvrditi da li gost koristi običnu particiju ili LVM.</li>
+</ul>
+
+<h4>Korak 1 – Identifikacija diska</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-LINUX01" |
+Get-HardDisk |
+Select-Object Name,
+              CapacityGB,
+              Filename</code></pre>
+
+<h4>Korak 2 – Proširenje sa 20 GB na 30 GB</h4>
+
+<pre><code class="language-powershell">$disk = Get-VM -Name "LAB-LINUX01" |
+        Get-HardDisk |
+        Where-Object { $_.Name -eq "Hard disk 2" }
+
+Set-HardDisk -HardDisk $disk `
+             -CapacityGB 30 `
+             -Confirm:$false</code></pre>
+
+<h4>Korak 3 – Rescan u gostu</h4>
+
+<pre><code class="language-bash">echo 1 | sudo tee /sys/class/block/sdb/device/rescan
+lsblk</code></pre>
+
+<h4>Korak 4 – Proširenje GPT particije</h4>
+
+<pre><code class="language-bash">sudo growpart /dev/sdb 1</code></pre>
+
+<h4>Korak 5 – Proširenje XFS filesystem-a</h4>
+
+<pre><code class="language-bash">sudo xfs_growfs /data</code></pre>
+
+<p>
+Za ext4 filesystem:
+</p>
+
+<pre><code class="language-bash">sudo resize2fs /dev/sdb1</code></pre>
+
+<h4>Korak 6 – Verifikacija</h4>
+
+<pre><code class="language-bash">lsblk
+df -h /data</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+VMware disk, particija i filesystem prikazuju novi kapacitet, a postojeći podaci ostaju dostupni.
+</p>
+
+<h4>Napomena za LVM</h4>
+
+<p>
+Kod LVM konfiguracije redosled može uključivati:
+</p>
+
+<pre><code class="language-bash">sudo pvresize /dev/sdb1
+sudo vgs
+sudo lvextend -r -l +100%FREE /dev/mapper/vg_data-lv_data</code></pre>
+
+<p>
+Tačne komande zavise od stvarnog naziva volume group i logical volume objekata.
+</p>
+
+<h3>Praktikum 4 – Pregled strukture VMDK i VMX datoteka</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Povezati disk prikazan u vSphere Client-u sa VMX referencom, VMDK descriptor-om i podatkovnom datotekom.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>test VM na VMFS datastore-u;</li>
+  <li>SSH pristup ESXi hostu;</li>
+  <li>vežba se izvodi samo čitanjem datoteka.</li>
+</ul>
+
+<h4>Korak 1 – Pronalaženje VM-a</h4>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Vmid  Name         File
+24    LAB-LINUX01  [LAB-VMFS01] LAB-LINUX01/LAB-LINUX01.vmx</code></pre>
+
+<h4>Korak 2 – Otvaranje foldera</h4>
+
+<pre><code class="language-bash">cd /vmfs/volumes/LAB-VMFS01/LAB-LINUX01
+ls -lah</code></pre>
+
+<h4>Korak 3 – VMX reference</h4>
+
+<pre><code class="language-bash">grep -Ei 'scsi[0-9]+:[0-9]+\.fileName' LAB-LINUX01.vmx</code></pre>
+
+<h4>Korak 4 – Pregled descriptor-a</h4>
+
+<pre><code class="language-bash">cat LAB-LINUX01.vmdk</code></pre>
+
+<h4>Korak 5 – Provera disk lanca</h4>
+
+<pre><code class="language-bash">vmkfstools -q LAB-LINUX01.vmdk</code></pre>
+
+<h4>Korak 6 – Provera integriteta</h4>
+
+<p>
+Dok je disk u bezbednom stanju i u skladu sa laboratorijskom procedurom:
+</p>
+
+<pre><code class="language-bash">vmkfstools -x check LAB-LINUX01.vmdk</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Administrator razume vezu:
+</p>
+
+<pre><code class="language-none">VMX konfiguracija
+       │
+       ▼
+VMDK descriptor
+       │
+       ▼
+-flat.vmdk podatkovna datoteka</code></pre>
+
+<h3>Praktikum 5 – Kloniranje VMDK-a pomoću vmkfstools</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Napraviti kontrolisanu kopiju ugašenog laboratorijskog virtuelnog diska i priključiti je recovery virtuelnoj mašini.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>izvorni test VM je ugašen;</li>
+  <li>nema aktivnih snapshot-a;</li>
+  <li>odredišni datastore ima dovoljno prostora;</li>
+  <li>kopira se descriptor putanja, a ne direktno <code>-flat.vmdk</code> datoteka.</li>
+</ul>
+
+<h4>Korak 1 – Provera izvornog diska</h4>
+
+<pre><code class="language-bash">vmkfstools -q \
+/vmfs/volumes/LAB-VMFS01/LAB-LINUX01/LAB-LINUX01-DATA01.vmdk</code></pre>
+
+<h4>Korak 2 – Kreiranje odredišnog direktorijuma</h4>
+
+<pre><code class="language-bash">mkdir -p /vmfs/volumes/LAB-VMFS02/RECOVERY-DISKS</code></pre>
+
+<h4>Korak 3 – Kloniranje</h4>
+
+<pre><code class="language-bash">vmkfstools -i \
+/vmfs/volumes/LAB-VMFS01/LAB-LINUX01/LAB-LINUX01-DATA01.vmdk \
+/vmfs/volumes/LAB-VMFS02/RECOVERY-DISKS/LAB-LINUX01-DATA01-CLONE.vmdk \
+-d thin</code></pre>
+
+<h4>Korak 4 – Provera klona</h4>
+
+<pre><code class="language-bash">vmkfstools -q \
+/vmfs/volumes/LAB-VMFS02/RECOVERY-DISKS/LAB-LINUX01-DATA01-CLONE.vmdk
+
+vmkfstools -x check \
+/vmfs/volumes/LAB-VMFS02/RECOVERY-DISKS/LAB-LINUX01-DATA01-CLONE.vmdk</code></pre>
+
+<h4>Korak 5 – Povezivanje sa recovery VM-om</h4>
+
+<p>
+U vSphere Client-u:
+</p>
+
+<ol>
+  <li>otvoriti <strong>Edit Settings</strong> recovery VM-a;</li>
+  <li>izabrati <strong>Add New Device → Existing Hard Disk</strong>;</li>
+  <li>pronaći klonirani descriptor;</li>
+  <li>izabrati odgovarajući controller i device node;</li>
+  <li>sačuvati konfiguraciju.</li>
+</ol>
+
+<h4>Korak 6 – Provera podataka</h4>
+
+<p>
+Recovery VM treba pokrenuti u kontrolisanom okruženju, a disk po potrebi mountovati read-only pre analize.
+</p>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Kreirana je nezavisna kopija VMDK-a koja se može koristiti za recovery test bez menjanja izvornog diska.
+</p>
+
+<h3>Praktikum 6 – Snapshot lanac i kontrolisana konsolidacija</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Uočiti kako se menja VMDK struktura nakon kreiranja snapshot-a i pravilno ukloniti snapshot kroz vSphere mehanizam.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>laboratorijski VM;</li>
+  <li>dovoljno slobodnog prostora na datastore-u;</li>
+  <li>nema paralelnog backup posla;</li>
+  <li>snapshot se ne koristi kao dugoročni backup.</li>
+</ul>
+
+<h4>Korak 1 – Početno stanje</h4>
+
+<pre><code class="language-bash">cd /vmfs/volumes/LAB-VMFS01/LAB-LINUX01
+ls -lah *.vmdk
+vmkfstools -q LAB-LINUX01.vmdk</code></pre>
+
+<h4>Korak 2 – Kreiranje snapshot-a</h4>
+
+<p>
+U vSphere Client-u izabrati:
+</p>
+
+<pre><code class="language-none">Snapshots → Take Snapshot</code></pre>
+
+<p>
+Naziv:
+</p>
+
+<pre><code class="language-none">LAB-before-change</code></pre>
+
+<h4>Korak 3 – Pregled novih datoteka</h4>
+
+<pre><code class="language-bash">ls -lah *.vmdk</code></pre>
+
+<p>
+Mogu se pojaviti:
+</p>
+
+<pre><code class="language-none">LAB-LINUX01-000001.vmdk
+LAB-LINUX01-000001-delta.vmdk</code></pre>
+
+<p>
+ili SESPARSE ekvivalent.
+</p>
+
+<h4>Korak 4 – Provera aktivne VMX reference</h4>
+
+<pre><code class="language-bash">grep -Ei 'scsi[0-9]+:[0-9]+\.fileName' LAB-LINUX01.vmx</code></pre>
+
+<p>
+Aktivna referenca sada može pokazivati na snapshot descriptor.
+</p>
+
+<h4>Korak 5 – Provera lanca</h4>
+
+<pre><code class="language-bash">vmkfstools -q -v10 LAB-LINUX01-000001.vmdk</code></pre>
+
+<h4>Korak 6 – Uklanjanje kroz Snapshot Manager</h4>
+
+<p>
+Izabrati snapshot i koristiti <strong>Delete</strong>. Pratiti zadatak i datastore kapacitet. Ne brisati delta datoteke ručno.
+</p>
+
+<h4>Korak 7 – Završna provera</h4>
+
+<pre><code class="language-bash">ls -lah *.vmdk
+vmkfstools -q LAB-LINUX01.vmdk</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Snapshot promene su konsolidovane u roditeljski disk, a VMX ponovo referencira odgovarajući bazni disk.
+</p>
+
+<h3>Scenario iz prakse 1 – VMDK je proširen, ali operativni sistem i dalje vidi staru veličinu</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Administrator je povećao disk sa 100 GB na 150 GB. vSphere prikazuje novi kapacitet, ali aplikacija i dalje prijavljuje da nema prostora.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Proširen je samo virtuelni disk. Particija, physical volume, logical volume ili filesystem u gostujućem sistemu još nisu prošireni.
+</p>
+
+<h4>Linux provera</h4>
+
+<pre><code class="language-bash">lsblk
+df -h
+sudo pvs
+sudo vgs
+sudo lvs</code></pre>
+
+<h4>Windows provera</h4>
+
+<pre><code class="language-powershell">Get-Disk
+Get-Partition
+Get-Volume</code></pre>
+
+<h4>Rešenje</h4>
+
+<ol>
+  <li>Izvršiti disk rescan u gostu.</li>
+  <li>Proširiti particiju ili LVM physical volume.</li>
+  <li>Proširiti logical volume ako se koristi.</li>
+  <li>Proširiti filesystem.</li>
+  <li>Proveriti novi kapacitet.</li>
+</ol>
+
+<h4>Pouka</h4>
+
+<p>
+VMware kapacitet, particija i filesystem predstavljaju tri različita administrativna sloja.
+</p>
+
+<h3>Scenario iz prakse 2 – Virtuelna mašina ne može da se pokrene jer VMDK nije pronađen</h3>
+
+<h4>Poruka</h4>
+
+<pre><code class="language-none">The system cannot find the file specified.
+
+Cannot open the disk.</code></pre>
+
+<h4>Početna provera</h4>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+cd /vmfs/volumes/PROD-VMFS01/APP-SRV01
+ls -lah
+grep -Ei 'scsi[0-9]+:[0-9]+\.fileName' APP-SRV01.vmx</code></pre>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>descriptor je obrisan ili preimenovan;</li>
+  <li><code>-flat.vmdk</code> podatkovna datoteka nedostaje;</li>
+  <li>VMX referencira pogrešnu putanju;</li>
+  <li>datastore nije montiran;</li>
+  <li>snapshot descriptor ili data datoteka nedostaje;</li>
+  <li>disk je premešten bez ažuriranja konfiguracije.</li>
+</ul>
+
+<h4>Odluka</h4>
+
+<p>
+Ako nedostaje samo mali descriptor, a potvrđeno je da je odgovarajuća podatkovna datoteka cela, descriptor se u određenim slučajevima može rekonstruisati prema zvaničnoj recovery proceduri.
+</p>
+
+<p>
+Ako nedostaje <code>-flat.vmdk</code>, <code>-delta.vmdk</code> ili <code>-sesparse.vmdk</code> podatkovna datoteka, podaci se ne mogu povratiti običnim kreiranjem novog descriptor-a. Tada je potreban restore iz backupa ili drugi odobren recovery postupak.
+</p>
+
+<h3>Scenario iz prakse 3 – Disk je zaključan i VM ne može da se uključi</h3>
+
+<h4>Poruka</h4>
+
+<pre><code class="language-none">Failed to lock the file.
+
+Unable to access file since it is locked.</code></pre>
+
+<h4>Provera</h4>
+
+<pre><code class="language-bash">vmkfstools -D APP-SRV01-flat.vmdk</code></pre>
+
+<p>
+ili:
+</p>
+
+<pre><code class="language-bash">vmfsfilelockinfo -p APP-SRV01-flat.vmdk</code></pre>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>VM radi ili je registrovan na drugom hostu;</li>
+  <li>backup proxy i dalje drži disk u hot-add režimu;</li>
+  <li>host je neočekivano otkazao;</li>
+  <li>aktivna migracija ili snapshot operacija nije završena;</li>
+  <li>VM je duplirano registrovan.</li>
+</ul>
+
+<h4>Ispravan tok</h4>
+
+<ol>
+  <li>Identifikovati host koji drži zaključavanje.</li>
+  <li>Proveriti da li je VM na njemu aktivan.</li>
+  <li>Proveriti backup proxy i nedavno završene zadatke.</li>
+  <li>Ukloniti legitimnog potrošača ili završiti prekinutu proceduru.</li>
+  <li>Tek zatim razmatrati restart management agenata ili hosta.</li>
+</ol>
+
+<h4>Šta ne treba raditi</h4>
+
+<p>
+Ne treba nasumično restartovati više ESXi hostova niti pokušavati ručno brisanje lock ili VMDK datoteka.
+</p>
+
+<h3>Scenario iz prakse 4 – Snapshot Manager ne prikazuje snapshot, ali delta datoteke postoje</h3>
+
+<h4>Situacija</h4>
+
+<p>
+U folderu VM-a postoje:
+</p>
+
+<pre><code class="language-none">APP-SRV01-000001.vmdk
+APP-SRV01-000001-delta.vmdk</code></pre>
+
+<p>
+ali Snapshot Manager ne prikazuje snapshot.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>neuspešan backup posao;</li>
+  <li>nekonzistentan snapshot metadata fajl;</li>
+  <li>prekinuta konsolidacija;</li>
+  <li>ručna izmena ili kopiranje VM datoteka;</li>
+  <li>snapshot je uklonjen iz menadžera, ali diskovi nisu konsolidovani.</li>
+</ul>
+
+<h4>Provera</h4>
+
+<pre><code class="language-bash">grep -Ei 'scsi[0-9]+:[0-9]+\.fileName' APP-SRV01.vmx
+vmkfstools -q -v10 APP-SRV01-000001.vmdk</code></pre>
+
+<p>
+U vSphere Client-u proveriti da li se prikazuje:
+</p>
+
+<pre><code class="language-none">Virtual machine disks consolidation is needed.</code></pre>
+
+<h4>Rešenje</h4>
+
+<p>
+Koristiti VMware <strong>Consolidate</strong> operaciju nakon provere slobodnog prostora, backup poslova i storage opterećenja. Delta datoteke se ne brišu ručno.
+</p>
+
+<h3>Scenario iz prakse 5 – Parent CID mismatch posle ručne intervencije</h3>
+
+<h4>Poruka</h4>
+
+<pre><code class="language-none">The parent virtual disk has been modified since the child was created.</code></pre>
+
+<h4>Uzrok</h4>
+
+<p>
+CID baznog ili roditeljskog diska više se ne poklapa sa <code>parentCID</code> vrednošću child diska. Do toga može doći nakon:
+</p>
+
+<ul>
+  <li>zamene descriptor datoteke;</li>
+  <li>pogrešnog ručnog editovanja;</li>
+  <li>kopiranja delova različitih snapshot lanaca;</li>
+  <li>promene roditeljskog diska izvan očekivanog postupka;</li>
+  <li>nepotpunog recovery pokušaja.</li>
+</ul>
+
+<h4>Dijagnostika</h4>
+
+<pre><code class="language-bash">grep -E 'CID|parentCID|parentFileNameHint' *.vmdk</code></pre>
+
+<p>
+Descriptor datoteke se prvo kopiraju na sigurnu lokaciju:
+</p>
+
+<pre><code class="language-bash">mkdir descriptor-backup
+cp *.vmdk descriptor-backup/</code></pre>
+
+<p>
+Komanda će kopirati male descriptor datoteke, ali administrator mora paziti na wildcard ponašanje i ne sme nepotrebno kopirati velike podatkovne VMDK datoteke.
+</p>
+
+<h4>Rešenje</h4>
+
+<p>
+Lanac se rekonstruiše isključivo na osnovu tačno utvrđenih roditeljskih odnosa. Kada postoji rizik po produkcione podatke, bezbedniji postupak može biti kloniranje aktivnog lanca u novi VMDK i zadržavanje originalnih datoteka netaknutim.
+</p>
+
+<h3>Scenario iz prakse 6 – VMDK postoji na datastore-u, ali nije priključen nijednoj VM</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Tokom capacity analize pronađen je disk od 800 GB u folderu:
+</p>
+
+<pre><code class="language-none">/vmfs/volumes/PROD-VMFS02/OLD-DB/OLD-DB-DATA01.vmdk</code></pre>
+
+<p>
+Folder se ne pojavljuje kao registrovana virtuelna mašina.
+</p>
+
+<h4>Rizik</h4>
+
+<p>
+Administrator bi mogao pretpostaviti da je disk napušten i obrisati ga radi oslobađanja prostora. Međutim, disk može sadržati poslovne podatke ili biti odvojen radi kasnijeg recovery postupka.
+</p>
+
+<h4>Provera</h4>
+
+<ol>
+  <li>Pretražiti VMX fajlove za naziv diska.</li>
+  <li>Proveriti PowerCLI inventory.</li>
+  <li>Proveriti datum izmene.</li>
+  <li>Proveriti vCenter Tasks i Events.</li>
+  <li>Proveriti backup konzolu i restore evidenciju.</li>
+  <li>Pronaći vlasnika sistema.</li>
+  <li>Proveriti CMDB i change zahteve.</li>
+</ol>
+
+<p>
+Primer pretrage:
+</p>
+
+<pre><code class="language-bash">grep -R "OLD-DB-DATA01.vmdk" /vmfs/volumes/*/*/*.vmx 2&gt;/dev/null</code></pre>
+
+<h4>Rešenje</h4>
+
+<p>
+Disk se ne briše dok ne postoji formalna potvrda vlasnika, validan backup i odobrena promena. Po potrebi se prvo priključuje izolovanom recovery VM-u u read-only ili kontrolisanom režimu radi identifikacije sadržaja.
+</p>
+
+<h3>Scenario iz prakse 7 – Pogrešan VMDK je proširen</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Zahtev je bio proširenje podatkovnog diska, ali je administrator povećao sistemski disk zbog oslanjanja na naziv „Hard disk 1” bez provere putanje i device node vrednosti.
+</p>
+
+<h4>Posledice</h4>
+
+<ul>
+  <li>zahtevani volumen i dalje nema prostor;</li>
+  <li>sistemski disk je nepotrebno povećan;</li>
+  <li>rezervisani datastore kapacitet može biti uvećan;</li>
+  <li>povećanje se ne može jednostavno poništiti smanjivanjem VMDK-a.</li>
+</ul>
+
+<h4>Prevencija</h4>
+
+<p>
+Pre promene proveriti najmanje četiri podatka:
+</p>
+
+<pre><code class="language-none">VM:          APP-SRV01
+Disk:        Hard disk 2
+Device node: SCSI (0:1)
+Capacity:    200 GB
+Filename:    [PROD-VMFS01] APP-SRV01/APP-SRV01-DATA01.vmdk</code></pre>
+
+<p>
+PowerCLI provera:
+</p>
+
+<pre><code class="language-powershell">Get-VM -Name "APP-SRV01" |
+Get-HardDisk |
+Select-Object Name,
+              CapacityGB,
+              Filename,
+              ExtensionData</code></pre>
+
+<h4>Pouka</h4>
+
+<p>
+Administrativna promena ne treba da se zasniva samo na rednom broju prikazanom u interfejsu. Potrebna je korelacija sa operativnim sistemom gosta i dokumentacijom sistema.
+</p>
+
+<h3>Scenario iz prakse 8 – Backup je uspešan, ali veliki disk nije zaštićen</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Backup konzola prikazuje uspešan posao za VM baze podataka. Nakon incidenta utvrđeno je da je podatkovni disk bio podešen kao Independent Persistent i nije obuhvaćen očekivanim snapshot-based backup procesom.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Backup politika je proveravala status VM posla, ali nije postojala inventarna kontrola svih diskova i njihovih persistence režima.
+</p>
+
+<h4>Provera</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.Persistence -match "Independent"
+} |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              Persistence,
+              Filename</code></pre>
+
+<h4>Korektivne mere</h4>
+
+<ul>
+  <li>evidentirati sve independent diskove;</li>
+  <li>proveriti način njihovog backup-a;</li>
+  <li>izmeniti disk mode ako aplikacioni dizajn to dozvoljava;</li>
+  <li>uvesti poseban agentski ili storage-level backup kada je potreban;</li>
+  <li>testirati restore svih važnih diskova;</li>
+  <li>uključiti disk mode u redovne compliance izveštaje.</li>
+</ul>
+
+<h3>Scenario iz prakse 9 – VMDK pokazuje dobar kapacitet, ali aplikacija ima visoku latenciju</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Disk ima dovoljno slobodnog prostora, nema snapshot-a i nije thin overcommitovan, ali baza podataka prijavljuje spor odziv.
+</p>
+
+<h4>Analiza</h4>
+
+<ol>
+  <li>Proveriti latenciju konkretnog virtual disk uređaja.</li>
+  <li>Uporediti druge VMDK diskove istog VM-a.</li>
+  <li>Uporediti VM-ove na istom datastore-u.</li>
+  <li>Proveriti storage uređaj kroz <code>esxtop</code>.</li>
+  <li>Proveriti aktivne putanje i multipathing.</li>
+  <li>Proveriti queue depth i zasićenje kontrolera.</li>
+  <li>Proveriti da li backup, snapshot konsolidacija ili migracija stvaraju dodatno opterećenje.</li>
+</ol>
+
+<h4>Mogući nalaz</h4>
+
+<p>
+Sistemski, podatkovni i log diskovi baze nalaze se na jednom PVSCSI kontroleru i jednom opterećenom datastore-u. Dodavanje novih VMDK diskova samo po sebi nije donelo fizičku paralelnost.
+</p>
+
+<h4>Rešenje</h4>
+
+<p>
+Na osnovu merenja može se razmotriti raspoređivanje diskova na više PVSCSI kontrolera, različite datastore-e ili različite storage politike. Promena se ne radi napamet, već nakon potvrde stvarnog uskog grla.
+</p>
+
+<h3>Scenario iz prakse 10 – Disk je uklonjen iz VM-a, ali datastore prostor nije oslobođen</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Administrator je uklonio disk kroz Edit Settings, ali slobodan prostor na datastore-u nije povećan.
+</p>
+
+<h4>Uzrok</h4>
+
+<p>
+Izabrana je opcija uklanjanja diska iz konfiguracije, ali ne i trajnog brisanja datoteka.
+</p>
+
+<h4>Provera</h4>
+
+<pre><code class="language-bash">ls -lah /vmfs/volumes/PROD-VMFS01/APP-SRV01</code></pre>
+
+<p>
+Treba proveriti da li VMDK više postoji i da li ga koristi neki drugi VM.
+</p>
+
+<h4>Bezbedna reakcija</h4>
+
+<ol>
+  <li>Potvrditi da disk nije povezan sa aktivnim VM-om.</li>
+  <li>Potvrditi da podaci više nisu potrebni.</li>
+  <li>Proveriti backup.</li>
+  <li>Dobiti odobrenje vlasnika servisa.</li>
+  <li>Obrisati disk kroz kontrolisanu VMware operaciju.</li>
+  <li>Proveriti datastore kapacitet.</li>
+</ol>
+
+<h3>Najčešće administratorske greške</h3>
+
+<ul>
+  <li>Brisanje VMDK datoteka direktno kroz Datastore Browser bez provere referenci.</li>
+  <li>Mešanje descriptor i podatkovne datoteke.</li>
+  <li>Kopiranje samo malog descriptor-a i očekivanje da je time kopiran čitav disk.</li>
+  <li>Kopiranje samo <code>-flat.vmdk</code> datoteke bez odgovarajućeg descriptor-a.</li>
+  <li>Proširivanje pogrešnog diska zbog nedovoljne identifikacije.</li>
+  <li>Pokušaj smanjivanja diska direktnom izmenom kapaciteta.</li>
+  <li>Proširivanje baznog diska dok postoji snapshot lanac.</li>
+  <li>Ručno brisanje delta ili SESPARSE datoteka.</li>
+  <li>Korišćenje snapshot-a kao trajnog backupa.</li>
+  <li>Nedokumentovana upotreba Independent Persistent diskova.</li>
+  <li>Uklanjanje diska iz VM-a bez odluke da li VMDK treba zadržati ili obrisati.</li>
+  <li>Pretpostavka da više VMDK diskova automatski znači više fizičkih performansi.</li>
+  <li>Pokretanje više velikih kloniranja i migracija bez praćenja datastore latencije.</li>
+  <li>Ručno menjanje CID vrednosti bez potpunog razumevanja snapshot lanca.</li>
+  <li>Priključivanje istog zapisivog VMDK-a na više VM-ova bez podržane shared-disk konfiguracije.</li>
+  <li>Oslanjanje na uspešan backup status bez testiranog restore-a svih diskova.</li>
+</ul>
+
+<h3>Dobre administratorske prakse</h3>
+
+<h4>Koristiti jasan naming standard</h4>
+
+<p>
+Naziv diska treba da ukaže na njegovu namenu:
+</p>
+
+<pre><code class="language-none">APP-SRV01-OS.vmdk
+APP-SRV01-DATA01.vmdk
+APP-SRV01-LOG01.vmdk
+APP-SRV01-TEMP01.vmdk</code></pre>
+
+<p>
+Nazivi „New Virtual Disk” ili niz nejasnih diskova otežavaju oporavak i promene.
+</p>
+
+<h4>Voditi mapu VMware i guest diskova</h4>
+
+<p>
+Za važne servere dokumentovati:
+</p>
+
+<pre><code class="language-none">Hard disk 1 | SCSI 0:0 | APP-SRV01-OS.vmdk   | /dev/sda | /
+Hard disk 2 | SCSI 0:1 | APP-SRV01-DATA.vmdk | /dev/sdb | /data
+Hard disk 3 | SCSI 1:0 | APP-SRV01-LOG.vmdk  | /dev/sdc | /logs</code></pre>
+
+<p>
+Na Windows serverima treba dokumentovati VMDK, SCSI adresu, Windows disk broj, drive letter i volume label.
+</p>
+
+<h4>Proveravati četiri identifikatora pre promene</h4>
+
+<ul>
+  <li>ime virtuelne mašine;</li>
+  <li>ime i redni broj diska;</li>
+  <li>device node;</li>
+  <li>VMDK putanju.</li>
+</ul>
+
+<p>
+Kod kritičnih promena treba dodati i guest disk identifikator.
+</p>
+
+<h4>Odvajati operativni sistem i poslovne podatke</h4>
+
+<p>
+Odvojeni VMDK diskovi olakšavaju kapacitivno upravljanje, recovery, migraciju i primenu storage politika. Raspored treba da prati potrebe aplikacije, a ne samo estetsku organizaciju.
+</p>
+
+<h4>Koristiti PVSCSI za odgovarajuća intenzivna opterećenja</h4>
+
+<p>
+PVSCSI se razmatra za baze podataka i workload-e sa velikim brojem I/O operacija. Potrebno je proveriti guest drajver, kompatibilnost i stvarno opterećenje.
+</p>
+
+<h4>Kontrolisati snapshot životni ciklus</h4>
+
+<p>
+Snapshot mora imati:
+</p>
+
+<ul>
+  <li>vlasnika;</li>
+  <li>razlog kreiranja;</li>
+  <li>datum i vreme;</li>
+  <li>planirano vreme uklanjanja;</li>
+  <li>potvrdu slobodnog datastore prostora.</li>
+</ul>
+
+<p>
+PowerCLI pregled:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-Snapshot |
+Select-Object VM,
+              Name,
+              Created,
+              SizeGB,
+              Description |
+Sort-Object Created</code></pre>
+
+<h4>Ne vršiti ručne izmene bez kopije descriptor-a</h4>
+
+<p>
+Kada recovery procedura zahteva rad sa descriptor datotekama, prvo treba sačuvati njihove originalne verzije i dokumentovati svaku promenu.
+</p>
+
+<h4>Za recovery preferirati kloniranje u novi disk</h4>
+
+<p>
+Kada postoji sumnja u snapshot lanac ili integritet diska, često je bezbednije pokušati kloniranje aktivnog lanca u novi VMDK, uz očuvanje originalnih datoteka, nego vršiti destruktivne promene nad jedinim primerkom.
+</p>
+
+<h4>Planirati kapacitet pre proširenja</h4>
+
+<p>
+Pre povećanja diska proveriti:
+</p>
+
+<ul>
+  <li>trenutni datastore kapacitet;</li>
+  <li>provisioning format;</li>
+  <li>thin overcommit;</li>
+  <li>očekivani rast;</li>
+  <li>snapshot i backup prostor;</li>
+  <li>mogućnost narednog proširenja;</li>
+  <li>ograničenja guest particione tabele i filesystem-a.</li>
+</ul>
+
+<h4>Oprezno koristiti velike monolitne diskove</h4>
+
+<p>
+Jedan izuzetno veliki VMDK može pojednostaviti guest konfiguraciju, ali može otežati backup, restore, migraciju i održavanje. Veličina treba da prati poslovni zahtev, RTO, RPO i mogućnosti storage sistema.
+</p>
+
+<h4>Redovno tražiti orphaned diskove</h4>
+
+<p>
+Takvi diskovi se prvo evidentiraju i analiziraju. Automatska skripta ne treba samostalno da ih briše.
+</p>
+
+<h4>Testirati restore pojedinačnog VMDK-a</h4>
+
+<p>
+Restore test treba da potvrdi:
+</p>
+
+<ul>
+  <li>da se disk može vratiti;</li>
+  <li>da se može priključiti recovery VM-u;</li>
+  <li>da filesystem može da se pročita;</li>
+  <li>da su aplikacioni podaci konzistentni;</li>
+  <li>da je postupak dokumentovan.</li>
+</ul>
+
+<h4>Razdvojiti hitnu sanaciju i trajno rešenje</h4>
+
+<p>
+Dodavanje prostora može trenutno ukloniti incident, ali ne rešava nekontrolisan rast logova, lošu retention politiku, napuštene snapshot-e ili pogrešno dimenzionisanje aplikacije. Nakon incidenta treba sprovesti analizu uzroka.
+</p>
+
+<h3>Operativna kontrolna lista za rad sa VMDK diskovima</h3>
+
+<h4>Pre dodavanja diska</h4>
+
+<ul>
+  <li>potvrditi poslovni zahtev;</li>
+  <li>odrediti kapacitet i očekivani rast;</li>
+  <li>izabrati datastore i storage policy;</li>
+  <li>izabrati provisioning format;</li>
+  <li>izabrati kontroler i device node;</li>
+  <li>proveriti backup politiku;</li>
+  <li>dokumentovati namenu diska.</li>
+</ul>
+
+<h4>Pre proširenja diska</h4>
+
+<ul>
+  <li>potvrditi tačan VMDK;</li>
+  <li>proveriti guest mapiranje;</li>
+  <li>proveriti snapshot-e;</li>
+  <li>proveriti datastore kapacitet;</li>
+  <li>proveriti backup;</li>
+  <li>utvrditi guest resize postupak;</li>
+  <li>obezbediti change odobrenje.</li>
+</ul>
+
+<h4>Pre uklanjanja diska</h4>
+
+<ul>
+  <li>potvrditi da aplikacija više ne koristi volumen;</li>
+  <li>unmountovati ili offline-ovati filesystem u gostu;</li>
+  <li>potvrditi VMDK putanju;</li>
+  <li>odlučiti da li se disk samo odvaja ili trajno briše;</li>
+  <li>proveriti backup i retention zahtev;</li>
+  <li>potvrditi da disk nije shared;</li>
+  <li>dokumentovati promenu.</li>
+</ul>
+
+<h4>Posle promene</h4>
+
+<ul>
+  <li>proveriti VM konfiguraciju;</li>
+  <li>proveriti guest disk i filesystem;</li>
+  <li>proveriti datastore kapacitet;</li>
+  <li>proveriti backup obuhvat;</li>
+  <li>pratiti latenciju i greške;</li>
+  <li>ažurirati dokumentaciju.</li>
+</ul>
+
+<h3>Najčešće korišćene ESXi CLI komande</h3>
+
+<pre><code class="language-bash"># Lista registrovanih virtuelnih mašina
+vim-cmd vmsvc/getallvms
+
+# Prelazak u folder virtuelne mašine
+cd /vmfs/volumes/DATASTORE/VM-NAME
+
+# Pregled svih datoteka
+ls -lah
+
+# VMX reference na virtuelne diskove
+grep -Ei 'scsi[0-9]+:[0-9]+\.fileName' VM-NAME.vmx
+
+# Pregled VMDK descriptor-a
+cat VM-NAME.vmdk
+
+# Pregled disk ili snapshot lanca
+vmkfstools -q VM-NAME.vmdk
+
+# Detaljan pregled lanca
+vmkfstools -q -v10 VM-NAME.vmdk
+
+# Provera integriteta diska
+vmkfstools -x check VM-NAME.vmdk
+
+# Informacije o zaključavanju
+vmkfstools -D VM-NAME-flat.vmdk
+
+# Identifikacija lock vlasnika
+vmfsfilelockinfo -p VM-NAME-flat.vmdk
+
+# Kreiranje thin diska
+vmkfstools -c 20G -d thin NEW-DISK.vmdk
+
+# Kreiranje lazy-zeroed thick diska
+vmkfstools -c 20G -d zeroedthick NEW-DISK.vmdk
+
+# Kreiranje eager-zeroed thick diska
+vmkfstools -c 20G -d eagerzeroedthick NEW-DISK.vmdk
+
+# Kloniranje ili konverzija diska
+vmkfstools -i SOURCE.vmdk TARGET.vmdk -d thin
+
+# Proširivanje diska
+vmkfstools -X 120G VM-NAME-DATA.vmdk
+
+# Pretraga CID i parentCID podataka
+grep -E 'CID|parentCID|parentFileNameHint' *.vmdk
+
+# Storage performanse
+esxtop
+# v – virtual disk prikaz
+# u – storage device prikaz</code></pre>
+
+<h3>Najčešće korišćene PowerCLI komande</h3>
+
+<pre><code class="language-powershell"># Povezivanje sa vCenter Serverom
+Connect-VIServer -Server vcsa.lab.local
+
+# Diskovi jednog VM-a
+Get-VM -Name "APP-SRV01" |
+Get-HardDisk
+
+# Detaljan pregled diskova
+Get-VM -Name "APP-SRV01" |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename
+
+# Svi diskovi u okruženju
+Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename
+
+# Independent diskovi
+Get-VM |
+Get-HardDisk |
+Where-Object {
+    $_.Persistence -match "Independent"
+}
+
+# Kreiranje novog thin diska
+New-HardDisk -VM "APP-SRV01" `
+             -CapacityGB 100 `
+             -StorageFormat Thin
+
+# Kreiranje diska na određenom datastore-u
+New-HardDisk -VM "APP-SRV01" `
+             -CapacityGB 100 `
+             -Datastore "PROD-VMFS02" `
+             -StorageFormat Thin
+
+# Proširenje postojećeg diska
+$disk = Get-VM -Name "APP-SRV01" |
+        Get-HardDisk |
+        Where-Object {
+            $_.Name -eq "Hard disk 2"
+        }
+
+Set-HardDisk -HardDisk $disk `
+             -CapacityGB 300 `
+             -Confirm:$false
+
+# Uklanjanje iz VM konfiguracije
+Remove-HardDisk -HardDisk $disk `
+                -Confirm:$false
+
+# Trajno brisanje – koristiti samo posle pune provere
+Remove-HardDisk -HardDisk $disk `
+                -DeletePermanently `
+                -Confirm:$false
+
+# Pregled snapshot-a
+Get-VM -Name "APP-SRV01" |
+Get-Snapshot
+
+# Izvoz inventara
+Get-VM |
+Get-HardDisk |
+Select-Object Parent,
+              Name,
+              CapacityGB,
+              StorageFormat,
+              Persistence,
+              Filename |
+Export-Csv "./vmdk-inventory.csv" -NoTypeInformation
+
+# Prekid sesije
+Disconnect-VIServer -Server vcsa.lab.local -Confirm:$false</code></pre>
+
+<h3>Pitanja za proveru znanja</h3>
+
+<ol>
+  <li>Šta VMDK predstavlja za gostujući operativni sistem, a šta za ESXi?</li>
+  <li>Koja je razlika između VMDK descriptor-a i <code>-flat.vmdk</code> datoteke?</li>
+  <li>Kako VMX konfiguracija povezuje virtuelnu mašinu sa VMDK-om?</li>
+  <li>Šta predstavljaju CID i parentCID vrednosti?</li>
+  <li>Zašto snapshot delta datoteka ne sme ručno da se obriše?</li>
+  <li>Šta je aktivni disk kada VM ima više snapshot-a?</li>
+  <li>Koja je razlika između dependent i independent disk režima?</li>
+  <li>Zašto Independent Persistent disk zahteva posebnu proveru backup politike?</li>
+  <li>Koja je razlika između VMDK proširenja i proširenja guest filesystem-a?</li>
+  <li>Zašto se VMDK ne može bezbedno smanjiti jednostavnim unosom manje vrednosti?</li>
+  <li>Čemu služi komanda <code>vmkfstools -q</code>?</li>
+  <li>Čemu služi <code>vmkfstools -x check</code>?</li>
+  <li>Kako se proverava zaključavanje VMDK datoteke?</li>
+  <li>Koja je razlika između uklanjanja diska iz konfiguracije i trajnog brisanja?</li>
+  <li>Zašto pronađeni orphaned VMDK ne treba odmah obrisati?</li>
+  <li>Kako se identifikuje tačan disk pre proširenja?</li>
+  <li>Zašto više VMDK diskova na istom datastore-u ne garantuje fizičko odvajanje performansi?</li>
+  <li>Kada PVSCSI može biti prikladniji od standardnog LSI Logic SAS kontrolera?</li>
+  <li>Šta treba proveriti pre kloniranja VMDK-a?</li>
+  <li>Zašto je test restore-a važniji od samog uspešnog backup statusa?</li>
+</ol>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je završena kada administrator, bez nagađanja i ručnog menjanja produkcionih datoteka, može da dokaže sledeće sposobnosti:
+</p>
+
+<ul>
+  <li>povezuje vSphere naziv diska, controller:unit adresu, descriptor ili objektni URI, guest uređaj, particiju, filesystem i aplikacionu namenu;</li>
+  <li>razlikuje bazni descriptor, podatkovni extent, aktivni snapshot descriptor i delta/SESPARSE komponentu;</li>
+  <li>čita CID, parentCID i parent hint i rekonstruiše logički redosled lanca bez menjanja njegovog sadržaja;</li>
+  <li>razlikuje logički kapacitet, alocirani prostor i slobodan prostor datastore-a;</li>
+  <li>inventariše diskove read-only PowerCLI postupkom i obeležava independent, velike i neobuhvaćene diskove za proveru;</li>
+  <li>bezbedno dodaje ili povećava laboratorijski VMDK, završava guest operaciju i potvrđuje kapacitet na oba sloja;</li>
+  <li>pre brisanja razlikuje detach od trajnog delete postupka i pribavlja vlasničku, backup i change potvrdu;</li>
+  <li>za lock, missing-file, consolidation i CID incident prikuplja VMX, chain, task/event i log dokaze pre korekcije;</li>
+  <li>prepoznaje kada VMFS postupak nije primenljiv na vSAN ili vVol i koristi verzijski i arhitektonski odgovarajuću proceduru;</li>
+  <li>dokumentuje početno stanje, promenu, očekivani rezultat, rollback ograničenje i završnu validaciju.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+VMDK predstavlja osnovnu vezu između virtuelne mašine i VMware storage infrastrukture. Gostujući operativni sistem ga koristi kao disk, dok ESXi upravlja njegovim descriptor-om, podatkovnim blokovima, snapshot vezama, zaključavanjem, provisioning formatom i fizičkom lokacijom na datastore-u.
+</p>
+
+<p>
+Pouzdana administracija VMDK diskova zahteva razumevanje više slojeva. Administrator mora povezati prikaz „Hard disk 2” iz vSphere Client-a sa SCSI ili NVMe adresom, VMDK putanjom, uređajem u operativnom sistemu gosta, particijom, filesystem-om i aplikacijom koja koristi podatke.
+</p>
+
+<p>
+Najveći rizici nastaju kada se VMDK tretira kao obična datoteka. Ručno brisanje <code>-flat</code>, delta ili SESPARSE datoteka, pogrešna izmena descriptor-a, proširivanje baznog diska sa aktivnim snapshot-om ili trajno brisanje pogrešnog diska mogu dovesti do neposrednog i nepovratnog gubitka podataka.
+</p>
+
+<p>
+Dobar administrator zato prvo identifikuje disk, proverava njegove reference i snapshot lanac, potvrđuje backup, procenjuje datastore kapacitet i tek potom izvodi promenu. Za oporavak se, kada je moguće, radi nad kloniranom kopijom, dok se originalni diskovi čuvaju netaknuti.
+</p>
+
+<p>
+VMDK administracija nije završena uspešnim klikom u vSphere Client-u. Posle dodavanja ili proširenja diska potrebno je završiti konfiguraciju u gostujućem operativnom sistemu, proveriti backup obuhvat, pratiti performanse i ažurirati infrastrukturnu dokumentaciju. Takav postupak pretvara jednostavnu storage operaciju u kontrolisanu i bezbednu administratorsku praksu.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026
+    &nbsp;|&nbsp;
+    Broadcom VMware vSphere Storage i Virtual Machine Administration vodiči za virtuelne diskove, disk režime, snapshot-e, vSAN i vVol; Broadcom Knowledge Base procedure za VMDK descriptor, CID/parentCID lance, konsolidaciju, zaključavanje i oporavak; ESXi vmkfstools i log reference; VCF PowerCLI reference za HardDisk cmdlet-e i VMware bezbednosne smernice za disk režime
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-26-datastore.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-28-thin-thick-provisioning.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

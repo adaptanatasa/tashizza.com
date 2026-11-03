@@ -1,0 +1,406 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-47-lifecycle-i-nadogradnja-cele-platforme.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Rollback – povratak na prethodnu verziju aplikacije kada nešto pođe naopako | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Rollback omogućava brz povratak Kubernetes aplikacije na prethodnu stabilnu verziju nakon neuspešnog deploy-a ili pojave problema u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, rollback, rollout undo, deployment, release management, container image, DevOps, cloud native, TKG, vSphere with Tanzu, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-47-lifecycle-i-nadogradnja-cele-platforme.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Rollback – povratak na prethodnu verziju aplikacije kada nešto pođe naopako">
+
+  <meta property="og:description"
+        content="Dvadeset peta lekcija VMware & Tanzu tutorijala – kako Kubernetes omogućava bezbedan povratak aplikacije na prethodnu stabilnu verziju nakon neuspešne izmene.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-47-lifecycle-i-nadogradnja-cele-platforme.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-47-rollback.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Rollback – povratak na prethodnu verziju aplikacije kada nešto pođe naopako">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-47-rollback.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-47-rollback.png"
+           alt="Rollback – povratak na prethodnu verziju aplikacije kada nešto pođe naopako">
+
+    </a>
+
+ <div class="page-subtitle">
+XII. Lifecycle, automatizacija, recovery i interoperabilnost
+</div>
+<div class="page-subtitle">
+47. Lifecycle i nadogradnja cele platforme – vSphere, Supervisor, VKS, paketi i workload-i
+</div>
+
+<h3>Lifecycle kao koordinisana promena cele platforme</h3>
+<p>Lifecycle Tanzu platforme nije skup nepovezanih instalacija zakrpa. To je kontrolisana promena sistema u kome su vCenter Server, ESXi hostovi, vSphere Lifecycle Manager, mrežni i storage sloj, Supervisor, VMware vSphere Kubernetes Service, Kubernetes release-i, Cluster API objekti, paketi i poslovni workload-i povezani ugovorima kompatibilnosti. Komponenta može biti pojedinačno zdrava i podržana, a da kombinacija verzija ipak nije podržana. Zato početno pitanje nije „gde se klikće Upgrade”, već: <strong>koje je trenutno dokazano stanje, koji je podržani ciljni skup verzija, kojim redosledom se prelazi između njih i kako se potvrđuje funkcija posle svakog koraka?</strong></p>
+<p>Nadogradnja se planira kao lanac promena sa kontrolnim kapijama. Sledeći sloj se menja tek kada prethodni sloj prođe tehničku i servisnu validaciju. Time se smanjuje obim incidenta i čuva mogućnost da se precizno utvrdi poslednja promena. U malom laboratorijskom okruženju više koraka može stati u jedan prozor održavanja; u produkciji su češće odvojeni talasi: pilot, ograničena grupa klastera, šira implementacija i završna stabilizacija.</p>
+<p>Ova lekcija se nadovezuje na monitoring, audit i sistematičan troubleshooting iz prethodnih lekcija. Isti dokazi—health status, events, alarms, metrics, logs i audit trag—ovde postaju ulazni i izlazni kriterijumi promene. Lekcija ne zamenjuje release notes niti proizvodnu matricu interoperabilnosti: konkretna putanja zavisi od izdanja vSphere/VCF-a, verzije Supervisor-a i VKS service-a, tipa mreže, ClusterClass-a, Kubernetes release-a, licenci i podrške povezanih proizvoda.</p>
+
+<h3>Slojevi, vlasništvo i posledice promene</h3>
+<table>
+  <thead><tr><th>Sloj</th><th>Lifecycle mehanizam</th><th>Ključne zavisnosti</th><th>Dokaz uspeha</th></tr></thead>
+  <tbody>
+    <tr><td>vCenter Server</td><td>VAMI/LCM postupak odgovarajućeg izdanja</td><td>ESXi interoperabilnost, backup, DNS/NTP, sertifikati, eksterni proizvodi</td><td>Servisi zdravi, inventar dostupan, alarmi pregledani, API i prijava rade</td></tr>
+    <tr><td>ESXi i cluster image</td><td>vSphere Lifecycle Manager desired image ili podržani baseline model</td><td>OEM add-on, firmware/driver kombinacija, vSAN, DRS/HA, kapacitet za evakuaciju</td><td>Compliance=Compliant, hostovi povezani, storage i mrežne putanje zdrave</td></tr>
+    <tr><td>Supervisor</td><td>Workload Management/Updates i Supervisor lifecycle</td><td>Podržan vCenter/ESXi nivo, Supervisor Services, workload cluster kompatibilnost</td><td>Control plane zdrav, namespaces i API dostupni, pre-check bez blokirajućih grešaka</td></tr>
+    <tr><td>VKS Supervisor Service</td><td>Supervisor Services lifecycle; embedded ili asinhrono registrovana verzija</td><td>Supervisor release, registry dostupnost, podržani VKR/TKR i ClusterClass</td><td>Service stanje Activated/Running i očekivana verzija; release-i vidljivi</td></tr>
+    <tr><td>VKS workload klaster</td><td>Deklarativna promena Kubernetes release-a i, po potrebi, ClusterClass topologije</td><td>VKS service, VKR/TKR, OS image, CNI/CSI/add-ons, PDB i slobodan kapacitet</td><td>Cluster Ready, svi čvorovi Ready, verzije usklađene, system podovi zdravi</td></tr>
+    <tr><td>Paketi</td><td>PackageInstall/kapp-controller ili <code>tanzu package installed update</code></td><td>PackageRepository, vrednosti konfiguracije, CRD/API kompatibilnost</td><td>PackageInstall ReconcileSucceeded=True, aplikativni test i bez novih grešaka</td></tr>
+    <tr><td>Workload-i</td><td>GitOps, Helm, kapp ili Kubernetes rollout</td><td>API verzije, admission politike, image-i, konfiguracija, podaci i spoljne usluge</td><td>Ready/Available, SLO metrike, sintetički i poslovni testovi</td></tr>
+  </tbody>
+</table>
+<p>Granica odgovornosti mora biti zapisana pre prozora održavanja. Infrastructure tim obično vodi vCenter, hostove i firmware; platform tim Supervisor, VKS service i klastere; mrežni, storage, identity i security timovi potvrđuju svoje zavisnosti; aplikativni tim validira workload i podatke. Jedna osoba može imati više uloga, ali odobrenje, izvršenje i poslovno prihvatanje ne smeju ostati bez imenovanog vlasnika.</p>
+
+<h3>Terminologija i verzijske razlike</h3>
+<p>Nazivi su se menjali kroz generacije proizvoda. Starija dokumentacija koristi <strong>vSphere with Tanzu</strong>, <strong>TKG Service</strong>, <strong>Tanzu Kubernetes Release (TKR)</strong> i objekat <code>TanzuKubernetesCluster</code> odnosno <code>tkc</code>. Savremena dokumentacija koristi <strong>vSphere Supervisor</strong>, <strong>VMware vSphere Kubernetes Service (VKS)</strong>, <strong>vSphere Kubernetes Release (VKR/KR)</strong> i Cluster API objekat <code>Cluster</code> sa ClusterClass/topology modelom. Nasleđene komande u lekciji služe za prepoznavanje postojećih okruženja, ne kao preporuka za nove implementacije.</p>
+<p>U vSphere 8 okruženjima administratorska prijava na Supervisor i workload klastere često koristi <code>kubectl vsphere login</code>. U vSphere/VCF 9 dokumentacija uvodi VCF CLI tokove. Tačan alat, sintaksa i dostupni resource kind-ovi proveravaju se u dokumentaciji instaliranog izdanja. Komanda <code>kubectl api-resources</code> je bezbednija od pretpostavke da okruženje poseduje baš <code>tkc</code>, <code>tkr</code> ili <code>kr</code>.</p>
+<p>Od vCenter Server 8.0 Update 3 određene VKS verzije mogu biti isporučene kao embedded Supervisor Service, ali dostupnost servisa ne znači da se može odmah aktivirati na neusklađenom Supervisor-u. Za takve putanje zvanični redosled može zahtevati vCenter upgrade, zatim Supervisor upgrade, pa VKS service upgrade. Kasnije VKS service može imati nezavisan lifecycle. Ovo je primer zašto se redosled ne generalizuje bez release notes i Compatibility/Interoperability matrice ciljnog izdanja.</p>
+
+<h3>Projektovanje ciljane verzije i putanje nadogradnje</h3>
+<p>Cilj nije „najnovija verzija”, već podržana i operativno opravdana verzija. Tim formira <em>target state manifest</em>: trenutna i ciljna verzija svake komponente, minimalna međuv verzija, kompatibilni firmware/driver-i, datum kraja podrške, poznati problemi, potreban restart, očekivani prekid i rollback ili restore metoda. Matrica se zamrzava uz change zapis, jer se online dokumentacija može promeniti posle intervencije.</p>
+<table>
+  <thead><tr><th>Provera</th><th>Pitanje</th><th>Blokira promenu kada...</th></tr></thead>
+  <tbody>
+    <tr><td>Interoperabilnost</td><td>Da li su vCenter, ESXi, Supervisor, VKS, NSX/Avi/HAProxy, CSI i backup proizvod međusobno podržani?</td><td>Kombinacija nije eksplicitno podržana ili je matrica neodređena</td></tr>
+    <tr><td>Upgrade path</td><td>Da li su potrebne posredne verzije?</td><td>Pokušava se preskok obaveznog release-a ili Kubernetes minor verzije</td></tr>
+    <tr><td>Hardver</td><td>Da li HCL, firmware, driver i OEM add-on čine podržanu celinu?</td><td>Željeni image proizvodi konflikt ili uređaj gubi podršku</td></tr>
+    <tr><td>Kapacitet</td><td>Može li platforma podneti host/node van rada i surge replike?</td><td>PDB, anti-affinity, storage ili CPU/memorija onemogućavaju bezbednu evakuaciju</td></tr>
+    <tr><td>API i ekstenzije</td><td>Da li postoje uklonjene Kubernetes API verzije, webhook ili CRD nekompatibilnosti?</td><td>Manifesti ili operatori zavise od uklonjenog API-ja</td></tr>
+    <tr><td>Recovery</td><td>Postoje li sveži, nezavisni i testirani backup-i i dokumentovan restore?</td><td>Postoji samo snapshot ili backup bez dokazanog restore-a</td></tr>
+  </tbody>
+</table>
+<p>Kubernetes minor verzije workload klastera nadograđuju se sekvencijalno kada proizvodna putanja to zahteva; preskok sa, na primer, 1.30 direktno na 1.32 nije podržana pretpostavka. Kontrolna ravan se nadograđuje pre worker grupa, uz ograničenje verzijskog skew-a koje određuju Kubernetes i VKS release. Ako VKS UI ili Cluster status nudi samo određene release-e, to je dodatni signal da podržanu putanju određuje servis, a ne proizvoljna vrednost u YAML-u.</p>
+
+<h3>Pre-upgrade baseline i go/no-go kapija</h3>
+<p>Pre promene se ne prikuplja „što više izlaza”, već skup koji omogućava poređenje pre i posle: verzije, zdravlje, kapacitet, alarmi, sertifikati, objekti lifecycle-a, mrežne i storage zavisnosti, aplikativni SLO i poslednje promene. Svi izlazi dobijaju UTC timestamp i change ID. Tajne, tokeni i puni kubeconfig fajlovi ne smeju se prilagati tiketu bez zaštićenog kanala.</p>
+<pre><code class="language-bash">date -u
+kubectl config current-context
+kubectl version
+kubectl get nodes -o wide
+kubectl get --raw='/readyz?verbose'
+kubectl get pods -A
+kubectl get pdb -A
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations
+kubectl get storageclass,pv,pvc -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+<p>Ove komande su read-only i izvršavaju se iz odgovarajućeg Supervisor ili workload context-a. <code>/readyz</code> potvrđuje API server readiness, ali ne dokazuje zdravlje cele platforme. Pregled podova zato traži neočekivana stanja, a ne slepo filtriranje svega što nije <code>Running</code>: završeni Job pod sa <code>Completed</code> stanjem može biti normalan.</p>
+<pre><code class="language-powershell">Connect-VIServer vcsa01.corp.example
+Get-VMHost | Select-Object Name, ConnectionState, PowerState, Version, Build
+Get-Cluster | Select-Object Name, HAEnabled, DrsEnabled
+Get-Datastore | Select-Object Name, Type, CapacityGB, FreeSpaceGB
+Get-AlarmDefinition | Where-Object {$_.Enabled -eq $true} | Select-Object Name</code></pre>
+<p>PowerCLI primeri su read-only posle prijave, ali zahtevaju najmanje privilegije za čitanje inventara, hostova, datastore-a i alarma. Rezultati se upoređuju sa CMDB-om i vLCM stanjem. Kredencijali se ne ugrađuju u skriptu.</p>
+<h4>Obavezni go/no-go kriterijumi</h4>
+<ul>
+  <li>Nema aktivnog P1/P2 incidenta niti neobjašnjenog crvenog alarma na ciljnom failure domenu.</li>
+  <li>Backup vCenter-a je uspešan i restore postupak poznat; workload podaci imaju backup prema RPO/RTO-u.</li>
+  <li>Supervisor, VKS klasteri i sistemski add-ons su zdravi pre promene.</li>
+  <li>DRS/HA, storage putanje, load balancer, DNS, NTP, registry i identity provider su dostupni.</li>
+  <li>PDB, affinity i kapacitet omogućavaju drain/evakuaciju bez neželjenog prekida.</li>
+  <li>Release notes, poznati problemi i svi obavezni pre-check-i su pregledani; podrška je uključena kada rizik to zahteva.</li>
+  <li>Definisani su stop uslovi, maksimalno trajanje faze, komunikacioni kanal i osoba koja donosi odluku o povlačenju.</li>
+</ul>
+
+<h3>Preporučeni redosled i kontrolne kapije</h3>
+<ol>
+  <li><strong>Priprema i pilot.</strong> Validira se target state, backup, kompatibilnost i runbook; ista putanja se izvodi u reprezentativnom neprodukcijskom okruženju.</li>
+  <li><strong>Management i infrastructure sloj.</strong> vCenter se menja prema zvaničnoj putanji, zatim ESXi/vLCM image i zavisni firmware/driver-i. Posle svake faze proveravaju se vCenter servisi, inventar, host connectivity, HA/DRS, mreža i storage.</li>
+  <li><strong>Supervisor.</strong> Pokreće se ugrađeni pre-check i pregledaju inkompatibilni workload klasteri i Supervisor Services. Nadogradnja se izvršava tek kada nema blokirajućih uslova.</li>
+  <li><strong>VKS Supervisor Service i release katalog.</strong> Aktivira se verzija kompatibilna sa Supervisor-om; proverava se da su očekivani VKR/KR ili TKR release-i dostupni.</li>
+  <li><strong>VKS workload klasteri.</strong> Najpre pilot klaster, zatim control plane i worker node pool-ovi u sekvencijalnim minor koracima. Između talasa se proveravaju sistemski add-ons, čvorovi, CNI, CSI i workload.</li>
+  <li><strong>Paketi i platform services.</strong> Auto-managed paketi prate servis prema dokumentovanom ponašanju; korisnički upravljani paketi menjaju se eksplicitno, sa sačuvanim values fajlom i proverom CRD/API kompatibilnosti.</li>
+  <li><strong>Workload-i.</strong> Aplikacije se usklađuju sa novim API-jima i paketima kroz deklarativni izvor. Canary ili ograničeni rollout prethodi širokoj promociji.</li>
+  <li><strong>Stabilizacija.</strong> Promena se ne zatvara odmah po zelenom UI statusu. Tokom posmatračkog perioda porede se greške, latencija, restart-i, resursi, alarmi, backup i poslovni testovi sa baseline-om.</li>
+</ol>
+<p>Redosled nije univerzalna zamena za dokumentaciju konkretne verzije. Mrežni ili storage proizvod ponekad zahteva drugačiju tačku u lancu; VCF lifecycle može orkestrirati više komponenti; standalone TKG ima management-cluster postupke koji nisu isti kao VKS na Supervisor-u. Ako se model implementacije ne može nedvosmisleno identifikovati, change se zaustavlja pre prve state-changing radnje.</p>
+
+<h3>vSphere Lifecycle Manager, hostovi i failure domeni</h3>
+<p>vSphere Lifecycle Manager desired image opisuje željeno ESXi izdanje, vendor add-on i dodatne komponente. Compliance check je read-only; remediation menja hostove, uvodi ih u maintenance mode i može ih restartovati. Pre remediation-a proveravaju se admission control, DRS pravila, pinned VM-ovi, lokalni uređaji, vSAN resync, NSX readiness i kapacitet preostalih hostova. Ručno prisilno gašenje Supervisor control plane ili worker VM-ova nije prihvatljiv način oslobađanja hosta.</p>
+<p>Kada topologija obuhvata više zone/failure domena, hostovi i kasnije Kubernetes čvorovi menjaju se tako da ne nestane quorum niti dovoljan broj replika iz jedne zone. PDB štiti samo od dobrovoljnih Kubernetes evikcija u granicama svoje specifikacije; ne štiti od nestanka hosta, pogrešne anti-affinity konfiguracije ili storage kvara. Zato se istovremeno proveravaju vSphere placement i Kubernetes scheduling ograničenja.</p>
+
+<h3>Nadogradnja Supervisor-a i VKS service-a</h3>
+<p>U vSphere Client-u se za Supervisor koristi oblast <strong>Workload Management</strong> i kartica <strong>Updates</strong>, ali nazivi koraka zavise od verzije. Pre-check proverava stanje i kompatibilnost: workload klastere, Supervisor Services, kapacitet, control plane i druge uslove. Greška pre-check-a nije prepreka koju treba zaobići ručnim menjanjem sistemskih objekata; ona je dokaz koji se mapira na zahtevan preduslov.</p>
+<p>Supervisor control plane se tokom update-a menja kontrolisano. Administrator prati task/event u vCenter-u, Supervisor status i dostupnost API-ja. Kratke tranzicije pojedinačnih control plane VM-ova mogu biti očekivane, ali gubitak API dostupnosti izvan dokumentovanog prozora, neformiranje novog čvora ili trajno degradirano stanje aktiviraju stop uslov. Korisničko uređivanje sistemskih namespace-a, deployment-a i internih anotacija bez izričitog KB postupka i podrške može učiniti okruženje nepodržanim.</p>
+<pre><code class="language-bash"># Supervisor context; read-only inventar pre i posle promene
+kubectl api-resources | grep -Ei 'cluster|kubernetesrelease|tanzukubernetesrelease|packageinstall'
+kubectl get clusters -A
+kubectl get kcp,md,machine -A
+kubectl get pkgi -A
+kubectl get pods -A
+
+# Koristi samo resource kind koji postoji u konkretnom izdanju
+kubectl get kr
+kubectl get tkr</code></pre>
+<p>Poslednje dve komande su alternativne, ne izvode se obe naslepo. Ako API server odgovori da resource type ne postoji, administrator se vraća na <code>kubectl api-resources</code> i dokumentaciju svog izdanja. Kod private-registry ili air-gapped modela dodatno se proveravaju registracija VKS verzije, dostupnost svih image-a, CA trust i pull kredencijali pre početka.</p>
+
+<h3>Nadogradnja VKS workload klastera</h3>
+<p>Deklarativna specifikacija klastera je izvor željenog stanja. U savremenom ClusterClass modelu release se menja u topology delu <code>Cluster</code> objekta; tačan format verzije i polje moraju odgovarati API-ju instaliranog VKS izdanja. U nasleđenom TKC modelu koristi se odgovarajuće <code>distribution.version</code> polje. Manifest iz dokumentacije druge generacije ne sme se kopirati bez <code>kubectl explain</code> i pregleda postojećeg objekta.</p>
+<pre><code class="language-bash"># Read-only: sačuvaj trenutno stanje i proveri dostupne release-e
+kubectl -n team-a get cluster prod-vks-01 -o yaml &gt; prod-vks-01-before.yaml
+kubectl -n team-a describe cluster prod-vks-01
+kubectl -n team-a get kcp,md,machine
+kubectl explain cluster.spec.topology.version
+
+# State-changing: primer deklarativne izmene; ciljna vrednost mora biti ponuđen podržani release
+kubectl -n team-a patch cluster prod-vks-01 --type=merge \
+  -p '{"spec":{"topology":{"version":"TARGET_SUPPORTED_RELEASE"}}}'</code></pre>
+<p><strong>Upozorenje:</strong> patch je produkciona promena. Placeholder se nikada ne izvršava doslovno; cilj se uzima iz release kataloga i odobrenog manifesta. Preferira se izmena Git izvora i GitOps reconciliacija, jer direktni patch može biti vraćen kao drift. Pre promene se proverava da li ClusterClass upgrade zahteva dodatna polja, novi OS image ili posebnu migraciju.</p>
+<pre><code class="language-bash"># Workload context; read-only validacija
+kubectl get nodes -o custom-columns='NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion,OS:.status.nodeInfo.osImage,READY:.status.conditions[?(@.type=="Ready")].status'
+kubectl get pods -A
+kubectl get daemonsets,statefulsets,deployments -A
+kubectl get pdb -A
+kubectl get csinodes
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 100</code></pre>
+<p>Tokom rolling zamene čvorova očekuje se privremena mešavina dozvoljenih verzija. Završni kriterijum je usklađena ciljna verzija, svi čvorovi <code>Ready</code>, sve Machine/MD/KCP conditions zdrave i bez zaglavljenih evikcija. Ako PDB blokira drain, ne briše se automatski: utvrđuje se da li workload ima dovoljno replika i da li vlasnik aplikacije odobrava privremenu promenu. <code>--force</code> i ručno brisanje Machine/VM objekata nisu standardni rollback.</p>
+
+<h3>Paketi, add-ons i platform services</h3>
+<p>Treba razlikovati auto-managed sistemske pakete, Supervisor Services i korisnički instalirane standardne pakete. Auto-managed paket se ne „popravlja” ručnom zamenom image-a u njegovom Deployment-u, jer reconciler vraća deklarisano stanje. Kod PackageInstall resursa proveravaju se <code>ReconcileSucceeded</code>, <code>ReconcileFailed</code>, verzija PackageMetadata/Package i povezana App/kapp evidencija.</p>
+<pre><code class="language-bash"># Read-only inventar i konfiguracioni obrazac
+tanzu package installed list -A
+tanzu package available list -A
+tanzu package installed get cert-manager -n packages
+kubectl get pkgi,app -A
+
+# Sačuvaj vrednosti pre promene; dostupnost zastavice proveri za instaliranu CLI verziju
+tanzu package installed get cert-manager -n packages --values-file-output values-before.yaml
+
+# State-changing: primer eksplicitne package nadogradnje
+tanzu package installed update cert-manager \
+  --namespace packages \
+  --version TARGET_SUPPORTED_VERSION \
+  --values-file values-before.yaml</code></pre>
+<p>Pre update-a se porede schema vrednosti i release notes. Stari values fajl može sadržati uklonjen ili preimenovan ključ. CRD nadogradnja je naročito osetljiva: vraćanje kontrolera na staru verziju ne vraća automatski CRD schema niti konvertuje već sačuvane custom resurse. Zato package rollback može zahtevati novu deklarativnu instalaciju podržane verzije, restore specifičnih resursa ili forward-fix, a ne samo izbor starog paketa.</p>
+
+<h3>Workload kompatibilnost, rollout i rollback</h3>
+<p>Pre promene Kubernetes minor verzije skeniraju se manifesti i živi objekti za deprecated ili uklonjene API-je. Admission webhook-ovi, operatori, CSI/CNI integracije i monitoring agenti moraju podržavati ciljnu verziju. Workload se zatim promovše canary/rolling strategijom, uz immutable image tag ili digest, readiness/startup probe i merljive SLO pragove.</p>
+<p><code>kubectl rollout undo</code> vraća samo prethodni Pod template Deployment-a; ne vraća ConfigMap, Secret, Service, Ingress, CRD, PersistentVolume niti bazu. Rollback kreira novu reviziju, ne briše audit istoriju. U GitOps ili Helm okruženju ručni undo ne menja izvor istine i reconciler može ponovo primeniti problematičnu verziju. Zato se produkcioni povratak izvodi kroz Git revert/novi commit ili <code>helm rollback</code> kada Helm poseduje ceo release, uz poseban plan za podatke i migracije.</p>
+<pre><code class="language-bash"># Read-only dijagnostika Deployment rollout-a
+kubectl -n payments rollout history deployment/checkout-api
+kubectl -n payments rollout status deployment/checkout-api --timeout=180s
+kubectl -n payments describe deployment checkout-api
+kubectl -n payments logs deployment/checkout-api --all-containers=true --since=10m
+
+# State-changing; koristi se tek posle provere revizije i kompatibilnosti podataka
+kubectl -n payments rollout undo deployment/checkout-api --to-revision=4</code></pre>
+
+<h3>Backup, snapshot, rollback i restore nisu isto</h3>
+<table>
+  <thead><tr><th>Mehanizam</th><th>Šta rešava</th><th>Važno ograničenje</th></tr></thead>
+  <tbody>
+    <tr><td>Konfiguracioni backup vCenter-a</td><td>Oporavak appliance konfiguracije prema podržanom postupku</td><td>Nije zamena za backup workload podataka niti proizvoljan VM snapshot</td></tr>
+    <tr><td>VM snapshot</td><td>Kratkotrajna tehnička tačka za podržane scenarije</td><td>Nije dugoročni backup; nekonzistentan snapshot distribuiranog sistema može biti neupotrebljiv</td></tr>
+    <tr><td>Kubernetes/Velero backup</td><td>Resursi i, kada je konfigurisano, volume podaci</td><td>Restore se mora testirati; CSI snapshot zavisi od storage podrške</td></tr>
+    <tr><td>Rollback Deployment/package-a</td><td>Povratak deklarativne verzije pojedinačne komponente</td><td>Ne vraća podatke, zasebne objekte ni celu platformu</td></tr>
+    <tr><td>Forward-fix</td><td>Ispravka kada povratak nije podržan ili bi oštetio podatke</td><td>Zahteva jasno ograničenje incidenta i novu validiranu promenu</td></tr>
+  </tbody>
+</table>
+<p>Za vCenter i neke infrastrukturne komponente vendor može podržavati restore ili rollback samo pod određenim uslovima; za ESXi se češće govori o remedijaciji ili ograničenom bootbank rollback-u, a ne o univerzalnom „undo”. Supervisor i VKS upgrade ne treba tretirati kao reverzibilnu transakciju. Pre početka se iz release notes utvrđuje da li je rollback podržan; ako nije, recovery plan je popravka napred, redeploy ili restore iz dokazano kompatibilne kopije.</p>
+
+<h3>Integrisani praktikum – pilot nadogradnja platforme</h3>
+<p><strong>Cilj i kontekst.</strong> Tim nadograđuje pilot VKS klaster <code>lab-vks-01</code> u namespace-u <code>platform-lab</code> za jednu podržanu Kubernetes minor verziju, zatim validira paket i aplikaciju. vCenter/ESXi/Supervisor koraci se u vežbi planiraju i proveravaju kroz GUI, ali se ne pokreću bez posebnog laboratorijskog odobrenja. Time se vežba kompletan change tok bez rizičnog simuliranja kvara management plane-a.</p>
+<p><strong>Topologija.</strong> Jedan vCenter, vSphere cluster sa najmanje tri hosta, jedan Supervisor, VKS service, pilot VKS klaster sa tri control plane instance i najmanje tri worker čvora raspoređena preko dostupnih failure domena, CNI/CSI, test PackageInstall i aplikacija <code>checkout-api</code>.</p>
+<p><strong>Preduslovi i prava.</strong> Potrebni su vSphere read privilegije za baseline, odobrena Workload Management prava za upgrade koji će izvršiti platform administrator, Supervisor i workload kubeconfig sa najmanjim potrebnim pravima, kompatibilni <code>kubectl</code>, Tanzu CLI samo ako izdanje koristi CLI-managed package i pristup change evidenciji. Backup i restore dokaz moraju biti sveži. Rizik je srednji do visok: menjaju se čvorovi i sistemski add-ons, pa vežba ne pripada deljenoj produkciji.</p>
+<ol>
+  <li><strong>Formiraj change paket.</strong> Zapiši trenutne i ciljane verzije, linkovane release notes u change sistemu, vlasnike, trajanje, stop uslove i poslovni smoke test. <strong>Očekivani rezultat:</strong> nema praznog polja u matrici kompatibilnosti i cilj je tačno jedna podržana minor etapa.</li>
+  <li><strong>Proveri vSphere baseline u GUI-ju.</strong> U vSphere Client-u pregledaj vCenter verziju, hostove, vLCM compliance, aktivne alarme, DRS/HA, datastore kapacitet i Workload Management status. Ne pokreći remediation. <strong>Validacija:</strong> nema neobjašnjenih alarma, host disconnect-a, vSAN resync-a niti nedovoljnog kapaciteta za jedan host van rada.</li>
+  <li><strong>Sačuvaj Supervisor dokaze.</strong>
+    <pre><code class="language-bash">mkdir -p ./chg-vks-lab
+date -u &gt; ./chg-vks-lab/time-before.txt
+kubectl config current-context
+kubectl get clusters -A &gt; ./chg-vks-lab/clusters-before.txt
+kubectl -n platform-lab get cluster lab-vks-01 -o yaml &gt; ./chg-vks-lab/cluster-before.yaml
+kubectl -n platform-lab get kcp,md,machine -o wide &gt; ./chg-vks-lab/machines-before.txt
+kubectl get pkgi -A &gt; ./chg-vks-lab/packages-before.txt
+kubectl get pods -A &gt; ./chg-vks-lab/supervisor-pods-before.txt</code></pre>
+    <strong>Validacija:</strong> svi fajlovi su neprazni, Cluster condition je Ready/True, Machine objekti zdravi, a neočekivani podovi van zdravog stanja istraženi.</li>
+  <li><strong>Pokreni zvanični pre-check.</strong> U <strong>Workload Management → Updates</strong> izaberi ciljnu Supervisor/VKS fazu samo za pregled i pokreni ponuđeni pre-check. <strong>Stop uslov:</strong> inkompatibilan workload cluster, nezdrav addon, nekompatibilan Supervisor Service ili nedostatak resursa. Upozorenje se ne ignoriše bez vendor dokumentacije i change odobrenja.</li>
+  <li><strong>Validiraj workload pre promene.</strong>
+    <pre><code class="language-bash"># Prebaci se na workload context pre izvršenja
+kubectl config current-context
+kubectl get --raw='/readyz?verbose' &gt; ./chg-vks-lab/readyz-before.txt
+kubectl get nodes -o wide &gt; ./chg-vks-lab/nodes-before.txt
+kubectl get pods -A &gt; ./chg-vks-lab/pods-before.txt
+kubectl get pdb -A &gt; ./chg-vks-lab/pdb-before.txt
+kubectl -n payments rollout status deployment/checkout-api --timeout=120s</code></pre>
+    <strong>Validacija:</strong> API je ready, čvorovi su Ready, sistemski podovi zdravi, PDB ne onemogućava jedan planirani drain i aplikacija je dostupna pre upgrade-a.</li>
+  <li><strong>Simuliraj deklarativnu izmenu bez upisa.</strong> Izvezi odobreni Cluster manifest, promeni samo release polje u radnoj kopiji i izvrši server-side dry-run ako API to podržava.
+    <pre><code class="language-bash">kubectl -n platform-lab apply --server-side --dry-run=server \
+  -f lab-vks-01-target.yaml -o yaml &gt; ./chg-vks-lab/cluster-preview.yaml</code></pre>
+    <strong>Validacija:</strong> preview pokazuje samo odobrenu ciljnu verziju i očekivane default vrednosti; nema neočekivane promene node pool-a, storage class-a, mreže ili replica count-a.</li>
+  <li><strong>Izvrši upgrade kroz izvor istine.</strong> Merge-uj odobren manifest u GitOps repozitorijum ili neka ovlašćeni platform administrator primeni provereni YAML. Ovo je state-changing korak. Zabeleži vreme i resourceVersion. <strong>Očekivani rezultat:</strong> Cluster conditions pokazuju aktivnu reconciliaciju i kontrolisanu zamenu control plane/worker mašina.</li>
+  <li><strong>Prati iz Supervisor context-a.</strong>
+    <pre><code class="language-bash">kubectl -n platform-lab get cluster,kcp,md,machine -w</code></pre>
+    <p>Komanda je read-only, ali <code>-w</code> ostaje aktivan do prekida sa Ctrl+C. Prati se formiranje novih mašina, Ready stanje i uklanjanje starih. <strong>Stop uslov:</strong> condition se ne menja u dokumentovanom roku, control plane gubi quorum, nova VM ne dobija mrežu/storage ili addon postaje nezdrav.</p></li>
+  <li><strong>Validiraj novi klaster.</strong> Prijavi se u obnovljeni workload context ako su kredencijali rotirani i ponovi baseline komande. Uporedi kubelet verzije, OS image, podove, CSI/CNI, događaje i aplikativni smoke test.
+    <pre><code class="language-bash">kubectl get nodes -o wide
+kubectl get pods -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 100
+kubectl -n payments rollout status deployment/checkout-api --timeout=180s
+kubectl -n payments run lifecycle-smoke-test \
+  --image=curlimages/curl:8.12.1 --restart=Never --rm -i \
+  --command -- curl -fsS --max-time 10 \
+  http://checkout-api.payments.svc.cluster.local:8080/health</code></pre>
+    <strong>Validacija:</strong> svi čvorovi imaju ciljnu verziju i Ready=True, nema novih warning događaja povezanih sa CNI/CSI ili aplikacijom, a HTTP test završava kodom 0.</li>
+  <li><strong>Validiraj pakete.</strong>
+    <pre><code class="language-bash">kubectl get pkgi -A
+kubectl get pkgi -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,VERSION:.spec.packageRef.version,RECONCILE:.status.conditions[?(@.type=="ReconcileSucceeded")].status'
+tanzu package installed list -A</code></pre>
+    <strong>Validacija:</strong> PackageInstall objekti imaju očekivanu verziju i uspešnu reconciliaciju. Ako Tanzu CLI nije deo konkretnog modela, preskače se njegova komanda, ne instalira se samo radi provere.</li>
+  <li><strong>Incident grana: node upgrade je zaglavljen.</strong> Sačuvaj <code>Cluster</code>, KCP/MD/Machine conditions, događaje, neuspešni VM task, podove i vremena. Razdvoji simptom od uzroka: PDB/eviction, nedostatak kapaciteta, image pull, CNI/CSI addon, DHCP/IPAM/DNS ili vSphere provisioning. Ne briši Machine niti PDB dok hipoteza nije potvrđena. Privremena mera može biti zaustavljanje sledećeg talasa; trajna mera rešava stvarni resurs ili kompatibilnost. Ako vendor rollback nije podržan, eskalira se sa dokazima i primenjuje dokumentovan forward-fix.</li>
+  <li><strong>Zatvaranje i rollback laboratorije.</strong> Ako je upgrade uspešan, ciljna verzija postaje novi baseline i ne vraća se samo radi vežbe. Ako dry-run ili pre-check nije prošao, nema state promene: ukloni samo lokalne preview fajlove po politici laboratorije. Ako je primenjena pogrešna deklarativna vrednost, ne vraćaj staru Kubernetes minor verziju bez potvrde da je downgrade podržan; pauziraj reconciliaciju samo po dokumentovanom postupku i eskaliraj platform timu. <strong>Kriterijum završetka:</strong> svi tehnički i poslovni kriterijumi su dokazani, posmatrački period završen i change zapis sadrži baseline pre/posle, odstupanja i vlasnika naredne akcije.</li>
+</ol>
+
+<h3>Troubleshooting matrica tokom lifecycle promene</h3>
+<table>
+  <thead><tr><th>Simptom i obim</th><th>Dokaz i verovatan uzrok</th><th>Bezbedna reakcija</th></tr></thead>
+  <tbody>
+    <tr><td>Supervisor pre-check blokira upgrade</td><td>Inkompatibilan Cluster/Supervisor Service, nezdrav addon ili kapacitet; pregled task-a, conditions i KB poruke</td><td>Zaustavi promenu, uskladi navedenu komponentu; ne zaobilazi pre-check internim patch-em</td></tr>
+    <tr><td>Nova control plane/worker Machine ostaje Provisioning</td><td>vCenter task, VM event, IPAM/DHCP, DNS, storage ili quota</td><td>Sačuvaj objekte i events, potvrdi infrastrukturni uzrok, spreči sledeći talas i koriguj zavisnost</td></tr>
+    <tr><td>Drain blokiran</td><td>PDB, finalizer, local data ili nereplikovan workload</td><td>Uključi vlasnika aplikacije; poveća replike ili odobreno prilagodi PDB, bez automatskog force brisanja</td></tr>
+    <tr><td>Čvor Ready, system pod nije zdrav</td><td>CNI/CSI/DNS/addon PackageInstall; logs, events i reconcile conditions</td><td>Ne nastavljaj talas; proveri kompatibilnu addon verziju i primeni vendor postupak</td></tr>
+    <tr><td>Paketi se vraćaju na staro stanje</td><td>GitOps/kapp reconciler i drift od izvora istine</td><td>Promeni deklarativni izvor; ne vodi paralelnu ručnu istoriju</td></tr>
+    <tr><td>Aplikacija pada posle uspešnog cluster upgrade-a</td><td>Uklonjen API, webhook/operator, policy, kernel/OS ili dependency razlika</td><td>Ograniči incident, vrati aplikativnu promenu samo ako je kompatibilna sa podacima; platform downgrade ne pretpostavljaj</td></tr>
+  </tbody>
+</table>
+<p>Za vCenter/Supervisor zadatke početni dokazi su vSphere Client Recent Tasks, Events, alarmi i Workload Management status. Za VKS su to Cluster/KCP/MD/Machine conditions, Kubernetes događaji i sistemski podovi. Za pakete su to PackageInstall/App conditions i kapp-controller logovi, a za workload Deployment conditions, događaji, container logovi i SLO metrike. Vremenske oznake moraju biti korelisane uz provereno NTP stanje; bez toga se lako povežu nepovezani događaji.</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Održavaj verzijski registar.</strong> Za svaki environment čuvaj build, release, ClusterClass, OS image, mrežni/storage model, package i vlasnika; proveravaj ga najmanje mesečno i pre svakog change-a.</li>
+  <li><strong>Automatizuj read-only pre-check.</strong> Skripta sme da prikuplja verzije, conditions, alarme i kapacitet, ali odluka o kompatibilnosti mora koristiti zvaničnu matricu i release notes. Rezultat se verzionira uz change ID.</li>
+  <li><strong>Koristi pilot i talase.</strong> Najmanji reprezentativan failure domen prolazi prvi; između talasa postoji merljiv posmatrački period i stop uslov.</li>
+  <li><strong>Ne mešaj vlasništvo nad deklarativnim stanjem.</strong> GitOps, Helm, kapp i ručne komande ne smeju istovremeno upravljati istim poljima bez jasnog pravila.</li>
+  <li><strong>Testiraj restore, ne samo backup.</strong> Uspešan job nije dokaz obnovljivosti. Periodično obnovi reprezentativan klaster/workload u izolovanom okruženju i potvrdi integritet i RTO.</li>
+  <li><strong>Planiraj sertifikate i kredencijale.</strong> Proveri rokove, trust chain, registry CA i mogućnost ponovne prijave posle upgrade-a; tajne ne izlaži u logovima i tiketima.</li>
+  <li><strong>Čuvaj audit dokaz.</strong> Izvršilac, odobrenje, ciljna verzija, početak/kraj, komande ili pipeline run, rezultati kapija i odstupanja moraju biti povezani u jednom change zapisu.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Administrator ume da razlikuje vSphere, Supervisor, VKS service, workload cluster, package i workload lifecycle.</li>
+  <li>Može da sastavi current/target verzijsku matricu i dokaže interoperabilnost primarnim izvorima.</li>
+  <li>Prepoznaje staru TKG/TKR/TKC i novu VKS/VKR/ClusterClass terminologiju bez mešanja procedura.</li>
+  <li>Definiše go/no-go i stop uslove, vlasnike, pilot, talase i posmatrački period.</li>
+  <li>Prikuplja read-only baseline iz vSphere-a, Supervisor-a i workload klastera bez izlaganja tajni.</li>
+  <li>Razume zašto se Kubernetes minor verzije ne preskaču bez eksplicitno podržane putanje.</li>
+  <li>Može da prati Cluster, KCP, MachineDeployment i Machine conditions i razlikuje platformsku od aplikativne greške.</li>
+  <li>Validira CNI, CSI, DNS, pakete, admission webhooks, čvorove i poslovni workload posle promene.</li>
+  <li>Razlikuje rollback, restore, redeploy i forward-fix i ne obećava nepodržan downgrade.</li>
+  <li>Zatvara promenu tek kada su tehnički, bezbednosni i poslovni kriterijumi dokazani i dokumentovani.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>Nadogradnja Tanzu platforme je uspešna samo kada ceo podržani lanac ostane funkcionalan: vSphere obezbeđuje zdravu infrastrukturu, Supervisor stabilnu kontrolnu ravan, VKS service odgovarajuće release-e, workload klasteri zdrav Kubernetes, paketi platform services, a aplikacije dokazanu poslovnu funkciju. Zeleni indikator jedne komponente nije dovoljan ako je sledeća zavisnost degradirana.</p>
+<p>Najvažnija praktična veština nije brzo pokretanje upgrade-a, već disciplinovano smanjivanje neizvesnosti: tačan inventar, verzijska matrica, testirana putanja, baseline, kontrolne kapije, pilot, ograničen blast radius, korelacija dokaza i unapred definisana odluka kada se staje. Administrator pritom mora znati granice alata: vLCM remediation, Supervisor update, VKS release promena, package update i Deployment rollback nisu isti mehanizam i ne vraćaju iste vrste stanja.</p>
+<p>Odgovoran lifecycle završava se tek posle posmatračkog perioda, potvrde SLO-a, backup/restore spremnosti i ažuriranja dokumentacije. Kada rollback nije podržan ili bi ugrozio podatke, profesionalna odluka je zaustaviti dalje promene, sačuvati dokaze i sprovesti dokumentovan forward-fix ili recovery uz odgovarajuće vlasnike i podršku. Time se nadogradnja pretvara iz rizičnog niza klikova u ponovljiv enterprise proces.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom TechDocs dokumentacija za vSphere Lifecycle Manager, vCenter Server i ESXi upgrade, vSphere Supervisor lifecycle i pre-check postupke, VMware vSphere Kubernetes Service, VKR/TKR release-e, Cluster API i ClusterClass nadogradnje; zvanični Broadcom Knowledge Base članci za Supervisor i VKS upgrade kompatibilnost, sekvencijalne Kubernetes minor verzije, nezdrave add-ons i neuspele pre-check/upgrade scenarije; zvanične Tanzu CLI i Tanzu Packages reference za PackageInstall, kapp-controller i package update; zvanična Kubernetes dokumentacija za version skew, deprecated API-je, node drain, PodDisruptionBudget, Deployment rollout i rollback; primarne smernice za backup, restore, monitoring, audit i interoperabilnost povezanih vSphere, mrežnih, storage i workload komponenti.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-46-sistematican-troubleshooting-tanzu-platforme.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-48-api-cli-gitops-i-automatizacija.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

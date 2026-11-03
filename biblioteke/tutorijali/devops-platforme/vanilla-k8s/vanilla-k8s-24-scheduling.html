@@ -1,0 +1,588 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-24-scheduling.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Scheduling politike – affinity, topology spread, taints i prioriteti | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Napredni Kubernetes scheduling: node i Pod affinity, topology spread constraints, taints, tolerations, PriorityClass, preemption, validacija i troubleshooting.">
+
+  <meta name="keywords"
+        content="Kubernetes scheduling, kube-scheduler, node affinity, pod affinity, pod anti-affinity, topology spread constraints, taints, tolerations, PriorityClass, Pod priority, preemption, nodeSelector, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-24-scheduling.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+  <meta property="og:locale"
+        content="sr_RS">
+  <meta property="og:type"
+        content="article">
+  <meta property="og:title"
+        content="Scheduling politike – affinity, topology spread, taints i prioriteti">
+  <meta property="og:description"
+        content="Projektujte proverljive Kubernetes politike raspoređivanja koje povezuju dostupnost, izolaciju, kapacitet i prioritet poslovnih workload-a.">
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-24-scheduling.html">
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-10-scheduler-i-controlleri.png">
+  <meta property="og:image:type"
+        content="image/png">
+  <meta property="og:image:width"
+        content="1200">
+  <meta property="og:image:height"
+        content="630">
+  <meta property="og:image:alt"
+        content="Kubernetes scheduling politike – affinity, topology spread, taints, tolerations i prioriteti">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-10-scheduler-i-controlleri.png"
+       target="_blank"
+       rel="noopener">
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-10-scheduler-i-controlleri.png"
+           alt="Kubernetes scheduling politike – affinity, topology spread, taints, tolerations i prioriteti">
+    </a>
+
+    <div class="page-subtitle">
+      V. Konfiguracija, zdravlje, resursi i raspoređivanje
+    </div>
+    <div class="page-subtitle">
+      24. Scheduling politike – affinity, topology spread, taints, tolerations i prioriteti
+    </div>
+
+    <p>
+      Prethodna lekcija pokazala je da scheduler odlučuje na osnovu deklarisanih <em>requests</em> vrednosti, a ne na osnovu trenutnog utiska da je neki čvor „slobodan”. Ova lekcija dodaje drugi deo odluke: <strong>gde je Podu dozvoljeno, poželjno ili zabranjeno da radi</strong>, kako se replike raspoređuju između domena otkaza i koji workload dobija prednost kada kapacitet nije dovoljan. Scheduling politika zato nije dekoracija manifesta. Ona povezuje arhitekturu aplikacije sa oznakama čvorova, fizičkim zonama, izolovanim node pool-ovima, tolerancijom prekida i poslovnim prioritetom.
+    </p>
+    <p>
+      Dobra politika izražava stvarnu nameru sa najmanjim potrebnim brojem ograničenja. Previše strogih pravila može ostaviti Pod u stanju <code>Pending</code>, blokirati rolling update i sprečiti autoscaler da pronađe odgovarajući kapacitet. Previše blagih pravila može sabiti sve replike na isti čvor ili u istu zonu, pustiti običan workload na rezervisane čvorove ili dozvoliti da kritična kontrolna funkcija čeka iza manje važnog posla. Administrator zato najpre definiše failure domain, poverljive oznake, raspoložive resurse i prihvatljivo ponašanje pri nedostatku kapaciteta, a tek zatim piše YAML.
+    </p>
+
+    <h3>Kako kube-scheduler donosi odluku</h3>
+    <p>
+      Pod bez dodeljenog <code>spec.nodeName</code> ulazi u scheduling red. Scheduler u osnovi prolazi kroz dve ključne etape. U <strong>filter</strong> etapi uklanja čvorove koji ne ispunjavaju obavezne uslove: raspoložive requests resurse, hard node affinity, netolerisane taint-e, obavezni Pod affinity/anti-affinity, volume ograničenja i druge aktivne plugin kontrole. Preostali čvorovi su <em>feasible nodes</em>. U <strong>score</strong> etapi rangira dozvoljene čvorove prema preferencijama i politikama, bira najbolji rezultat i preko API servera vezuje Pod za čvor. Ako nijedan čvor nije moguć, Pod ostaje <code>Pending</code>; PostFilter mehanizam može pokušati preemption, ali samo ako bi uklanjanje niže prioritetnih podova stvarno učinilo neki čvor mogućim.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Kontrola</th><th>Osnovna namena</th><th>Hard ili soft</th><th>Tipična posledica greške</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>nodeSelector</code> / node affinity</td><td>Izbor čvorova prema njihovim labelama</td><td>Oboje kod affinity-ja</td><td>Pod nema nijedan dozvoljeni čvor</td></tr>
+        <tr><td>Pod affinity / anti-affinity</td><td>Kolokacija ili razdvajanje prema drugim podovima</td><td>Oboje</td><td>Deadlock pri rollout-u ili koncentracija replika</td></tr>
+        <tr><td>Topology spread</td><td>Kontrolisana ravnomernost po zonama i čvorovima</td><td><code>DoNotSchedule</code> ili <code>ScheduleAnyway</code></td><td>Neravnomerna zaštita ili Pending replike</td></tr>
+        <tr><td>Taints / tolerations</td><td>Odbijanje workload-a sa čvorova</td><td>Zavisi od efekta</td><td>Neželjeni workload na rezervisanom čvoru ili evikcija</td></tr>
+        <tr><td>Priority / preemption</td><td>Red čekanja i oslobađanje mesta za važniji Pod</td><td>Politika konflikta kapaciteta</td><td>Nepotrebni prekidi nižeg prioriteta</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Scheduler prvenstveno raspoređuje <em>novi</em> Pod. Promena labele čvora ili nastanak bolje lokacije ne premešta automatski već pokrenut Pod. Izraz <code>IgnoredDuringExecution</code> upravo upozorava da se pravilo proverava tokom planiranja, ali da Pod obično nastavlja rad ako se labela kasnije promeni. Za kontrolisano rebalansiranje potreban je novi rollout, eksplicitna administrativna intervencija ili pažljivo uveden descheduler; sam scheduler nije kontinuirani optimizator postojećeg smeštaja.
+    </p>
+
+    <h3>Node labels, nodeSelector i granica poverenja</h3>
+    <p>
+      <code>nodeSelector</code> je najjednostavnije obavezno pravilo: svi navedeni parovi labela moraju postojati na čvoru. Pogodan je kada je kriterijum jednostavan, na primer odobren node pool ili tip diska. <code>nodeName</code>, nasuprot tome, direktno bira ime čvora i zaobilazi uobičajenu scheduler odluku; nije zamena za politiku i uglavnom pripada specijalnim sistemskim ili dijagnostičkim slučajevima. Pod sa ručno postavljenim <code>nodeName</code> može zaobići <code>NoSchedule</code> taint proveru schedulera, mada ga <code>NoExecute</code> i dalje može ukloniti preko kubeleta.
+    </p>
+    <pre><code class="language-bash"># Read-only: pregled labela i taint-a svih čvorova
+kubectl get nodes --show-labels
+kubectl get nodes \
+  -o custom-columns='NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,POOL:.metadata.labels.workload\.tashizza\.com/pool,TAINTS:.spec.taints'
+
+# State-changing: administratorsko označavanje izabranog laboratorijskog čvora
+kubectl label node worker-a workload.tashizza.com/pool=general --overwrite</code></pre>
+    <p>
+      Labela koja odlučuje o bezbednosnoj ili regulatornoj izolaciji mora imati pouzdano poreklo. Kubelet kompromitovanog čvora ne sme moći sam sebi da dodeli oznaku „PCI”, „FIPS” ili „trusted”. Kada klaster koristi Node authorizer i <code>NodeRestriction</code> admission plugin, organizacione labele sa zaštićenim prefiksom koji sadrži <code>node-restriction.kubernetes.io/</code> mogu se koristiti za takvu izolaciju. Uvek se proverava konkretna konfiguracija klastera; samo ime labele ne stvara granicu poverenja.
+    </p>
+
+    <h3>Node affinity – obavezni uslovi i ponderisane preferencije</h3>
+    <p>
+      Node affinity proširuje <code>nodeSelector</code> operatorima <code>In</code>, <code>NotIn</code>, <code>Exists</code>, <code>DoesNotExist</code>, <code>Gt</code> i <code>Lt</code>. <code>requiredDuringSchedulingIgnoredDuringExecution</code> je hard filter: Pod se neće rasporediti ako nijedan čvor ne ispunjava uslov. <code>preferredDuringSchedulingIgnoredDuringExecution</code> dodaje score od 1 do 100 odgovarajućim čvorovima, ali ne zabranjuje ostale. Više <code>nodeSelectorTerms</code> stavki u required delu povezuje se logikom OR, dok se više <code>matchExpressions</code> unutar istog termina povezuje logikom AND.
+    </p>
+    <pre><code class="language-yaml">affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/os
+              operator: In
+              values: [linux]
+            - key: workload.tashizza.com/pool
+              operator: In
+              values: [general]
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+            - key: storage.tashizza.com/class
+              operator: In
+              values: [fast]</code></pre>
+    <p>
+      Hard pravilo koristi se samo kada workload zaista ne može ili ne sme da radi drugde: arhitektura procesora, uređaj, licencna granica, podatkovni suverenitet ili potvrđena izolacija. Za performansnu prednost, cenu ili „lepši” smeštaj obično je bezbednija soft preferencija. Ako manifest sadrži i <code>nodeSelector</code> i node affinity, čvor mora ispuniti oba skupa uslova.
+    </p>
+
+    <h3>Inter-Pod affinity i anti-affinity</h3>
+    <p>
+      Pod affinity bira lokaciju prema labelama već raspoređenih podova, a ne prema osobinama samog čvora. Može približiti API i cache u istu zonu radi manje latencije. Pod anti-affinity može razdvojiti replike istog servisa po hostname-u ili zoni radi dostupnosti. Pravilo uključuje selector ciljnih podova, namespace opseg i <code>topologyKey</code> koji određuje domen. Bez odgovarajućih labela na čvorovima domen ne postoji, a bez pažljivo postavljenog namespace opsega pravilo može posmatrati pogrešnu grupu podova.
+    </p>
+    <pre><code class="language-yaml">affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: checkout</code></pre>
+    <p>
+      Hard anti-affinity po hostname-u garantuje najviše jednu odgovarajuću repliku po čvoru, ali zahteva najmanje onoliko podobnih čvorova koliko postoji replika, uključujući privremenu surge repliku tokom rollout-a. U malom klasteru takvo pravilo često blokira Deployment. Preferirana anti-affinity smanjuje taj rizik, ali ne garantuje razdvajanje. Za ravnomernu raspodelu većeg broja replika topology spread je obično precizniji alat od niza anti-affinity pravila.
+    </p>
+
+    <h3>Topology spread constraints – ravnoteža između failure domain-a</h3>
+    <p>
+      <code>topologySpreadConstraints</code> broji odgovarajuće podove u topološkim domenima i ograničava razliku, odnosno <code>skew</code>. Domen može biti čvor, zona, region ili organizaciona topologija predstavljena labelom. <code>maxSkew: 1</code> sa <code>DoNotSchedule</code> zahteva strogu ravnotežu u odnosu na globalni minimum, dok <code>ScheduleAnyway</code> dopušta raspoređivanje i koristi pravilo kao scoring preferenciju. Selector treba da odgovara labelama samog workload-a; u suprotnom nastaju „ghost pods” koji se ne broje kako administrator očekuje.
+    </p>
+    <pre><code class="language-yaml">topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: checkout
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: checkout</code></pre>
+    <p>
+      Polje <code>minDomains</code> ima smisla uz <code>DoNotSchedule</code> i izražava minimalan broj podobnih domena potreban za obračun. Polja <code>nodeAffinityPolicy</code> i <code>nodeTaintsPolicy</code> određuju da li se node affinity i taint/toleration uslovi poštuju pri definisanju podobnih domena; <code>matchLabelKeys</code> može pomoći da se pri rollout-u broje podovi iste revizije, ali selector i rollout semantika moraju biti pažljivo provereni na ciljnoj Kubernetes verziji. Administrator ne dodaje napredna polja samo zato što postoje: najpre testira podrazumevano brojanje na realnoj topologiji.
+    </p>
+    <p>
+      Scheduler ne zna za zonu koja nema nijedan postojeći čvor. U autoscaled node pool-u skaliranom na nulu takav domen možda neće učestvovati u računu dok node autoscaler ne razume kompletnu infrastrukturu. Takođe, topology spread ne vraća automatski ravnotežu posle scale-down-a ili ručnog brisanja podova. Dostupnost zahteva i dovoljan broj replika, stvarno nezavisne zone, mrežnu i storage arhitekturu koja preživljava kvar domena, kao i PodDisruptionBudget obrađen u kasnijem operativnom kontekstu.
+    </p>
+
+    <h3>Taints i tolerations – odbijanje, ne privlačenje</h3>
+    <p>
+      Taint se postavlja na Node i odbija podove koji nemaju odgovarajuću toleration. Toleration znači „ovaj Pod sme da podnese taint”; ona ne privlači Pod na taj čvor niti garantuje da će tamo završiti. Za rezervisani GPU, infrastrukturu ili regulisani pool zato se taint obično kombinuje sa node affinity pravilom. Taint čuva neželjene podove napolju, a affinity usmerava odobrene podove unutra.
+    </p>
+    <table>
+      <thead><tr><th>Efekat</th><th>Novi Pod bez toleration</th><th>Već pokrenut Pod</th><th>Namena</th></tr></thead>
+      <tbody>
+        <tr><td><code>NoSchedule</code></td><td>Ne raspoređuje se</td><td>Ne uklanja se samo zbog novog taint-a</td><td>Rezervacija ili izolacija čvora</td></tr>
+        <tr><td><code>PreferNoSchedule</code></td><td>Scheduler pokušava da ga izbegne</td><td>Ne uklanja se</td><td>Soft odvraćanje bez hard blokade</td></tr>
+        <tr><td><code>NoExecute</code></td><td>Ne raspoređuje se</td><td>Uklanja se ako nema toleration; može ostati ograničeno vreme uz <code>tolerationSeconds</code></td><td>Kvar, nedostupnost ili vremenski ograničena tolerancija</td></tr>
+      </tbody>
+    </table>
+    <pre><code class="language-bash"># State-changing: dodavanje taint-a na tačno provereni laboratorijski čvor
+kubectl taint node worker-a dedicated=platform:NoSchedule
+
+# Read-only: potvrda taint-a
+kubectl get node worker-a -o jsonpath='{.spec.taints}'
+
+# State-changing rollback: završni znak minus uklanja baš navedeni taint
+kubectl taint node worker-a dedicated=platform:NoSchedule-</code></pre>
+    <pre><code class="language-yaml">tolerations:
+  - key: dedicated
+    operator: Equal
+    value: platform
+    effect: NoSchedule
+nodeSelector:
+  workload.tashizza.com/pool: platform</code></pre>
+    <p>
+      Operator <code>Equal</code> poredi key i value, dok <code>Exists</code> ne navodi value i toleriše svaki taint sa odgovarajućim key-em i efektom. Prazan key uz <code>Exists</code> ima veoma široko značenje i zahteva naročitu kontrolu. Kubernetes automatski koristi taint-e i tolerations za pojedina node condition stanja, a DaemonSet kontroler dodaje određene tolerations sistemskim daemon podovima. Zato se taint ne uklanja naslepo kada Pod ostane Pending: najpre se utvrđuje ko ga je postavio i koji failure signal predstavlja.
+    </p>
+
+    <h3>PriorityClass, scheduling red i preemption</h3>
+    <p>
+      <code>PriorityClass</code> je cluster-scoped objekat koji imenu dodeljuje celobrojnu vrednost. Veća vrednost označava viši prioritet. Pod je koristi preko <code>priorityClassName</code>; ako klasa ne postoji, kreiranje poda se odbija. Klasa može imati <code>globalDefault: true</code>, ali u klasteru sme postojati najviše jedna takva klasa, a promena podrazumevanja utiče samo na nove podove. Organizacija treba da ima mali, dokumentovan katalog klasa umesto da svaki tim izmišlja sopstvenu lestvicu.
+    </p>
+    <pre><code class="language-yaml">apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: business-critical
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Kritični poslovni servisi sa odobrenim pravom preemption-a."</code></pre>
+    <p>
+      Prioritet utiče na red kojim scheduler obrađuje podove. Kada visokoprioritetni Pod ne može da stane, preemption može nominovati čvor i ukloniti podove nižeg prioriteta, ali samo ako time čvor postaje feasible i sva ostala hard pravila mogu biti ispunjena. Preemption ne popravlja pogrešnu node affinity, netolerisan taint, nedostupan volume, nemoguć topology spread ili zahtev veći od kapaciteta svakog čvora. <code>preemptionPolicy: Never</code> zadržava viši položaj u scheduling redu, ali zabranjuje tom Podu da preemptuje druge podove.
+    </p>
+    <p>
+      Preemption pokušava da izabere prihvatljiv skup žrtava nižeg prioriteta i nastoji da poštuje PodDisruptionBudget, ali PDB nije apsolutna zabrana preemption-a. Žrtve dobijaju svoj graceful termination period, pa preemptor ne mora odmah početi da radi; u međuvremenu drugi viši prioritet može zauzeti mesto. QoS i PriorityClass su odvojene ose: <code>Guaranteed</code> Pod nije automatski višeg prioriteta, a <code>BestEffort</code> Pod može biti pogrešno označen visokom klasom. Visok prioritet ne stvara CPU ili memoriju i ne sme služiti kao zamena za requests, kapacitet i HA dizajn.
+    </p>
+
+    <h3>Kombinovanje politika bez kontradikcija</h3>
+    <p>
+      Filter pravila se u praksi seku: čvor mora imati dovoljno resursa, zadovoljiti hard affinity, biti u dozvoljenom topology računu, imati sve potrebne volume uslove i ne sme imati netolerisan hard taint. Svako novo hard pravilo smanjuje skup kandidata. Zato se politika projektuje kao matrica, sa jasnim vlasnikom svake labele i odgovorom šta se dešava kada zona, pool ili uređaj nisu dostupni.
+    </p>
+    <ul>
+      <li><strong>Kritičan servis u više zona:</strong> hard node affinity ka odobrenom pool-u, hard zone spread ako postoje najmanje potrebni domeni, soft hostname spread, realni requests i dovoljan broj replika.</li>
+      <li><strong>Rezervisani platform node pool:</strong> <code>NoSchedule</code> taint odbija ostale podove; platform pod dobija usku toleration i obaveznu node affinity ka pool-u.</li>
+      <li><strong>Latency-sensitive par servisa:</strong> soft Pod affinity u istoj zoni, ne nužno na istom čvoru; meri se dobitak naspram rizika zajedničkog failure domain-a.</li>
+      <li><strong>Batch posao:</strong> niži prioritet i po mogućnosti <code>preemptionPolicy: Never</code>; ne dobija nekritički toleration za rezervisane čvorove.</li>
+    </ul>
+
+    <h3>Validacija i troubleshooting Pending podova</h3>
+    <p>
+      Dijagnostika počinje dokazima, ne uklanjanjem pravila. Beleže se kontekst, vreme, PodSpec, events, stanje i labele čvorova, taint-i, allocatable resursi, requests postojećih podova i poslednja izmena Deployment-a. Poruka schedulera često sabira više razloga, na primer nedovoljan CPU, netolerisan taint i nepodudarnu affinity. Broj čvorova po razlogu nije nužno skup koji se može prosto sabrati, jer jedan čvor može pasti na više filtera.
+    </p>
+    <pre><code class="language-bash"># Sve naredne komande su read-only
+kubectl config current-context
+kubectl get pod -n scheduling-lab -o wide
+kubectl describe pod -n scheduling-lab POD_NAME
+kubectl get events -n scheduling-lab \
+  --field-selector involvedObject.kind=Pod,involvedObject.name=POD_NAME \
+  --sort-by=.metadata.creationTimestamp
+kubectl get pod -n scheduling-lab POD_NAME -o yaml
+kubectl get nodes --show-labels
+kubectl describe nodes
+kubectl get priorityclass
+kubectl get pod -n scheduling-lab POD_NAME \
+  -o jsonpath='{.spec.priorityClassName}{"\n"}{.status.nominatedNodeName}{"\n"}'</code></pre>
+    <table>
+      <thead><tr><th>Simptom / event</th><th>Neposredni uzrok</th><th>Potvrda</th><th>Trajna korekcija</th></tr></thead>
+      <tbody>
+        <tr><td><code>didn't match Pod's node affinity</code></td><td>Nijedan ili premalo čvorova ima traženu labelu</td><td>Uporediti aktivni PodSpec i <code>--show-labels</code></td><td>Ispraviti label inventory ili ublažiti samo neopravdano hard pravilo</td></tr>
+        <tr><td><code>untolerated taint</code></td><td>Pod nema preciznu toleration</td><td>Pregled <code>.spec.taints</code> i <code>.spec.tolerations</code></td><td>Dodati toleration samo ako workload sme na pool; inače obezbediti drugi čvor</td></tr>
+        <tr><td><code>topology spread constraint</code></td><td>Skew ili broj domena ne dopušta novu repliku</td><td>Prebrojati matching podove po topology labeli</td><td>Obezbediti domen/kapacitet ili odobreno promeniti <code>maxSkew</code>/<code>whenUnsatisfiable</code></td></tr>
+        <tr><td><code>pod anti-affinity rules</code></td><td>Sve dozvoljene topologije već imaju matching Pod</td><td>Proveriti selector, namespace i topologyKey</td><td>Dodati čvor ili koristiti soft pravilo ako poslovna namera to dopušta</td></tr>
+        <tr><td><code>Preemption is not helpful</code></td><td>Uklanjanje nižih prioriteta ne rešava hard uslov</td><td>Razdvojiti resurse od affinity, taint i volume uzroka</td><td>Popraviti stvarni uslov; ne povećavati prioritet naslepo</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Scheduler logovi zavise od načina instalacije kontrolne ravni. U kubeadm klasteru scheduler je tipično static Pod u <code>kube-system</code> namespace-u, pa se proverava komandom <code>kubectl logs -n kube-system KUBE_SCHEDULER_POD</code>, uz odgovarajuća administratorska prava. U managed servisu ti logovi možda nisu direktno dostupni; tada se koriste događaji, control-plane logging usluga i podrška dobavljača. Vremenski prozor mora obuhvatiti nastanak Pending poda i poslednju promenu. Povećanje verbosity nivoa schedulera je promena kontrolne ravni i ne radi se kao prva dijagnostička mera.
+    </p>
+
+    <h3>Integrisani praktikum – dostupna aplikacija i rezervisani node pool</h3>
+    <p>
+      <strong>Cilj i kontekst.</strong> Tim uvodi tri replike servisa <code>checkout</code>. Replike treba rasporediti po čvorovima, a kada laboratorija ima zone i po zonama. Jedan čvor se privremeno rezerviše za platform workload pomoću taint-a. Zatim se namerno izazivaju Pending i preemption scenariji, prikupljaju dokazi i stanje vraća u početni oblik.
+    </p>
+    <p>
+      <strong>Topologija i preduslovi.</strong> Potreban je testni klaster sa najmanje dva schedulable worker čvora; za puni zone scenario najmanje dva čvora moraju imati smislene <code>topology.kubernetes.io/zone</code> labele. Potrebni su <code>kubectl</code>, ovlašćenje za namespace workload-e, kao i posebno odobrena cluster prava za Node labele/taint-e i PriorityClass. U deljenom ili produkcionom klasteru ne menjaju se Node objekti za ovu vežbu. Preporučeni su kind, minikube ili namenski staging klaster.
+    </p>
+    <p>
+      <strong>Rizik.</strong> Taint i pogrešna labela mogu blokirati druge workload-e; PriorityClass može izazvati prekid podova. Pre svake state-changing komande zapisuje se izabrani čvor i postojeća vrednost. Koriste se samo objekti sa prefiksom <code>scheduling-lab</code>, mali requests i namenski namespace. Preemption test se izvodi samo u izolovanoj laboratoriji.
+    </p>
+    <ol>
+      <li>
+        <strong>Inventar i početno stanje.</strong>
+        <pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i create namespaces
+kubectl auth can-i patch nodes
+kubectl auth can-i create priorityclasses.scheduling.k8s.io
+kubectl get nodes -o wide
+kubectl get nodes -L topology.kubernetes.io/zone,kubernetes.io/hostname
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.taints}{"\n"}{end}'</code></pre>
+        <strong>Validacija:</strong> evidentirati najmanje dva worker čvora, zone i postojeće taint-e. Ako nema dovoljne topologije, zone constraint iz narednog manifesta uklanja se ili koristi samo kao objašnjena varijanta; ne izmišljaju se zone koje ne predstavljaju stvarne domene otkaza.
+      </li>
+      <li>
+        <strong>Kreiranje namespace-a i bezbednih laboratorijskih labela.</strong> Izabrati dva ili više worker čvorova i zameniti imena u komandama.
+        <pre><code class="language-bash">kubectl create namespace scheduling-lab
+kubectl label node WORKER_A workload.tashizza.com/pool=general --overwrite
+kubectl label node WORKER_B workload.tashizza.com/pool=general --overwrite
+kubectl get nodes -l workload.tashizza.com/pool=general</code></pre>
+        <strong>Očekivani rezultat:</strong> izabrani čvorovi imaju pool labelu. Ako je labela ranije postojala sa drugom vrednošću, stara vrednost mora biti sačuvana za rollback.
+      </li>
+      <li>
+        <strong>Primena osnovne scheduling politike.</strong>
+        <pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: scheduling-lab
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: checkout
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: checkout
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload.tashizza.com/pool
+                    operator: In
+                    values: [general]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: checkout
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: checkout
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5</code></pre>
+        Manifest sačuvati kao <code>checkout.yaml</code>, pa primeniti i proveriti:
+        <pre><code class="language-bash">kubectl apply -f checkout.yaml
+kubectl rollout status deployment/checkout -n scheduling-lab --timeout=180s
+kubectl get pods -n scheduling-lab -o wide
+kubectl get pods -n scheduling-lab \
+  -l app.kubernetes.io/name=checkout \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,PHASE:.status.phase'</code></pre>
+        <strong>Validacija:</strong> sva tri poda su <code>Running</code>/<code>Ready</code>, rade samo na čvorovima sa pool labelom i scheduler je, kada kapacitet dopušta, smanjio koncentraciju po hostname-u.
+      </li>
+      <li>
+        <strong>Dodavanje zone spread varijante.</strong> Ovaj korak se radi samo ako najmanje dve stvarne zone imaju podobne čvorove. U <code>topologySpreadConstraints</code> dodati hard zone pravilo ispred hostname pravila:
+        <pre><code class="language-yaml">- maxSkew: 1
+  minDomains: 2
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
+  labelSelector:
+    matchLabels:
+      app.kubernetes.io/name: checkout</code></pre>
+        <pre><code class="language-bash">kubectl diff -f checkout.yaml
+kubectl apply -f checkout.yaml
+kubectl rollout status deployment/checkout -n scheduling-lab --timeout=180s
+kubectl get pods -n scheduling-lab \
+  -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.topology\.kubernetes\.io/zone'</code></pre>
+        <strong>Napomena:</strong> poslednja kolona čita Pod labelu, a Pod je obično nema; za dokaz zone treba povezati <code>spec.nodeName</code> sa Node inventarom. To je namerna kontrolna tačka protiv pogrešnog tumačenja izlaza. Validacija se završava poređenjem sa <code>kubectl get nodes -L topology.kubernetes.io/zone</code>.
+      </li>
+      <li>
+        <strong>Taint i uska toleration.</strong> Izabrati jedan general worker koji je bezbedno privremeno rezervisati.
+        <pre><code class="language-bash">kubectl taint node WORKER_A dedicated=platform:NoSchedule
+kubectl get node WORKER_A -o jsonpath='{.spec.taints}{"\n"}'
+kubectl rollout restart deployment/checkout -n scheduling-lab
+kubectl rollout status deployment/checkout -n scheduling-lab --timeout=180s
+kubectl get pods -n scheduling-lab -o wide
+kubectl get events -n scheduling-lab --sort-by=.metadata.creationTimestamp</code></pre>
+        <strong>Očekivanje:</strong> postojeći checkout pod na tom čvoru nije eviktovan samo zbog <code>NoSchedule</code>, ali novi checkout podovi bez toleration ne mogu biti planirani na njega. Ako preostali kapacitet i hard pravila nisu dovoljni, rollout može ostati blokiran. To je očekivan dokaz, ne razlog za nasumično uklanjanje kontrola.
+      </li>
+      <li>
+        <strong>Platform Pod sa toleration i affinity.</strong>
+        <pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: platform-agent
+  namespace: scheduling-lab
+  labels:
+    app.kubernetes.io/name: platform-agent
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: WORKER_A
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: platform
+      effect: NoSchedule
+  containers:
+    - name: agent
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi</code></pre>
+        Posle zamene <code>WORKER_A</code>, sačuvati kao <code>platform-agent.yaml</code>.
+        <pre><code class="language-bash">kubectl apply -f platform-agent.yaml
+kubectl wait -n scheduling-lab --for=condition=Ready pod/platform-agent --timeout=120s
+kubectl get pod platform-agent -n scheduling-lab -o wide</code></pre>
+        <strong>Validacija:</strong> Pod radi baš na rezervisanom čvoru. Toleration sama ne bi bila dovoljna za taj dokaz; <code>nodeSelector</code> obezbeđuje privlačenje.
+      </li>
+      <li>
+        <strong>Kontrolisani Pending incident.</strong> Povećati checkout replike na broj veći od onoga što hard anti-affinity ili dostupni domeni mogu podržati samo ako ste prethodno prebacili hostname anti-affinity u required varijantu u laboratorijskoj kopiji.
+        <pre><code class="language-bash">kubectl scale deployment/checkout -n scheduling-lab --replicas=5
+kubectl get pods -n scheduling-lab -o wide
+PENDING_POD=$(kubectl get pods -n scheduling-lab \
+  --field-selector=status.phase=Pending \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl describe pod -n scheduling-lab "$PENDING_POD"
+kubectl get events -n scheduling-lab \
+  --field-selector involvedObject.name="$PENDING_POD" \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+        <strong>Troubleshooting grana:</strong> ako nema Pending poda, ne zaključivati da hard pravilo ne radi; klaster možda ima dovoljno podobnih domena. Ako postoji, zabeležiti tačan FailedScheduling razlog. Trajna mera je usklađivanje broja replika, rollout surge-a i broja domena. Privremeno uklanjanje HA pravila dopušteno je samo uz odobren rizik.
+      </li>
+      <li>
+        <strong>PriorityClass bez preemption-a.</strong>
+        <pre><code class="language-yaml">apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: scheduling-lab-high
+value: 1000
+globalDefault: false
+preemptionPolicy: Never
+description: "Laboratorijska viša pozicija u redu bez prava preemption-a."</code></pre>
+        Sačuvati kao <code>priorityclass.yaml</code> i primeniti samo u izolovanom klasteru:
+        <pre><code class="language-bash">kubectl apply -f priorityclass.yaml
+kubectl get priorityclass scheduling-lab-high -o yaml
+kubectl patch deployment checkout -n scheduling-lab --type=merge \
+  -p '{"spec":{"template":{"spec":{"priorityClassName":"scheduling-lab-high"}}}}'
+kubectl get pods -n scheduling-lab \
+  -o custom-columns='POD:.metadata.name,PRIORITY:.spec.priority,CLASS:.spec.priorityClassName,NOMINATED:.status.nominatedNodeName'</code></pre>
+        <strong>Validacija:</strong> novi podovi dobijaju vrednost 1000 i klasu, ali ne uklanjaju druge podove. Pun preemption test zahteva namenski kapacitet zasićen niže prioritetnim laboratorijskim podovima; ne izvodi se na deljenom klasteru.
+      </li>
+      <li>
+        <strong>Rollback i cleanup.</strong> Najpre vratiti Deployment na tri replike i potvrditi stabilnost, zatim ukloniti taint i laboratorijske labele. Ako su labele ranije postojale, vratiti njihove sačuvane vrednosti umesto brisanja.
+        <pre><code class="language-bash">kubectl scale deployment/checkout -n scheduling-lab --replicas=3
+kubectl rollout status deployment/checkout -n scheduling-lab --timeout=180s
+kubectl taint node WORKER_A dedicated=platform:NoSchedule-
+kubectl label node WORKER_A workload.tashizza.com/pool-
+kubectl label node WORKER_B workload.tashizza.com/pool-
+kubectl delete namespace scheduling-lab
+kubectl wait --for=delete namespace/scheduling-lab --timeout=180s
+kubectl delete priorityclass scheduling-lab-high</code></pre>
+        <strong>Destruktivna operacija:</strong> brisanje namespace-a uklanja sve njegove objekte. Pre izvršenja potvrditi da je to namenski laboratorijski namespace. PriorityClass je cluster-scoped i mora se ukloniti zasebno. Završna validacija proverava da nema namespace-a, klase, taint-a ni zaostale laboratorijske labele.
+      </li>
+    </ol>
+
+    <h3>Kriterijumi prihvatanja praktikuma</h3>
+    <ul>
+      <li>Administrator razlikuje filter i score uslove i iz events poruke identifikuje konkretan neuspešan filter.</li>
+      <li>Checkout podovi rade isključivo u označenom general pool-u i raspoređeni su po hostname domenima koliko topologija dopušta.</li>
+      <li>Zone spread primenjen je samo kada zone predstavljaju stvarne domene otkaza.</li>
+      <li><code>NoSchedule</code> taint sprečava nove netolerantne podove, ali ne eviktuje postojeće.</li>
+      <li>Platform agent radi na rezervisanom čvoru zahvaljujući kombinaciji toleration i node selection pravila.</li>
+      <li>Pending incident je objašnjen događajima, PodSpec-om i Node inventarom pre bilo kakve korekcije.</li>
+      <li>PriorityClass sa <code>preemptionPolicy: Never</code> povećava redni prioritet bez prekidanja drugih podova.</li>
+      <li>Rollback uklanja sve laboratorijske cluster-scoped i namespace-scoped promene i vraća prethodne Node vrednosti.</li>
+    </ul>
+
+    <h3>Administratorske prakse</h3>
+    <p>
+      <strong>Upravljanje Node labelama kao infrastrukturnim podacima.</strong> Dozvoljeni ključevi, vlasnik, izvor vrednosti i bezbednosni nivo dokumentuju se u CMDB-u i infrastrukturnom repozitorijumu. Najmanje posle promene node pool-a i kvartalno porede se cloud/virtualization inventar i Kubernetes Node objekti. Neočekivana labela na bezbednosnoj granici tretira se kao incident konfiguracije; ne „popravlja” se workload manifest da bi prihvatio nepouzdanu vrednost.
+    </p>
+    <p>
+      <strong>Revizija hard ograničenja.</strong> Pre svakog povećanja replika, promene <code>maxSurge</code> ili gašenja zone računa se koliko podobnih domena ostaje. Hard anti-affinity i <code>DoNotSchedule</code> pravila testiraju se sa najgorim planiranim failure scenarijem. Uspeh znači da minimalan broj dostupnih replika može biti održan i tokom rollout-a, bez ručnog kršenja politike.
+    </p>
+    <p>
+      <strong>Taint katalog i kontrola tolerations.</strong> Svaki organizacioni taint ima vlasnika, namenu, odobrene workload-e i postupak uklanjanja. Široke <code>Exists</code> tolerations periodično se traže admission proverom ili policy alatom. Alarm se podiže kada običan workload dobije toleration za control-plane, critical ili dedicated pool bez odobrenja.
+    </p>
+    <p>
+      <strong>PriorityClass kao ograničena privilegija.</strong> Kreiranje klasa i korišćenje najviših klasa kontroliše se RBAC/admission politikom. Posle svake preemption serije korelišu se scheduler events, vlasnici žrtava, PDB stanje, graceful termination i vreme do Ready stanja preemptora. Ako preemption postane uobičajen način rada, osnovni uzrok je najčešće nedovoljan kapacitet ili loša politika prioriteta.
+    </p>
+    <p>
+      <strong>Monitoring scheduling SLO-a.</strong> Prate se scheduler pending queue, scheduling attempts, scheduling latency, FailedScheduling events, broj Pending podova po razlogu i preemption događaji. Alarm mora razlikovati kratkotrajan red tokom normalnog rollout-a od trajnog neuspeha. Nalaz se povezuje sa promenama Deployment-a, node autoscaler događajima, requests vrednostima i dostupnošću zona.
+    </p>
+    <p>
+      <strong>Promene kroz verzionisan izvor istine.</strong> Affinity, topology spread, tolerations i PriorityClass manifesti prolaze API schema validaciju, policy testove i staging rollout. Emergency patch se odmah beleži i vraća u Git izvor kako sledeće usaglašavanje ne bi poništilo korekciju. Node taint/label promene imaju change zapis sa tačnim ciljem i rollback vrednošću.
+    </p>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Potvrđeni su aktivni kontekst, ovlašćenja i vlasništvo nad Node labelama i taint-ima.</li>
+      <li>Za svaki hard uslov postoji dokumentovan poslovni ili tehnički razlog.</li>
+      <li>Broj podobnih čvorova i domena dovoljan je za replike, failure scenario i rollout surge.</li>
+      <li>Topology selector odgovara labelama samih podova koji treba da se broje.</li>
+      <li>Toleration je uska i, kada je potreban dedicated placement, uparena je sa node affinity pravilom.</li>
+      <li>PriorityClass postoji, ima odobrenu vrednost i poznatu <code>preemptionPolicy</code>.</li>
+      <li>Requests vrednosti omogućavaju realnu proveru kapaciteta; prioritet se ne koristi kao zamena za kapacitet.</li>
+      <li>Nema neobjašnjenih Pending, nominated ili preempted podova.</li>
+      <li>Events i, kada su dostupni, scheduler logovi pokrivaju vremenski prozor promene.</li>
+      <li>Stanje je funkcionalno provereno posle rollout-a i posle simuliranog gubitka dozvoljenog domena.</li>
+      <li>Manifest, rizik, odobrenje, rezultat i rollback nalaze se u change zapisu i Git repozitorijumu.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      Kubernetes scheduling politika je skup različitih, međusobno povezanih kontrola. Node affinity bira čvorove prema njihovim osobinama; Pod affinity i anti-affinity izražavaju odnos prema drugim podovima; topology spread kontroliše raspodelu po failure domenima; taints odbijaju neodobrene workload-e, dok tolerations samo uklanjaju to odbijanje; PriorityClass uređuje red i može dozvoliti preemption nižeg prioriteta. Nijedna pojedinačna kontrola ne garantuje dostupnost, izolaciju ili performanse bez odgovarajućih resursa, replika, infrastrukture i operativne validacije.
+    </p>
+    <p>
+      Nakon ove lekcije administrator treba da ume da prevede poslovnu nameru u minimalan skup hard i soft pravila, proveri label trust, izračuna broj topoloških domena, rezerviše node pool kombinacijom taint-a i affinity-ja, uvede kontrolisane klase prioriteta i objasni zašto preemption jeste ili nije koristan. Najvažnija praktična veština ostaje dokazivanje uzroka Pending stanja pre promene: PodSpec, events, Node labele, taint-i, requests, volume uslovi i scheduler tragovi moraju dati istu priču.
+    </p>
+    <p>
+      Odgovorna politika ostavlja bezbedan izlaz. Svako hard ograničenje ima plan za gubitak domena, svaki taint ima vlasnika i rollback, svaka visoka klasa prioriteta ima ograničeno pravo korišćenja, a svaka izmena prolazi rollout i recovery proveru. Time se scheduling pretvara iz skupa YAML polja u upravljiv mehanizam dostupnosti, izolacije i kapaciteta.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za kube-scheduler i Scheduling Framework; dodeljivanje podova čvorovima, node i inter-Pod affinity; Pod topology spread constraints; taints i tolerations; PriorityClass, Pod priority i preemption; node-pressure i disruption ponašanje; NodeRestriction admission kontrolu; scheduler događaje, metrike, konfiguraciju i troubleshooting
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn"
+         href="vanilla-k8s-23-requests-limits-qos.html">
+        ← Prethodna lekcija
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s-25-mrezni-model-cni.html">
+        Sledeća lekcija →
+      </a>
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+</body>
+</html>

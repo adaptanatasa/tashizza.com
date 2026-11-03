@@ -1,0 +1,458 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-16-power-operacije.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Power operacije – uključivanje, gašenje, restart i suspendovanje VM-a | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite osnovne Power operacije u VMware okruženju: uključivanje, gašenje, restartovanje, suspendovanje i resetovanje virtuelnih mašina, kao i kada se svaka od njih bezbedno koristi.">
+
+  <meta name="keywords"
+        content="Power operacije, VMware Power Operations, VMware, virtuelna mašina, VM, power on, power off, shutdown guest, restart guest, reset, suspend, resume, ESXi, vCenter, vSphere, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-16-power-operacije.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Power operacije – uključivanje, gašenje, restart i suspendovanje VM-a">
+
+  <meta property="og:description"
+        content="Upoznajte osnovne VMware Power operacije i naučite kada koristiti uključivanje, gašenje, restart, reset i suspendovanje virtuelnih mašina.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-16-power-operacije.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-16-power-operacije.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Power operacije – uključivanje, gašenje, restart i suspendovanje VM-a">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-16-power-operacije.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-16-power-operacije.png"
+           alt="Power operacije – uključivanje, gašenje, restart i suspendovanje VM-a">
+
+    </a>
+
+   <div class="page-subtitle">
+  IV. Svakodnevna administracija i prvi troubleshooting
+</div>
+
+<div class="page-subtitle">
+  16. Power operacije – uključivanje, gašenje, restart i suspendovanje VM-a
+</div>
+
+<p>
+Power operacije su među najčešćim, ali i najpotcenjenijim administratorskim radnjama nad virtuelnim mašinama. Uključivanje, uredno gašenje, prinudno isključivanje, restartovanje, resetovanje, suspendovanje i nastavak rada menjaju dostupnost workload-a, a pogrešan izbor može ugroziti otvorene transakcije, integritet fajl sistema, klasterski kvorum i vreme oporavka servisa. Zbog toga iskusan administrator ne pita samo „koje dugme treba pritisnuti”, već najpre utvrđuje poslovni uticaj, stanje guest operativnog sistema, zavisnosti aplikacije i najmanje invazivnu operaciju koja rešava stvarni problem.
+</p>
+
+<p>
+Prethodne lekcije uspostavile su model virtuelne mašine, njen virtuelni hardver, ulogu VMware Tools-a i standardizovano kreiranje workload-a. Ova lekcija ta znanja pretvara u svakodnevnu operativnu disciplinu. Ona je ujedno uvod u prvi troubleshooting: pre svake promene stanja prikupljaju se dokazi, a posle nje potvrđuje se ne samo da je VM promenio power state, već i da su guest OS, mreža, diskovi i aplikativni servisi zaista zdravi.
+</p>
+
+<h3>Dva kontrolna nivoa: virtuelni hardver i guest operativni sistem</h3>
+
+<p>
+Virtuelna mašina ima stanje koje kontroliše ESXi i posebno operativno stanje guest sistema. Hipervizorske operacije deluju na virtuelni hardver: <strong>Power On</strong>, <strong>Power Off</strong>, <strong>Reset</strong>, <strong>Suspend</strong> i <strong>Resume</strong>. Guest operacije, kao što su <strong>Shut Down Guest OS</strong> i <strong>Restart Guest OS</strong>, zahtevaju da gost primi i obradi zahtev, najčešće posredstvom ispravnog VMware Tools-a ili open-vm-tools-a. Zbog toga VM može biti <code>poweredOn</code>, dok je guest sistem zamrznut, tek se podiže ili nema funkcionalne mrežne i aplikativne servise.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Operacija</th><th>Nivo delovanja</th><th>Uredan završetak guest rada</th><th>Tipična namena i rizik</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Power On</td><td>Hipervizor</td><td>Nije primenljivo</td><td>Pokretanje VM-a; zahteva raspoložive resurse, pristupačne datoteke i kompatibilan host.</td></tr>
+    <tr><td>Shut Down Guest OS</td><td>Guest OS preko Tools-a</td><td>Da</td><td>Preporučeno plansko gašenje; aplikacija mora imati dovoljno vremena da zatvori rad.</td></tr>
+    <tr><td>Power Off</td><td>Hipervizor</td><td>Ne</td><td>Ekvivalent prekidu napajanja; rizik gubitka podataka i oštećenja fajl sistema.</td></tr>
+    <tr><td>Restart Guest OS</td><td>Guest OS preko Tools-a</td><td>Da</td><td>Preporučeni planski reboot posle zakrpa ili promene konfiguracije.</td></tr>
+    <tr><td>Reset</td><td>Hipervizor</td><td>Ne</td><td>Ekvivalent hardverskom resetu; koristi se samo kada uredan reboot nije moguć.</td></tr>
+    <tr><td>Suspend</td><td>Hipervizor</td><td>Ne gasi guest</td><td>Čuva izvršno stanje na datastore-u; zahteva prostor i uvodi vremenski prekid.</td></tr>
+    <tr><td>Resume</td><td>Hipervizor</td><td>Nastavlja sačuvano stanje</td><td>Brži nastavak bez boot-a; moguć problem CPU kompatibilnosti ili zastarelog vremena/sesija.</td></tr>
+  </tbody>
+</table>
+
+<h3>Power On – uključivanje virtuelne mašine</h3>
+
+<p>
+Power On pokreće virtuelni hardver, izvršava virtuelni BIOS ili UEFI i predaje kontrolu boot uređaju. ESXi formira VMX proces, obezbeđuje memorijski overhead, primenjuje CPU i memorijske rezervacije i kreira ili otvara potrebne datoteke, uključujući virtuelne diskove i swap datoteku kada je potrebna. Povezuje se konfigurisani virtuelni mrežni adapter, ali to samo po sebi ne dokazuje da guest ima ispravnu IP konfiguraciju ili da je aplikacija dostupna.
+</p>
+
+<p>
+Pre pokretanja administrator proverava host i klaster, slobodan datastore kapacitet, dostupnost svih VMDK i ISO putanja, otvorene alarme, tekuće zadatke, resource pool ograničenja i HA admission control. Kod velikog broja VM-ova koristi se kontrolisano pokretanje u talasima, jer istovremeni boot izaziva CPU, memorijski, storage I/O i autentikacioni „boot storm”. Posebno se poštuje redosled zavisnosti: infrastruktura identiteta, DNS, baze i middleware obično moraju biti spremni pre aplikativnih slojeva.
+</p>
+
+<h3>Guest Shutdown – pravilno gašenje operativnog sistema</h3>
+
+<p>
+<strong>Shut Down Guest OS</strong> šalje guest sistemu zahtev za uredno gašenje. Operativni sistem zatvara servise i procese, prazni keševe, završava filesystem i aplikativne transakcije i tek zatim prestaje da radi. Operacija zavisi od aktivnog VMware Tools servisa, podrške gosta i njegovih lokalnih politika; API zahtev se vraća bez čekanja da se kompletno gašenje završi, pa administrator mora naknadno proveriti stanje.
+</p>
+
+<p>
+Uredno gašenje ne zamenjuje aplikativnu proceduru. Baza podataka, klaster ili višeslojna aplikacija mogu zahtevati zaustavljanje saobraćaja, uklanjanje čvora iz load balancer-a, proveru replikacije ili ručno zaustavljanje servisa. Ako se VM ne ugasi u očekivanom roku, najpre se proveravaju konzola, status Tools-a, događaji i procesi unutar gosta; ne prelazi se automatski na Power Off samo zato što je klijentski zadatak istekao.
+</p>
+
+<h3>Power Off – trenutno isključivanje</h3>
+
+<p>
+Power Off trenutno zaustavlja izvršavanje virtuelne mašine i odgovara prekidu napajanja fizičkog servera. Ne omogućava guest sistemu da zatvori procese, isprazni keševe ili dovrši transakcije. Koristi se tek kada je guest potpuno neodzivan, uredan shutdown nije uspeo, a poslovna posledica daljeg čekanja veća je od rizika prinudnog prekida. Posle operacije mogu uslediti journal recovery, <code>fsck</code>, <code>chkdsk</code>, oporavak baze ili aplikativna nekonzistentnost.
+</p>
+
+<p>
+Pre prinudnog gašenja beleže se vreme, simptom, vlasnik odobrenja, aktivni zadaci i dostupni dokazi. Ako je moguće, uzima se screenshot konzole i pregledaju događaji i logovi. Power Off nije metoda za rešavanje zaključanog VMDK-a bez utvrđenog vlasnika zaključavanja niti zamena za bezbednu proceduru gašenja produkcionog servisa.
+</p>
+
+<h3>Restart Guest OS i Reset</h3>
+
+<p>
+Restart Guest OS predstavlja uredan reboot: guest zatvara servise i ponovo podiže kernel bez prekida virtuelnog napajanja. Koristi se posle zakrpa, ažuriranja kernela ili drajvera i promena koje zahtevaju reboot. Kao i shutdown, zavisi od VMware Tools-a i ne dokazuje sam da se sistem uspešno vratio; proveravaju se Tools status, mreža, sistemski servisi i aplikativni health check.
+</p>
+
+<p>
+Reset odmah ponovo inicijalizuje virtuelni hardver, bez urednog zatvaranja gosta. To je ekvivalent fizičkom tasteru Reset i nosi sličan rizik kao Power Off praćen Power On operacijom. Reset se koristi samo kada je VM neodzivan, a dokazano nije moguće izvršiti uredan reboot. Izraz <em>power cycle</em> obično opisuje prinudni Power Off pa Power On; nije potreban za uobičajeno plansko restartovanje i ne treba ga predstavljati kao bezazlenu operaciju.
+</p>
+
+<h3>Suspend i Resume – čuvanje i nastavak izvršnog stanja</h3>
+
+<p>
+Suspend pauzira VM i upisuje njeno izvršno, uključujući memorijsko stanje, u datoteke na datastore-u. Resume učitava to stanje i nastavlja rad bez punog boot procesa. Suspend oslobađa aktivne compute resurse, ali ne predstavlja backup, snapshot niti uredno gašenje aplikacije. Potreban je dodatni datastore prostor približno povezan sa konfigurisanom memorijom i sačuvanim stanjem, a operacija može kratkotrajno intenzivno opteretiti storage.
+</p>
+
+<p>
+Ova mogućnost je korisna u laboratorijama, razvojnim okruženjima i kratkim kontrolisanim pauzama. U produkciji se izbegava za baze, kontrolere domena, distribuirane sisteme, quorum i HA članove, jer spoljni svet nastavlja da meri vreme dok je VM zamrznut: TCP sesije ističu, lease i tokeni zastarevaju, klaster može proglasiti čvor mrtvim, a po nastavku su mogući skok vremena i ponovna autentikacija. Resume može biti onemogućen i kada odredišni host nema CPU karakteristike potrebne sačuvanom stanju; tada je bezbedna opcija povratak na kompatibilan host ili, ako stanje više nije potrebno i rizik je prihvaćen, odbacivanje suspendovanog stanja i hladan boot.
+</p>
+
+<h3>Dozvole, audit i kontrola promena</h3>
+
+<p>
+Power operacije zahtevaju odgovarajuće privilegije iz grupe <code>Virtual machine &gt; Interaction</code>, kao što su Power On, Power Off, Reset i Suspend. Guest shutdown i reboot takođe imaju odgovarajuće interakcione privilegije, ali uspeh zavisi od gosta. U produkciji se primenjuju najmanje privilegije, imenovani nalozi, odobren change ili incident i zabrana deljenih administratorskih naloga. vCenter Tasks and Events beleži ko je inicirao operaciju, nad kojim objektom i kada; to je važan audit trag koji treba korelisati sa monitoringom i logovima gosta.
+</p>
+
+<h3>Power operacije u vSphere Client-u</h3>
+
+<p>
+U vSphere Client-u bira se tačno određeni VM, proveravaju se Summary, Alarms, Recent Tasks i VMware Tools status, zatim <strong>Actions → Power</strong>. Nazivi i raspored mogu se neznatno razlikovati između verzija klijenta, ali se operacije semantički dele na hipervizorske i guest operacije. Pre potvrde rizične radnje ponovo se proveravaju naziv, folder, cluster, host i poslovni vlasnik VM-a.
+</p>
+
+<pre><code class="language-none">VM → Actions → Power
+    Power On
+    Power Off
+    Shut Down Guest OS
+    Restart Guest OS
+    Reset
+    Suspend
+    Resume</code></pre>
+
+<h3>PowerCLI administracija i bezbedna automatizacija</h3>
+
+<p>
+Aktuelna dokumentacija koristi naziv <strong>VCF PowerCLI</strong>, dok su moduli i brojni cmdlet-i zadržali poznatu VMware.VimAutomation nomenklaturu. Sledeće komande izvršavaju se sa administratorske radne stanice sa instaliranim PowerCLI modulima, nad vCenter Server-om i nalogom sa najmanjim potrebnim privilegijama. Najpre se koristi read-only inventarski pregled.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+
+$vm = Get-VM -Name 'Ubuntu-Server'
+$vm | Select-Object Name, PowerState, VMHost,
+    @{N='ToolsStatus';E={$_.ExtensionData.Guest.ToolsStatus}},
+    @{N='ToolsRunning';E={$_.ExtensionData.Guest.ToolsRunningStatus}}</code></pre>
+
+<p>
+<code>Start-VM</code> menja stanje i uključuje VM. <code>Stop-VMGuest</code> traži uredno gašenje gosta, dok <code>Stop-VM</code> radi hard power-off; ta dva cmdlet-a nisu sinonimi. Isto tako, <code>Restart-VMGuest</code> traži uredan guest reboot, dok <code>Restart-VM</code> resetuje virtuelnu mašinu. Parametar <code>-Confirm:$false</code> uklanja zaštitni prompt i koristi se samo u unapred proveravanoj automatizaciji.
+</p>
+
+<pre><code class="language-powershell"># State-changing: uključivanje tačno identifikovanog VM-a
+Start-VM -VM $vm -Confirm:$true
+
+# State-changing: preporučeno uredno gašenje preko VMware Tools-a
+Stop-VMGuest -VM $vm -Confirm:$true
+
+# State-changing: uredan reboot gosta
+Restart-VMGuest -VM $vm -Confirm:$true
+
+# State-changing: suspendovanje i kasniji nastavak
+Suspend-VM -VM $vm -Confirm:$true
+Start-VM -VM $vm -Confirm:$true</code></pre>
+
+<p>
+Masovne operacije nikada se ne pokreću nekontrolisanim izrazom <code>Get-VM | Start-VM</code>. Obim se prvo materijalizuje, pregleda i prebroji, a zatim se obrada izvodi u kontrolisanim talasima, uz redosled zavisnosti i validaciju. Sledeći laboratorijski primer ograničen je na folder i eksplicitnu listu odobrenih imena.
+</p>
+
+<pre><code class="language-powershell">$approvedNames = @('lab-web-01', 'lab-web-02')
+$targets = Get-Folder -Name 'LAB-PowerOps' |
+    Get-VM |
+    Where-Object { $_.Name -in $approvedNames -and $_.PowerState -eq 'PoweredOff' }
+
+# Pre-change kontrola: prikaz mora biti ručno pregledan
+$targets | Select-Object Name, PowerState, VMHost
+
+# Pokrenuti tek posle potvrde obima
+$targets | ForEach-Object {
+    Start-VM -VM $_ -Confirm:$true
+}</code></pre>
+
+<h3>ESXi Shell: lokalna dijagnostika i poslednja linija intervencije</h3>
+
+<p>
+ESXi Shell i SSH ne treba trajno držati uključene bez potrebe. Koriste se u kontrolisanom prozoru, uz audit i isključivanje servisa posle rada. <code>vim-cmd</code> je lokalni ESXi alat koristan kada vCenter nije dostupan; VMID je lokalni identifikator na hostu i mora se ponovo utvrditi. Sledeće komande se izvršavaju kao privilegovani ESXi nalog. Prve dve su read-only, ostale menjaju stanje.
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+vim-cmd vmsvc/power.getstate 3
+
+# State-changing; koristiti tek nakon potvrde VMID-a
+vim-cmd vmsvc/power.on 3
+vim-cmd vmsvc/power.shutdown 3
+vim-cmd vmsvc/power.reboot 3
+vim-cmd vmsvc/power.suspend 3
+
+# Rizično: hard power-off
+vim-cmd vmsvc/power.off 3</code></pre>
+
+<pre><code class="language-none">Retrieved runtime info
+Powered on</code></pre>
+
+<p>
+Ako standardna operacija nad neodzivnim VM-om ne uspe, ne ubijaju se nasumično procesi. Najpre se identifikuje VM world pomoću <code>esxcli vm process list</code>, prikupe dokazi i eskalira redosled gašenja od najmanje invazivnog ka najinvazivnijem. <code>esxcli vm process kill</code> je poslednja mera za laboratoriju ili odobren incident; nepravilna meta može izazvati gubitak podataka.
+</p>
+
+<pre><code class="language-bash"># Read-only: pronaći World ID tačno određenog neodzivnog VM-a
+esxcli vm process list
+
+# Rizično i state-changing; primer samo za kontrolisani incident
+esxcli vm process kill --type=soft --world-id=123456
+# Ako soft ne uspe, support ili incident procedura može odobriti hard, pa force.</code></pre>
+
+<h3>Dokazi: događaji, alarmi, metrike i logovi</h3>
+
+<p>
+Prvi izvor je vSphere Client: Tasks and Events, alarmi VM-a, hosta, klastera i datastore-a, kao i poruka neuspelog zadatka. Za power-on problem najvažniji je <code>vmware.log</code> u direktorijumu VM-a; stvara ga VMX proces i sadrži konkretne poruke o otvaranju diskova, CPU kompatibilnosti, uređajima i neuspehu pokretanja. Na ESXi hostu <code>/var/run/log/hostd.log</code> beleži lokalne management operacije, a <code>/var/run/log/vmkernel.log</code> kernel, storage i uređajne događaje. Na vCenter Server Appliance-u <code>/var/log/vmware/vpxd/vpxd.log</code> pomaže kada je problem u vCenter zadatku ili komunikaciji sa hostom.
+</p>
+
+<pre><code class="language-bash"># Read-only; ESXi Shell, vremenski ograničena pretraga relevantnih poruka
+tail -n 200 /var/run/log/hostd.log
+tail -n 200 /var/run/log/vmkernel.log
+
+# U direktorijumu konkretnog VM-a; putanju utvrditi iz inventara
+tail -n 200 vmware.log</code></pre>
+
+<p>
+Log se čita u odgovarajućoj vremenskoj zoni i periodu oko incidenta, a nalaz se koreliše sa task ID-jem, korisnikom, poslednjom promenom i alarmima. Ne zaključuje se samo na osnovu jedne generičke linije. Za suspend i resume proveravaju se datastore kapacitet i latencija; za boot storm CPU ready, host memory pressure i storage latency; za aplikativni oporavak koriste se guest i aplikativni logovi.
+</p>
+
+<h3>Sistematičan troubleshooting kada VM ne može da se pokrene</h3>
+
+<ol>
+  <li><strong>Simptom, obim i posledica:</strong> zabeležiti tačnu poruku, vreme, procenat na kojem task stoji, da li je pogođen jedan VM ili više VM-ova, jedan host ili datastore, i koji servis nije dostupan.</li>
+  <li><strong>Najmanje invazivne provere:</strong> pregledati Recent Tasks, Events, Alarms i pending pitanje koje ponekad zadrži power-on zadatak; proveriti da li je drugi task još aktivan.</li>
+  <li><strong>Resursi i politika:</strong> proveriti memory reservation, resource pool limit, host kapacitet i HA admission control. Slobodan RAM prikazan u jednom pogledu nije jedini kriterijum.</li>
+  <li><strong>Storage i datoteke:</strong> potvrditi dostupnost datastore-a, slobodan prostor, postojanje VMX/VMDK/swap putanja i vlasnika eventualnog lock-a. Zaključavanje je zaštitni mehanizam; ne uklanja se naslepo.</li>
+  <li><strong>Kompatibilnost i konfiguracija:</strong> proveriti CPU/EVC karakteristike, naročito posle resume-a ili promene hosta, virtuelni hardver, povezane uređaje i nedostupne ISO putanje.</li>
+  <li><strong>Logovi i hipoteza:</strong> povezati konkretnu grešku iz <code>vmware.log</code>, <code>hostd.log</code> ili <code>vmkernel.log</code> sa prethodnim dokazima; tek tada menjati stanje.</li>
+  <li><strong>Korekcija i validacija:</strong> primeniti najmanju promenu koja rešava potvrđen uzrok, pokrenuti jedan VM i potvrditi guest, mrežni i aplikativni health pre šire akcije.</li>
+</ol>
+
+<table>
+  <thead><tr><th>Simptom</th><th>Verovatan neposredni uzrok</th><th>Bezbedna sledeća provera</th><th>Trajna mera</th></tr></thead>
+  <tbody>
+    <tr><td>Insufficient resources</td><td>Reservation, limit ili HA admission control</td><td>Host/cluster resursi, resource pool i događaj zadatka</td><td>Ispraviti sizing, rezervacije ili kapacitet; ne gasiti nasumične VM-ove.</td></tr>
+    <tr><td>Failed to lock the file</td><td>Datoteku drži drugi host/proces ili backup hot-add tok</td><td>Utvrditi vlasnika lock-a i aktivne backup/migration zadatke</td><td>Otkloniti osnovni uzrok kroz podržanu KB proceduru.</td></tr>
+    <tr><td>Task stoji oko 95%</td><td>VM čeka administratorski odgovor</td><td>VM Summary i pending questions</td><td>Odgovoriti tek posle razumevanja posledice i ispraviti uzrok pitanja.</td></tr>
+    <tr><td>Resume nije moguć</td><td>Nekompatibilne CPU karakteristike ili oštećeno/nedostupno stanje</td><td>Vratiti VM na izvorni/kompatibilni host i pregledati log</td><td>EVC/kompatibilan placement; odbaciti stanje samo uz odobren rizik.</td></tr>
+    <tr><td>VM je powered on, servis nije dostupan</td><td>Guest boot, mreža ili aplikacija nisu zdravi</td><td>Konzola, Tools, guest IP, port i aplikativni health check</td><td>Ispraviti guest/aplikativni uzrok; power state nije health signal.</td></tr>
+  </tbody>
+</table>
+
+<h3>Praktikum – bezbedan životni ciklus i incident sa neodzivnim VM-om</h3>
+
+<p>
+<strong>Cilj i kontekst:</strong> administrator treba da izvrši planski reboot laboratorijskog servera, potvrdi potpuni oporavak, zatim simulira neuspešan guest zahtev bez prinudnog prekida produkcionih podataka. Topologiju čine vCenter, jedan ESXi host ili mali klaster, datastore i VM <code>lab-power-01</code> sa VMware Tools-om i jednostavnim testnim servisom. Vežba se izvodi isključivo nad laboratorijskim VM-om bez poslovnih podataka.
+</p>
+
+<p>
+<strong>Preduslovi i rizik:</strong> potreban je vSphere nalog sa power i guest interaction privilegijama, konzolni pristup, PowerCLI radna stanica i dokumentovan health check servisa. Snapshot nije obavezan niti je zamena za backup; ako se koristi radi druge laboratorijske potrebe, uklanja se prema pravilima naredne lekcije. Pre početka zabeležiti VM host, power state, Tools status, IP adresu, aplikativni odgovor i otvorene alarme.
+</p>
+
+<h4>Vežba 1 – planski guest reboot sa dokazom oporavka</h4>
+
+<ol>
+  <li>U vSphere Client-u otvoriti VM, potvrditi identitet, odsustvo aktivnog backup/migration zadatka i zdrav Tools status.</li>
+  <li>Pokrenuti dogovoreni aplikativni health check i sačuvati rezultat kao početno stanje.</li>
+  <li>Izabrati <strong>Actions → Power → Restart Guest OS</strong>, potvrditi upozorenje i pratiti Tasks and Events.</li>
+  <li>Posmatrati konzolu. Ne proglašavati uspeh kada se power state nije promenio: sačekati da se Tools vrati u running stanje.</li>
+  <li>Ponoviti mrežni i aplikativni health check i proveriti guest sistemske logove za neočekivane greške pri gašenju ili boot-u.</li>
+</ol>
+
+<p>
+<strong>Očekivani rezultat i kriterijum završetka:</strong> zahtev je evidentiran pod tačnim korisnikom, guest se uredno ponovo podigao, Tools radi, nema novih kritičnih alarma, a aplikativni health check odgovara početnom stanju. Ako Tools zahtev ne počne da se izvršava, ne koristiti Reset; preći na Vežbu 2 i prikupiti dokaze.
+</p>
+
+<h4>Vežba 2 – PowerCLI pre-check, promena i post-check</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name 'lab-power-01'
+
+# Pre-check
+$before = $vm | Select-Object Name, PowerState, VMHost,
+    @{N='ToolsRunning';E={$_.ExtensionData.Guest.ToolsRunningStatus}},
+    @{N='GuestHeartbeat';E={$_.ExtensionData.GuestHeartbeatStatus}}
+$before | Format-List
+
+# State-changing: uredan guest reboot
+Restart-VMGuest -VM $vm -Confirm:$true
+
+# Sačekati povratak Tools-a; timeout sprečava beskonačno čekanje
+$deadline = (Get-Date).AddMinutes(10)
+do {
+    Start-Sleep -Seconds 10
+    $vm = Get-VM -Name 'lab-power-01'
+    $tools = $vm.ExtensionData.Guest.ToolsRunningStatus
+} until ($tools -eq 'guestToolsRunning' -or (Get-Date) -gt $deadline)
+
+$vm | Select-Object Name, PowerState,
+    @{N='ToolsRunning';E={$_.ExtensionData.Guest.ToolsRunningStatus}},
+    @{N='GuestHeartbeat';E={$_.ExtensionData.GuestHeartbeatStatus}}</code></pre>
+
+<p>
+Ako timeout istekne, korektivna akcija nije automatski hard reset. Otvoriti konzolu, proveriti Events, Tools servis i guest boot logove. Rollback za reboot ne postoji u smislu vraćanja pređašnjeg runtime stanja; oporavak je dovršavanje boot-a, popravljanje gosta ili aktiviranje dokumentovanog aplikativnog recovery plana.
+</p>
+
+<h4>Vežba 3 – incident: guest shutdown ne daje očekivani rezultat</h4>
+
+<ol>
+  <li><strong>Simulacija:</strong> u laboratoriji zaustaviti VMware Tools servis unutar gosta ili koristiti VM za koji je Tools status već <code>not running</code>. Ne zamrzavati produkcioni OS.</li>
+  <li><strong>Simptom:</strong> pokušaj Shut Down Guest OS nije dostupan ili zahtev ne dovodi do gašenja. Zabeležiti tačnu poruku i vreme.</li>
+  <li><strong>Dokazi:</strong> proveriti konzolu, Tools status, Recent Tasks/Events i da li guest i dalje odgovara na lokalni shutdown.</li>
+  <li><strong>Bezbedna korekcija:</strong> ako guest radi, prijaviti se kroz konzolu i izvršiti njegovu nativnu urednu shutdown proceduru; zatim popraviti ili pokrenuti Tools servis.</li>
+  <li><strong>Eskalacija:</strong> Power Off koristiti samo ako je guest stvarno neodzivan, podaci su zaštićeni koliko je moguće, rizik je odobren i dokazi su sačuvani.</li>
+  <li><strong>Recovery:</strong> ponovo pokrenuti VM, pratiti filesystem/application recovery i potvrditi servis. Osnovni uzrok dokumentovati kao kvar Tools servisa ili drugi potvrđeni nalaz, a ne kao „VM se nije ugasio”.</li>
+</ol>
+
+<p>
+<strong>Povratak laboratorije:</strong> VM treba da bude u početnom power stanju, VMware Tools servis ponovo aktivan, testni servis zdrav, bez suspendovanog stanja i bez neočekivanih alarma. Sačuvati task/event zapise i kratku incident belešku sa simptomom, neposrednim uzrokom, osnovnim uzrokom, korekcijom i validacijom.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Uvek prvo birati guest shutdown ili guest restart kada su Tools i operativni sistem zdravi.</li>
+  <li>Power Off, Reset i process kill tretirati kao incidentne, rizične operacije sa odobrenjem i sačuvanim dokazima.</li>
+  <li>Pre akcije proveriti tačan objekat, zavisnosti, change prozor, backup/migration zadatke, alarme i datastore kapacitet.</li>
+  <li>Masovne operacije ograničiti folderom, tagom i eksplicitnom listom; prvo prikazati metu, zatim raditi u talasima.</li>
+  <li>Ne koristiti suspend kao backup ili univerzalni način uštede resursa; proceniti vreme, klastere, sesije, CPU kompatibilnost i prostor.</li>
+  <li>Uspeh dokazati na četiri nivoa: vSphere power state, VMware Tools/heartbeat, mrežna dostupnost i aplikativni health.</li>
+  <li>ESXi Shell uključivati samo kada je potreban, ograničiti pristup, zabeležiti rad i zatim ga isključiti.</li>
+  <li>Planirane operacije povezati sa vlasnikom servisa, redosledom zavisnosti, rollback/recovery planom i post-change dokumentacijom.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je savladana kada administrator može da objasni razliku između hipervizorske i guest operacije; izabere najmanje invazivnu akciju; bezbedno izvrši i validira Power On, guest shutdown/reboot, suspend i resume; precizno razlikuje <code>Stop-VMGuest</code> od <code>Stop-VM</code> i <code>Restart-VMGuest</code> od <code>Restart-VM</code>; ograniči obim masovne PowerCLI akcije; pronađe relevantne događaje i logove; i vodi incident od simptoma i dokaza do potvrđenog uzroka, oporavka i dokumentovane trajne mere.
+</p>
+
+<h3>Zaključak</h3>
+
+<p>
+Power operacije nisu samo komande za promenu prikazanog stanja VM-a. One su kontrolisane promene dostupnosti koje se protežu kroz hipervizor, guest operativni sistem, storage, mrežu i aplikaciju. Uredan guest zahtev je standardni izbor; prinudne operacije su opravdane tek kada su blaže mogućnosti iscrpljene i rizik svesno prihvaćen. Pouzdan administrator prikuplja dokaze pre promene, štiti obim automatizacije, proverava rezultat iz više izvora i ostavlja jasan audit trag. Upravo ta disciplina priprema čitaoca za narednu lekciju o snapshot-ima, gde će razlika između privremenog stanja, tačke povratka i stvarne zaštite podataka postati još važnija.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom VMware vSphere dokumentacija za upravljanje stanjima virtuelnih mašina; vSphere Web Services i Automation API reference; VCF PowerCLI reference; ESXi CLI administrativne reference; Broadcom Knowledge Base članci za neuspešan power-on, zaključane datoteke, neodzivne VM-ove i korelaciju vCenter, hostd, vmkernel i VMX logova
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-15-template-i-kloniranje.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-17-snapshot.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

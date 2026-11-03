@@ -1,0 +1,709 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-07-vcenter.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>vCenter – centralno upravljanje VMware infrastrukturom | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte vCenter kao centralnu platformu za upravljanje VMware infrastrukturom, ESXi hostovima, virtuelnim mašinama, klasterima, resursima, migracijama i dostupnošću.">
+
+  <meta name="keywords"
+        content="vCenter, VMware vCenter, VMware infrastruktura, centralno upravljanje, ESXi host, vSphere, virtuelne mašine, VM, klaster, vMotion, High Availability, DRS, enterprise infrastruktura, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-07-vcenter.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="vCenter – centralno upravljanje VMware infrastrukturom">
+
+  <meta property="og:description"
+        content="Upoznajte vCenter kao centralnu tačku za administraciju ESXi hostova, virtuelnih mašina, klastera, resursa i naprednih funkcija VMware infrastrukture.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-07-vcenter.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-07-vcenter.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="vCenter – centralno upravljanje VMware infrastrukturom">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Razumevanje VMware virtuelizacije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-07-vcenter.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-07-vcenter.png"
+           alt="vCenter – centralno upravljanje VMware infrastrukturom">
+    </a>
+
+<div class="page-subtitle">
+  II. Arhitektura i organizacija VMware okruženja
+</div>
+
+<div class="page-subtitle">
+  7. vCenter Server – centralno upravljanje VMware infrastrukturom
+</div>
+
+<p>
+  Prethodna lekcija predstavila je ESXi kao hipervizor koji neposredno izvršava virtuelne mašine. Jednim ESXi hostom moguće je upravljati preko njegovog lokalnog Host Client interfejsa, ali se takav model brzo pretvara u skup odvojenih konfiguracija, naloga i evidencija. Kada okruženje dobije više hostova, zajednički storage, veći broj mreža, desetine ili stotine virtuelnih mašina i više administratorskih timova, potreban je jedinstven upravljački sloj. Tu ulogu ima <strong>vCenter Server</strong>.
+</p>
+
+<p>
+  vCenter Server je centralna <em>management plane</em> komponenta VMware vSphere infrastrukture. On održava inventar i konfiguracione podatke, koordinira operacije između hostova, primenjuje dozvole i politike, prikuplja događaje i statistiku, izlaže API i omogućava funkcije koje ne postoje pri izolovanom upravljanju hostovima. Ne izvršava korisničke virtuelne mašine i ne zamenjuje ESXi: <strong>ESXi predstavlja izvršni sloj, a vCenter upravljački sloj</strong>.
+</p>
+
+<p>
+  Zato kvar vCenter-a po pravilu ne gasi VM-ove koji već rade. Hostovi nastavljaju da ih izvršavaju, a distribuirani virtualni switch zadržava postojeću prosleđivačku konfiguraciju na hostovima. Ipak, gubitak vCenter-a nije bezazlen: centralni inventar i vSphere Client nisu dostupni, API automatizacija i deo backup poslova mogu stati, nove vMotion i DRS operacije ne mogu se normalno pokretati, a menjanje distribuirane mrežne konfiguracije postaje ograničeno. vSphere HA može reagovati na kvar hosta oslanjajući se na agente i stanje klastera, ali administrator tokom incidenta mora tačno razlikovati <em>rad VM-ova</em> od <em>dostupnosti upravljanja</em>.
+</p>
+
+<div class="author-principles">
+  <h3>Administratorski princip: control plane nije workload, ali jeste kritična usluga</h3>
+  <p>
+    Činjenica da postojeće virtuelne mašine nastavljaju rad bez vCenter-a ne znači da vCenter nema zahtev za visoku dostupnost i oporavak. Poslovni uticaj određuju operacije koje zavise od njega: provisioning, automatizacija, backup kontrolni tokovi, nadzor, migracije, patching, promene dozvola i odgovor na incidente. RPO i RTO za vCenter zato se projektuju prema potrebama upravljanja, a ne samo prema tome da li će aplikacioni VM ostati uključen.
+  </p>
+</div>
+
+<h3>Šta vCenter Server omogućava</h3>
+
+<p>
+  Centralizacija nije samo objedinjeni ekran. vCenter pruža zajednički inventar, transakcioni i audit kontekst i tačku na kojoj se primenjuju organizacione politike. Preko njega administrator može da:
+</p>
+
+<ul>
+  <li>dodaje ESXi hostove i organizuje ih u datacentre, foldere i klastere;</li>
+  <li>kreira, klonira, migrira, registruje i nadgleda virtuelne mašine;</li>
+  <li>upravlja datastore objektima, standardnim i distribuiranim mrežama i resource pool objektima;</li>
+  <li>delegira pristup kroz uloge, privilegije i dozvole uz nasleđivanje kroz inventar;</li>
+  <li>prati zadatke, događaje, alarme, performanse i istoriju promena;</li>
+  <li>koristi Content Library za kontrolisanu distribuciju OVF/OVA sadržaja, VM šablona, ISO slika i drugih artefakata;</li>
+  <li>upravlja željenim stanjem i životnim ciklusom podržanih hostova kroz vSphere Lifecycle Manager;</li>
+  <li>izlaže vSphere API i omogućava automatizaciju alatima kao što su VCF PowerCLI, SDK-ovi i sistemi trećih strana;</li>
+  <li>integriše backup, monitoring, orkestraciju, bezbednosne i cloud platforme koje koriste vCenter kao kontrolnu tačku.</li>
+</ul>
+
+<p>
+  Funkcije kao što su vMotion, Storage vMotion, vSphere HA, DRS, vSphere Distributed Switch, Host Profiles i deo Lifecycle Manager mogućnosti zavise od vCenter-a i odgovarajuće licence ili pretplate. Tačna prava korišćenja i dostupnost funkcija menjala su se kroz izdanja i Broadcom modele pakovanja, pa se produkcioni dizajn ne zasniva na staroj tabeli licenci iz tutorijala ili bloga, već na aktuelnom entitlement-u organizacije, Product Interoperability Matrix-u i dokumentaciji konkretnog build-a.
+</p>
+
+<h3>Inventar i hijerarhija objekata</h3>
+
+<p>
+  vCenter prikazuje infrastrukturu kroz više inventarskih pogleda: Hosts and Clusters, VMs and Templates, Storage i Networking. Objekti nisu samo fascikle na ekranu; njihova pozicija određuje gde se mogu primeniti dozvole, alarmi i pojedine politike. Tipična pojednostavljena hijerarhija izgleda ovako:
+</p>
+
+<pre><code class="language-none">vCenter Server
+└── Datacenter
+    ├── Cluster
+    │   ├── ESXi host
+    │   │   └── Virtual machine
+    │   └── Resource pool
+    ├── VM and Template folder
+    ├── Datastore / Datastore cluster
+    └── Network / Distributed virtual switch</code></pre>
+
+<p>
+  Jedan VM istovremeno pripada različitim logičkim pogledima: nalazi se na određenom hostu i datastore-u, povezan je na mrežu i može biti smešten u VM folder. Zbog toga se RBAC ne projektuje napamet. Dozvola dodeljena na parent objektu može se naslediti na veliki deo inventara, dok operacija nad VM-om može zahtevati privilegije i na odredišnom hostu, resource pool-u, datastore-u i mreži. Folder nije bezbednosna granica sam po sebi; granicu čine pravilno dodeljene privilegije, opseg i kontrolisano nasleđivanje.
+</p>
+
+<h3>Arhitektura savremenog vCenter Server Appliance-a</h3>
+
+<p>
+  U podržanim savremenim izdanjima vCenter se isporučuje kao <strong>vCenter Server Appliance</strong> (VCSA), unapred pripremljena virtuelna mašina zasnovana na VMware Photon OS-u. Windows instalacija vCenter Server-a istorijski je postojala, ali je ukinuta; počev od vSphere 7.0 appliance je jedini model implementacije. Spoljni Platform Services Controller takođe je istorijski model: njegove funkcije su objedinjene u appliance-u, što smanjuje broj čvorova i složenost životnog ciklusa.
+</p>
+
+<p>
+  Appliance obuhvata više međuzavisnih komponenti:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Uloga</th>
+      <th>Tipičan trag pri problemu</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>vmware-vpxd</code></td>
+      <td>Glavni vCenter servis: inventar, zadaci i komunikacija sa hostovima i drugim servisima.</td>
+      <td>Neuspele inventarske operacije; <code>/var/log/vmware/vpxd/vpxd.log</code>.</td>
+    </tr>
+    <tr>
+      <td>vSphere Client</td>
+      <td>HTML5 korisnički interfejs za administraciju.</td>
+      <td>Greška 503 ili <em>no healthy upstream</em>; logovi u <code>/var/log/vmware/vsphere-ui/</code>.</td>
+    </tr>
+    <tr>
+      <td>vPostgres</td>
+      <td>Ugrađena baza inventara, konfiguracije, zadataka, događaja i statistike.</td>
+      <td>Spor rad, servisi koji se ne pokreću ili alarm particije baze; <code>/var/log/vmware/vpostgres/</code>.</td>
+    </tr>
+    <tr>
+      <td>vCenter Single Sign-On</td>
+      <td>Autentikacija, tokeni, solution users i SSO domen.</td>
+      <td>Neuspešna prijava, token ili certificate greške; <code>vmdir</code> i STS logovi.</td>
+    </tr>
+    <tr>
+      <td>VMware Directory Service (<code>vmdir</code>)</td>
+      <td>Čuva SSO konfiguraciju i replikuje je između vCenter čvorova u istom SSO domenu.</td>
+      <td>Problemi replikacije ili identiteta; <code>/var/log/vmware/vmdird/</code>.</td>
+    </tr>
+    <tr>
+      <td>VMware Certificate Authority (VMCA) i VECS</td>
+      <td>Izdavanje i skladištenje Machine SSL i solution-user sertifikata i trust materijala.</td>
+      <td>Istek sertifikata, TLS ili start-up greške; sertifikati se proveravaju podržanim alatima, ne ručnim brisanjem store-a.</td>
+    </tr>
+    <tr>
+      <td>vSphere Lifecycle Manager</td>
+      <td>Željeno stanje, slike, baseline nasleđe i remediation hostova, zavisno od verzije i klastera.</td>
+      <td>Compliance i remediation greške u Lifecycle Manager prikazu i odgovarajućim logovima.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Servisima upravlja VMware Service Lifecycle Manager (<code>vMon</code>). Komande <code>service-control</code> i <code>vmon-cli</code> služe za kontrolisanu proveru i upravljanje servisima; nisu zamena za razumevanje zavisnosti. Nasumičan restart svih servisa može ukloniti simptom i istovremeno uništiti važan vremenski trag incidenta.
+</p>
+
+<h3>Interfejsi za upravljanje: vSphere Client, VAMI, konzola i API</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Interfejs</th>
+      <th>Namena</th>
+      <th>Tipičan pristup</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vSphere Client</td>
+      <td>Inventar, VM, hostovi, klasteri, mreža, storage, dozvole, alarmi i politike.</td>
+      <td><code>https://vcsa-fqdn/ui</code></td>
+    </tr>
+    <tr>
+      <td>VAMI</td>
+      <td>Stanje appliance-a, mreža, vreme, syslog, backup, update i servisni pregled.</td>
+      <td><code>https://vcsa-fqdn:5480</code></td>
+    </tr>
+    <tr>
+      <td>DCUI / VM Console</td>
+      <td>Break-glass pristup osnovnoj mrežnoj i servisnoj dijagnostici kada web interfejs nije dostupan.</td>
+      <td>Konzola VCSA virtuelne mašine.</td>
+    </tr>
+    <tr>
+      <td>Appliance Shell / Bash</td>
+      <td>Podržana dijagnostika, logovi i ograničene administrativne operacije.</td>
+      <td>SSH se uključuje samo kada je potreban i ponovo isključuje prema politici.</td>
+    </tr>
+    <tr>
+      <td>API i VCF PowerCLI</td>
+      <td>Ponovljiva automatizacija, izveštavanje i integracije.</td>
+      <td>Namenski servisni nalog, najmanje privilegije i validan TLS lanac.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  VAMI i vSphere Client nisu isti upravljački sloj. Ako je <code>/ui</code> nedostupan, VAMI može i dalje raditi i pokazati health appliance-a; obrnuto, problem na portu 5480 ne dokazuje da je <code>vpxd</code> pao. Ta razlika je dragocena pri određivanju obima incidenta.
+</p>
+
+<h3>DNS, vreme, mreža i kapacitet kao arhitektonske zavisnosti</h3>
+
+<p>
+  Produkcioni vCenter mora imati statičku adresu, stabilan FQDN, ispravan forward i reverse DNS i pouzdanu vremensku sinhronizaciju. FQDN postaje deo identiteta sistema i sertifikata; naknadna promena hostname-a, IP adrese ili SSO dizajna nije obična kozmetička izmena. Pre implementacije proveravaju se A/AAAA i PTR zapisi sa istih DNS resolvera koje će koristiti appliance i ESXi hostovi. Neusklađeno vreme izaziva greške tokena, autentikacije, sertifikata, korelacije logova i replikacije.
+</p>
+
+<p>
+  Management mreža treba da omogući dokumentovane tokove između administratora, vCenter-a, ESXi hostova, DNS/NTP/SMTP/syslog/backup odredišta i integrisanih proizvoda. Pravilo „otvori sve portove između VLAN-ova” olakšava laboratoriju, ali slabi segmentaciju i audit. Produkcioni firewall se gradi prema zvaničnoj port matrici za konkretno izdanje i stvarno omogućene integracije.
+</p>
+
+<p>
+  VCSA se pri instalaciji bira prema veličini inventara i očekivanoj statistici. Premali appliance dovodi do pritiska na CPU, memoriju i bazu; preveliki nepotrebno rezerviše resurse. Izbor Tiny/Small/Medium/Large/X-Large i storage profila mora se proveriti u Configuration Maximums dokumentu konkretnog izdanja. Virtualni diskovi imaju odvojene funkcije i mount tačke, pa ukupno slobodno mesto ne govori koja je particija ugrožena. Posebno se prate <code>/storage/log</code>, <code>/storage/db</code>, <code>/storage/core</code>, <code>/storage/archive</code> i ostale VCSA particije.
+</p>
+
+<h3>Single Sign-On, identiteti i RBAC</h3>
+
+<p>
+  vCenter Single Sign-On domen, često inicijalno nazvan <code>vsphere.local</code>, nije isto što i DNS ili Microsoft Active Directory domen. SSO pruža autentikaciju servisima i korisnicima, Security Token Service izdaje tokene, a <code>vmdir</code> čuva relevantnu konfiguraciju. Administrator SSO domena ima izuzetno široka prava nad identitetom platforme i njegov nalog ne treba koristiti za svakodnevne VM operacije.
+</p>
+
+<p>
+  Spoljni direktorijum može se povezati podržanim identity provider/identity source modelom konkretnog izdanja. U vSphere 8 okruženjima klasični Integrated Windows Authentication je zastareo model; za AD over LDAP koristi se TLS i validacija sertifikata, a federacija sa podržanim pružaocem identiteta projektuje se prema aktuelnoj dokumentaciji. Običan LDAP bez TLS-a izlaže akreditive i nije prihvatljiva produkciona praksa. Kompatibilnost se mora proveriti pre upgrade-a, jer se identitetske mogućnosti menjaju između glavnih izdanja i VCF pakovanja.
+</p>
+
+<p>
+  Autorizacija se zasniva na modelu <strong>korisnik ili grupa + uloga + objekat + nasleđivanje</strong>. Preporučuje se dodela uloga grupama iz direktorijuma, a ne pojedinačnim nalozima; odvojeni administratorski, auditorski i servisni identiteti; najmanje privilegije; vremenski ograničen privilegovan pristup kada je moguć; i redovna recertifikacija članstva. Global Permissions imaju širi domet od običnih inventarskih dozvola i dodeljuju se samo uz posebno opravdanje.
+</p>
+
+<div class="warning-box">
+  <h3>Upozorenje: vCenter snapshot nije strategija backup-a</h3>
+  <p>
+    Snapshot VCSA virtuelne mašine može biti kratkotrajna, verzijski podržana zaštitna tačka pre određene promene, ali nije zamena za file-based backup. Dugotrajni snapshot povećava rizik i potrošnju datastore-a. U Enhanced Linked Mode grupi nekonzistentni snapshot-i mogu vratiti samo deo distribuiranog SSO stanja i izazvati probleme replikacije. Pre snapshot postupka proveravaju se zvanične smernice konkretnog izdanja, a snapshot se uklanja čim se promena potvrdi.
+  </p>
+</div>
+
+<h3>Sertifikati i poverenje</h3>
+
+<p>
+  vCenter koristi Machine SSL sertifikat za spoljne TLS veze i više solution-user sertifikata za međuservisnu autentikaciju. VMCA može raditi sa podrazumevanim lancem ili u podržanoj integraciji sa organizacionim PKI-jem. Cilj nije samo ukloniti upozorenje pregledača: potrebno je dokumentovati vlasništvo nad CA lancem, SAN imena, rokove važenja, postupak obnove i zavisnosti integrisanih sistema.
+</p>
+
+<p>
+  Istek STS ili drugih ključnih sertifikata može sprečiti prijavu i pokretanje servisa. Administrator zato vodi evidenciju i alarme pre isteka, koristi podržane alate kao što su vSphere Client, Certificate Management, <code>certificate-manager</code> ili Broadcom-ov <code>vCert</code> kada dokumentacija nalaže, i pre state-changing popravke pravi validan backup. Ručno brisanje zapisa iz VECS store-a ili slepo kopiranje komandi iz KB članka za drugi build može pogoršati stanje.
+</p>
+
+<h3>Dostupnost, backup i oporavak</h3>
+
+<p>
+  Osnovna zaštita je pravilno postavljen VCSA na pouzdanoj infrastrukturi, nadziran storage i redovan <strong>file-based backup</strong> konfiguracije i inventarskih podataka na nezavisno odredište. Backup se podešava u VAMI-ju, ručno ili po rasporedu, koristeći protokol podržan u konkretnom izdanju. Šifrovanje backup-a štiti osetljive podatke, ali lozinka mora biti sačuvana u odobrenom sistemu za tajne; bez nje restore nije moguć.
+</p>
+
+<p>
+  Restore se ne radi prostim vraćanjem datoteka u postojeći appliance. Instalacioni medij odgovarajućeg izdanja pokreće dvostepeni postupak: najpre se raspoređuje novi appliance, zatim se u njega uvoze podaci iz backup-a. Potrebni su kompatibilan build, dostupno backup odredište, mrežni i DNS preduslovi i dovoljno resursa. <strong>Backup koji nikada nije testiran predstavlja pretpostavku, ne dokaz oporavljivosti.</strong>
+</p>
+
+<p>
+  vCenter High Availability (VCHA) u izdanjima koja ga podržavaju koristi Active, Passive i Witness čvor i zasebnu HA mrežu. Može smanjiti prekid pri kvaru aktivnog čvora, ali ne štiti od logičke korupcije, pogrešne administrativne promene, kompromitovanih privilegija ili katastrofe koja zahvati zajedničke zavisnosti. VCHA nije zamena za backup i zahteva proveru podrške, topologije, latencije, resursa, lifecycle ograničenja i postupka održavanja za konkretan build.
+</p>
+
+<p>
+  Enhanced Linked Mode (ELM) omogućava jedinstven pregled više vCenter instanci u istom SSO domenu i replikuje SSO podatke između njih. ELM nije HA za inventar: svaka instanca i dalje upravlja sopstvenim hostovima i čuva sopstvenu vCenter bazu. Ako jedna instanca otkaže, druga je automatski ne preuzima kao zamenski vCenter. Broj podržanih instanci i topologija proveravaju se u Configuration Maximums i Product Interoperability Matrix dokumentima izabranog izdanja.
+</p>
+
+<h3>Licenciranje, verzije i interoperabilnost</h3>
+
+<p>
+  vCenter mora biti verzijski kompatibilan sa hostovima i proizvodima kojima upravlja. Uobičajeno je da noviji vCenter tokom kontrolisanog upgrade-a upravlja podržanim starijim ESXi verzijama, ali obrnuti smer nije opšte pravilo. Pre promene proveravaju se matrice za vCenter–ESXi, backup proizvod, NSX, vSAN, SRM/Live Site Recovery, plug-in komponente, hardware management dodatke i VCF release. Ne pretpostavlja se kompatibilnost samo zato što se proizvod može povezati.
+</p>
+
+<p>
+  Terminologija i pakovanje promenili su se nakon prelaska VMware portfolija pod Broadcom. vSphere 8 dokumentacija i dalje koristi vCenter Server/VCSA terminologiju, dok VCF 9.x dokumentacija vCenter posmatra unutar šireg VMware Cloud Foundation životnog ciklusa. Instalacioni i upgrade tok mogu zavisiti od toga da li je okruženje samostalni vSphere/VVF sistem ili deo VCF instance kojom upravlja odgovarajući lifecycle alat. Zato se ova lekcija oslanja na stabilne arhitektonske principe, a tačni koraci implementacije uvek vezuju za izdanje i entitlement.
+</p>
+
+<h3>Bezbedno korišćenje CLI-ja i servisnih komandi</h3>
+
+<p>
+  Sledeće komande izvršavaju se na VCSA appliance-u kao <code>root</code>, kroz appliance shell ili Bash kada je omogućen. Prva grupa samo čita stanje i pogodna je za početno prikupljanje dokaza:
+</p>
+
+<pre><code class="language-bash"># READ-ONLY: verzija i build appliance-a
+cat /etc/vmware/.buildInfo
+
+# READ-ONLY: status svih registrovanih vCenter servisa
+service-control --status --all
+
+# READ-ONLY: prostor po filesystem-u i osnovno memorijsko stanje
+df -h
+free -h
+
+# READ-ONLY: najveći direktorijumi prvog nivoa na log particiji
+du -x -h --max-depth=1 /storage/log 2&gt;/dev/null | sort -h
+
+# READ-ONLY: poslednjih 100 linija glavnog vCenter loga
+tail -n 100 /var/log/vmware/vpxd/vpxd.log</code></pre>
+
+<p>
+  <code>du</code> na velikom ili opterećenom filesystem-u može trošiti I/O, pa se koristi promišljeno. Ako je particija puna, prvo se identifikuje generator podataka i proverava zvanični KB; ne brišu se proizvoljno baza, core fajlovi ili aktivni logovi. Log bundle takođe zahteva slobodan prostor i na već popunjenoj <code>/storage/log</code> particiji može pogoršati incident.
+</p>
+
+<p>
+  Sledeće komande menjaju stanje servisa. Koriste se tek posle backup-a kada je potreban, evidentiranja stanja, procene uticaja i potvrđene hipoteze:
+</p>
+
+<pre><code class="language-bash"># STATE-CHANGING: pokretanje samo glavnog vCenter servisa
+service-control --start vmware-vpxd
+
+# STATE-CHANGING: zaustavljanje samo glavnog vCenter servisa
+service-control --stop vmware-vpxd
+
+# STATE-CHANGING I ŠIROK UTICAJ: restart svih servisa
+service-control --stop --all
+service-control --start --all</code></pre>
+
+<p>
+  Poslednji par privremeno prekida upravljačke funkcije celog vCenter-a i nije prva troubleshooting mera. Uspeh se ne zaključuje samo iz izlaza komande: ponovo se proverava <code>service-control --status --all</code>, prijava u vSphere Client, inventar, komunikacija sa hostovima, alarmi i relevantan log u vremenskom intervalu intervencije.
+</p>
+
+<h3>VCF PowerCLI i API automatizacija</h3>
+
+<p>
+  VMware PowerCLI se u aktuelnoj dokumentaciji distribuira u okviru VCF PowerCLI porodice modula. Sledeći primer je read-only i izvršava se sa administratorske radne stanice. U produkciji se koristi nalog sa najmanjim potrebnim privilegijama, a sertifikat se validira kroz pouzdan CA lanac; globalno ignorisanje nevažećih sertifikata nije preporučeno rešenje.
+</p>
+
+<pre><code class="language-powershell"># READ-ONLY: povezivanje i sažet inventarski pregled
+$vCenter = Connect-VIServer -Server "vcsa01.lab.example"
+
+Get-Datacenter -Server $vCenter |
+  Select-Object Name
+
+Get-Cluster -Server $vCenter |
+  Select-Object Name, HAEnabled, DrsEnabled
+
+Get-VMHost -Server $vCenter |
+  Select-Object Name, ConnectionState, PowerState, Version, Build
+
+Get-VM -Server $vCenter |
+  Group-Object PowerState |
+  Select-Object Name, Count
+
+Disconnect-VIServer -Server $vCenter -Confirm:$false</code></pre>
+
+<p>
+  Očekuje se uspešna TLS sesija i objekti iz vCenter inventara. Ako prijava radi u GUI-ju, a PowerCLI ne radi, proveravaju se DNS, vreme, proxy, sertifikacioni lanac, PowerCLI verzija, identitet koji se koristi i opseg privilegija. Lozinka se ne upisuje u skriptu niti istoriju shell-a; koristi se interaktivni unos, bezbedan credential store ili odobreni secrets sistem.
+</p>
+
+<h3>Logovi, događaji i korelacija dokaza</h3>
+
+<p>
+  VCSA logovi se u savremenom appliance-u nalaze uglavnom ispod <code>/var/log/vmware/&lt;service&gt;</code>. Za istragu se prvo beleže vremenska zona, tačno vreme simptoma, korisnik, ciljni objekat, Task/Event identifikator i poslednja promena. Tek zatim se pretražuju logovi. Jedna reč kao <code>error</code> daje previše šuma; bolji su FQDN hosta, VM MoRef, korisničko ime, task ID ili poruka iz UI-ja.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Izvor</th>
+      <th>Šta proveravati</th>
+      <th>Korelacija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/var/log/vmware/vpxd/vpxd.log</code></td>
+      <td>Inventarske operacije, host komunikacija, task greške i servisne zavisnosti.</td>
+      <td>vSphere Tasks/Events i ESXi <code>hostd.log</code>/<code>vpxa.log</code>.</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmware/vsphere-ui/</code></td>
+      <td>UI inicijalizacija, plug-in i backend greške.</td>
+      <td>Status <code>vsphere-ui</code> servisa, reverse proxy i browser developer log.</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmware/vmdird/</code> i SSO/STS logovi</td>
+      <td>Replikacija, autentikacija, tokeni i directory greške.</td>
+      <td>NTP, DNS, stanje sertifikata i identity provider logovi.</td>
+    </tr>
+    <tr>
+      <td>VAMI Health i vSphere alarmi</td>
+      <td>CPU, memorija, baza i zauzeće pojedinačnih particija.</td>
+      <td><code>df -h</code>, rast direktorijuma, promena log nivoa ili integracija koja generiše događaje.</td>
+    </tr>
+    <tr>
+      <td>Tasks and Events</td>
+      <td>Ko je pokrenuo operaciju, kada, nad kojim objektom i sa kojim rezultatom.</td>
+      <td>RBAC, API/PowerCLI audit i log ciljne komponente.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Tipični kvarovi i redosled dijagnostike</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatne grane uzroka</th>
+      <th>Prve bezbedne provere</th>
+      <th>Trajna mera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>503 Service Unavailable</code> ili <em>no healthy upstream</em></td>
+      <td>Servis nije pokrenut, puna particija, problem baze, sertifikata ili resursa.</td>
+      <td>Ping nije dokaz; proveriti DNS/TLS, VAMI, VM konzolu, <code>df -h</code>, status servisa i vremenski usklađene logove.</td>
+      <td>Otkloniti osnovni uzrok; kapacitet, sertifikate ili lifecycle problem, pa validirati sve servise.</td>
+    </tr>
+    <tr>
+      <td>Host je <em>Disconnected</em> ili <em>Not Responding</em></td>
+      <td>Management mreža, DNS, cert trust, <code>hostd</code>/<code>vpxa</code>, firewall ili opterećen host.</td>
+      <td>Proveriti VM workload, ICMP samo kao jedan signal, TCP tokove, Host Client, događaje i host logove.</td>
+      <td>Popraviti mrežu/DNS/agent uz kontrolisano reconnect; ne uklanjati host iz inventara bez procene posledica.</td>
+    </tr>
+    <tr>
+      <td>Prijava ne uspeva</td>
+      <td>Identity source, zaključan nalog, vreme, STS/certificate problem ili pogrešan format imena.</td>
+      <td>Uporediti lokalni SSO break-glass nalog i spoljni identitet; proveriti NTP, servisni status i identity provider.</td>
+      <td>Obnoviti podržanu federaciju/LDAP trust konfiguraciju i uvesti nadzor sertifikata.</td>
+    </tr>
+    <tr>
+      <td>VCSA particija se puni</td>
+      <td>Rast logova, core dump, baza/statistika, neuspešna rotacija ili proizvod koji generiše petlju događaja.</td>
+      <td><code>df -h</code>, VAMI alarm, veličina direktorijuma i poslednje promene log nivoa.</td>
+      <td>Otkloniti generator, primeniti relevantan KB ili podržano proširenje; ne brisati nasumično.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="practice-lab">
+  <h3>Praktikum: uvođenje vCenter-a i dokaz operativne spremnosti</h3>
+
+  <p>
+    <strong>Cilj:</strong> u kontrolisanoj laboratoriji proveriti preduslove VCSA, upoznati upravljačke interfejse, formirati osnovni inventar, dodati ESXi host, potvrditi RBAC i automatizovani read-only pristup, zatim sprovesti bezbednu dijagnostiku simuliranog incidenta. Vežba ne zamenjuje zvanični Installation and Setup vodič za izabrani build.
+  </p>
+
+  <h4>Topologija i početno stanje</h4>
+
+  <pre><code class="language-none">Administratorska stanica:  admin01.lab.example
+DNS/NTP:                    infra01.lab.example
+vCenter FQDN:               vcsa01.lab.example
+ESXi host:                  esx01.lab.example
+Management mreža:           192.0.2.0/24 (laboratorijski primer)
+Backup odredište:           nezavisno od VCSA datastore-a</code></pre>
+
+  <p>
+    Potrebni su podržani ESXi host i klijentski sistem, instalacioni ISO istog planiranog vCenter izdanja, kompatibilnost potvrđena u Broadcom matrici, statička IP adresa, ispravni DNS zapisi, NTP, dovoljno CPU/RAM/storage resursa, administratorski nalog za početnu implementaciju i dokumentovana laboratorijska lozinka. Za produkciju se dodatno zahtevaju change zapis, vlasnik usluge, firewall matrica, backup/RTO plan, monitoring i bezbedno čuvanje tajni.
+  </p>
+
+  <h4>Vežba 1 – validacija preduslova pre implementacije</h4>
+
+  <ol>
+    <li>Sa administratorske stanice proveriti forward i reverse rezoluciju za vCenter i ESXi. Rezultat mora biti jednoznačan i podudaran sa planiranim FQDN-om.</li>
+    <li>Proveriti vremenski izvor i odstupanje na ESXi hostu, DNS/NTP infrastrukturi i administratorskoj stanici.</li>
+    <li>U Product Interoperability Matrix-u potvrditi kombinaciju vCenter-a, ESXi build-a i dodatnih proizvoda. U Configuration Maximums proveriti veličinu inventara i odabrati VCSA deployment size.</li>
+    <li>Dokumentovati management IP, gateway, DNS resolvere, NTP, SSO domain name, site name, backup lokaciju, potrebne portove i rollback odluku.</li>
+  </ol>
+
+  <pre><code class="language-bash"># READ-ONLY; Linux administratorska stanica
+getent hosts vcsa01.lab.example
+getent hosts esx01.lab.example
+
+# Reverse lookup; zameniti laboratorijskom adresom
+nslookup 192.0.2.20
+
+# TLS port vSphere Client-a; potvrđuje samo TCP dostupnost, ne zdravlje servisa
+nc -vz vcsa01.lab.example 443</code></pre>
+
+  <p>
+    <strong>Kriterijum završetka:</strong> nema nerešenog DNS/NTP ili compatibility odstupanja i dizajn je zabeležen pre pokretanja instalera. Ako PTR nije ispravan ili se FQDN razrešava na pogrešnu adresu, instalacija se ne „forsira”; ispravlja se infrastruktura imena.
+  </p>
+
+  <h4>Vežba 2 – implementacija i početna validacija appliance-a</h4>
+
+  <ol>
+    <li>Pokrenuti podržani VCSA installer sa instalacionog medija. U prvoj fazi izabrati ciljni ESXi ili postojeći vCenter, deployment size i storage size prema prethodnoj proceni, zatim uneti FQDN, IP, gateway i DNS.</li>
+    <li>U drugoj fazi podesiti NTP, SSO domen i početni SSO administratorski identitet. Ne koristiti korporativni AD naziv kao SSO domain samo zato što zvuči poznato.</li>
+    <li>Po završetku otvoriti VAMI na portu 5480 i vSphere Client na <code>/ui</code>. Zabeležiti verziju/build, health svih prikazanih komponenti, vremensku konfiguraciju i stanje backup rasporeda.</li>
+    <li>U vSphere Client-u proveriti Administration prikaze za licence, sertifikate, Single Sign-On i System Configuration. U ovoj vežbi ne menjati sertifikate niti dodavati identity source.</li>
+  </ol>
+
+  <p>
+    <strong>Očekivani rezultat:</strong> oba web interfejsa su dostupna validnim FQDN-om, vreme je usklađeno, kritični health indikatori su zeleni i nema alarma o particijama. Rollback neuspele laboratorijske instalacije jeste uklanjanje samo novog VCSA VM-a nakon što se proveri da nije preuzeo produkcione hostove ili jedinstvene podatke; produkcioni rollback se unapred definiše prema fazi instalacije/migracije i zvaničnom vodiču.
+  </p>
+
+  <h4>Vežba 3 – inventar, ESXi host i provera dozvola</h4>
+
+  <ol>
+    <li>Kreirati Datacenter objekat <code>DC-LAB</code>, a u njemu folder ili klaster prema laboratorijskom planu. Ne uključivati HA/DRS dok mreža, storage i licenca nisu pripremljeni.</li>
+    <li>Izabrati Add Host, navesti <code>esx01.lab.example</code>, proveriti prikazani certificate thumbprint nezavisnim kanalom i uneti namenski administratorski kredencijal hosta.</li>
+    <li>Pregledati upozorenja o VM-ovima, mreži, licenci i lockdown stanju pre završetka čarobnjaka.</li>
+    <li>Potvrditi da je host <em>Connected</em>, da se postojeći VM-ovi vide i da datastore/mrežni objekti odgovaraju stvarnom hostu.</li>
+    <li>Kreirati laboratorijsku read-only ulogu ili koristiti postojeću <em>Read-only</em> ulogu, dodeliti je test grupi na <code>DC-LAB</code> uz promišljeno nasleđivanje, prijaviti se test nalogom i dokazati da pregled radi, a promena VM power stanja nije dozvoljena.</li>
+  </ol>
+
+  <p>
+    Dodavanje hosta menja stanje: vCenter na host instalira/konfiguriše management agente i preuzima ga u inventar. U produkciji se pre toga proveravaju backup poslovi, monitoring integracije, licenca, naziv i adresa hosta i mogućnost da je već pod upravljanjem druge vCenter instance. Host se ne dodaje opcijom koja ignoriše certificate proveru bez dokumentovanog razloga.
+  </p>
+
+  <h4>Vežba 4 – PowerCLI dokaz i izvoz početnog stanja</h4>
+
+  <p>
+    Izvršiti prethodni read-only PowerCLI primer i sačuvati rezultat u change evidenciji. Dodatno proveriti alarme i poslednje događaje bez menjanja inventara:
+  </p>
+
+  <pre><code class="language-powershell">$vCenter = Connect-VIServer -Server "vcsa01.lab.example"
+
+$snapshot = [ordered]@{
+  CollectedAt = (Get-Date).ToString("o")
+  vCenter     = $vCenter.Name
+  Hosts       = @(Get-VMHost -Server $vCenter).Count
+  VMs         = @(Get-VM -Server $vCenter).Count
+  Datastores  = @(Get-Datastore -Server $vCenter).Count
+}
+
+$snapshot | ConvertTo-Json
+Get-VIEvent -Server $vCenter -MaxSamples 20 |
+  Select-Object CreatedTime, UserName, FullFormattedMessage
+
+Disconnect-VIServer -Server $vCenter -Confirm:$false</code></pre>
+
+  <p>
+    <strong>Validacija:</strong> brojevi se podudaraju sa GUI inventarom, događaji imaju očekivano vreme i korisnika, a test nalog vidi samo odobreni opseg. JSON izlaz je tehnički dokaz trenutka, ali nije backup vCenter baze.
+  </p>
+
+  <h4>Vežba 5 – file-based backup i dokaz restore spremnosti</h4>
+
+  <ol>
+    <li>U VAMI-ju otvoriti Backup i podesiti podržano, nezavisno odredište. Uneti retention i raspored prema laboratorijskom cilju, uključiti šifrovanje ako je predviđeno i sačuvati lozinku u odobrenom secrets sistemu.</li>
+    <li>Pokrenuti inicijalni backup i pratiti zadatak do uspešnog završetka. Potvrditi timestamp, veličinu i postojanje datoteka na odredištu nalogom koji ima samo potrebna prava.</li>
+    <li>Dokumentovati tačan instalacioni medij/build potreban za restore, DNS/IP plan za recovery i ko ima pristup backup lozinki.</li>
+    <li>U izolovanoj recovery vežbi, kada resursi dozvoljavaju, pokrenuti restore workflow sa instalacionog medija bez preuzimanja identiteta aktivnog produkcionog vCenter-a. Produkcioni i test obnovljeni appliance ne smeju istovremeno raditi sa istim identitetom na istoj mreži.</li>
+  </ol>
+
+  <p>
+    <strong>Kriterijum završetka:</strong> poslednji backup ima status Success, nezavisno je dostupan i postoji dokumentovan, periodično testiran restore postupak. Sam VCSA VM snapshot ne ispunjava ovaj kriterijum.
+  </p>
+
+  <h4>Vežba 6 – incident: vSphere Client vraća 503</h4>
+
+  <p>
+    <strong>Bezbedna simulacija:</strong> ne zaustavljati servise na produkciji. U laboratoriji instruktor može dati snimljen izlaz ili kontrolisano zaustaviti samo <code>vsphere-ui</code> servis tokom odobrenog prozora. Cilj nije naučiti „restartuj sve”, već dokazati uzrok.
+  </p>
+
+  <ol>
+    <li><strong>Simptom i obim:</strong> zabeležiti URL, vreme i HTTP poruku. Proveriti da li rade VAMI, SSH/konzola i direktni Host Client i da li workload VM-ovi nastavljaju rad.</li>
+    <li><strong>Dokazi:</strong> proveriti <code>df -h</code>, <code>free -h</code>, <code>service-control --status --all</code>, odgovarajući UI i <code>vpxd</code> log u istom vremenskom intervalu i poslednje promene.</li>
+    <li><strong>Hipoteza:</strong> ako je samo <code>vsphere-ui</code> stopped, a prostor, baza i ostali ključni servisi zdravi, uzrok je ograničen na UI servis. Ako je particija puna ili više servisa ne radi, hipoteza se širi i restart se odlaže.</li>
+    <li><strong>Korekcija:</strong> u laboratoriji pokrenuti samo potvrđeno zaustavljen servis: <code>service-control --start vsphere-ui</code>. Ne koristiti <code>--start --all</code> kao prvu meru.</li>
+    <li><strong>Validacija:</strong> proveriti status servisa, uspešnu prijavu, učitavanje inventara, komunikaciju hosta, nove greške u logu i da li se alarm vratio u zeleno stanje.</li>
+    <li><strong>Osnovni uzrok i trajna mera:</strong> ako je servis zaustavio instruktor, to je simulirani neposredni uzrok. U stvarnom incidentu utvrditi zašto se zaustavio: resursi, particija, certificate, update, plug-in ili bug; primeniti relevantnu zakrpu ili dizajnersku korekciju i dokumentovati nalaz.</li>
+  </ol>
+
+  <p>
+    <strong>Rollback:</strong> ako pokretanje potvrđenog servisa izazove novu grešku, ne ponavljati komandu u petlji. Sačuvati logove, vratiti laboratoriju iz validne zaštitne tačke prema scenariju ili eskalirati uz support bundle i tačan vremenski sled. Na kraju ponovo isključiti SSH ako je uključen samo za vežbu.
+  </p>
+</div>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Voditi CMDB zapis o FQDN-u, IP adresi, build-u, SSO domenu, licencnom/entitlement modelu, integracijama, vlasniku i recovery zavisnostima.</li>
+  <li>Koristiti DNS imena, redundantne DNS/NTP servise i nadzor vremenskog odstupanja; ne oslanjati se na ručne <code>/etc/hosts</code> prečice kao trajni dizajn.</li>
+  <li>Zakazati šifrovani file-based backup na nezavisno odredište, nadzirati neuspehe i periodično dokazivati restore.</li>
+  <li>Nadzirati svaku VCSA particiju, zdravlje baze, certificate rokove, stanje servisa, backup i ključne integracije; alarm bez vlasnika i procedure nije kontrola.</li>
+  <li>Dodeljivati prava grupama kroz najmanje privilegije, odvojiti svakodnevne i SSO/break-glass naloge, štititi servisne naloge i redovno pregledati Global Permissions.</li>
+  <li>Ograničiti SSH i Bash, koristiti ih samo tokom odobrene dijagnostike i evidentirati state-changing komande.</li>
+  <li>Pre patch-a ili upgrade-a proveriti interoperabilnost, release notes, poznate probleme, slobodan prostor, backup, kompatibilnost plug-inova i rollback ograničenja.</li>
+  <li>Ne koristiti restart kao dijagnozu. Najpre sačuvati događaje, metrike i logove, zatim formirati i potvrditi hipotezu.</li>
+  <li>Ne mešati VCHA, ELM, VM snapshot i file-based backup: svaki rešava drugačiji rizik i nijedan sam ne daje potpunu otpornost.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je savladana kada administrator može dokazivo da:
+</p>
+
+<ul>
+  <li>objasni granicu odgovornosti ESXi i vCenter sloja i posledice gubitka control plane-a;</li>
+  <li>prepozna VCSA servise, interfejse, ključne zavisnosti i odgovarajuće logove;</li>
+  <li>projektuje osnovni inventar, DNS/NTP, RBAC, certificate i kapacitetni okvir bez oslanjanja na podrazumevane pretpostavke;</li>
+  <li>razlikuje ELM, VCHA, file-based backup i kratkotrajni snapshot prema riziku koji svaki mehanizam pokriva;</li>
+  <li>proveri verzijsku, proizvodnu i licencnu kompatibilnost pre implementacije ili upgrade-a;</li>
+  <li>izvrši read-only proveru kroz GUI, VAMI, CLI i PowerCLI i koreliše rezultat sa događajima i logovima;</li>
+  <li>za simptom 503 ili disconnected host odredi obim, prikupi dokaze, potvrdi uzrok, sprovede najmanje invazivnu korekciju i validira oporavak;</li>
+  <li>dokumentuje RPO/RTO, uspešan backup, test restore-a, rollback i vlasništvo nad alarmima i privilegijama.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  vCenter Server pretvara skup pojedinačnih ESXi hostova u upravljivu VMware infrastrukturu. Njegova vrednost nije samo u jednom web interfejsu, već u zajedničkom inventaru, bezbednosnom i audit modelu, koordinaciji klastera, automatizaciji, politikama životnog ciklusa i integracijama koje omogućavaju dosledan rad na enterprise nivou. Istovremeno, centralizacija stvara kritičnu zavisnost: loš DNS, vreme, sertifikati, puna particija, preširoka prava ili netestiran backup mogu zaustaviti upravljanje iako aplikacioni VM-ovi i dalje rade.
+</p>
+
+<p>
+  Odgovoran administrator zato ne meri zdravlje vCenter-a samo time da li se otvorila početna stranica. On zna šta se nalazi iza nje, prikuplja dokaze pre promene, razlikuje dostupnost workload-a od dostupnosti upravljanja, održava najmanje privilegije i kompatibilnost, proverava backup restore-om i projektuje oporavak prema poslovnom riziku. To razumevanje priprema čitaoca za sledeće lekcije o vSphere Client-u i organizaciji datacenter, cluster i resource pool objekata, bez prerane obrade njihovih detaljnih konfiguracija.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Broadcom VMware vSphere 8 i VMware Cloud Foundation 9 dokumentacija za vCenter instalaciju, arhitekturu, upravljanje, dostupnost, file-based backup i restore; Product Interoperability Matrix, Configuration Maximums i release notes; Broadcom Knowledge Base reference za VCSA servise, logove, popunjene particije i sertifikate; zvanične VCF PowerCLI i vSphere API reference; bezbednosni i lifecycle vodiči za identitete, RBAC, TLS i patching
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+   
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-06-esxi-host.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-08-vsphere-client.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

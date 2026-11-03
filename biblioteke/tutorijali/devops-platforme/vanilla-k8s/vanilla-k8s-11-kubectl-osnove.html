@@ -1,0 +1,526 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-11-kubectl-osnove.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>kubectl osnove – komunikacija sa Kubernetes klasterom | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte kubectl alat, osnovne komande i način komunikacije sa Kubernetes API serverom za upravljanje resursima u vanilla Kubernetes klasteru.">
+
+  <meta name="keywords"
+        content="kubectl, Kubernetes CLI, kubectl commands, Kubernetes API, kubectl get, kubectl describe, kubectl apply, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-11-kubectl-osnove.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="kubectl osnove – komunikacija sa Kubernetes klasterom">
+
+  <meta property="og:description"
+        content="Naučite kako kubectl komunicira sa Kubernetes API serverom i kako se koriste najvažnije administratorske komande za upravljanje klasterom.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-11-kubectl-osnove.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-11-kubectl-osnove.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="kubectl osnove – komunikacija sa Kubernetes klasterom">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-11-kubectl-osnove.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-11-kubectl-osnove.png"
+           alt="kubectl osnove – komunikacija sa Kubernetes klasterom">
+
+    </a>
+
+ <div class="page-subtitle">
+III. Kubernetes API, kubectl i deklarativno upravljanje
+</div>
+   <div class="page-subtitle">
+ 11. kubectl osnove – bezbedna komunikacija sa API serverom i čitanje stanja
+</div>
+<p>
+  <code>kubectl</code> je standardni komandni alat kojim administrator, operater ili automatizovani proces komunicira sa Kubernetes API serverom. On ne pristupa direktno kontejnerima, čvorovima, bazi <code>etcd</code> niti pojedinačnim komponentama control plane-a. Svaka komanda se prevodi u odgovarajući zahtev prema Kubernetes API-ju, šalje izabranom API serveru, prolazi autentikaciju, autorizaciju i admission kontrole, a zatim dobija odgovor u strukturisanom obliku. Zbog toga rad sa <code>kubectl</code> alatom nije samo poznavanje sintakse komandne linije: administrator mora razumeti kontekst, namespace, identitet pod kojim radi, dozvoljene operacije, stanje resursa i posledice zahteva koji šalje klasteru.
+</p>
+<p>
+  U produkcionom okruženju <code>kubectl</code> je istovremeno alat za pregled stanja, dijagnostiku, kontrolisanu promenu, validaciju, audit i reagovanje na incidente. Pogrešno izabran kontekst, izostavljen namespace ili preširoka privilegija mogu pretvoriti tehnički ispravnu komandu u produkcioni incident. Zato svaka ozbiljna administratorska procedura počinje proverom identiteta i ciljnog klastera, nastavlja se procenom razlike između željenog i postojećeg stanja, a završava funkcionalnom proverom i dokumentovanjem rezultata.
+</p>
+<h3>Uloga kubectl alata u Kubernetes arhitekturi</h3>
+<p>
+  Kada administrator izvrši komandu kao što je <code>kubectl get pods</code>, alat najpre učitava lokalnu konfiguraciju pristupa. Iz nje određuje adresu API servera, podatke za proveru identiteta servera, korisnički ili servisni identitet, aktivni context i podrazumevani namespace. Zatim otkriva dostupne API resurse i šalje HTTPS zahtev. API server proverava TLS vezu, autentifikuje klijenta, primenjuje RBAC ili drugi autorizacioni mehanizam i, kada je reč o promeni, prosleđuje zahtev kroz admission lanac. Tek nakon uspešnog završetka ovih koraka zahtev postaje deo željenog stanja klastera.
+</p>
+<p>
+  <code>kubectl</code> zato ne garantuje da je aplikacija zaista funkcionalna samo zato što je komanda prihvaćena. Uspešan odgovor na <code>apply</code> potvrđuje da je API server prihvatio i sačuvao deklaraciju, ali ne i da su Podovi raspoređeni, slike preuzete, probe uspešne, Service endpoint-i formirani ili aplikacija dostupna korisnicima. Kontroleri naknadno usklađuju stvarno stanje sa deklarisanim stanjem. Administrator mora posebno pratiti tok tog usklađivanja.
+</p>
+<p>
+  Alat podržava imperativni i deklarativni način rada. Imperativne komande, na primer <code>kubectl create namespace</code> ili <code>kubectl scale deployment</code>, korisne su za ograničene operativne zadatke, dijagnostiku i hitne intervencije. Deklarativni rad zasniva se na manifestima čuvanim u sistemu za kontrolu verzija i primeni komandom <code>kubectl apply</code>. U enterprise produkciji deklarativni model je pogodniji za ponovljivost, pregled promene, reviziju, automatizaciju i oporavak. Imperativna promena koja nije vraćena u izvorne manifeste stvara konfiguracioni drift i može biti poništena pri sledećem GitOps ili CI/CD izvršavanju.
+</p>
+<h3>Instalacija, verzija i preduslovi</h3>
+<p>
+  <code>kubectl</code> postoji za Linux, macOS i Windows. Binarni fajl treba preuzimati iz zvaničnih Kubernetes kanala ili pouzdanog repozitorijuma operativnog sistema, uz proveru kontrolne sume kada se instalira ručno. Administrator ne treba da preuzima nepoznate kopije binarnog fajla niti da ga pokreće sa nepotrebnim administratorskim pravima. Instalacija alata sama po sebi ne daje pristup klasteru; potreban je odgovarajući <code>kubeconfig</code>, mrežna dostupnost API endpoint-a, pouzdan CA sertifikat i važeći autentikacioni mehanizam.
+</p>
+<p>
+  Zvanična Kubernetes politika podržava <code>kubectl</code> koji je najviše jednu minor verziju stariji ili noviji od verzije <code>kube-apiserver</code> komponente. U HA klasteru sa privremenom razlikom verzija među API serverima dozvoljeni opseg može biti uži, jer klijent mora biti kompatibilan sa svakim API serverom do kog ga load balancer može usmeriti. Dodatni alati za distribuciju klastera mogu imati stroža pravila, pa se pre nadogradnje proveravaju i vendorska ograničenja.
+</p>
+<pre><code class="language-bash">kubectl version --client
+kubectl version
+kubectl cluster-info</code></pre>
+<p>
+  Prva komanda prikazuje samo lokalnu verziju klijenta i korisna je pre uspostavljanja veze. Druga pokušava da pročita i verziju servera, pa istovremeno proverava osnovnu komunikaciju. <code>kubectl cluster-info</code> prikazuje dostupne control plane i servisne endpoint-e. Neuspeh može ukazivati na pogrešan context, DNS problem, firewall, proxy, nevažeći sertifikat, istekle kredencijale ili nedostupnost API servera. Poruka o nedozvoljenoj operaciji, nasuprot mrežnom timeout-u, potvrđuje da je mrežna putanja verovatno funkcionalna, ali da identitet nema odgovarajuće pravo.
+</p>
+<h3>Kubeconfig, context i bezbedan izbor klastera</h3>
+<p>
+  <code>kubeconfig</code> organizuje podatke o klasterima, identitetima i context-ima. Context povezuje jedan cluster zapis, jedan user zapis i podrazumevani namespace. Podrazumevana lokacija je <code>~/.kube/config</code>, ali se može koristiti eksplicitni parametar <code>--kubeconfig</code> ili promenljiva <code>KUBECONFIG</code>. Kada je naveden <code>--kubeconfig</code>, koristi se samo taj fajl. Kada je postavljena promenljiva <code>KUBECONFIG</code>, više fajlova može biti objedinjeno prema pravilima platforme.
+</p>
+<p>
+  Kubeconfig nije bezazlen tekstualni inventar endpoint-a. Pored sertifikata, tokena i putanja do lokalnih fajlova, može sadržati <code>exec</code> autentikacioni dodatak koji pokreće lokalnu komandu radi pribavljanja kredencijala. Zato se kubeconfig iz nepoznatog izvora ne prosleđuje direktno alatu <code>kubectl</code>; najpre se pregleda kao skripta i proveravaju se naročito polja <code>users[].user.exec</code>, reference na datoteke i adrese servera. Posebno izrađen zlonamerni fajl može dovesti do izvršavanja koda ili izlaganja lokalnih podataka.
+</p>
+<pre><code class="language-bash">kubectl config get-contexts
+kubectl config current-context
+kubectl config view --minify
+kubectl config get-clusters</code></pre>
+<p>
+  <code>get-contexts</code> prikazuje sve poznate context-e, dok <code>current-context</code> vraća trenutno aktivan. <code>config view --minify</code> ograničava prikaz na aktivnu kombinaciju klastera, korisnika i context-a. Izlaz može sadržati osetljive strukturne podatke, a opcija <code>--raw</code> može otkriti ugrađene sertifikate ili tokene i zato se ne koristi u tiketima, deljenim terminalima ili nezaštićenim logovima.
+</p>
+<p>
+  Pre svake produkcione promene administrator eksplicitno proverava context i namespace. Bezbednije je navesti <code>--context</code> i <code>--namespace</code> u rizičnoj komandi nego osloniti se na staru terminalsku sesiju. Promena aktivnog context-a obavlja se kontrolisano:
+</p>
+<pre><code class="language-bash">kubectl config use-context lab-admin
+kubectl config set-context --current --namespace=team-platform
+kubectl config current-context
+kubectl config view --minify --output 'jsonpath={..namespace}{"\n"}'</code></pre>
+<p>
+  Poslednja komanda potvrđuje podrazumevani namespace. Ako nije definisan, Kubernetes koristi <code>default</code>. Namespace nije samo organizaciona oznaka: on utiče na vidljivost objekata, RBAC, kvote, mrežne politike i mesto na kom se izvršava promena. Parametar <code>-A</code> ili <code>--all-namespaces</code> koristi se za pregled više namespace-ova, ali ne zamenjuje pravilno određivanje cilja za operacije promene.
+</p>
+<p>
+  Kubeconfig mora imati restriktivne dozvole i ne sme biti skladišten u javnom repozitorijumu, deljen putem nezaštićene elektronske pošte ili ugrađen u sliku kontejnera. Na Linux sistemu uobičajena lokalna zaštita je:
+</p>
+<pre><code class="language-bash">chmod 700 "${HOME}/.kube"
+chmod 600 "${HOME}/.kube/config"</code></pre>
+<p>
+  Kopiranje <code>/etc/kubernetes/admin.conf</code> sa control plane čvora na korisničke računare predstavlja ozbiljan rizik jer taj fajl u kubeadm okruženju tipično daje veoma široka administrativna prava. Za redovan rad treba izdati poseban identitet sa najmanjim potrebnim privilegijama i kontrolisanim rokom važenja.
+</p>
+<h3>Sintaksa komandi i otkrivanje API resursa</h3>
+<p>
+  Opšti oblik komande je <code>kubectl [command] [TYPE] [NAME] [flags]</code>. Command određuje operaciju, TYPE vrstu API resursa, NAME konkretan objekat, a flags menjaju opseg ili format. Resurs se može zadati punim nazivom, kratkim nazivom ili u obliku <code>type/name</code>. Kratice ubrzavaju interaktivni rad, ali u procedurama i skriptama puni nazivi povećavaju čitljivost.
+</p>
+<pre><code class="language-bash">kubectl api-resources
+kubectl api-resources --namespaced=true
+kubectl api-resources --namespaced=false
+kubectl api-versions
+kubectl explain deployment
+kubectl explain deployment.spec.template.spec.containers --recursive</code></pre>
+<p>
+  <code>api-resources</code> prikazuje resurse koje trenutni API server oglašava, njihove API grupe, kratice, namespaced svojstvo i podržane glagole. To je pouzdanije od pretpostavke da svaki klaster ima iste CRD resurse. <code>api-versions</code> prikazuje dostupne API grupe i verzije. <code>kubectl explain</code> čita OpenAPI šemu sa servera i objašnjava strukturu polja, pa administrator proverava manifest prema stvarnoj verziji klastera, a ne prema primeru pronađenom za drugu verziju.
+</p>
+<h3>Pregled resursa i tumačenje stanja</h3>
+<p>
+  <code>kubectl get</code> služi za strukturisan pregled jednog ili više resursa. Bez dodatnog izlaznog formata prikazuje sažetu tabelu, ali ta tabela ne sadrži sva polja objekta. Opcija <code>-o wide</code> dodaje korisne informacije, dok <code>-o yaml</code> i <code>-o json</code> prikazuju potpunu serversku reprezentaciju, uključujući status i polja koja je server podrazumevano dopunio.
+</p>
+<pre><code class="language-bash">kubectl get namespaces
+kubectl get deployments,pods,services -n team-platform
+kubectl get pods -n team-platform -o wide
+kubectl get deployment web-demo -n team-platform -o yaml
+kubectl get pods -n team-platform -l app=web-demo
+kubectl get pods -n team-platform --field-selector=status.phase=Running</code></pre>
+<p>
+  Label selektori pronalaze objekte prema poslovnim i tehničkim oznakama, dok field selektori koriste ograničen skup podržanih polja. Administrator treba da izbegava parsiranje vizuelne tabele alatima kao što su <code>grep</code> i <code>awk</code> kada su dostupni JSONPath, Go template ili JSON izlaz. Tabelarni format je namenjen čoveku i može se promeniti.
+</p>
+<pre><code class="language-bash">kubectl get pods -n team-platform \
+  -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,NODE:.spec.nodeName,IMAGE:.spec.containers[*].image'
+
+kubectl get deployment web-demo -n team-platform \
+  -o jsonpath='{.status.readyReplicas}{" ready of "}{.spec.replicas}{" desired\n"}'</code></pre>
+
+<p>
+  Polje <code>status.phase=Running</code> nije dovoljno za zaključak da je Pod spreman da prima saobraćaj. Potrebno je proveriti Ready uslov, restartovanja, probe i endpoint-e Service objekta. Slično tome, postojanje Deployment objekta ne potvrđuje uspešan rollout. Normalno stanje se utvrđuje kombinovanjem deklarisanog broja replika, dostupnih replika, stanja Podova, događaja i funkcionalnog testa.
+</p>
+<p>
+  Za praćenje promene bez ponavljanja komande može se koristiti <code>--watch</code>, ali dugotrajan watch zauzima vezu prema API serveru i nije zamena za monitoring. U interaktivnoj dijagnostici treba ograničiti trajanje i obim zahteva, na primer komandom <code>kubectl get pods -n team-platform -l app=web-demo --watch --request-timeout=60s</code>. Za skripte se koriste strukturisani izlazi i proveravaju izlazni kodovi; odsustvo vrednosti u JSONPath rezultatu nije isto što i dokaz zdravog stanja.
+</p>
+<h3>Describe, events i logovi</h3>
+<p>
+  <code>kubectl describe</code> daje administratorski pregled objekta, povezanih stanja i događaja. Posebno je koristan za Podove koji čekaju raspoređivanje, ne mogu da preuzmu sliku, padaju na probe ili ne mogu da montiraju volumen. Ipak, izlaz nije stabilan mašinski interfejs i ne treba ga parsirati u automatizaciji.
+</p>
+<pre><code class="language-bash">kubectl describe deployment web-demo -n team-platform
+kubectl describe pod POD_NAME -n team-platform
+kubectl events -n team-platform --types=Warning
+kubectl events -n team-platform --for deployment/web-demo</code></pre>
+<p>
+  Događaji ukazuju na operativne uzroke kao što su <code>FailedScheduling</code>, <code>FailedMount</code>, <code>ErrImagePull</code> ili neuspešne probe. Oni imaju ograničeno vreme zadržavanja i nisu zamena za centralizovani logging i audit sistem. Komanda <code>kubectl events</code> može ograničiti prikaz na namespace, tip događaja ili konkretan resurs.
+</p>
+<pre><code class="language-bash">kubectl logs POD_NAME -n team-platform
+kubectl logs POD_NAME -n team-platform -c web
+kubectl logs POD_NAME -n team-platform -c web --since=15m
+kubectl logs POD_NAME -n team-platform -c web --previous
+kubectl logs -f POD_NAME -n team-platform -c web</code></pre>
+<p>
+  Kod Podova sa više kontejnera navodi se <code>-c</code>. Opcija <code>--previous</code> čita log prethodne instance kontejnera i naročito je važna kod <code>CrashLoopBackOff</code> stanja. <code>-f</code> prati novi izlaz, ali se prekida nakon prikupljanja dovoljnog uzorka. Veliki neograničeni log zahtevi opterećuju API putanju i terminal administratora; zato se koriste <code>--since</code>, <code>--tail</code> i centralizovana platforma za dugoročnu analizu. <code>kubectl logs</code> čita log kontejnera dostupan preko kubelet-a i nije zamena za control plane, systemd, container runtime ili audit logove.
+</p>
+<h3>Autorizacija i granice administratorskih prava</h3>
+<p>
+  Pre promene administrator proverava da li identitet ima baš potrebnu operaciju. Komanda <code>kubectl auth can-i</code> šalje autorizacioni upit i vraća <code>yes</code> ili <code>no</code>. Kubernetes API glagoli, kao što su <code>get</code>, <code>list</code>, <code>watch</code>, <code>create</code>, <code>patch</code>, <code>update</code> i <code>delete</code>, nisu isto što i nazivi komandi, ali predstavljaju operacije koje autorizacija procenjuje.
+</p>
+<pre><code class="language-bash">kubectl auth can-i get pods -n team-platform
+kubectl auth can-i create deployments.apps -n team-platform
+kubectl auth can-i patch deployments.apps/web-demo -n team-platform
+kubectl auth can-i delete namespaces
+kubectl auth can-i --list -n team-platform</code></pre>
+<p>
+  Negativan rezultat nije greška koju treba zaobići preuzimanjem administratorskog kubeconfig-a. On znači da zahtev mora biti usklađen sa dodeljenom odgovornošću ili eskaliran vlasniku RBAC politike. Opcija <code>--as</code> za impersonation korisna je administratorima koji već imaju posebno pravo impersonacije; ona sama ne omogućava preuzimanje tuđeg identiteta.
+</p>
+<h3>Bezbedna promena i validacija manifesta</h3>
+<p>
+  Pre stvarne promene manifest se sintaksno i serverski proverava. Client-side dry-run obrađuje sadržaj lokalno, dok server-side dry-run šalje zahtev API serveru bez trajnog čuvanja, pa može obuhvatiti serversko podrazumevanje, autorizaciju, validaciju i admission pravila koja podržavaju dry-run. Za produkcionu procenu korisniji je server-side režim.
+</p>
+<pre><code class="language-bash">kubectl apply --dry-run=server -f web-demo.yaml
+kubectl diff -f web-demo.yaml
+kubectl apply -f web-demo.yaml
+kubectl rollout status deployment/web-demo -n team-platform --timeout=120s</code></pre>
+<p>
+  <code>kubectl diff</code> prikazuje razliku između postojećeg online stanja i rezultata koji bi nastao primenom manifesta. Izlaz je YAML, a izlazni kod može označavati da razlika postoji, što u automatizaciji ne treba pogrešno tumačiti kao tehnički kvar. <code>apply</code> kreira objekat ako ne postoji ili usklađuje postojeći sa konfiguracijom. Posle primene obavezno se prati rollout i proverava funkcija aplikacije.
+</p>
+<p>
+  Komande <code>edit</code>, <code>patch</code>, <code>set image</code> i <code>scale</code> mogu biti opravdane u incidentu, ali menjaju live stanje izvan deklarativnog izvora. Svaka takva promena mora biti odmah evidentirana i preneta u repozitorijum ili vraćena nakon intervencije. Komanda <code>delete</code> je destruktivna i zahteva eksplicitnu proveru context-a, namespace-a, vrste objekta i kontrolera koji će eventualno ponovo napraviti objekat.
+</p>
+<hr>
+<h3>Integrisani praktikum: bezbedna primena i provera testne web aplikacije</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Platform tim treba da potvrdi da novi administrator može bezbedno da pristupi klasteru, proveri svoja prava, primeni deklarativnu aplikaciju u namenskom namespace-u, dijagnostikuje neuspešan rollout i izvrši kontrolisan rollback. Vežba se radi na laboratorijskom context-u <code>lab-admin</code>, u namespace-u <code>team-platform</code>. Produkcioni context se ne koristi.
+</p>
+<p>
+  <strong>Cilj i referentno okruženje.</strong> Potrebno je implementirati Deployment <code>web-demo</code> sa dva NGINX Poda i interni Service <code>web-demo</code>. Administrator koristi Linux radnu stanicu, <code>kubectl</code> kompatibilan sa API serverom i postojeći kubeconfig koji sadrži context <code>lab-admin</code>. Manifesti će se čuvati u direktorijumu <code>${HOME}/k8s-labs/lesson-11</code>.
+</p>
+<p>
+  <strong>Preduslovi i prava pristupa.</strong> API endpoint mora biti mrežno dostupan, CA lanac pouzdan, a kredencijali važeći. Identitet mora imati <code>get</code>, <code>list</code> i <code>watch</code> za relevantne objekte i događaje, kao i <code>create</code>, <code>patch</code>, <code>update</code> i <code>delete</code> za Deployment i Service u namespace-u <code>team-platform</code>. Kreiranje namespace-a zahteva cluster-scoped pravo; ako ono nije odobreno, namespace prethodno priprema ovlašćeni cluster administrator.
+</p>
+<ol>
+  <li>
+    <strong>Proveriti lokalni alat, context i komunikaciju.</strong>
+    Pre bilo kakve promene potvrđuju se klijent, aktivni cilj i dostupnost API servera.
+    <pre><code class="language-bash">kubectl version --client
+kubectl config get-contexts
+kubectl config use-context lab-admin
+kubectl config current-context
+kubectl cluster-info</code></pre>
+    <strong>Validacija:</strong> aktivni context mora biti tačno <code>lab-admin</code>, a <code>cluster-info</code> mora vratiti adresu control plane-a bez TLS ili mrežne greške. Razlika klijenta i servera mora ostati unutar podržanog opsega.
+  </li>
+  <li>
+    <strong>Proveriti identitet i minimalna prava.</strong>
+    Administrator prvo proverava pristup namespace-u i potrebne operacije, umesto da grešku otkriva usred promene.
+    <pre><code class="language-bash">kubectl auth can-i get pods -n team-platform
+kubectl auth can-i create deployments.apps -n team-platform
+kubectl auth can-i patch deployments.apps -n team-platform
+kubectl auth can-i create services -n team-platform
+kubectl auth can-i delete deployments.apps -n team-platform</code></pre>
+    <strong>Validacija:</strong> svaka operacija potrebna za vežbu treba da vrati <code>yes</code>. Rezultat <code>no</code> dokumentuje se i eskalira vlasniku RBAC politike; ne koristi se drugi privilegovaniji kubeconfig bez odobrenja.
+  </li>
+  <li>
+    <strong>Proveriti namespace ili ga kontrolisano napraviti.</strong>
+    Najpre se proverava postojanje. Kreiranje se izvršava samo ako identitet ima odobreno cluster-scoped pravo.
+    <pre><code class="language-bash">kubectl get namespace team-platform</code></pre>
+    Ako server vrati <code>NotFound</code>, ovlašćeni administrator može izvršiti:
+    <pre><code class="language-bash">kubectl auth can-i create namespaces
+kubectl create namespace team-platform
+kubectl label namespace team-platform purpose=training owner=platform-team</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get namespace team-platform --show-labels</code></pre>
+    Status mora biti <code>Active</code>, a oznake <code>purpose=training</code> i <code>owner=platform-team</code> vidljive.
+  </li>
+  <li>
+    <strong>Pripremiti radni direktorijum i manifest.</strong>
+    Svi objekti se definišu u jednom doslednom fajlu koji može biti pregledan i verzionisan.
+    <pre><code class="language-bash">mkdir -p "${HOME}/k8s-labs/lesson-11"
+cd "${HOME}/k8s-labs/lesson-11"
+cat &gt; web-demo.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-demo
+  namespace: team-platform
+  labels:
+    app: web-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-demo
+  template:
+    metadata:
+      labels:
+        app: web-demo
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-demo
+  namespace: team-platform
+  labels:
+    app: web-demo
+spec:
+  selector:
+    app: web-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+EOF</code></pre>
+    <strong>Validacija:</strong> fajl mora postojati i sadržati oba dokumenta.
+    <pre><code class="language-bash">test -s web-demo.yaml &amp;&amp; grep -E '^kind: (Deployment|Service)$' web-demo.yaml</code></pre>
+    Očekuju se linije <code>kind: Deployment</code> i <code>kind: Service</code>.
+  </li>
+  <li>
+    <strong>Izvršiti serversku probu i pregled razlike.</strong>
+    Ovaj korak otkriva nedozvoljena polja, RBAC problem i deo admission ograničenja bez trajne promene.
+    <pre><code class="language-bash">kubectl apply --dry-run=server -f web-demo.yaml
+kubectl diff -f web-demo.yaml; rc=$?
+test "$rc" -eq 0 -o "$rc" -eq 1</code></pre>
+    <strong>Validacija:</strong> dry-run mora prikazati da bi Deployment i Service bili kreirani ili konfigurisani. Kod komande <code>diff</code>, izlazni kod <code>0</code> znači da razlike nema, <code>1</code> da razlika postoji, dok vrednost veća od <code>1</code> označava grešku koju treba istražiti.
+  </li>
+  <li>
+    <strong>Primeniti konfiguraciju i pratiti rollout.</strong>
+    Tek nakon uspešne provere manifest se upisuje u klaster.
+    <pre><code class="language-bash">kubectl apply -f web-demo.yaml
+kubectl rollout status deployment/web-demo \
+  -n team-platform \
+  --timeout=120s</code></pre>
+    <strong>Validacija:</strong> <code>apply</code> mora prijaviti oba objekta, a rollout mora završiti porukom da je Deployment uspešno razvijen. Timeout nije dokaz konačnog kvara, već signal za pregled Podova i događaja.
+  </li>
+  <li>
+    <strong>Proveriti stvarno stanje i mrežno povezivanje.</strong>
+    Deployment, Podovi, Service i endpoint-i moraju biti međusobno usklađeni.
+    <pre><code class="language-bash">kubectl get deployment web-demo -n team-platform
+kubectl get pods -n team-platform -l app=web-demo -o wide
+kubectl get service web-demo -n team-platform
+kubectl get endpointslice -n team-platform \
+  -l kubernetes.io/service-name=web-demo</code></pre>
+    <strong>Validacija:</strong> Deployment treba da pokaže dve željene i dve dostupne replike, oba Poda treba da budu <code>Running</code> i <code>1/1 Ready</code>, a EndpointSlice mora sadržati adrese spremnih Podova. Service bez endpoint-a obično ukazuje na neusaglašene label selektore ili nespremne Podove.
+  </li>
+  <li>
+    <strong>Izvršiti završni funkcionalni test.</strong>
+    Port-forward se koristi samo kao privremeni administratorski tunel za testiranje, ne kao produkcioni način izlaganja aplikacije.
+    <pre><code class="language-bash">kubectl port-forward \
+  -n team-platform \
+  service/web-demo 18080:80 &gt;/tmp/web-demo-port-forward.log 2&gt;&amp;1 &amp;
+PF_PID=$!
+sleep 3
+curl --fail --silent --show-error http://127.0.0.1:18080/ \
+  | head
+kill "${PF_PID}"</code></pre>
+    <strong>Validacija:</strong> <code>curl</code> mora završiti izlaznim kodom <code>0</code> i vratiti početak NGINX HTML stranice. Ako tunel ne radi, proverava se <code>/tmp/web-demo-port-forward.log</code>, postojanje endpoint-a i lokalna zauzetost porta 18080.
+  </li>
+  <li>
+    <strong>Sprovesti negativni test neispravne slike.</strong>
+    Namerno se postavlja nepostojeći tag kako bi administrator razlikovao prihvaćenu API promenu od neuspešne realizacije.
+    <pre><code class="language-bash">cp web-demo.yaml web-demo-good.yaml
+sed 's/nginx:1.27-alpine/nginx:1.27-alpine-not-found/' \
+  web-demo-good.yaml &gt; web-demo-broken.yaml
+kubectl apply --dry-run=server -f web-demo-broken.yaml
+kubectl apply -f web-demo-broken.yaml
+kubectl rollout status deployment/web-demo \
+  -n team-platform \
+  --timeout=45s || true</code></pre>
+    <strong>Validacija i dijagnostika:</strong>
+    <pre><code class="language-bash">kubectl get pods -n team-platform -l app=web-demo
+kubectl describe deployment web-demo -n team-platform
+kubectl events -n team-platform --types=Warning
+kubectl get pods -n team-platform -l app=web-demo \
+  -o custom-columns='NAME:.metadata.name,WAITING:.status.containerStatuses[*].state.waiting.reason,IMAGE:.spec.containers[*].image'</code></pre>
+    Očekuje se novi Pod u stanju <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>, dok stara ReplicaSet može nastaviti da pruža dostupne replike u skladu sa rolling-update strategijom. Filter <code>--for deployment/web-demo</code> ovde nije dovoljan, jer je događaj neuspešnog preuzimanja slike vezan za novi Pod, a ne neposredno za Deployment. Serverski dry-run prolazi jer je naziv slike sintaksno dozvoljen; nemogućnost preuzimanja slike otkriva se tek na čvoru. Relevantni tragovi su Pod events, kubelet log na pogođenom čvoru i log container runtime-a. Za systemd čvorove ovlašćeni node administrator koristi <code>journalctl -u kubelet --since "15 minutes ago"</code> i odgovarajući runtime servis u istom vremenskom prozoru. Obični namespace administrator možda nema pristup čvoru i tada prilaže događaje pri eskalaciji.
+  </li>
+  <li>
+    <strong>Vratiti poslednju ispravnu konfiguraciju.</strong>
+    Pošto je izvorni manifest sačuvan, najčistiji povratak je ponovna deklarativna primena odobrenog fajla.
+    <pre><code class="language-bash">kubectl apply -f web-demo-good.yaml
+kubectl rollout status deployment/web-demo \
+  -n team-platform \
+  --timeout=120s
+kubectl rollout history deployment/web-demo -n team-platform</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get deployment web-demo -n team-platform \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get pods -n team-platform -l app=web-demo
+kubectl events -n team-platform --for deployment/web-demo</code></pre>
+    Aktivna slika mora ponovo biti <code>nginx:1.27-alpine</code>, a dve replike dostupne. Alternativa za podržane rollout resurse je <code>kubectl rollout undo</code>, ali u okruženju u kom je Git ili drugi repozitorijum izvor istine rollback treba uskladiti i sa deklarativnim izvorom, inače će naredna automatizacija ponovo primeniti lošu verziju.
+  </li>
+  <li>
+    <strong>Izvršiti cleanup laboratorijskih objekata.</strong>
+    Ovo je destruktivna operacija i ne izvršava se dok context, namespace i sadržaj manifesta nisu ponovo provereni.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl diff -f web-demo-good.yaml || true
+kubectl delete -f web-demo-good.yaml
+kubectl wait --for=delete deployment/web-demo \
+  -n team-platform \
+  --timeout=120s
+kubectl wait --for=delete service/web-demo \
+  -n team-platform \
+  --timeout=60s</code></pre>
+    <strong>Validacija:</strong>
+    <pre><code class="language-bash">kubectl get deployment,service,pods \
+  -n team-platform \
+  -l app=web-demo</code></pre>
+    Očekuje se poruka <code>No resources found</code>. Namespace se ne briše jer može sadržati druge timske objekte. Brisanje celog namespace-a dozvoljeno je samo kada je potvrđeno da je namenski, prazan i obuhvaćen odobrenom procedurom.
+  </li>
+</ol>
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> Aktivni context je potvrđen kao <code>lab-admin</code>; sve potrebne RBAC provere daju očekivani odgovor; serverski dry-run prolazi bez greške; inicijalni Deployment dostiže <code>2/2</code> dostupne replike u roku od 120 sekundi; Service ima najmanje dva spremna endpoint-a; HTTP test vraća uspešan odgovor; negativni test proizvodi prepoznatljiv <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>; povratak vraća odobrenu sliku i dve dostupne replike; cleanup uklanja samo objekte označene sa <code>app=web-demo</code>.
+</p>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Provera context-a i namespace-a pre svake promene.</strong> Izvršavaju se <code>kubectl config current-context</code> i <code>kubectl config view --minify</code> neposredno pre <code>apply</code>, <code>patch</code>, <code>scale</code>, <code>rollout</code> ili <code>delete</code> operacije. Svako odstupanje od odobrenog klastera ili namespace-a zaustavlja promenu. U change tiketu beleže se context, namespace, vreme i operator. Uspeh se meri odsustvom promena izvedenih u pogrešnom okruženju.</li>
+  <li><strong>Kontrola verzijske kompatibilnosti.</strong> Posle nadogradnje radne stanice ili klastera proveravaju se <code>kubectl version --client</code> i serverska verzija. Razlika izvan jednog minor izdanja ili strožeg vendorskog pravila zahteva instaliranje podržane verzije pre nastavka administracije. Verzija alata dokumentuje se u operativnom standardu i zapisu promene.</li>
+  <li><strong>Periodična kontrola kredencijala i kubeconfig fajlova.</strong> Najmanje kvartalno, kao i nakon promene uloge, odlaska zaposlenog ili bezbednosnog incidenta, pregledaju se vlasništvo fajla, lokalne dozvole, rokovi važenja sertifikata i nepotrebni context-i. Reakcija na izloženi token ili privatni ključ je trenutno opozivanje ili rotacija, a ne samo brisanje lokalne kopije. Incident, vreme opoziva i obuhvaćeni identiteti beleže se u bezbednosnom sistemu.</li>
+  <li><strong>Provera prava pre automatizacije.</strong> Pre puštanja skripte ili pipeline-a koristi se <code>kubectl auth can-i</code> za svaku planiranu API operaciju i ciljni namespace. Dodela wildcard prava ili <code>cluster-admin</code> uloge samo radi uklanjanja greške nije prihvatljiva. Uspeh se meri time da proces završava sa namenskim identitetom i najmanjim dovoljnim skupom prava.</li>
+  <li><strong>Serverski dry-run, diff i rollout validacija.</strong> Pre svake deklarativne produkcione promene izvršavaju se <code>kubectl apply --dry-run=server</code> i <code>kubectl diff</code>; nakon odobrenja prate se <code>rollout status</code>, status replika, events i funkcionalna proba. Neočekivano brisanje polja, promena selektora, smanjenje replika ili promena sigurnosnog konteksta zaustavlja change. Diff i rezultat validacije čuvaju se uz tiket ili pipeline artefakte.</li>
+  <li><strong>Praćenje Warning događaja i restartovanja.</strong> Nakon deploy-a, promene noda ili incidenta proveravaju se <code>kubectl events --types=Warning</code>, broj restartovanja i status workload-a. Ponavljajući <code>FailedScheduling</code>, <code>FailedMount</code>, <code>BackOff</code> ili neuspešne probe zahtevaju reakciju pre zatvaranja promene. Prva reakcija je određivanje pogođenog objekta i vremena, zatim <code>describe</code>, ograničeni logovi i provera zavisnosti.</li>
+  <li><strong>Čuvanje deklarativnog izvora, a ne kubectl izlaza kao jedinog backupa.</strong> Manifesti, Helm vrednosti, Kustomize konfiguracije, RBAC definicije i pipeline deklaracije čuvaju se u kontrolisanom repozitorijumu sa istorijom i pregledom izmena. <code>kubectl get -o yaml</code> može pomoći pri dijagnostici, ali serverski izlaz sadrži dinamička polja i nije zamena za projektovani izvor. Backup samog stanja klastera, uključujući <code>etcd</code>, pripada proceduri platformskog oporavka. Probni restore se periodično izvodi u izolovanom okruženju; uspeh potvrđuju čitljiv snapshot, obnovljeni API objekti i funkcionalna validacija reprezentativnih workload-a.</li>
+  <li><strong>Centralizovani audit i logging.</strong> <code>kubectl</code> lokalno ne predstavlja potpun audit trag. Produkcioni klaster treba da koristi API audit politiku i centralizovano čuvanje audit zapisa, aplikacionih logova i relevantnih čvorskih logova. Nakon incidenta porede se korisnički identitet, API glagol, resurs, namespace, odgovor servera i vreme. Uspeh se meri mogućnošću da se odobrena promena ili incident rekonstruišu bez oslanjanja na sećanje operatora.</li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Potvrđen je izlaz <code>kubectl version</code> i verzijska razlika je u podržanom opsegu.</li>
+  <li><code>kubectl config current-context</code> prikazuje tačno odobreni klaster.</li>
+  <li>Ciljni namespace je eksplicitno naveden ili potvrđen komandom <code>config view --minify</code>.</li>
+  <li><code>kubectl auth can-i</code> potvrđuje samo prava potrebna za planiranu operaciju.</li>
+  <li>Kubeconfig ima restriktivne dozvole i u zapis promene nisu kopirani tokeni, ključevi ili sirovi sertifikati.</li>
+  <li>Manifest je prošao <code>kubectl apply --dry-run=server</code> bez greške.</li>
+  <li><code>kubectl diff</code> ne pokazuje neočekivano brisanje ili promenu kritičnih polja.</li>
+  <li>Posle primene potvrđeni su rollout, željene i dostupne replike, Ready stanje i Service endpoint-i.</li>
+  <li>Warning događaji i ograničeni logovi pregledani su za period promene.</li>
+  <li>Izvršena je funkcionalna proba aplikacije, a rezultat je zabeležen u tiketu ili pipeline-u.</li>
+  <li>Rollback procedura i poslednja odobrena konfiguracija postoje pre produkcione promene.</li>
+  <li>Imperativne hitne izmene prenete su u deklarativni izvor ili kontrolisano uklonjene.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator koji pravilno koristi <code>kubectl</code> razume da komandna linija predstavlja klijenta Kubernetes API-ja, a ne direktan pristup internim komponentama klastera. On ume da utvrdi koji klaster, identitet i namespace koristi, da otkrije resurse i njihovu šemu, da razlikuje deklarisano stanje od stvarnog operativnog rezultata i da tumači izlaze komandi <code>get</code>, <code>describe</code>, <code>events</code> i <code>logs</code> u zajedničkom kontekstu.
+</p>
+<p>
+  Praktična kompetencija podrazumeva da administrator može da pripremi manifest, proveri ga server-side dry-run postupkom, pregleda razliku, primeni promenu, prati rollout i potvrdi funkciju servisa. Podjednako je važno da ume da prepozna scenario u kom API prihvata objekat, ali kubelet ne može da realizuje njegovu specifikaciju, kao što je nepostojeća slika. Bez tog razlikovanja lako se pogrešno zaključuje da je uspešan <code>apply</code> isto što i uspešna implementacija.
+</p>
+<p>
+  Produkcioni rizici najčešće nastaju zbog pogrešnog context-a, neodređenog namespace-a, preširokih privilegija, nezaštićenog kubeconfig-a, neproverenog manifesta i live promene koja nije vraćena u deklarativni izvor. Granica <code>kubectl</code> alata je jasna: on može poslati, pročitati i pratiti API zahteve, ali ne zamenjuje kontrolu pristupa, change management, GitOps, centralizovani monitoring, audit, backup platforme niti funkcionalno testiranje aplikacije.
+</p>
+<p>
+  Nakon ove lekcije administrator treba da ume da izvrši bezbednu osnovnu implementaciju, potvrdi njeno stanje, pronađe događaje i logove, sprovede negativni test, izvrši rollback i dokumentuje promenu. Mrežni nedostupni API endpoint, nepoznat CA, istekli identitet, nedostajuće RBAC pravo, admission odbijanje, čvorski ili runtime problem i promena izvan odobrenog opsega predstavljaju razloge za zaustavljanje procedure i eskalaciju odgovarajućem vlasniku. Granica ovlašćenja nije prepreka koju treba zaobići, već sastavni deo odgovorne administracije.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za kubectl komandni alat, instalaciju i verzijsku kompatibilnost; zvanične CLI reference za config, get, describe, explain, auth, logs, events, apply, diff, wait i rollout operacije; Kubernetes vodiči za kubeconfig, API objekte, deklarativno upravljanje, autentikaciju, autorizaciju, troubleshooting i rad sa logovima; zvanične bezbednosne i operativne preporuke za RBAC, TLS, audit, zaštitu kredencijala, kontrolisane promene i oporavak klastera.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-10-api-server.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-12-kubeconfig.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

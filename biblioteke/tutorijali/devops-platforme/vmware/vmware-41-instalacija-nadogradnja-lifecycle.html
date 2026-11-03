@@ -1,0 +1,816 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-41-instalacija-nadogradnja-lifecycle.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Instalacija, nadogradnja i vSphere Lifecycle Manager – od kompatibilnosti do validiranog image-a | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Instalacija i kontrolisana nadogradnja VMware vSphere infrastrukture uz proveru kompatibilnosti, vSphere Lifecycle Manager, validirani image, pre-check, rollback i završnu validaciju.">
+
+  <meta name="keywords"
+        content="VMware instalacija, VMware nadogradnja, vSphere Lifecycle Manager, vLCM, ESXi image, kompatibilnost, pre-check, rollback, lifecycle, vSphere, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-41-instalacija-nadogradnja-lifecycle.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Instalacija, nadogradnja i vSphere Lifecycle Manager – od kompatibilnosti do validiranog image-a">
+
+  <meta property="og:description"
+        content="Instalacija i kontrolisana nadogradnja VMware vSphere infrastrukture uz proveru kompatibilnosti, vSphere Lifecycle Manager, validirani image, pre-check, rollback i završnu validaciju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-41-instalacija-nadogradnja-lifecycle.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-41-instalacija-nadogradnja-lifecycle.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Instalacija, nadogradnja i vSphere Lifecycle Manager – od kompatibilnosti do validiranog image-a">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-41-instalacija-nadogradnja-lifecycle.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-41-instalacija-nadogradnja-lifecycle.png"
+           alt="Instalacija, nadogradnja i vSphere Lifecycle Manager – od kompatibilnosti do validiranog image-a">
+
+    </a>
+
+       <div class="page-subtitle">
+      X. Lifecycle, identitet i napredna zaštita platforme
+    </div>
+
+    <div class="page-subtitle">
+      41. Instalacija, nadogradnja i vSphere Lifecycle Manager – od kompatibilnosti do validiranog image-a
+    </div>
+
+    <p>
+      Pouzdana vSphere platforma ne nastaje samim instaliranjem najnovijeg paketa. Ona nastaje kada administrator ume da odredi podržano ciljno stanje, dokaže kompatibilnost svih zavisnosti, sprovede promenu kontrolisanim redosledom i potvrdi da su dostupnost, mreža, storage, bezbednost i upravljačke funkcije ostale ispravne. Lifecycle management zato nije povremeno „patchovanje”, već trajni proces upravljanja željenim stanjem infrastrukture.
+    </p>
+
+    <p>
+      Ova lekcija se nadovezuje na prethodno izgrađen inventar, monitoring, backup i pripremu platforme za moderna radna opterećenja. Fokus je na instalaciji ESXi-ja i vCenter Server Appliance-a, planiranju nadogradnje i image-based upravljanju ESXi hostovima pomoću <strong>vSphere Lifecycle Manager-a</strong> (vLCM). Identitet, sertifikati i dublji hardening obrađuju se u narednim lekcijama; ovde ih posmatramo samo kao zavisnosti koje promena verzije ne sme da naruši.
+    </p>
+
+    <div class="important-note">
+      <p><strong>Verzijski okvir:</strong> postupci su napisani za vSphere 8.x i proveravaju se prema tačnom ciljnom release-u, build-u i aktuelnim Broadcom matricama. Nazivi ekrana i pojedine mogućnosti menjaju se između update izdanja. Baseline pristup, nasleđen iz vSphere Update Manager-a, još postoji u određenim 7.x/8.x scenarijima, ali je za standardizovane klastere preporučeni model jedinstveni desired image. Nikada ne zaključuj kompatibilnost samo iz oznake „8.0”; proverava se konkretan proizvod, update, patch/build, hardver, firmware, drajver i integracija.</p>
+    </div>
+
+    <h3>41.1. Ishodi učenja i administratorski model odluke</h3>
+
+    <p>Po završetku lekcije administrator treba da ume da:</p>
+
+    <ul>
+      <li>razlikuje novu instalaciju, patch, update i major upgrade, kao i reinstall od rollback-a;</li>
+      <li>odredi podržanu izvornu i ciljnu verziju i pravilan redosled nadogradnje komponenti;</li>
+      <li>projektuje ESXi boot, management mrežu, DNS/NTP i storage preduslove pre instalacije;</li>
+      <li>sastavi vLCM desired image od base image-a, vendor add-on-a, komponenti i firmware/driver add-on-a;</li>
+      <li>razlikuje compliance, remediation pre-check, hardware compatibility i poslovnu validaciju;</li>
+      <li>sprovede canary i talasnu remediation proceduru uz kontrolu HA/DRS kapaciteta;</li>
+      <li>prikupi događaje i logove, izoluje uzrok neuspeha i izabere bezbedan recovery ili rollback;</li>
+      <li>sačuva dokaz o početnom i završnom stanju tako da promena bude ponovljiva i auditabilna.</li>
+    </ul>
+
+    <p>
+      Zrela odluka prati tok: <strong>poslovni razlog → podržani ciljni build → zavisnosti → raspoloživ kapacitet → dokazani recovery → pre-check → ograničeni prvi talas → validacija → širenje promene</strong>. Dugme <em>Remediate</em> je tek izvršna faza tog toka.
+    </p>
+
+    <h3>41.2. Instalacija, patch, update i upgrade nisu ista promena</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Pojam</th>
+          <th>Šta menja</th>
+          <th>Tipičan rizik</th>
+          <th>Obavezni dokaz</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Nova instalacija</td>
+          <td>Postavlja ESXi ili novi VCSA na pripremljenu platformu.</td>
+          <td>Pogrešan boot disk, mreža ili particionisanje; prepisivanje podataka.</td>
+          <td>Identitet hosta/appliance-a, management pristup, storage i inventar.</td>
+        </tr>
+        <tr>
+          <td>Patch</td>
+          <td>Ispravke grešaka i bezbednosnih ranjivosti unutar podržane grane.</td>
+          <td>Regresija drajvera, zahtevan reboot, neusklađen klaster.</td>
+          <td>Tačan build, compliance i funkcionalni post-check.</td>
+        </tr>
+        <tr>
+          <td>Update</td>
+          <td>Širi skup funkcionalnih i kumulativnih promena, npr. 8.0 U2 → U3.</td>
+          <td>Promena interoperabilnosti, drajvera, API-ja ili ponašanja servisa.</td>
+          <td>Release notes, compatibility matrice i test ključnih integracija.</td>
+        </tr>
+        <tr>
+          <td>Major upgrade</td>
+          <td>Prelazak na novu glavnu verziju i novi platformni nivo.</td>
+          <td>Nepodržan upgrade path, hardver ili dodatak; ograničen rollback.</td>
+          <td>Podržana putanja, kompletan backup/recovery test i pilot.</td>
+        </tr>
+        <tr>
+          <td>Remediation</td>
+          <td>Dovodi host ili klaster u deklarisano željeno stanje.</td>
+          <td>Evakuacija VM-ova, maintenance mode, reboot i privremeni gubitak kapaciteta.</td>
+          <td>Pre-check, Task/Event trag i završna usklađenost.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>41.3. Arhitektura lifecycle procesa i granice odgovornosti</h3>
+
+    <p>
+      vSphere Lifecycle Manager je servis vCenter Server-a koji upravlja sadržajem image-a, izračunava usklađenost i orkestrira pre-check i remediation. ESXi host izvršava instalaciju VIB/component sadržaja i reboot. DRS i vMotion pomažu u evakuaciji workload-a, HA štiti od neočekivanog otkaza, a vendor Hardware Support Manager (HSM), kada je podržan i instaliran, omogućava usklađivanje firmware-a sa drajverima. Nijedna od ovih komponenti ne zamenjuje change plan, backup vCenter-a ili proveru aplikacije.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Sloj</th>
+          <th>Odgovornost</th>
+          <th>Ključno ograničenje</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Broadcom Compatibility Guide i Product Interoperability</td>
+          <td>Podrška hardvera, I/O uređaja, upgrade path-a i međuproizvodnih verzija.</td>
+          <td>Rezultat zavisi od tačnih modela, device ID-jeva, firmware-a i build-ova.</td>
+        </tr>
+        <tr>
+          <td>vLCM depot</td>
+          <td>Online sinhronizacija ili uvoz verifikovanog offline depot-a.</td>
+          <td>Air-gapped okruženje zahteva kontrolisan transfer, poreklo i checksum.</td>
+        </tr>
+        <tr>
+          <td>Desired image</td>
+          <td>Deklariše softversko, a opciono i firmware stanje hostova.</td>
+          <td>Jedinstveni image ne znači da je heterogeni hardver automatski kompatibilan.</td>
+        </tr>
+        <tr>
+          <td>Compliance scan</td>
+          <td>Poredi trenutno stanje hosta sa image-om.</td>
+          <td><em>Compliant</em> ne potvrđuje aplikaciju, mrežne putanje ni recovery.</td>
+        </tr>
+        <tr>
+          <td>Remediation</td>
+          <td>Orkestrira ulazak hosta u maintenance mode, instalaciju i reboot.</td>
+          <td>Zavisi od kapaciteta, DRS pravila, vSAN politike, dostupnosti image-a i zdravlja hosta.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>41.4. Projektovanje i instalacija ESXi hosta</h3>
+
+    <h4>41.4.1. Predinstalaciona kompatibilnost i dizajn</h4>
+
+    <p>
+      Pre nabavke ili instalacije proveravaju se server model, CPU generacija, BIOS/UEFI, TPM i Secure Boot zahtevi, NIC/HBA/storage kontroleri, boot uređaj, firmware i podržani drajveri. Za OEM platforme prednost obično ima vendor custom image ili odgovarajući vendor add-on, jer generički image može ne sadržati potreban asinhroni drajver ili management provider. OEM image ipak nije trajna dozvola za bilo koju kombinaciju: njegov release, base image i firmware moraju odgovarati ciljnom stanju.
+    </p>
+
+    <p>
+      Produkcioni boot dizajn ne treba zasnivati na potrošačkim USB/SD medijima. ESXi 7/8 sistemske particije, persistent scratch, core dump i logovanje zahtevaju pouzdan uređaj i plan zamene. Ako se koristi SAN boot, instalacija mora zaštititi ostale LUN-ove od pogrešnog izbora; zoning i masking pripremaju se tako da je instalateru vidljiv samo nameravani boot LUN kad god je to moguće.
+    </p>
+
+    <h4>41.4.2. Minimalni infrastrukturni preduslovi</h4>
+
+    <ul>
+      <li>statička management IP adresa, VLAN, gateway i najmanje dva pouzdana DNS servera;</li>
+      <li>forward i reverse DNS zapisi za FQDN pre priključivanja hosta u vCenter;</li>
+      <li>NTP izvori dostupni i hostu i VCSA-u; vremenska razlika ugrožava autentikaciju, sertifikate i korelaciju logova;</li>
+      <li>redundantne fizičke NIC i storage putanje prema projektovanom modelu;</li>
+      <li>out-of-band management (iLO/iDRAC ili ekvivalent), testirana konzola i pravo pristupa;</li>
+      <li>zabeležene BIOS, firmware i storage postavke, uključujući virtualizacione ekstenzije i boot mode;</li>
+      <li>plan za persistent syslog, scratch i core dump, naročito kod stateless ili nestandardnog boot-a.</li>
+    </ul>
+
+    <h4>41.4.3. Interaktivna instalacija i početna validacija</h4>
+
+    <ol>
+      <li>Verifikuj checksum ISO/depot sadržaja i poreklo paketa.</li>
+      <li>Bootuj server kroz kontrolisan out-of-band kanal i potvrdi tačan ciljni disk po modelu, kapacitetu i identifikatoru.</li>
+      <li>Instaliraj ESXi, postavi jedinstvenu root lozinku kroz zaštićeni proces i ukloni instalacioni medij pre reboot-a.</li>
+      <li>U DCUI podesi management NIC/VLAN, IPv4/IPv6 prema standardu, DNS, hostname i test management network.</li>
+      <li>Pristupi Host Client-u preko FQDN-a, podesi NTP i proveri storage/NIC uređaje i sistemske alarme.</li>
+      <li>Dodaj host u odgovarajući datacenter/cluster tek kada njegov build podržava verzija vCenter-a i kada su licence i mrežne zavisnosti spremne.</li>
+    </ol>
+
+    <p>
+      Sledeće ESXi Shell komande su <strong>read-only</strong>. Izvršavaju se kao privilegovani administrator preko lokalne konzole ili privremeno omogućenog SSH-a, koji se po završetku zatvara:
+    </p>
+
+    <pre><code class="language-bash">vmware -vl
+esxcli system version get
+esxcli hardware platform get
+esxcli network nic list
+esxcli storage core adapter list
+esxcli storage core path list
+esxcli system ntp get</code></pre>
+
+    <p>
+      Očekuje se tačan release/build, prepoznat server i sve projektovane NIC, HBA i aktivne storage putanje. Nedostajući uređaj se ne „popravlja” nasumičnim VIB-om: prvo se identifikuju PCI/device ID, HCL zapis, potreban firmware i drajver, pa tek onda bira podržana kombinacija.
+    </p>
+
+    <h3>41.5. Instalacija i nadogradnja vCenter Server Appliance-a</h3>
+
+    <p>
+      VCSA instalacija ima dve faze: u prvoj se deploy-uje appliance i podiže privremeni sistem, a u drugoj se konfigurišu SSO domen, vreme i servisi. Kod upgrade-a se deploy-uje novi appliance, zatim se iz izvornog VCSA prenose konfiguracija, inventar, događaji i izabrani istorijski podaci. To nije in-place zamena paketa na postojećoj appliance instanci.
+    </p>
+
+    <h4>41.5.1. Preduslovi i redosled</h4>
+
+    <ul>
+      <li>Proveri podržan direktan upgrade path; ako nije podržan, planiraj dokumentovani međukorak.</li>
+      <li>Proveri interoperability za ESXi, NSX, SRM/Replication, backup, monitoring, storage plug-in, HSM i druge integracije.</li>
+      <li>Uradi file-based backup VCSA-a na podržano odredište i proveri da se backup vidi kao dovršen; image-level backup je dodatna, ne jedina zaštita.</li>
+      <li>Potvrdi zdravlje VCSA servisa, dovoljno prostora u svim particijama, DNS/NTP i odsustvo isteklih sertifikata.</li>
+      <li>Obezbedi privremenu IP adresu, odgovarajući compute/storage kapacitet i komunikaciju između source i target appliance-a.</li>
+      <li>Napravi kompatibilnu verziju distributed switch konfiguracije i razumi da kasniji vDS upgrade može biti nepovratan.</li>
+    </ul>
+
+    <div class="important-note">
+      <p><strong>Obavezni redosled:</strong> za prelazak na vSphere 8 najpre se nadograđuje vCenter Server, a zatim ESXi hostovi. Posle toga se, tek kada svi potrošači to podržavaju, razmatraju vDS, VMware Tools i virtual hardware. Automatski upgrade VMware Tools-a ili virtual hardware-a ne aktivira se istovremeno sa infrastrukturnim talasom bez posebnog testa, jer time nestaje čista granica kvara i komplikuje se rollback.</p>
+    </div>
+
+    <p>Na VCSA shell-u sledeće komande samo čitaju stanje servisa i prostora:</p>
+
+    <pre><code class="language-bash">service-control --status --all
+df -h
+date -u
+timedatectl status</code></pre>
+
+    <p>
+      Pre-check nije uspešan ako je neki ključni servis zaustavljen, particija kritično popunjena ili vreme neusaglašeno. Korekcija prostora ili sertifikata predstavlja posebnu promenu i mora se završiti pre upgrade prozora.
+    </p>
+
+    <h3>41.6. Kompatibilnost kao skup dokaza, a ne jedna zelena oznaka</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Provera</th>
+          <th>Pitanje</th>
+          <th>Dokaz koji se čuva</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Upgrade path</td>
+          <td>Da li je direktan prelazak sa izvornog release/build-a podržan?</td>
+          <td>Rezultat matrice i odobreni međukoraci.</td>
+        </tr>
+        <tr>
+          <td>Product interoperability</td>
+          <td>Da li cilj radi sa NSX, backup, SRM, plug-in-ovima i drugim proizvodima?</td>
+          <td>Matrica za svaku integraciju i vlasnik validacije.</td>
+        </tr>
+        <tr>
+          <td>Hardware Compatibility Guide</td>
+          <td>Da li su server, CPU, NIC, HBA i storage kontroler podržani?</td>
+          <td>Model, device/driver/firmware kombinacija i datum provere.</td>
+        </tr>
+        <tr>
+          <td>vSAN HCL/health</td>
+          <td>Da li su kontroleri, diskovi, firmware i driver podržani za ciljni vSAN?</td>
+          <td>Skyline Health/health nalaz i vSAN build preporuka gde je primenljivo.</td>
+        </tr>
+        <tr>
+          <td>Guest OS i virtual hardware</td>
+          <td>Da li workload ostaje podržan na ciljnom ESXi-ju?</td>
+          <td>Lista kritičnih VM-ova, OS podrška, Tools/hardware politika.</td>
+        </tr>
+        <tr>
+          <td>Kapacitet i dostupnost</td>
+          <td>Može li klaster podneti maintenance jednog ili više hostova?</td>
+          <td>HA admission control, DRS simulacija i rezervna margina.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      Ako matrica ne daje jasan rezultat, to nije dozvola za nastavak već otvoren rizik. Potrebno je potvrditi podršku sa vendorom ili izabrati drugi build. „Radilo je u laboratoriji” dokazuje funkcionalnost testirane putanje, ali ne stvara vendor podršku za nepodržanu kombinaciju.
+    </p>
+
+    <h3>41.7. vSphere Lifecycle Manager: baseline i desired image model</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Osobina</th>
+          <th>Baseline model</th>
+          <th>Image-based model</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Namena</td>
+          <td>Patch/extension baselines i baseline groups; nasleđeni operativni model.</td>
+          <td>Jedinstveno deklarativno željeno stanje klastera ili podržanog standalone hosta.</td>
+        </tr>
+        <tr>
+          <td>Sastav</td>
+          <td>Skup pojedinačnih patch-eva ili nadogradnih baseline-a.</td>
+          <td>Base image + vendor add-on + opcione komponente + opcioni firmware/driver add-on.</td>
+        </tr>
+        <tr>
+          <td>Standardizacija</td>
+          <td>Veća mogućnost drift-a i preklapanja baseline-a.</td>
+          <td>Jedan desired state za sve hostove u obuhvatu.</td>
+        </tr>
+        <tr>
+          <td>Firmware</td>
+          <td>Odvojeni vendor postupci.</td>
+          <td>Moguća HSM integracija; zavisi od vendora, hardvera i verzije.</td>
+        </tr>
+        <tr>
+          <td>Preporuka</td>
+          <td>Koristi se gde migracija još nije moguća ili je scenario verzijski ograničen.</td>
+          <td>Preferirani model za standardizovane vSphere 8 klastere.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      Prelazak klastera sa baseline-a na image upravljanje je promena modela upravljanja i planira se pažljivo; ne tretira se kao kozmetička konverzija. Pre konverzije se proveravaju rešenja koja dodaju VIB-ove, poput mrežnih/storage filtera, NSX-a, backup modula i vendor agenata, jer komponenta koja nije predstavljena u desired image-u može izazvati neusaglašenost ili biti uklonjena tokom remediation-a.
+    </p>
+
+    <h3>41.8. Anatomija validiranog desired image-a</h3>
+
+    <ol>
+      <li><strong>ESXi base image</strong> određuje osnovni release i build platforme.</li>
+      <li><strong>Vendor add-on</strong> dodaje skup OEM drajvera, agenata i prilagođavanja za serversku platformu.</li>
+      <li><strong>Components</strong> dodaju ili menjaju pojedinačne komponente, na primer asinhroni drajver ili rešenje treće strane.</li>
+      <li><strong>Firmware and drivers add-on</strong>, preko podržanog HSM-a, povezuje firmware paket sa odgovarajućim drajverima.</li>
+    </ol>
+
+    <p>
+      Redosled nije proizvoljan. Base image je osnova; vendor add-on i komponente moraju biti kompatibilni s njim. Pre čuvanja image-a vLCM proverava softverske zavisnosti, ali administrator i dalje proverava hardver, interoperabilnost i release notes. Ako dva dodatka nude različite verzije istog paketa, ne bira se „noviji po svaku cenu”, već kombinacija koju podržavaju i VMware/Broadcom i proizvođač hardvera ili integracije.
+    </p>
+
+    <h4>41.8.1. Online i offline depot</h4>
+
+    <p>
+      Internet-connected vCenter može sinhronizovati sadržaj iz konfigurisanog depot-a. U izolovanom okruženju administrator preuzima vendor/Broadcom offline bundle kroz odobren kanal, proverava checksum i digitalno poreklo, skenira paket prema politici organizacije, evidentira verziju i uvozi ga u vLCM. Offline bundle se ne raspakuje niti prepravlja ručno. Proxy, DNS, TLS inspekcija i firewall pravila dokumentuju se jer greška sinhronizacije često nije greška image-a već transporta ili poverenja sertifikata.
+    </p>
+
+    <h3>41.9. Compliance, pre-check, hardware compatibility i remediation</h3>
+
+    <p>
+      Četiri provere odgovaraju na različita pitanja. <strong>Compliance</strong> pita da li trenutno instalirani softver odgovara desired image-u. <strong>Image validation</strong> proverava zavisnosti sastava image-a. <strong>Hardware compatibility</strong> poredi otkrivene uređaje sa dostupnim HCL podacima. <strong>Remediation pre-check</strong> traži prepreke izvršenju, kao što su nedovoljan kapacitet, DRS/HA uslovi, aktivne funkcije ili problem sa maintenance mode-om. Tek njihov zajednički rezultat, uz poslovne testove, daje osnovu za promenu.
+    </p>
+
+    <h4>41.9.1. Produkcioni redosled remediation-a</h4>
+
+    <ol>
+      <li>Zamrzni desired image i sačuvaj njegov izvoz, change ID i checksum uvoznog sadržaja.</li>
+      <li>Pokreni compliance, hardware compatibility i remediation pre-check; zatvori sve blokirajuće nalaze.</li>
+      <li>Potvrdi backup VCSA-a, konfiguracije mreže i vendor konfiguracija; potvrdi dostupnost out-of-band konzole.</li>
+      <li>Proveri HA admission control, DRS pravila, vSAN resync i storage putanje; ne počinji uz degradirano stanje.</li>
+      <li>Izaberi canary host reprezentativnog hardvera, migriraj/ugasi VM-ove i uvedi ga u maintenance mode.</li>
+      <li>Remediate jedan host, sačekaj reboot, reconnect i završetak post-boot servisa.</li>
+      <li>Izvrši tehnički i workload post-check; posmatraj stabilizacioni period.</li>
+      <li>Nastavi talasno, uz ograničenu paralelizaciju samo ako klaster, vSAN politika i poslovni rizik to dopuštaju.</li>
+      <li>Na kraju ponovi compliance i health provere, dokumentuj izuzetke i zatvori change tek posle poslovne potvrde.</li>
+    </ol>
+
+    <div class="important-note">
+      <p><strong>vSAN oprez:</strong> maintenance opcija mora odgovarati politici podataka i raspoloživom kapacitetu. „Ensure accessibility”, „Full data migration” i „No data migration” imaju različite posledice. Pre svakog talasa proveravaju se health, resync, slobodan kapacitet i očekivana izloženost podataka. Ne pokreći više paralelnih hostova zato što GUI to dozvoljava.</p>
+    </div>
+
+    <h3>41.10. Automatizacija i dokazivo stanje pomoću PowerCLI-ja</h3>
+
+    <p>
+      Sledeći primer koristi aktuelne LCM cmdlet-e. Izvršava se sa administratorske radne stanice u PowerShell-u sa instaliranim VCF PowerCLI modulima. Prvi deo je <strong>read-only</strong>; izvozi dokaz željenog stanja i pokreće provere. Naziv klastera i putanja moraju se prilagoditi okruženju.
+    </p>
+
+    <pre><code class="language-powershell">Connect-VIServer -Server 'vcsa01.example.rs'
+
+$cluster = Get-Cluster -Name 'PROD-CL01'
+
+# Read-only provere i izvoz dokaza
+Test-LcmClusterHealth -Cluster $cluster
+Test-LcmClusterCompliance -Cluster $cluster
+Get-LcmHardwareCompatibility -Cluster $cluster
+Export-LcmClusterDesiredState `
+  -Cluster $cluster `
+  -Destination 'C:\Change\CHG-0041\PROD-CL01-desired-state.json'
+
+# Inventarski dokaz pre promene
+Get-VMHost -Location $cluster |
+  Select-Object Name, Version, Build, ConnectionState, PowerState |
+  Export-Csv 'C:\Change\CHG-0041\hosts-before.csv' -NoTypeInformation</code></pre>
+
+    <p>
+      Očekivani rezultat je uspešno kreiran desired-state JSON, inventarski CSV i eksplicitni health/compliance rezultati. Cmdlet izlaz mora se pregledati; odsustvo PowerShell exception-a nije isto što i prolaz svih provera. Datoteke mogu sadržati osetljive inventarske podatke i čuvaju se u kontrolisanom change repozitorijumu.
+    </p>
+
+    <p>
+      Uvoz desired state-a je <strong>state-changing</strong>: menja deklarisano ciljno stanje klastera, ali sam po sebi ne treba poistovetiti sa remediation-om hostova. Koristi se tek posle peer review-a specifikacije i u kontrolisanom prozoru:
+    </p>
+
+    <pre><code class="language-powershell">$cluster = Get-Cluster -Name 'LAB-CL01'
+
+Import-LcmClusterDesiredState `
+  -Cluster $cluster `
+  -LocalSpecLocation 'C:\Change\CHG-0041\approved-lab-image.json'
+
+Test-LcmClusterCompliance -Cluster $cluster</code></pre>
+
+    <p>
+      Bezbedan rollback ove konfiguracione promene je ponovni uvoz prethodno izvezenog i odobrenog desired-state fajla, pod uslovom da je i dalje dostupan odgovarajući depot sadržaj. To ne vraća automatski već remediate-ovan ESXi host; njegov recovery je poseban postupak.
+    </p>
+
+    <h3>41.11. Dostupnost, performanse, bezbednost i oporavak tokom promene</h3>
+
+    <h4>41.11.1. Dostupnost i kapacitet</h4>
+
+    <p>
+      Maintenance jednog hosta smanjuje N+1 rezervu. Ako preostali hostovi nemaju CPU, memoriju, mrežni ili storage kapacitet, DRS neće moći bezbedno da evakuiše workload. Affinity/anti-affinity pravila, passthrough uređaji, lokalni diskovi, FT, pinned workload-i i VM-ovi bez podržanog vMotion-a moraju biti poznati pre promene. Privremeno isključivanje HA admission control-a samo da bi remediation prošao uklanja zaštitnu ogradu i zahteva zasebnu analizu i odobrenje; nije standardna korekcija.
+    </p>
+
+    <h4>41.11.2. Bezbednost lanca snabdevanja</h4>
+
+    <p>
+      Image sadržaj dolazi samo iz zvaničnog ili odobrenog vendor izvora. Čuvaju se naziv paketa, verzija, vreme preuzimanja i checksum. Administrativni nalozi koriste najmanje potrebne privilegije, a privremeni SSH/ESXi Shell se po završetku gasi. Promene BIOS-a, Secure Boot-a, TPM-a ili acceptance level-a ne uvode se usput radi „prolaska” upgrade-a; one imaju zaseban bezbednosni uticaj i obrađuju se kao kontrolisane promene.
+    </p>
+
+    <h4>41.11.3. Recovery nije isto što i rollback</h4>
+
+    <p>
+      VCSA file-based restore vraća appliance iz backup-a kroz installer odgovarajuće verzije. ESXi može u određenim uslovima da se vrati na prethodni bootbank izbor preko DCUI kombinacije <code>Shift+R</code>, ali rollback nije dostupan posle svake vrste instalacije/promene i zavisi od očuvanog prethodnog image-a. Kod nepodržanog ili neuspešnog rollback-a plan je reinstall podržanog image-a, vraćanje host konfiguracije kroz dokumentovani postupak i ponovno priključenje workload-u. VM podaci na shared datastore-u ne smeju zavisiti od ESXi boot diska.
+    </p>
+
+    <p>
+      Nadogradnja vDS verzije, virtual hardware-a ili pojedinih firmware-a može biti nepovratna ili zahtevati vendor postupak. Zato se te promene odvajaju od osnovnog ESXi talasa i odlažu dok nova platforma ne prođe stabilizacioni period.
+    </p>
+
+    <h3>41.12. Posmatranje, logovi i korelacija dokaza</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Izvor</th>
+          <th>Šta beleži</th>
+          <th>Šta tražimo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>vSphere Client Tasks &amp; Events</td>
+          <td>Redosled scan, stage, maintenance, remediation i reboot operacija.</td>
+          <td>Prvi neuspešan korak, objekat, vreme, korisnik i poruka greške.</td>
+        </tr>
+        <tr>
+          <td><code>/var/log/vmware/vmware-updatemgr/vmware-vum-server.log</code> na VCSA-u</td>
+          <td>vLCM/VUM orkestraciju, depot, scan i komunikaciju sa hostom.</td>
+          <td>Task/host identifikator, metadata, timeout, TLS i connection reset.</td>
+        </tr>
+        <tr>
+          <td><code>/var/run/log/esxupdate.log</code> na ESXi-ju</td>
+          <td>Instalaciju image profila, komponenti i VIB zavisnosti.</td>
+          <td>DependencyError, acceptance/signature, prostor i transakcioni rezultat.</td>
+        </tr>
+        <tr>
+          <td><code>/var/run/log/hostd.log</code> i <code>vpxa.log</code></td>
+          <td>Lokalne host operacije i komunikaciju sa vCenter-om.</td>
+          <td>Maintenance mode, reconnect, task i agent greške.</td>
+        </tr>
+        <tr>
+          <td><code>/var/run/log/vmkernel.log</code></td>
+          <td>Kernel, drajvere, uređaje, storage i mrežne događaje.</td>
+          <td>Driver load, link, APD/PDL, reset kontrolera i hardverske greške.</td>
+        </tr>
+        <tr>
+          <td>VCSA <code>/var/log/vmware/applmgmt/</code> i installer logovi</td>
+          <td>Appliance management, backup/restore i upgrade tok.</td>
+          <td>Stage, prostor, source/target vezu i servisne greške.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      Logovi se filtriraju u uskom vremenskom intervalu oko Task/Event zapisa i po hostname-u ili task ID-u. Sledeće komande su <strong>read-only</strong>; izvršavaju se na odgovarajućem VCSA/ESXi shell-u sa privilegovanim nalogom. Vremenski opseg prilagodi incidentu:
+    </p>
+
+    <pre><code class="language-bash"># VCSA: poslednje vLCM greške
+grep -Ei 'error|fail|timeout|reset|metadata' \
+  /var/log/vmware/vmware-updatemgr/vmware-vum-server.log | tail -n 100
+
+# ESXi: greške instalacije image-a i zavisnosti
+grep -Ei 'error|fail|dependency|signature|space' \
+  /var/run/log/esxupdate.log | tail -n 100
+
+# ESXi: poslednje kernel poruke o uređajima i putanjama
+grep -Ei 'nmp|apd|pdl|reset|link.*down|failed' \
+  /var/run/log/vmkernel.log | tail -n 100</code></pre>
+
+    <p>
+      Jedna reč <code>error</code> nije dovoljan zaključak. Nalaz se povezuje sa vCenter task-om, tačnim hostom, vremenom, mrežnim događajem, hardware health-om i poslednjom promenom. Pre brisanja depot sadržaja, restartovanja servisa ili ponavljanja remediation-a pravi se support bundle i čuva početno stanje.
+    </p>
+
+    <h3>41.13. Tipični kvarovi i sistematičan troubleshooting</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Simptom i obim</th>
+          <th>Verovatni neposredni uzrok</th>
+          <th>Najmanje invazivna provera</th>
+          <th>Trajna mera</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Image ne može da se sačuva ili validira; ceo klaster.</td>
+          <td>Konflikt komponenti ili nedostupni depot metapodaci.</td>
+          <td>Image validation, depot sync status, VUM log i release kompatibilnost.</td>
+          <td>Izaberi podržan vendor add-on/component; obnovi metapodatke po zvaničnom KB-u.</td>
+        </tr>
+        <tr>
+          <td>Host ne ulazi u maintenance mode.</td>
+          <td>VM bez migracione putanje, DRS pravilo, vSAN resync ili nedostatak kapaciteta.</td>
+          <td>Tasks/Events, lista VM-ova, DRS preporuke, vSAN health/resync.</td>
+          <td>Obezbedi kapacitet ili odobren outage; ispravi pravilo, mrežu ili storage uslov.</td>
+        </tr>
+        <tr>
+          <td>Scan pada na više hostova.</td>
+          <td>vLCM metadata, servis, proxy/firewall ili komunikacioni problem.</td>
+          <td>VUM log, servisni status, DNS/TLS i paketni put između VCSA-a i hosta.</td>
+          <td>Ispravi transport ili repository prema tačnom KB-u; zatim sync i ponovni scan.</td>
+        </tr>
+        <tr>
+          <td>Jedan host pada tokom instalacije.</td>
+          <td>VIB dependency, potpis/acceptance, prostor ili boot uređaj.</td>
+          <td><code>esxupdate.log</code>, bootbank prostor i tačan image sastav.</td>
+          <td>Ukloni konflikt kroz podržan postupak ili ispravi image; zameni neispravan boot medij.</td>
+        </tr>
+        <tr>
+          <td>Host je na ciljnom buildu, ali NIC/HBA ne radi.</td>
+          <td>Nepodržana driver/firmware kombinacija.</td>
+          <td>DCUI/OOB, <code>vmkernel.log</code>, device ID i HCL zapis.</td>
+          <td>Vrati podržanu kombinaciju ili reinstall/rollback; ispravi desired image pre nastavka.</td>
+        </tr>
+        <tr>
+          <td>Remediation je „successful”, ali compliance ostaje driftovan.</td>
+          <td>Host nije stvarno primenio sadržaj, image se promenio ili vendor alat vraća paket.</td>
+          <td>Uporedi task, build, component listu i vreme poslednje image izmene.</td>
+          <td>Zaustavi paralelizaciju, utvrdi vlasnika drift-a i ponovi tek posle korekcije uzroka.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>41.13.1. Incident tok</h4>
+
+    <ol>
+      <li><strong>Zaustavi širenje:</strong> pauziraj sledeći remediation talas; ne menjaj desired image dok se dokaz ne sačuva.</li>
+      <li><strong>Odredi simptom, obim i posledicu:</strong> jedan host ili svi, scan ili boot, management ili workload, degradacija ili outage.</li>
+      <li><strong>Prikupi dokaze:</strong> Tasks/Events, build pre/posle, vLCM i ESXi logove, hardware health, mrežu i storage putanje.</li>
+      <li><strong>Postavi i testiraj hipotezu:</strong> transport, metadata, dependency, kapacitet ili hardver; počni read-only proverama.</li>
+      <li><strong>Primeni zaobilazno rešenje:</strong> zadrži host van produkcije, vrati workload na zdrave hostove ili produži maintenance prozor.</li>
+      <li><strong>Trajno ispravi uzrok:</strong> podržani image, firmware/driver, repository, kapacitet ili vendor korekcija.</li>
+      <li><strong>Validiraj oporavak:</strong> compliance, health, mreža/storage, test VM i monitoring bez novih alarma.</li>
+      <li><strong>Dokumentuj RCA:</strong> razdvoji neposredni uzrok, osnovni uzrok, doprinosne faktore i preventivnu kontrolu.</li>
+    </ol>
+
+    <h3>41.14. Praktikum: od kompatibilnosti do validiranog image-a</h3>
+
+    <div class="important-note">
+      <p><strong>Laboratorijska granica:</strong> praktikum se izvodi na LAB klasteru sa najmanje dva hosta ili na nested ESXi okruženju. Namerno izazivanje neuspeha ne radi se u produkciji. Firmware remediation se ne simulira stvarnom nepodržanom verzijom; analizira se kao tabletop scenario ili koristi vendor sandbox.</p>
+    </div>
+
+    <h4>Vežba 1 – Izrada matrice kompatibilnosti i change paketa</h4>
+
+    <p><strong>Cilj i kontekst:</strong> odobriti prelazak LAB klastera sa poznatog izvornog build-a na ciljni vSphere 8.x build bez oslanjanja na pretpostavke.</p>
+
+    <p><strong>Topologija:</strong> jedan VCSA, klaster <code>LAB-CL01</code>, dva ESXi hosta, shared datastore, management/vMotion mreže i najmanje jedna test VM.</p>
+
+    <p><strong>Preduslovi i rizik:</strong> read-only vCenter pristup za inventar, pristup zvaničnim matricama i release notes; rizik je nizak jer se stanje još ne menja.</p>
+
+    <ol>
+      <li>Zabeleži verziju/build VCSA-a i oba hosta, server model, CPU, NIC/HBA device ID, driver i firmware.</li>
+      <li>Proveri upgrade path i redosled vCenter → ESXi.</li>
+      <li>Proveri server i I/O uređaje u Compatibility Guide-u za ciljni release.</li>
+      <li>Proveri interoperabilnost backup-a, storage plug-in-a i drugih laboratorijskih integracija.</li>
+      <li>Pročitaj release notes: poznati problemi, uklonjeni drajveri, posebni pre/post-upgrade koraci i zahtevan reboot.</li>
+      <li>Napravi tabelu odluke: <em>prolazi / blokira / uslovno / vlasnik / dokaz</em>.</li>
+    </ol>
+
+    <p><strong>Očekivani rezultat i validacija:</strong> change paket sadrži tačan ciljni build, sve kompatibilne kombinacije, otvorene rizike, maintenance procenu i rollback/recovery put. Vežba je završena samo ako nema neadresiranog blokirajućeg polja.</p>
+
+    <h4>Vežba 2 – Kreiranje i izvoz LAB desired image-a</h4>
+
+    <p><strong>Cilj:</strong> napraviti image koji predstavlja podržano i ponovljivo stanje klastera.</p>
+
+    <p><strong>Privilegije i alati:</strong> vSphere Client i nalog sa Lifecycle Manager privilegijama; PowerCLI za read-only izvoz. Rizik je srednji jer promena desired image-a menja cilj klastera, ali još ne menja hostove.</p>
+
+    <ol>
+      <li>U vSphere Client-u otvori <strong>Hosts and Clusters → LAB-CL01 → Updates → Image</strong>.</li>
+      <li>Ako je klaster baseline-managed, pregledaj pre-conversion izveštaj i evidentiraj rešenja koja dodaju VIB-ove; konverziju radi samo ako laboratorijska verzija i integracije to podržavaju.</li>
+      <li>Izaberi odobren ESXi base image, odgovarajući vendor add-on i samo opravdane komponente.</li>
+      <li>Pokreni image validation. Ne čuvaj image dok postoji dependency konflikt.</li>
+      <li>Sačuvaj image, pokreni hardware compatibility i compliance.</li>
+      <li>Izvezi desired state PowerCLI cmdlet-om iz odeljka 41.10 i sačuvaj ga uz change paket.</li>
+    </ol>
+
+    <p><strong>Očekivani rezultat:</strong> image je validan, oba hosta imaju objašnjiv compliance status, a hardware nalaz nema neadresirani incompatibility.</p>
+
+    <p><strong>Rollback:</strong> pre izmene izvezi prethodni desired state. Ako je novi image pogrešan i nijedan host nije remediate-ovan, vrati prethodnu specifikaciju i ponovi compliance. Ako je host već promenjen, zaustavi vežbu i primeni recovery plan iz Vežbe 4.</p>
+
+    <h4>Vežba 3 – Canary remediation jednog hosta</h4>
+
+    <p><strong>Cilj:</strong> bezbedno primeniti image na prvom hostu i dokazati funkcionalnost pre drugog talasa.</p>
+
+    <p><strong>Preduslovi:</strong> zdrav klaster, nema vSAN resync-a, testiran vMotion, dovoljno kapaciteta na drugom hostu, VCSA backup, OOB konzola i odobren maintenance prozor. Rizik je visok jer host ulazi u maintenance mode i rebootuje se.</p>
+
+    <ol>
+      <li>Izvezi inventar pre promene i zabeleži aktivne alarme, build, NIC/storage putanje i test VM stanje.</li>
+      <li>Pokreni remediation pre-check. Svako upozorenje klasifikuj kao blokirajuće, prihvaćeno ili za korekciju.</li>
+      <li>Migriraj test VM i ostale workload-e sa <code>esx-lab01</code>; potvrdi da host nema aktivnih VM-ova koje ne sme izgubiti.</li>
+      <li>Uvedi host u maintenance mode. Ako ne uspe, ne forsiraj; analiziraj DRS, VM i storage događaje.</li>
+      <li>U kartici <strong>Updates → Image</strong> pokreni remediation samo za canary host.</li>
+      <li>Prati Tasks/Events i OOB konzolu kroz instalaciju i reboot.</li>
+      <li>Posle reconnect-a proveri build, compliance, NIC linkove, VMkernel ping/vMotion, datastore putanje, NTP i hardware health.</li>
+      <li>Izađi iz maintenance mode-a, vrati test VM i izvrši aplikacioni smoke test.</li>
+      <li>Posmatraj monitoring najmanje jedan dogovoreni stabilizacioni interval pre drugog hosta.</li>
+    </ol>
+
+    <p><strong>Kriterijum završetka:</strong> canary host je compliant; nema novih critical alarma; redundantne mrežne/storage putanje su aktivne; test VM uspešno radi i može da se migrira; dokaz je sačuvan.</p>
+
+    <h4>Vežba 4 – Dijagnostika kontrolisanog neuspeha i recovery odluka</h4>
+
+    <p><strong>Cilj:</strong> vežbati incident response bez kvarenja hosta. Simptom je simuliran: „host ne može u maintenance mode jer test VM ima lokalno vezan ISO ili nepodržanu migracionu zavisnost”.</p>
+
+    <ol>
+      <li>Na test VM bez poslovnih podataka poveži ISO sa lokalnog host datastore-a ili napravi drugu reverzibilnu laboratorijsku prepreku.</li>
+      <li>Pokreni samo pre-check ili pokušaj kontrolisani ulazak u maintenance mode; ne pokreći remediation.</li>
+      <li>Zabeleži simptom, obim i posledicu: jedan host, pre-remediation faza, bez outage-a.</li>
+      <li>Pregledaj Tasks/Events, VM uređaje i DRS preporuke; potvrdi vezu između prepreke i konkretnog VM-a.</li>
+      <li>Bezbedna korekcija je odvajanje laboratorijskog ISO-a ili promena na shared sadržaj, zatim ponovljeni vMotion/pre-check.</li>
+      <li>Potvrdi da host može u maintenance mode, zatim ga vrati u početno stanje bez remediation-a.</li>
+      <li>Napiši kratki RCA: neposredni uzrok je lokalna zavisnost; osnovni uzrok je nedovoljna pre-change provera VM uređaja; preventivna mera je automatizovani inventarski check.</li>
+    </ol>
+
+    <p><strong>Recovery grana za stvarni boot kvar:</strong> ostavi host izolovan od workload-a, prikupi OOB/boot i <code>esxupdate.log</code> dokaze, proveri podržanost <code>Shift+R</code> rollback-a, a ako nije primenljiv izvrši reinstall odobrenog image-a i povrat konfiguracije. Ne vraćaj host u klaster dok mreža, storage, time sync, compliance i test VM nisu potvrđeni.</p>
+
+    <h4>Vežba 5 – Završna validacija i audit paket</h4>
+
+    <p><strong>Cilj:</strong> dokazati ne samo da je zadatak završen, već da platforma radi u očekivanom stanju.</p>
+
+    <ol>
+      <li>Ponovi health, compliance i hardware compatibility provere.</li>
+      <li>Izvezi inventar hostova posle promene i uporedi verziju/build sa početnim CSV-om.</li>
+      <li>Proveri HA/DRS, vMotion, management redundansu, sve datastore-ove i multipathing.</li>
+      <li>Pregledaj alarme, Tasks/Events i centralni syslog za ceo maintenance interval.</li>
+      <li>Pokreni smoke test reprezentativne VM aplikacije i potvrdi backup/monitoring integraciju.</li>
+      <li>Sačuvaj desired-state JSON, pre/post inventar, compatibility dokaze, izuzetke, vreme i imena odobravalaca.</li>
+      <li>Vrati privremeno promenjene DRS/operativne postavke i ugasi privremeni SSH.</li>
+    </ol>
+
+    <p><strong>Kriterijum završetka:</strong> nema neobjašnjivog drift-a ni novog kritičnog alarma, svi hostovi su na odobrenom buildu, poslovni vlasnik je potvrdio servis, a change zapis sadrži ponovljive dokaze.</p>
+
+    <h3>41.15. Administratorske prakse</h3>
+
+    <ul>
+      <li>Standardizuj mali broj odobrenih image varijanti prema hardverskim porodicama, umesto jednog univerzalnog image-a za nepovezane platforme.</li>
+      <li>Odvoji izbor ciljnog build-a od izvršenja: image prolazi peer review pre remediation-a.</li>
+      <li>Prvo testiraj u laboratoriji, zatim na canary hostu, pa u ograničenim talasima; stabilizacioni period je deo promene.</li>
+      <li>Ne mešaj ESXi, firmware, vDS, VMware Tools i virtual hardware promene u jedan nedeljiv korak.</li>
+      <li>Pre svake state-changing akcije sačuvaj inventar, desired state, alarme i plan oporavka.</li>
+      <li>Ne ignoriši warning zato što nije crven: dokumentuj vlasnika, procenu posledice i odluku.</li>
+      <li>Održavaj OOB pristup, VCSA file-based backup i proverljiv reinstall postupak; snapshot nije zamena za backup.</li>
+      <li>Automatizuj prikupljanje dokaza i compliance, ali zahtevaj kontrolu za promenu desired image-a i remediation.</li>
+      <li>Posle incidenta popravi procesnu kontrolu koja je dozvolila uzrok, ne samo konkretni host.</li>
+    </ul>
+
+    <h3>41.16. Završna kontrolna tačka</h3>
+
+    <p>Lekcija je savladana kada možeš da dokažeš da umeš da:</p>
+
+    <ul class="checklist">
+      <li>navedeš tačan izvorni i ciljni release/build i podržan upgrade path;</li>
+      <li>objasniš zašto se vCenter nadograđuje pre ESXi hostova;</li>
+      <li>napraviš compatibility matricu za server, I/O uređaje, firmware, drajvere i integracije;</li>
+      <li>objasniš sastav desired image-a i opravdaš svaki dodatak;</li>
+      <li>razlikuješ image validation, compliance, hardware compatibility i remediation pre-check;</li>
+      <li>izračunaš da li klaster zadržava potreban kapacitet i dostupnost tokom maintenance-a;</li>
+      <li>izvezeš desired state i pre/post inventar bez promene hostova;</li>
+      <li>sprovedeš canary remediation i validiraš mrežu, storage, HA/DRS i test workload;</li>
+      <li>iz logova povežeš prvi neuspešan korak sa neposrednim i osnovnim uzrokom;</li>
+      <li>razlikuješ rollback od recovery-ja i izabereš ostvariv plan za VCSA i ESXi;</li>
+      <li>zatvoriš change tek kada postoji tehnički, poslovni i audit dokaz.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+
+    <p>
+      Instalacija i nadogradnja vSphere infrastrukture jesu tehničke operacije, ali njihov kvalitet određuju priprema i dokazi. vSphere Lifecycle Manager omogućava da klaster dobije deklarisano i proverljivo željeno stanje, no ne ukida odgovornost administratora da proveri upgrade path, hardver, firmware, drajvere, integracije, kapacitet i recovery. Zelen compliance status potvrđuje samo jedan sloj istine; pouzdana promena postoji tek kada platforma i workload prođu merljive post-check provere.
+    </p>
+
+    <p>
+      Najbezbedniji lifecycle proces je konzervativan u obimu, precizan u redosledu i bogat dokazima: vCenter pre hostova, validiran image pre remediation-a, canary pre talasa i stabilizacija pre zatvaranja promene. Takav pristup priprema administratora za naredne teme — identitet, sertifikate i naprednu zaštitu — jer bez kontrolisanog lifecycle-a ni bezbednosna konfiguracija ne može ostati pouzdana kroz vreme.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        Zvanična Broadcom dokumentacija za VMware vSphere 8, ESXi, vCenter Server Appliance i vSphere Lifecycle Manager; VMware Compatibility Guide i Product Interoperability matrice; ESXi i vCenter release notes; Broadcom Knowledge Base članci o redosledu nadogradnje, remediation greškama, logovima i ESXi rollback-u; zvanična VCF PowerCLI cmdlet dokumentacija; dokumentacija proizvođača servera i Hardware Support Manager integracija
+      </p>
+
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        VMware
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-40-priprema-za-kubernetes-platforme.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-42-identitet-rbac-sertifikati.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

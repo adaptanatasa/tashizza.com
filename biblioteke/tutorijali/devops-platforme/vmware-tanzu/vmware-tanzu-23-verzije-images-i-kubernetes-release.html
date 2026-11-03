@@ -1,0 +1,672 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-23-verzije-images-i-kubernetes-release.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kubernetes verzije, images i release matrice – izbor podržanog izdanja klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Kubernetes verzije, images i release matrice – izbor kompatibilnog i podržanog izdanja VKS klastera.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes verzije, images, release matrice, VKS izdanje, kompatibilnost, lifecycle klastera, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-23-verzije-images-i-kubernetes-release.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Kubernetes verzije, images i release matrice – izbor podržanog izdanja klastera">
+
+  <meta property="og:description"
+        content="Dvadeset treća lekcija VMware &amp; Tanzu tutorijala – Kubernetes verzije, images, release matrice i izbor podržanog VKS izdanja.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-23-verzije-images-i-kubernetes-release.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-23-verzije-images-i-kubernetes-release.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Kubernetes verzije, images i release matrice – izbor podržanog izdanja klastera">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-23-verzije-images-i-kubernetes-release.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-23-verzije-images-i-kubernetes-release.png"
+           alt="Kubernetes verzije, images i release matrice – izbor podržanog izdanja klastera">
+
+    </a>
+
+    <div class="page-subtitle">
+  VI. Kreiranje i lifecycle VKS klastera
+</div>
+
+<div class="page-subtitle">
+  23. Kubernetes verzije, images i release matrice – izbor podržanog izdanja klastera
+</div>
+
+<p>
+  Kreiranje VKS klastera nije izbor proizvoljnog broja Kubernetes verzije. Administrator bira izdanje koje istovremeno mora biti dostupno u konkretnom Supervisor okruženju, kompatibilno sa instaliranom verzijom vSphere Kubernetes Service-a, povezano sa odgovarajućim i potpuno sinhronizovanim node image-om, podržano za željeni operativni sistem i prihvatljivo za aplikacije, dodatke i bezbednosnu politiku organizacije. Zato pitanje „koju verziju želimo?” u produkciji mora postati pitanje „koju verziju ova platforma može pouzdano da isporuči, održava i nadogradi?”.
+</p>
+
+<p>
+  U prethodnim lekcijama deklarativna specifikacija VKS klastera povezana je sa Cluster API kontrolerima i reconciliation petljom. Ova lekcija objašnjava šta se nalazi iza polja <code>spec.topology.version</code>, kako Supervisor razrešava Kubernetes release i VM image, kako se čita release matrica i kako se odluka dokumentuje pre kreiranja ili nadogradnje klastera. Sama promena verzije i kontrolisani rolling upgrade biće obrađeni u narednim lifecycle lekcijama; ovde je fokus na izboru, dokazivanju kompatibilnosti i pripremi bezbedne promene.
+</p>
+
+<h3>23.1. Četiri različita pojma koja se ne smeju pomešati</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam</th>
+      <th>Šta označava</th>
+      <th>Zašto je važan</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Upstream Kubernetes verzija</td>
+      <td>Semantičku verziju projekta Kubernetes, na primer <code>v1.33.6</code>.</td>
+      <td>Određuje Kubernetes API-je, feature gates, version-skew pravila i upstream period održavanja.</td>
+    </tr>
+    <tr>
+      <td>VMware Kubernetes release</td>
+      <td>VMware-ovo testirano i podržano izdanje zasnovano na određenom upstream patch nivou, sa sopstvenim build/release sufiksom.</td>
+      <td>Dve oznake sa istim upstream delom nisu nužno isti proizvodni build niti imaju isti status kompatibilnosti.</td>
+    </tr>
+    <tr>
+      <td>Node image</td>
+      <td>Virtuelni mašinski image za control-plane i worker čvorove: operativni sistem, container runtime, kubelet i ostale platformom određene komponente.</td>
+      <td>Kubernetes release bez odgovarajućeg kompatibilnog image-a nije dovoljan za kreiranje ili upgrade čvorova.</td>
+    </tr>
+    <tr>
+      <td>Release/interop matrica</td>
+      <td>Zvanično podržana veza između vCenter/VCF i Supervisor nivoa, verzije VKS servisa, Kubernetes release-a, node OS-a i drugih zavisnosti.</td>
+      <td>Objekat koji je vidljiv u API-ju može biti nedostupan, nekompatibilan ili nepodržan za konkretan klaster.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Reč <em>image</em> u ovoj temi znači prvenstveno VM node image koji platforma koristi da napravi Kubernetes čvor. To nije isto što i OCI container image aplikacije, niti isto što i pojedinačni image kontrolne komponente iz registra <code>registry.k8s.io</code>. VKS upravlja celom, testiranom kombinacijom komponenti; administrator ne treba da zamenjuje pojedinačne control-plane images kao da održava ručno kreiran kubeadm klaster.
+</p>
+
+<h3>23.2. Terminologija kroz generacije platforme: TKr, KR, VKr i OSImage</h3>
+
+<p>
+  Nazivi resursa zavise od generacije vSphere/VCF i VKS servisa. U dokumentaciji i postojećim okruženjima često se sreće <strong>Tanzu Kubernetes Release (TKr)</strong>: potpisana i podržana VMware distribucija Kubernetes softvera, isporučena zajedno sa odgovarajućim VM template-om kroz vSphere Content Library. U novijim VKS izdanjima dokumentacija, API objekti i poruke kontrolera mogu koristiti razdvojene pojmove <strong>Kubernetes Release (KR)</strong>, <strong>VMware Kubernetes Release (VKr)</strong> i <strong>OSImage</strong>. Tačan API group, kind, label i format imena nisu univerzalni za sve verzije.
+</p>
+
+<div class="alert alert-warning" role="alert">
+  <strong>Verzijsko upozorenje:</strong> nemoj prepisivati komandu ili manifest iz druge generacije proizvoda samo zato što sadrži „istu” Kubernetes verziju. Najpre otkrij resurse koje objavljuje konkretan Supervisor, zatim proveri release notes i interoperability matricu baš za instalirani VKS servis. Komande <code>kubectl get tkr</code>, <code>kubectl get kr</code>, <code>kubectl get vkr</code> ili upit nad OS image resursima mogu se razlikovati ili neke od njih mogu izostati.
+</div>
+
+<p>
+  Razdvajanje release metadata i OS image-a omogućava precizniji izbor operativnog sistema i arhitekture, ali uvodi važnu obavezu: resolver mora pronaći tačno jedan image kompatibilan sa ciljnom verzijom i kriterijumima klastera. Ako ne pronađe nijedan, promena se odbija. Ako pronađe više ravnopravnih kandidata, admission webhook takođe može odbiti promenu da ne bi proizvoljno izabrao pogrešan OS.
+</p>
+
+<h3>23.3. Kako platforma razrešava željenu verziju</h3>
+
+<ol>
+  <li>Administrator u manifestu navodi podržanu vrednost verzije, najčešće u <code>spec.topology.version</code>, ili bira ponuđeno izdanje kroz vSphere Client.</li>
+  <li>Admission i release-resolver komponente proveravaju format, dostupnost, kompatibilnost sa VKS servisom i dozvoljeni upgrade put.</li>
+  <li>Resolver povezuje release sa kompatibilnim OS/VM image-om iz Content Library-ja i sa kriterijumima kao što su OS naziv, OS verzija i arhitektura.</li>
+  <li>Cluster API kreira ili menja Machine objekte; odgovarajući infrastructure provider klonira VM-ove iz odabranog image-a.</li>
+  <li>Kontroleri prate bootstrap, registraciju čvorova, health i dostizanje željenog stanja. Tek <code>Ready</code> status klastera i čvorova potvrđuje operativni uspeh.</li>
+</ol>
+
+<p>
+  Zbog ovog toka postojanje template-a u Content Library-ju nije dokaz da se može koristiti. Isto tako, prikaz release objekta nije dovoljan dokaz da je dostupan za svaki namespace ili postojeći klaster. Potrebno je potvrditi najmanje tri ravni: <em>objekat postoji</em>, <em>objekat je kompatibilan</em> i <em>postoji jednoznačan odgovarajući image</em>.
+</p>
+
+<h3>23.4. Release matrica kao ugovor o podršci</h3>
+
+<p>
+  Release matrica nije samo informativna lista. Ona predstavlja podržani presek više lifecycle-ova koji se razvijaju različitim tempom. Upstream Kubernetes objavljuje minor izdanja i održava ih ograničeno vreme; Broadcom/VMware zatim testira konkretne patch/build kombinacije sa VKS servisom i Supervisor platformom; node OS image ima sopstvene zakrpe i životni ciklus; CNI, CSI, CPI i ostale integracije moraju ostati kompatibilne. Zato „najnoviji upstream Kubernetes” nije automatski „najnoviji dostupan VKS release”.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj odluke</th>
+      <th>Dokaz koji se proverava</th>
+      <th>Posledica ignorisanja</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter/VCF i Supervisor</td>
+      <td>Zvanična produktna interoperability matrica i Supervisor release notes.</td>
+      <td>VKS servis ili release nije podržan na instaliranoj platformi.</td>
+    </tr>
+    <tr>
+      <td>VKS servis</td>
+      <td>VKS release notes, poznati problemi i lista podržanih Kubernetes izdanja.</td>
+      <td>Release može biti nepoznat resolveru ili blokiran admission proverom.</td>
+    </tr>
+    <tr>
+      <td>Kubernetes release</td>
+      <td>Tačan vendor build, status kompatibilnosti, podržani upgrade predecessor i datum podrške.</td>
+      <td>Nepodržan skok, propuštena bezbednosna zakrpa ili slepa lifecycle ulica.</td>
+    </tr>
+    <tr>
+      <td>Node OS/image</td>
+      <td>Kompatibilan image, OS naziv/verzija, arhitektura i potpuna sinhronizacija biblioteke.</td>
+      <td><code>Missing compatible KR/OSImage</code> ili <code>Multiple OSImages Resolved</code>.</td>
+    </tr>
+    <tr>
+      <td>Aplikacije i platformski dodaci</td>
+      <td>Podržani API nivoi za ingress, CSI, policy engine, backup, observability i vendor workload.</td>
+      <td>Uklonjen API, neuspešan admission, backup ili runtime kvar posle upgrade-a.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Matrica se čita za tačne build brojeve, ne samo za marketinške nazive „vSphere 8” ili „VCF 9”. Ako je ćelija prazna, to nije dozvola za eksperiment u produkciji. Ako kombinacija tehnički radi, ali nije navedena kao podržana, organizacija preuzima rizik incidenta i mogućeg ograničenja proizvođačke podrške.
+</p>
+
+<h3>23.5. Verzija nije samo broj: semantička oznaka i vendor sufiks</h3>
+
+<p>
+  Oznaka poput <code>v1.33.6+vmware.1-fips-vkr.1</code> može da sadrži upstream major, minor i patch deo, VMware build/reviziju, oznaku varijante kao što je FIPS i generaciju release paketa. Konkretan format se menja između izdanja; zato se puna vrednost kopira iz API-ja ili zvanične ponude platforme, bez ručnog „pogađanja” sufiksa. Za poređenje funkcionalnosti važan je upstream deo, ali za podršku i image resolution važna je cela oznaka.
+</p>
+
+<ul>
+  <li><strong>Major</strong> promena je retka i predstavlja veliku kompatibilnosnu granicu.</li>
+  <li><strong>Minor</strong> izdanje, na primer prelazak sa 1.32 na 1.33, donosi funkcije, deprecations i moguće uklanjanje API-ja; zahteva planirani upgrade put.</li>
+  <li><strong>Patch</strong> izdanje pretežno donosi ispravke i bezbednosne zakrpe, ali je i dalje zaseban vendor-testiran artefakt.</li>
+  <li><strong>Vendor/build sufiks</strong> razlikuje VMware pakovanje i njegove revizije; ne sme se odbaciti pri unosu verzije.</li>
+</ul>
+
+<h3>23.6. Upstream podrška, version skew i vendor podrška</h3>
+
+<p>
+  Kubernetes projekat trenutno održava tri najnovija minor izdanja, ali se tačan skup menja sa svakim novim izdanjem. Verzija koja je dostigla upstream end-of-life više ne dobija upstream bezbednosne i bug-fix zakrpe. VMware podrška ima sopstveni kalendar i mora se proveriti zasebno: upstream podržanost ne garantuje da je release već dostupan u VKS-u, a prisutan stariji vendor image ne znači da je i dalje u punoj podršci.
+</p>
+
+<p>
+  Upstream version-skew pravila određuju dozvoljene razlike između <code>kube-apiserver</code>, <code>kubelet</code>, <code>kube-proxy</code> i <code>kubectl</code>. Od Kubernetes 1.28, kubelet i kube-proxy u odgovarajućim uslovima mogu biti do tri minor verzije stariji od kube-apiserver-a, ali to pravilo opisuje tehnički dozvoljen skew tokom rada i nadogradnje; ono nije dozvola da se preskoči VKS-ov podržani upgrade put. U HA control plane-u dodatno važi da najnoviji kube-apiserver utiče na dozvoljeni opseg ostalih komponenti.
+</p>
+
+<div class="alert alert-info" role="alert">
+  <strong>Praktično pravilo:</strong> za administrativnu radnu stanicu koristi <code>kubectl</code> koji je najviše jednu minor verziju stariji ili noviji od <code>kube-apiserver</code>-a, ali se za sve cluster komponente oslanjaj na VKS lifecycle kontrolere i njihov podržani redosled. Ne pokušavaj ručno da „ispraviš” skew zamenom binarnih datoteka unutar VKS čvora.
+</div>
+
+<h3>23.7. Content Library i lanac isporuke node image-a</h3>
+
+<p>
+  U vSphere 7 i delu vSphere 8/TKG Service implementacija, Tanzu Kubernetes releases distribuirani su preko subscribed ili local Content Library-ja. Online okruženje zahteva ispravne DNS, NTP, proxy/firewall i TLS uslove da vCenter preuzme metapodatke i sadržaj. Air-gapped okruženje koristi kontrolisani offline prenos u lokalnu biblioteku. Novije VKS generacije menjaju naziv i način prikaza release artefakata, ali osnovni operativni zahtev ostaje: platforma mora imati verifikovan, potpun i kompatibilan VM image pre kreiranja ili zamene čvora.
+</p>
+
+<p>
+  Sinhronizacija metapodataka bez preuzetog kompletnog OVF/OVA sadržaja nije dovoljna. <em>On-demand</em> preuzimanje štedi prostor, ali produžava prvi provisioning i uvodi zavisnost od spoljne dostupnosti baš u trenutku incidenta ili scale-out-a. U produkciji je razumno unapred preuzeti odobrene image-e i proveriti ih pre change window-a. Storage kapacitet biblioteke, mrežna propusnost i vreme prenosa postaju deo readiness provere.
+</p>
+
+<h3>23.8. Online, air-gapped i kontrolisani enterprise model</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Prednost</th>
+      <th>Rizik i kontrola</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Subscribed library / online katalog</td>
+      <td>Jednostavnije otkrivanje novih podržanih izdanja.</td>
+      <td>Kontrolišite egress, sertifikate, proxy i raspored sinhronizacije; novi artefakt ne treba automatski proglasiti produkciono odobrenim.</td>
+    </tr>
+    <tr>
+      <td>Local library / air-gapped</td>
+      <td>Potpuna kontrola unosa artefakata i rada bez interneta.</td>
+      <td>Ručni proces mora obuhvatiti poreklo, checksum/potpis gde je dostupan, kompletan upload, dokumentovanje i blagovremeno osvežavanje.</td>
+    </tr>
+    <tr>
+      <td>Promocija dev → test → prod</td>
+      <td>Release se funkcionalno i operativno verifikuje pre produkcije.</td>
+      <td>Matrice i image identitet moraju ostati sledljivi; „isti minor” nije dokaz da je promovisan isti build.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>23.9. Politika izbora verzije za produkciju</h3>
+
+<p>
+  Dobra politika ne bira automatski ni najnoviju ni najstariju dostupnu verziju. Najnoviji release može sadržati potrebnu bezbednosnu zakrpu, ali i nov poznati problem; najstariji podržani release smanjuje vreme do obavezne sledeće nadogradnje. Uobičajen enterprise izbor je najnoviji dovoljno stabilizovan patch u odobrenom minor izdanju, nakon pregleda release notes, poznatih problema i rezultata internog testiranja.
+</p>
+
+<ol>
+  <li>Popiši tačne verzije vCenter/VCF, Supervisor-a i VKS servisa.</li>
+  <li>Iz zvanične matrice izdvoji samo podržane release-e za taj presek.</li>
+  <li>Eliminiši EOL izdanja i ona koja nemaju dovoljan preostali support runway.</li>
+  <li>Proveri da li postoji kompatibilan i potpuno dostupan node image za odabrani OS.</li>
+  <li>Proveri upgrade put sa postojeće verzije; pretpostavi sekvencijalni minor upgrade dok dokumentacija eksplicitno ne potvrdi drugačije.</li>
+  <li>Testiraj workload API-je, admission politike, CSI/CNI, ingress, monitoring i backup/restore.</li>
+  <li>Dokumentuj odluku, izuzetke, vlasnika, datum preispitivanja i sledeći planirani upgrade prozor.</li>
+</ol>
+
+<h3>23.10. Pre-flight inventar: read-only komande</h3>
+
+<p>
+  Sledeće komande izvršavaju se sa administrativne radne stanice, u ispravnom Supervisor kontekstu i namespace-u. One čitaju stanje i bezbedne su za produkciju, ali rezultat može zavisiti od RBAC privilegija. Najpre sačuvaj dokaz o kontekstu da ne bi analizirao pogrešan klaster.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl config get-contexts
+kubectl cluster-info
+kubectl version</code></pre>
+
+<p>
+  Pošto se nazivi release resursa menjaju, prvo ih otkrij, umesto da pretpostaviš API kind. Filter je read-only i traži resurse čiji naziv sadrži karakteristične termine.
+</p>
+
+<pre><code class="language-bash">kubectl api-resources | grep -Ei 'kubernetesrelease|osimage|tkr|vkr|(^|[[:space:]])kr([[:space:]]|$)'
+
+# Primeri koji se koriste samo ako ih prethodna komanda potvrdi:
+kubectl get tkr
+kubectl get kr
+kubectl get vkr
+kubectl get osimages</code></pre>
+
+<p>
+  <code>kubectl get</code> sa skraćenim nazivom može vratiti grešku „resource type not found”; to ne dokazuje kvar platforme, već često samo razliku API generacije. Upotrebi puno ime iz kolone <code>NAME</code> i proveri resurs pomoću <code>kubectl explain</code> ili <code>kubectl get ... -o yaml</code>. Ne oslanjaj se na kolone podrazumevanog tabelarnog prikaza ako status kompatibilnosti postoji samo u labelama, anotacijama ili <code>status.conditions</code>.
+</p>
+
+<pre><code class="language-bash">kubectl get &lt;release-resource&gt; &lt;release-name&gt; -o yaml
+kubectl describe &lt;release-resource&gt; &lt;release-name&gt;
+kubectl get cluster -n &lt;namespace&gt;
+kubectl get cluster &lt;cluster-name&gt; -n &lt;namespace&gt; -o yaml
+kubectl get machines -n &lt;namespace&gt; -o wide</code></pre>
+
+<div class="alert alert-warning" role="alert">
+  Tekst između znakova <code>&lt;</code> i <code>&gt;</code> je placeholder i mora se zameniti stvarnom vrednošću. Nemoj izvršavati state-changing komande dok <code>current-context</code>, namespace i ime klastera nisu nezavisno potvrđeni.
+</div>
+
+<h3>23.11. Čitanje manifesta bez vezivanja za jednu API generaciju</h3>
+
+<p>
+  ClusterClass zasnovan VKS manifest tipično koristi sledeću semantiku. Tačni <code>apiVersion</code>, <code>kind</code>, class ime, varijable i puna release oznaka moraju se uzeti iz dokumentacije i API-ja konkretnog okruženja. Sledeći isečak je didaktički obrazac, a ne univerzalni manifest spreman za primenu.
+</p>
+
+<pre><code class="language-yaml">apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: app-prod-01
+  namespace: team-app
+spec:
+  topology:
+    class: &lt;cluster-class-name&gt;
+    version: &lt;full-supported-release-string&gt;
+    controlPlane:
+      replicas: 3
+    workers:
+      machineDeployments:
+        - class: node-pool
+          name: workers
+          replicas: 3</code></pre>
+
+<p>
+  Verzija se ne validira samo sintaksno. Webhook i resolver proveravaju da li je release dozvoljen, da li odgovara ClusterClass-u i da li postoji kompatibilan image. OS kriterijumi se, kada ih konkretna VKS verzija podržava, izražavaju kroz dokumentovane varijable ili anotacije. Ne izmišljaj annotation ključ: pogrešan ili preširok filter može dovesti do nula ili više kandidata.
+</p>
+
+<h3>23.12. Aplikaciona kompatibilnost i uklonjeni API-ji</h3>
+
+<p>
+  Platformska matrica potvrđuje da VMware podržava kombinaciju infrastrukturnih komponenti; ona ne potvrđuje da će svaka korisnička aplikacija raditi. Pre promene minor verzije inventariši sve API-je koje koriste manifesti, Helm chart-ovi, operatori, admission webhook-ovi i automatizacija. Posebno proveri deprecated API-je koji se uklanjaju u ciljnom izdanju, kao i promene podrazumevanih feature gates i Pod Security ponašanja.
+</p>
+
+<pre><code class="language-bash">kubectl api-versions
+kubectl get --raw='/version'
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations
+kubectl get crd
+kubectl get storageclass
+kubectl get csidrivers</code></pre>
+
+<p>
+  Ove komande daju inventar, ali ne zamenjuju analizu deklarativnih repozitorijuma i audit podataka. U testnom klasteru primeni reprezentativne manifeste server-side dry-run postupkom kada ga resurs i webhook podržavaju:
+</p>
+
+<pre><code class="language-bash">kubectl apply --server-side --dry-run=server -f &lt;manifest-directory&gt;</code></pre>
+
+<p>
+  Dry-run ne dokazuje runtime ponašanje, storage migraciju niti uspešan restore. Kritične aplikacije moraju proći funkcionalni test, restart/eviction test i backup/restore probu na ciljnoj verziji.
+</p>
+
+<h3>23.13. Bezbednost i supply-chain odgovornost</h3>
+
+<p>
+  Podržani vendor image smanjuje rizik nekontrolisane kombinacije paketa, ali ne ukida obavezu organizacije da prati CVE obaveštenja i pravovremeno prelazi na ispravljeni release. Nikada ne menjaj ručno pakete, kubelet, container runtime ili sistemske konfiguracije unutar managed VKS node-a ako to nije izričito podržano; reconciliation ili zamena Machine-a može poništiti promenu, a podrška postaje nejasna.
+</p>
+
+<ul>
+  <li>Ograniči ko može da menja <code>spec.topology.version</code>, release katalog i Content Library.</li>
+  <li>Čuvaj audit trag: ko je odobrio build, iz koje matrice, kada i sa kojim test dokazima.</li>
+  <li>Za offline unos proveri poreklo, integritet i odobreni transport artefakta.</li>
+  <li>Ne mešaj FIPS i non-FIPS varijante bez provere celog podržanog lanca i zahteva aplikacija.</li>
+  <li>Ne koristi floating ili neprecizne verzijske oznake u GitOps specifikaciji klastera.</li>
+</ul>
+
+<h3>23.14. Uticaj izbora na dostupnost, performanse i oporavak</h3>
+
+<p>
+  Kreiranje klastera zahteva dostupnost image skladišta, dok upgrade zahteva dodatni CPU, memoriju, storage i IP adrese za privremene zamenske VM-ove. Ako kapacitet postoji samo za trenutno stanje, rolling replacement može stati na pola. PodDisruptionBudget, broj replika, anti-affinity i topology spread pravila određuju da li aplikacija ostaje dostupna dok se node pool menja. Sporo preuzimanje image-a produžava vreme oporavka i povećava period mešovitih verzija.
+</p>
+
+<p>
+  Rollback nije vraćanje snapshot-a pojedinačnog Kubernetes čvora. Managed čvorovi su potrošni resursi, a podržan downgrade Kubernetes klastera najčešće nije opšti mehanizam oporavka. Pre minor upgrade-a obezbedi aplikacioni backup, proverenu restore proceduru i, za kritične promene, strategiju paralelnog klastera ili ponovne izgradnje na prethodno odobrenom release-u. Tačna podrška za downgrade ili rollback mora se potvrditi u dokumentaciji konkretnog izdanja.
+</p>
+
+<hr>
+
+<h3>23.15. Praktikum – izbor i dokazivanje podržanog VKS izdanja</h3>
+
+<p>
+  <strong>Cilj:</strong> formirati proverljiv release kandidat za novi laboratorijski VKS klaster, potvrditi njegovu kompatibilnost i image dostupnost, simulirati tipične greške bez ugrožavanja produkcije i pripremiti change zapis. Praktikum ne izvodi stvarni produkcioni upgrade.
+</p>
+
+<p>
+  <strong>Topologija:</strong> jedan zdrav Supervisor; namespace <code>team-lab</code>; administrativna Linux radna stanica sa <code>kubectl</code>; postojeći mali laboratorijski VKS klaster <code>vks-release-lab</code> ili odobren manifest za njegovo kreiranje; vCenter Content Library ili noviji ekvivalent release/image kataloga.
+</p>
+
+<p>
+  <strong>Preduslovi i privilegije:</strong> read pristup vCenter inventaru, VKS/Supervisor release podacima i Content Library statusu; Kubernetes pravo čitanja release, Cluster i Machine resursa u laboratorijskom namespace-u; pravo izmene samo nad laboratorijskim klasterom ako se izvodi opcioni dry-run. Supervisor i svi postojeći čvorovi moraju biti zdravi. Sačuvaj početni manifest u version control-u i zabeleži trenutno vreme, kontekst i vlasnika promene.
+</p>
+
+<p>
+  <strong>Procena rizika:</strong> koraci inventara su read-only. GUI sinhronizacija biblioteke menja stanje i može pokrenuti veliki prenos; izvodi se samo uz proveru kapaciteta i mrežnog prozora. Promena verzije Cluster objekta pokreće lifecycle operaciju i nije deo osnovne vežbe.
+</p>
+
+<h3>Vežba 1 – identitet platforme i početno stanje</h3>
+
+<ol>
+  <li>U vSphere Client-u otvori <strong>Workload Management</strong> i zabeleži tačan Supervisor i VKS service build/status. Naziv menija može se razlikovati između vSphere/VCF izdanja.</li>
+  <li>Potvrdi Kubernetes kontekst i server/client verziju.</li>
+  <li>Izvezi read-only snimak postojećeg Cluster i Machine stanja.</li>
+</ol>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl version
+kubectl get cluster -n team-lab -o wide
+kubectl get machines -n team-lab -o wide
+kubectl get events -n team-lab --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> kontekst pripada očekivanom Supervisor-u; VKS servis i Supervisor su zdravi; postojeći klaster nema neuspešne Machine objekte ili aktivan upgrade. Ako identitet ili health nisu potvrđeni, praktikum se prekida bez promena.
+</p>
+
+<h3>Vežba 2 – otkrivanje stvarnog release API-ja</h3>
+
+<pre><code class="language-bash">kubectl api-resources | grep -Ei 'kubernetesrelease|osimage|tkr|vkr|(^|[[:space:]])kr([[:space:]]|$)'
+kubectl get crd | grep -Ei 'release|osimage'
+kubectl get cluster vks-release-lab -n team-lab -o jsonpath='{.spec.topology.version}{"\n"}'</code></pre>
+
+<p>
+  Na osnovu rezultata odredi puno ime release i OS image resursa. Zatim prikaži njihove detalje; primer ispod zahteva zamenu placeholder-a.
+</p>
+
+<pre><code class="language-bash">kubectl get &lt;release-resource&gt; -o wide
+kubectl get &lt;release-resource&gt; &lt;candidate-release&gt; -o yaml
+kubectl get &lt;osimage-resource&gt; -o wide</code></pre>
+
+<p>
+  <strong>Validacija:</strong> kandidat ima status/condition koji konkretna dokumentacija tumači kao kompatibilan i dostupan; puna oznaka je sačuvana bez skraćivanja; pronađen je odgovarajući OS image. Sačuvaj <code>-o yaml</code> izlaz kao dokaz u change dokumentaciji, vodeći računa da ne objaviš poverljive anotacije ili interne adrese.
+</p>
+
+<h3>Vežba 3 – provera Content Library-ja i release matrice</h3>
+
+<ol>
+  <li>U vSphere Client-u pronađi Content Library povezanu sa Supervisor/VKS okruženjem.</li>
+  <li>Proveri poslednju uspešnu sinhronizaciju, subscription status, dostupnost konkretnog library item-a i da li je sadržaj preuzet u celosti.</li>
+  <li>Proveri datastore slobodan prostor i relevantne vCenter Tasks/Events pre ručne sinhronizacije.</li>
+  <li>U zvaničnoj interoperability matrici i VKS release notes potvrdi presek tačnih buildova i kandidata.</li>
+  <li>U decision zapis unesi: trenutni release, kandidat, node OS, matrica/release-notes revizija, support/EOL datum, upgrade predecessor, poznati problemi i odluka <code>GO</code> ili <code>NO-GO</code>.</li>
+</ol>
+
+<p>
+  <strong>State-changing korak:</strong> ručno pokretanje <em>Synchronize</em> koristi samo ovlašćeni vCenter administrator posle provere prostora, mreže i change prozora. To nije rollback-able operacija u smislu vraćanja prenosa; bezbedna alternativa je prvo otkloniti konektivnost i sinhronizovati samo u laboratorijskoj biblioteci.
+</p>
+
+<h3>Vežba 4 – aplikacioni pre-flight</h3>
+
+<ol>
+  <li>Izvezi listu CRD-ova, webhook konfiguracija, StorageClass i CSI driver resursa.</li>
+  <li>Pretraži Git/Helm izvore za API verzije koje su deprecated ili uklonjene u ciljnom minor izdanju.</li>
+  <li>Na već dostupnom testnom klasteru iste ciljne verzije uradi server-side dry-run reprezentativnih manifesta.</li>
+  <li>Pokreni aplikacione smoke testove i proveru backup/restore postupka.</li>
+</ol>
+
+<pre><code class="language-bash">kubectl get crd -o name
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations -o name
+kubectl get storageclass,csidrivers
+kubectl apply --server-side --dry-run=server -f &lt;manifest-directory&gt;</code></pre>
+
+<p>
+  <strong>Kriterijum uspeha:</strong> nema odbijenih resursa zbog uklonjenog API-ja ili webhook nekompatibilnosti; storage provisioning, mrežna komunikacija, DNS i restore testa rade na ciljnom release-u. Neuspeh bilo kog kritičnog testa menja odluku u <code>NO-GO</code> dok se uzrok ne ukloni.
+</p>
+
+<h3>Vežba 5 – bezbedna simulacija neusaglašene verzije</h3>
+
+<p>
+  Ne menjaj živi Cluster objekat. Napravi kopiju njegovog manifesta bez <code>status</code>, <code>resourceVersion</code>, <code>uid</code> i drugih server-managed polja, promeni ime u izolovanu laboratorijsku vrednost i postavi namerno nepostojeću release oznaku. Zatim koristi server-side dry-run. Ovo je state-validation zahtev, ali ne bi trebalo da trajno kreira objekat.
+</p>
+
+<pre><code class="language-bash">kubectl apply --dry-run=server -f vks-invalid-release-lab.yaml</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> admission/resolver odbija zahtev porukom koja ukazuje na nepostojeći ili nekompatibilan release/image. Ako dry-run neočekivano prođe, ništa ne primenjuj; proveri da li manifest zaista cilja odgovarajući API i da li validacioni webhook radi.
+</p>
+
+<h3>23.16. Troubleshooting matrica</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Neposredni uzrok / dokaz</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Najnoviji očekivani KR/VKr/TKr nije prikazan</td>
+      <td>Biblioteka/katalog nije skoro sinhronizovan; proveri Tasks/Events, DNS, proxy, TLS, firewall i slobodan prostor.</td>
+      <td>Vrati konektivnost i pokreni kontrolisanu sinhronizaciju; zatim ponovo proveri API resurse.</td>
+    </tr>
+    <tr>
+      <td><code>Missing compatible KR/OSImage</code></td>
+      <td>Nema image-a za ciljnu verziju/OS ili su verzija i OS kriterijum promenjeni nekonzistentno.</td>
+      <td>Potvrdi matricu, punu oznaku i image; verziju i dokumentovani OS izbor menjaj atomarno kako zahtevaju release notes.</td>
+    </tr>
+    <tr>
+      <td><code>Multiple OSImages Resolved</code></td>
+      <td>Više image-a zadovoljava preširok OS filter, na primer dve Ubuntu verzije.</td>
+      <td>Primeni tačno dokumentovani OS-version kriterijum ili ukloni duplikat tek nakon impact analize; ne briši image koji koriste drugi klasteri.</td>
+    </tr>
+    <tr>
+      <td>Release postoji, ali je označen kao nekompatibilan</td>
+      <td>VKS service/Supervisor build nije u podržanom preseku.</td>
+      <td>Izaberi kompatibilan release ili prvo sprovedi podržan lifecycle platforme; ne zaobilazi webhook.</td>
+    </tr>
+    <tr>
+      <td>Provisioning stoji tokom kloniranja</td>
+      <td>Image nije kompletno preuzet, datastore nema prostora, nema IP kapaciteta ili vSphere zadatak ne uspeva.</td>
+      <td>Koreliraj Cluster/Machine conditions, Kubernetes Events i vCenter Tasks/Events; popravi zavisnost pa dozvoli reconciliation-u da nastavi.</td>
+    </tr>
+    <tr>
+      <td>Manifest je odbijen posle promene minor verzije</td>
+      <td>Nepodržan upgrade skok ili nekompatibilna ClusterClass/varijabla.</td>
+      <td>Vrati Git manifest na poslednju odobrenu željenu vrednost ako promena nije pokrenula zamenu; zatim planiraj podržane međukorake.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>23.17. Dijagnostički tok: od dokaza ka korekciji</h3>
+
+<ol>
+  <li><strong>Simptom i obim:</strong> utvrdi da li nedostaje release svim namespace-ovima, jednom Supervisor-u ili samo jednom klasteru.</li>
+  <li><strong>Poslednja promena:</strong> proveri VKS service update, Content Library sync, proxy/TLS promenu, novi OS image ili izmenu manifesta.</li>
+  <li><strong>Kubernetes dokaz:</strong> prikupi Cluster/Machine conditions, release/OSImage YAML i događaje za relevantan vremenski prozor.</li>
+  <li><strong>vSphere dokaz:</strong> koreliraj vreme sa vCenter Tasks/Events i statusom Content Library item-a.</li>
+  <li><strong>Hipoteza:</strong> razlikuj „release nije objavljen”, „nije sinhronizovan”, „nije kompatibilan” i „resolver ima nula/više image kandidata”.</li>
+  <li><strong>Korekcija:</strong> prvo popravi najmanju zavisnost—konektivnost, sync ili precizan izbor—bez ručnog menjanja managed VM-a.</li>
+  <li><strong>Validacija:</strong> release je vidljiv i kompatibilan, resolver nalazi jednoznačan image, dry-run prolazi, a Cluster/Machine conditions se oporavljaju.</li>
+  <li><strong>Trajna mera:</strong> ažuriraj matricu odobrenih izdanja, monitoring sinhronizacije i runbook da se kvar ne ponovi.</li>
+</ol>
+
+<p>
+  Privremeno zaobilazno rešenje može biti ostanak na poslednjem podržanom patch release-u dok se novi image ne sinhronizuje. To je prihvatljivo samo ako prethodni release nije EOL i nema neotklonjen kritičan bezbednosni rizik. Trajna mera je ispravan katalog, kompatibilan VKS servis i automatizovana pre-flight kontrola—ne isključivanje admission zaštite.
+</p>
+
+<h3>23.18. Povratak laboratorije u početno stanje</h3>
+
+<p>
+  Ako je korišćen samo server-side dry-run, objekat nije trajno kreiran i rollback nije potreban. Obriši lokalni manifest sa lažnom verzijom ili ga jasno označi kao negativni test da ne uđe u GitOps repozitorijum. Ako je u laboratoriji ipak kreiran poseban testni klaster, pre brisanja potvrdi kontekst, namespace, tačno ime i da ne sadrži podatke; zatim koristi standardnu deklarativnu proceduru uklanjanja iz lekcije o lifecycle-u. Ne briši Content Library item kao „rollback” bez provere zavisnih klastera.
+</p>
+
+<h3>23.19. Administratorske prakse</h3>
+
+<ul>
+  <li>Održavaj internu matricu: platform build → VKS service → odobreni Kubernetes release → OS image → datum EOL → vlasnik.</li>
+  <li>Odvoji statuse <em>dostupno</em>, <em>vendor podržano</em>, <em>interno testirano</em> i <em>produkcijski odobreno</em>.</li>
+  <li>Preuzmi image pre change window-a i periodično testiraj sinhronizaciju; ne otkrivaj kvar tek pri hitnom scale-out-u.</li>
+  <li>Standardizuj mali broj aktivnih minor verzija da smanjiš testnu i bezbednosnu složenost.</li>
+  <li>Planiraj upgrade pre nego što release uđe u završni deo podrške; ne oslanjaj se na poslednji mogući prozor.</li>
+  <li>Koristi canary/test klaster sa reprezentativnim politikama i workload-ima, a ne prazan tehnički klaster.</li>
+  <li>Čuvaj pun vendor release string u manifestu, change zapisu i CMDB-u.</li>
+  <li>Managed node tretiraj kao zamenljiv objekat; konfiguraciju izražavaj podržanim deklarativnim interfejsom.</li>
+</ul>
+
+<h3>23.20. Završna kontrolna tačka</h3>
+
+<p>Nakon ove lekcije administrator može dokazivo da:</p>
+
+<ul>
+  <li>razlikuje upstream Kubernetes verziju, VMware release build, VM node image i aplikacioni container image;</li>
+  <li>prepoznaje istorijski TKr i noviji KR/VKr/OSImage rečnik bez mešanja API generacija;</li>
+  <li>otkrije stvarne release resurse koje objavljuje konkretan Supervisor;</li>
+  <li>čita release i interoperability matricu kao višeslojni ugovor o podršci;</li>
+  <li>potvrdi da je kandidat dostupan, kompatibilan i povezan sa tačno jednim odgovarajućim image-om;</li>
+  <li>proceni upstream/vendor lifecycle, version skew, upgrade put i support runway;</li>
+  <li>proveri aplikacione API-je, webhook-ove, CSI i backup/restore pre minor promene;</li>
+  <li>razdvoji read-only inventar od sinhronizacije i drugih state-changing operacija;</li>
+  <li>dijagnostikuje missing ili multiple OSImage scenario korelacijom Kubernetes i vCenter dokaza;</li>
+  <li>formira GO/NO-GO zapis i bezbedan plan oporavka bez oslanjanja na nepodržani downgrade.</li>
+</ul>
+
+<h3>23.21. Zaključak</h3>
+
+<p>
+  Podržano izdanje VKS klastera nastaje tek u preseku platforme, VKS servisa, release metadata, node image-a i aplikacionih zavisnosti. Broj Kubernetes verzije je samo početak odluke. Odgovoran administrator najpre utvrđuje stvarni API i buildove, zatim potvrđuje zvaničnu matricu, dostupnost i jednoznačnost image-a, proverava aplikacije i operativni kapacitet, pa tek onda menja željeno stanje klastera.
+</p>
+
+<p>
+  Najvažnija zaštita nije jedna komanda već disciplina dokaza: puna release oznaka, kompatibilan image, zdrav Supervisor, uspešan test, dovoljno resursa, validan recovery plan i dokumentovana odluka. Takav pristup priprema osnovu za naredne zadatke—projektovanje node pool-ova, skaliranje i kontrolisane lifecycle promene—bez pretvaranja produkcionog klastera u mesto za proveru pretpostavki.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom TechDocs za vSphere Supervisor i VMware vSphere Kubernetes Service; VKS, Supervisor i TKG Service release notes; VMware/Broadcom interoperability matrice i Knowledge Base članci za KR, VKr, TKr, OSImage i Content Library; Kubernetes release, version-skew, API deprecation i kubectl reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-24-node-pool-topologija-i-skaliranje.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
+

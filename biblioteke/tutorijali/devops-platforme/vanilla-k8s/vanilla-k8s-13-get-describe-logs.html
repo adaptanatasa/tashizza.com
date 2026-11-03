@@ -1,0 +1,471 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-13-get-describe-logs.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>get, describe i logs – osnovna dijagnostika Kubernetes objekata | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako se koriste kubectl get, kubectl describe i kubectl logs komande za pregled resursa, dijagnostiku problema i analizu rada aplikacija u Kubernetes klasteru.">
+
+  <meta name="keywords"
+        content="kubectl get, kubectl describe, kubectl logs, Kubernetes dijagnostika, troubleshooting, Pod logovi, Kubernetes objekti, kubectl, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-13-get-describe-logs.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="get, describe i logs – osnovna dijagnostika Kubernetes objekata">
+
+  <meta property="og:description"
+        content="Savladajte osnovne kubectl komande za pregled Kubernetes resursa, analizu događaja i čitanje logova aplikacija tokom administracije klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-13-get-describe-logs.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-13-get-describe-logs.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="get, describe i logs – osnovna dijagnostika Kubernetes objekata">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-13-get-describe-logs.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-13-get-describe-logs.png"
+           alt="get, describe i logs – osnovna dijagnostika Kubernetes objekata">
+
+    </a>
+
+   <div class="page-subtitle">
+  III. Kubernetes API, kubectl i deklarativno upravljanje
+</div>
+<div class="page-subtitle">
+  13. get, describe, logs, events i explain – dokazi pre promene i osnovna dijagnostika
+</div>
+
+<p>
+Kubernetes administrator početnu dijagnostiku ne započinje promenom objekata, već sistematskim prikupljanjem činjenica. Pre restartovanja Poda, izmene manifesta, povećanja broja replika ili pristupa worker čvoru mora da utvrdi šta API server zna o objektu, koje je željeno i stvarno stanje, koji su događaji zabeleženi, šta proces ispisuje na standardni izlaz i standardni tok grešaka i da li je sporno polje uopšte podržano u API verziji klastera. Komande <code>kubectl get</code>, <code>kubectl describe</code>, <code>kubectl logs</code>, <code>kubectl events</code> i <code>kubectl explain</code> zato čine osnovni read-only dijagnostički komplet.
+</p>
+<p>
+Ove komande ne prikazuju istu informaciju. <code>get</code> čita resurse preko API servera; <code>describe</code> sastavlja čoveku prilagođen izveštaj iz konfiguracije, statusa i povezanih događaja; <code>logs</code> preko API servera i kubeleta preuzima izlaz konkretnog kontejnera; <code>events</code> izdvaja kratkotrajne operativne signale koje objavljuju komponente klastera; a <code>explain</code> čita OpenAPI šemu sa servera i objašnjava podržanu strukturu resursa. Nijedna sama nije potpuna istorija niti zamena za monitoring, audit, distribuirano praćenje i centralizovano logovanje.
+</p>
+
+<h3>Dijagnostički tok: od simptoma ka proverljivoj hipotezi</h3>
+<p>
+Pouzdan tok ide od najmanje invazivnih provera ka promenama: potvrdi identitet okruženja i vreme incidenta; odredi obim; pronađi vlasnički lanac; proveri konfiguraciju, status i uslove; koreliši događaje i logove; proveri zavisnosti; formuliši hipotezu; tek zatim planiraj minimalnu korekciju, rollback i validaciju. Ako je Pod <code>Pending</code>, aplikacioni log često ne postoji jer kontejner nije pokrenut. Ako je <code>Running</code>, ali <code>Ready=False</code>, proveravaju se probe, portovi, zavisnosti i log. Kod <code>CrashLoopBackOff</code> presudni mogu biti poslednje stanje, izlazni kod, termination message i <code>logs --previous</code>.
+</p>
+<pre><code class="language-bash">date -u
+kubectl config current-context
+kubectl config view --minify
+kubectl cluster-info
+kubectl auth can-i get pods -n diag-lab
+kubectl auth can-i get pods/log -n diag-lab
+kubectl auth can-i list events -n diag-lab</code></pre>
+<p>
+Sve su ovo read-only provere. Pristup Podovima i logovima nije isto ovlašćenje: RBAC tretira log kao podresurs <code>pods/log</code>. Log može sadržati tokene, lične podatke i poslovni sadržaj, pa dokaz treba vremenski ograničiti, redigovati pre prilaganja tiketu i čuvati prema pravilima retencije. Ako <code>auth can-i</code> vrati <code>no</code>, rešenje nije zaobilaženje kontrole već odobreno, najmanje potrebno pravo.
+</p>
+
+<h3>kubectl get – obim, inventar i strukturisano stanje</h3>
+<p>
+Podrazumevani tabelarni prikaz daje operativni sažetak, ne kompletan objekat. Kolona <code>STATUS</code> može biti izvedena iz stanja kontejnera i nije nužno jednaka polju <code>.status.phase</code>. YAML ili JSON prikaz obuhvata specifikaciju, serverski dopunjene vrednosti, metapodatke i status, ali može sadržati osetljive reference i obiman <code>managedFields</code> sadržaj.
+</p>
+<pre><code class="language-bash">kubectl get pods -n diag-lab
+kubectl get pods -n diag-lab -o wide
+kubectl get deployments,replicasets,pods,services -n diag-lab
+kubectl get pod inventory-api-EXAMPLE -n diag-lab -o yaml</code></pre>
+<p>
+Za namespaced resurse eksplicitni <code>-n</code> smanjuje mogućnost greške. <code>-A</code> zahteva šira prava i u velikom klasteru može dati previše podataka. Label selektor predstavlja stabilniji izbor od dinamičkog imena Poda; field selektor radi samo nad poljima koja API konkretnog resursa podržava.
+</p>
+<pre><code class="language-bash">kubectl get pods -n diag-lab -l app.kubernetes.io/name=inventory-api
+kubectl get pods -n diag-lab --field-selector=status.phase=Running
+kubectl get pods -n diag-lab --sort-by=.metadata.creationTimestamp
+kubectl get pods -n diag-lab \
+  -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,NODE:.spec.nodeName'</code></pre>
+<p>
+Za automatizaciju se koriste JSON, YAML, JSONPath, Go template ili klijentski API, uz obradu praznih polja i nizova. <code>describe</code> se ne parsira. Opcija <code>-w</code> prikazuje buduće izmene posle početnog rezultata, ali nije istorijski zapis i prekid terminala prekida posmatranje.
+</p>
+<pre><code class="language-bash">kubectl get pods -n diag-lab \
+  -l app.kubernetes.io/name=inventory-api \
+  --watch</code></pre>
+<p>
+Normalno stanje zavisi od tipa workload-a: <code>Completed</code> je očekivan za uspešan Job, ali ne i za dugotrajni servis. <code>Running</code> ne znači automatski <code>Ready</code>, a stabilan trenutni status ne poništava rastući broj restartovanja.
+</p>
+
+<h3>kubectl describe – konfiguracija, status, uslovi i povezani događaji</h3>
+<p>
+<code>kubectl describe</code> prikazuje detaljan, čoveku prilagođen pregled objekta i povezanih resursa. Kod Deploymenta proveravaju se strategija, selektor, Pod template, željene i dostupne replike, conditions i događaji. Kod Poda: vlasnik, čvor, image i image ID, komanda, promenljive, portovi, probe, volumeni, init i aplikacioni kontejneri, waiting/running/terminated stanje, exit code, restart count, conditions, QoS, tolerations i događaji.
+</p>
+<pre><code class="language-bash">kubectl describe deployment inventory-api -n diag-lab
+kubectl describe pod inventory-api-EXAMPLE -n diag-lab
+kubectl describe service inventory-api -n diag-lab</code></pre>
+<p>
+Poruka <code>Readiness probe failed: connection refused</code> dokazuje neuspešan pokušaj kubeleta, ali sama ne razlikuje pogrešan port, spor start, slušanje samo na loopback adresi ili pad procesa. Za uzrok se korelišu manifest, status, događaji i logovi. Izlaz <code>describe</code> nije stabilan ugovor za skripte i može se menjati između verzija klijenta.
+</p>
+
+<h3>kubectl events – vremenski ograničeni signali komponenti klastera</h3>
+<p>
+Event je namespaced API objekat kojim scheduler, kubelet, kontroleri i druge komponente prijavljuju zapažanje: <code>FailedScheduling</code>, <code>FailedMount</code>, <code>FailedCreatePodSandBox</code>, <code>ErrImagePull</code>, <code>BackOff</code> ili neuspelu probe. Event nije aplikacioni log, audit zapis niti pouzdana hronologija: zapisi imaju ograničenu retenciju, ponovljeni događaji se agregiraju, vreme može biti predstavljeno kroz više polja, a nestanak Eventa ne znači da se problem nije dogodio.
+</p>
+<pre><code class="language-bash">kubectl events -n diag-lab
+kubectl events -n diag-lab --types=Warning
+kubectl events -n diag-lab --for pod/inventory-api-EXAMPLE
+kubectl events -n diag-lab --for pod/inventory-api-EXAMPLE --watch</code></pre>
+<p>
+Komanda <code>kubectl events</code> je savremeni, pregledan interfejs i podržava filter <code>--for</code>. U starijim <code>kubectl</code> klijentima može izostati; tada se čita API resurs <code>events</code>. Sortiranje po <code>.metadata.creationTimestamp</code> je prenosivije od oslanjanja isključivo na istorijsko <code>.lastTimestamp</code>, koje nije popunjeno u svakom obliku događaja.
+</p>
+<pre><code class="language-bash">kubectl get events -n diag-lab \
+  --field-selector='involvedObject.kind=Pod,involvedObject.name=inventory-api-EXAMPLE' \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+<p>
+Za incident se beleže razlog, poruka, izvor/reporting controller, broj ponavljanja, prvo i poslednje opažanje i identitet pogođenog objekta. Vremenske oznake se korelišu u istoj vremenskoj zoni sa rollout-om, auditom, metrikama i aplikacionim logovima.
+</p>
+
+<h3>kubectl logs – izlaz procesa u konkretnom kontejneru</h3>
+<p>
+<code>kubectl logs</code> prikazuje ono što proces piše na <code>stdout</code> i <code>stderr</code>; ne čita automatski proizvoljne fajlove u kontejneru. Zahtev prolazi preko API servera do kubeleta na čvoru. Zbog toga neuspeh može biti posledica RBAC zabrane nad <code>pods/log</code>, pogrešnog namespace-a ili kontejnera, nepokrenutog Poda, nedostupnog kubeleta, problema control plane–node, rotacije ili brisanja Poda.
+</p>
+<pre><code class="language-bash">kubectl logs inventory-api-EXAMPLE -n diag-lab -c web --tail=100
+kubectl logs inventory-api-EXAMPLE -n diag-lab -c web --since=10m --timestamps
+kubectl logs inventory-api-EXAMPLE -n diag-lab -c web --previous --tail=200 --timestamps
+kubectl logs inventory-api-EXAMPLE -n diag-lab -c web --follow</code></pre>
+<p>
+<code>--previous</code> čita prethodnu završenu instancu istog kontejnera u istom Podu, ne neograničenu arhivu. Posle brisanja Poda ili rotacije lokalnih zapisa dokaz može nestati. Za više replika rezultat mora imati identitet izvora i kontrolisanu paralelnost.
+</p>
+<pre><code class="language-bash">kubectl logs -n diag-lab \
+  -l app.kubernetes.io/name=inventory-api \
+  -c web \
+  --all-pods=true \
+  --prefix \
+  --tail=50 \
+  --max-log-requests=5</code></pre>
+<p>
+Opcija <code>--insecure-skip-tls-verify-backend</code> slabi proveru identiteta kubelet backend-a i nije rutinski workaround; problem sertifikata ili komunikacionog puta treba ispraviti i eskalirati. Za produkcijski dokaz uvek se navode klaster, namespace, Pod, kontejner, aktivna ili prethodna instanca, UTC opseg i primenjeni filteri.
+</p>
+
+<h3>kubectl explain – provera API šeme pre pisanja ili ispravke manifesta</h3>
+<p>
+<code>kubectl explain</code> dobija opis polja i strukturu podržanog resursa iz serverske OpenAPI šeme. Njime se pre promene proveravaju tačna putanja, tip, značenje i API verzija polja. To je pouzdanije od kopiranja manifesta iz tutorijala za drugu verziju klastera, ali ne prikazuje nužno sve admission politike, CRD validaciona pravila ili organizacione zahteve konkretnog okruženja.
+</p>
+<pre><code class="language-bash">kubectl explain pod
+kubectl explain pod.spec.containers
+kubectl explain pod.spec.containers.readinessProbe.httpGet.port
+kubectl explain deployment.spec.strategy --api-version=apps/v1
+kubectl explain deployment --api-version=apps/v1 --recursive</code></pre>
+<p>
+Putanja koristi nazive polja iz šeme, bez indeksa niza. Za CRD resurse kvalitet rezultata zavisi od objavljene strukturne OpenAPI šeme. Ako klijent i server nisu kompatibilni ili API discovery/OpenAPI nije dostupan, rezultat može izostati; tada se proveravaju <code>kubectl version</code>, <code>kubectl api-resources</code>, CRD šema i zvanična dokumentacija za verziju klastera. <code>explain</code> je read-only i pripada pre-change validaciji, ali ne potvrđuje da će manifest proći admission niti da je konfiguracija operativno ispravna.
+</p>
+
+<h3>Kako razlikovati simptom, dokaz i sledeću proveru</h3>
+<table>
+  <thead><tr><th>Posmatranje</th><th>Moguće značenje</th><th>Najbolji sledeći dokaz</th></tr></thead>
+  <tbody>
+    <tr><td>Pod je <code>Pending</code>, bez čvora</td><td>Nema odgovarajućih resursa, affinity/taint ograničenje ili vezivanje volumena</td><td><code>describe pod</code> i Event razlog <code>FailedScheduling</code></td></tr>
+    <tr><td><code>Running</code>, ali <code>READY 0/1</code></td><td>Proces postoji, ali readiness ne prolazi</td><td>Probe u specifikaciji, conditions, Events i vremenski ograničen log</td></tr>
+    <tr><td><code>CrashLoopBackOff</code></td><td>Proces se završava, kubelet povećava razmak ponovnih startova</td><td>Last State, exit code, termination reason i <code>logs --previous</code></td></tr>
+    <tr><td><code>ImagePullBackOff</code></td><td>Image referenca, registry mreža/TLS ili imagePullSecret</td><td>Warning Events i bezbedna provera image reference i autorizacije</td></tr>
+    <tr><td>Deployment nema sve dostupne replike</td><td>Novi ReplicaSet nije spreman ili kreiranje Poda blokira kvota/admission</td><td><code>describe deployment</code>, zatim ReplicaSet, Podovi i Events</td></tr>
+    <tr><td>Service postoji, nema spreman backend</td><td>Selektor ne odgovara ili EndpointSlice endpoint nije ready</td><td>Service selektor, Pod label-e i EndpointSlice conditions</td></tr>
+    <tr><td>Manifest polje je odbijeno ili ignorisano</td><td>Pogrešna putanja, tip ili API verzija</td><td><code>kubectl explain</code>, OpenAPI/CRD šema i server-side dry-run</td></tr>
+  </tbody>
+</table>
+
+<h3>Integrisani praktikum – dijagnostika nespremnog internog API servisa</h3>
+<p><strong>Kontekst i cilj.</strong> Deployment <code>inventory-api</code> ima jednu NGINX repliku. Proces radi na portu 80, ali readiness probe namerno proverava 8080. Administrator treba da dokaže uzrok bez nasumičnog restartovanja, proveri šemu polja, primeni minimalnu korekciju, potvrdi EndpointSlice i HTTP funkciju i sačuva trag.</p>
+<p><strong>Preduslovi i rizik.</strong> Potrebni su laboratorijski klaster, funkcionalni DNS/CNI, kompatibilan <code>kubectl</code>, pravo kreiranja namespace-a i navedenih resursa i pristup registriju za <code>nginx:1.27-alpine</code> i <code>curlimages/curl:8.10.1</code>. Namespace se na kraju briše; korake ne izvršavati u deljenom ili produkcionom namespace-u. U produkciji promena ide kroz odobren GitOps/CI/CD/change tok.</p>
+<ol>
+  <li>
+    <strong>Potvrdi cilj i prava.</strong>
+    <pre><code class="language-bash">date -u
+kubectl config current-context
+kubectl cluster-info
+kubectl auth can-i create namespaces
+kubectl auth can-i create deployments.apps -n diag-lab
+kubectl auth can-i create services -n diag-lab</code></pre>
+    <p><strong>Validacija:</strong> kontekst mora biti laboratorijski, API dostupan, a potrebna prava moraju vratiti <code>yes</code>.</p>
+  </li>
+  <li>
+    <strong>Proveri šemu i kreiraj namerno neispravno stanje.</strong>
+    <pre><code class="language-bash">kubectl explain deployment.spec.template.spec.containers.readinessProbe.httpGet.port \
+  --api-version=apps/v1</code></pre>
+    <pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+  namespace: diag-lab
+  labels:
+    app.kubernetes.io/name: inventory-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inventory-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inventory-api
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: diag-lab
+spec:
+  selector:
+    app.kubernetes.io/name: inventory-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http</code></pre>
+    <p>Sačuvaj YAML kao <code>/tmp/inventory-api-lab.yaml</code>, zatim izvrši:</p>
+    <pre><code class="language-bash">kubectl create namespace diag-lab
+kubectl apply --server-side --dry-run=server -f /tmp/inventory-api-lab.yaml
+kubectl apply -f /tmp/inventory-api-lab.yaml
+kubectl get deployment,service -n diag-lab
+kubectl get deployment inventory-api -n diag-lab -o yaml \
+  &gt; /tmp/inventory-api-deployment-before.yaml</code></pre>
+    <p><strong>Očekivanje:</strong> dry-run potvrđuje da je manifest sintaksno i šematski prihvatljiv; to ne potvrđuje da je port operativno ispravan.</p>
+  </li>
+  <li>
+    <strong>Odredi obim i tačan Pod.</strong>
+    <pre><code class="language-bash">kubectl get deployments,replicasets,pods,services -n diag-lab
+kubectl get pods -n diag-lab -l app.kubernetes.io/name=inventory-api -o wide
+
+POD_NAME="$(kubectl get pods -n diag-lab \
+  -l app.kubernetes.io/name=inventory-api \
+  --sort-by=.metadata.creationTimestamp \
+  -o jsonpath='{.items[-1].metadata.name}')"
+printf 'Pod za dijagnostiku: %s\n' "$POD_NAME"
+
+kubectl get pod "$POD_NAME" -n diag-lab \
+  -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,NODE:.spec.nodeName'</code></pre>
+    <p><strong>Očekivanje:</strong> Pod je <code>Running</code>, readiness je <code>false</code>, restart count tipično 0, a Deployment nema dostupnu repliku. Ako ima više Podova, svaki se procenjuje; ne bira se nasumično.</p>
+  </li>
+  <li>
+    <strong>Koreliši opis, događaje i log.</strong>
+    <pre><code class="language-bash">kubectl describe pod "$POD_NAME" -n diag-lab
+kubectl events -n diag-lab --for "pod/$POD_NAME" --types=Warning
+kubectl logs "$POD_NAME" -n diag-lab -c web --tail=100 --timestamps</code></pre>
+    <p><strong>Dokaz:</strong> specifikacija pokazuje container port 80 i probe port 8080; Event prijavljuje <code>Readiness probe failed</code>/<code>connection refused</code>; log pokazuje da se NGINX pokrenuo. Nepostojanje aplikacione greške ne znači da je Pod spreman.</p>
+  </li>
+  <li>
+    <strong>Proveri Service backend i negativni CLI slučaj.</strong>
+    <pre><code class="language-bash">kubectl logs "$POD_NAME" -n diag-lab -c api --tail=20
+kubectl get pod "$POD_NAME" -n diag-lab \
+  -o jsonpath='{.spec.containers[*].name}{"\n"}'
+kubectl get endpointslices -n diag-lab \
+  -l kubernetes.io/service-name=inventory-api -o yaml</code></pre>
+    <p>Greška za kontejner <code>api</code> je greška zahteva, ne kvar Poda. EndpointSlice može sadržati endpoint sa <code>ready: false</code>; ClusterIP sam po sebi ne dokazuje funkciju servisa.</p>
+  </li>
+  <li>
+    <strong>Pripremi minimalnu korekciju i pregledaj razliku.</strong>
+    <pre><code class="language-bash">cp /tmp/inventory-api-lab.yaml /tmp/inventory-api-lab-fixed.yaml
+sed -i 's/port: 8080/port: 80/' /tmp/inventory-api-lab-fixed.yaml
+kubectl apply --server-side --dry-run=server \
+  -f /tmp/inventory-api-lab-fixed.yaml
+kubectl diff -f /tmp/inventory-api-lab-fixed.yaml</code></pre>
+    <p><strong>Validacija:</strong> diff treba da pokaže samo port 8080 → 80. Status 1 komande <code>kubectl diff</code> znači da razlika postoji; status veći od 1 ukazuje na grešku. U produkciji se menja izvor u repozitorijumu, ne privremena kopija.</p>
+  </li>
+  <li>
+    <strong>Primeni, prati i funkcionalno potvrdi.</strong>
+    <pre><code class="language-bash">kubectl apply -f /tmp/inventory-api-lab-fixed.yaml
+kubectl rollout status deployment/inventory-api -n diag-lab --timeout=120s
+
+POD_NAME="$(kubectl get pods -n diag-lab \
+  -l app.kubernetes.io/name=inventory-api \
+  --sort-by=.metadata.creationTimestamp \
+  -o jsonpath='{.items[-1].metadata.name}')"
+
+kubectl get deployment,replicaset,pod -n diag-lab
+kubectl get endpointslices -n diag-lab \
+  -l kubernetes.io/service-name=inventory-api -o yaml
+
+kubectl run inventory-client -n diag-lab \
+  --image=curlimages/curl:8.10.1 \
+  --restart=Never \
+  --command -- sh -c \
+  'curl --fail --silent --show-error --max-time 10 http://inventory-api/ | grep -q "Welcome to nginx"'
+
+kubectl wait pod/inventory-client -n diag-lab \
+  --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s
+kubectl logs "$POD_NAME" -n diag-lab -c web --since=5m --timestamps</code></pre>
+    <p><strong>Kriterijum uspeha:</strong> Deployment ima jednu dostupnu repliku; novi Pod je <code>Ready</code> bez restartovanja; EndpointSlice je ready; klijent završava u fazi <code>Succeeded</code>; serverski log sadrži uspešan <code>GET /</code> u odgovarajućem vremenu.</p>
+  </li>
+  <li>
+    <strong>Rollback odluka i cleanup.</strong>
+    <pre><code class="language-bash">kubectl rollout history deployment/inventory-api -n diag-lab
+# Izvršiti samo ako odobren rollback kriterijum bude ispunjen:
+# kubectl rollout undo deployment/inventory-api -n diag-lab --to-revision=1
+
+kubectl delete namespace diag-lab
+rm -f /tmp/inventory-api-lab.yaml \
+      /tmp/inventory-api-lab-fixed.yaml \
+      /tmp/inventory-api-deployment-before.yaml
+kubectl get namespace diag-lab</code></pre>
+    <p><strong>Upozorenje:</strong> rollback na reviziju 1 u ovoj vežbi vraća namernu grešku. Brisanje namespace-a uklanja sve njegove objekte. Završni <code>NotFound</code> je očekivana potvrda cleanup-a.</p>
+  </li>
+</ol>
+
+<h3>Troubleshooting grane i tipične greške</h3>
+<ul>
+  <li><strong>Objekat „ne postoji”.</strong> Proveriti kontekst, namespace, vrstu i ime pre zaključka o brisanju.</li>
+  <li><strong>Pod je Pending.</strong> Ne tražiti aplikacioni log koji još ne postoji; prvo analizirati scheduler i volume Events.</li>
+  <li><strong>Log je prazan.</strong> Proveriti tačan kontejner, aktivnu/prethodnu instancu, da li proces piše na stdout/stderr i da li je Pod zamenjen.</li>
+  <li><strong>Events su prazni.</strong> To nije dokaz odsustva kvara; proveriti retenciju, vreme, namespace, pogođeni objekat, centralni monitoring i audit.</li>
+  <li><strong><code>explain</code> ne nalazi polje.</strong> Proveriti API verziju, plural resursa, client/server kompatibilnost i CRD šemu; ne forsirati nepoznato polje.</li>
+  <li><strong>Restart pre dokaza.</strong> Brisanje Poda može ukloniti prethodni log i promeniti identitet; prvo sačuvati status, Events, log i UTC vreme.</li>
+  <li><strong>Parsiranje <code>describe</code>.</strong> Za automatizaciju koristiti strukturisani izlaz ili API.</li>
+  <li><strong>Preširoko prikupljanje.</strong> Ograničiti namespace, selektor, vreme, broj redova i paralelnost; redigovati tajne i lične podatke.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Standardni incident snapshot.</strong> Pre promene sačuvati identitet klastera, UTC vreme, <code>get -o wide</code>, strukturisani status, relevantni <code>describe</code>, Events i vremenski ograničene aktivne/prethodne logove.</li>
+  <li><strong>Dokaz ispred hipoteze.</strong> Razdvojiti simptom, obim i posledicu od neposrednog i osnovnog uzroka; zapisati šta bi hipotezu potvrdilo ili opovrglo.</li>
+  <li><strong>Najmanja prava.</strong> Posebno kontrolisati <code>pods/log</code>, Events i impersonation; periodično pregledati bindinge i audit pristupa.</li>
+  <li><strong>Verzijska provera.</strong> Pre korišćenja polja ili zastavice proveriti <code>kubectl version</code>, serversku OpenAPI šemu i generisanu CLI referencu za odgovarajuću verziju.</li>
+  <li><strong>Centralizovana observability platforma.</strong> Pod log i Event su prolazni; produkcija zahteva retenciju, vremensku sinhronizaciju, oznake klastera/namespace-a/Poda/kontejnera i kontrolisanu pretragu.</li>
+  <li><strong>Validacija zatvorene petlje.</strong> Posle korekcije potvrditi API stanje, readiness, rollout, EndpointSlice, funkcionalni zahtev, relevantni log i odsustvo novih Warning događaja.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Učenik razlikuje tabelarni status, API polja, conditions, Events i aplikacione logove.</li>
+  <li>Može da odredi klaster, namespace, pogođeni objekat, vlasnički lanac, Pod, kontejner i vremenski opseg.</li>
+  <li>Koristi <code>get</code> za obim i strukturisane dokaze, a <code>describe</code> za ljudsku analizu bez parsiranja njegovog izlaza.</li>
+  <li>Koristi <code>events --for</code> ili kompatibilni <code>get events</code> i razume ograničenu retenciju i agregaciju.</li>
+  <li>Čita aktivni i prethodni log sa ograničenim obimom i štiti osetljive podatke.</li>
+  <li>Proverava polje i API verziju pomoću <code>explain</code>, a manifest dodatno server-side dry-run postupkom.</li>
+  <li>Pre promene formuliše hipotezu, čuva dokaz, pregleda diff i definiše rollback kriterijum.</li>
+  <li>Oporavak potvrđuje rollout-om, spremnim endpoint-om, funkcionalnim testom, logom i događajima.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+Osnovna Kubernetes dijagnostika je disciplina povezivanja različitih dokaza. <code>get</code> određuje obim i daje strukturisano stanje, <code>describe</code> povezuje konfiguraciju i status, <code>events</code> pokazuje šta su komponente klastera opazile, <code>logs</code> otkriva ponašanje procesa, a <code>explain</code> proverava ugovor API šeme pre promene. Administrator mora razlikovati <code>Running</code> od <code>Ready</code>, trenutnu od prethodne instance kontejnera i prolazni signal od trajnog evidencionog sistema.
+</p>
+<p>
+Bezbedna promena počinje potvrdom konteksta, ovlašćenja, vremena i činjenica, a završava se minimalnom korekcijom, funkcionalnom validacijom, proverom oporavka i dokumentovanjem uzroka. Brisanje Poda, isključivanje TLS provere, proširivanje RBAC prava ili nekontrolisano preuzimanje logova nisu neutralne dijagnostičke radnje.
+</p>
+<p>
+Ove komande ne zamenjuju monitoring, audit, tracing, centralizovano logovanje, backup ni dijagnostiku čvora. Kada dokaz ukaže na kubelet, runtime, CNI, CSI, sertifikate, control plane ili poslovnu logiku aplikacije, odgovoran postupak je uredna eskalacija sa očuvanim dokazima, a ne nasumično menjanje stanja.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija i generisane kubectl CLI reference za get, describe, logs, events, explain, auth can-i, diff i rollout; Kubernetes API i OpenAPI reference; zvanični vodiči za dijagnostiku Podova, kontejnera i servisa, Events, probe, logging arhitekturu, RBAC, audit, Deployment i EndpointSlice resurse.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>   
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-12-kubeconfig.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-14-yaml-i-deklarativne-promene.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,2089 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-22-port-group.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Port Group – povezivanje virtuelnih mašina na odgovarajuće mreže | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMware Port Group i naučite kako se virtuelne mašine povezuju na odgovarajuće mreže, VLAN-ove i mrežne servise ESXi hosta.">
+
+  <meta name="keywords"
+        content="VMware Port Group, port group, VMware mreže, virtuelna mreža, virtuelna mašina, VM mreža, VLAN, Virtual Switch, vSwitch, ESXi mreža, VMkernel, mrežni adapter, VMware networking, ESXi, vCenter, vSphere, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-22-port-group.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Port Group – povezivanje virtuelnih mašina na odgovarajuće mreže">
+
+  <meta property="og:description"
+        content="Upoznajte ulogu VMware Port Group objekata u povezivanju virtuelnih mašina sa odgovarajućim mrežama, VLAN-ovima i mrežnim servisima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-22-port-group.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-22-port-group.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Port Group – povezivanje virtuelnih mašina na odgovarajuće mreže">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+  Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-22-port-group.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-22-port-group.png"
+           alt="Port Group – povezivanje virtuelnih mašina na odgovarajuće mreže">
+
+    </a>
+
+   <div class="page-subtitle">
+V. Virtuelne mreže i dijagnostika povezivosti
+</div>
+
+<div class="page-subtitle">
+  22. Port Group – politike i povezivanje VM-ova sa odgovarajućim mrežama
+</div>
+
+<p>
+Port Group predstavlja logičku grupu portova na VMware virtuelnom switchu preko koje se virtuelne mašine i VMkernel adapteri povezuju sa odgovarajućom mrežom. Virtuelna mašina se u praksi ne povezuje samo sa nazivom vSwitch-a, već bira konkretnu port grupu koja određuje kojoj mreži pripada i koja mrežna pravila se na njen saobraćaj primenjuju.
+</p>
+
+<p>
+Port grupa omogućava da jedan virtuelni switch prenosi više različitih vrsta saobraćaja. Na istom vSwitch-u mogu, na primer, postojati odvojene port grupe za produkcione servere, testne sisteme, management, vMotion ili storage mrežu. Svaka port grupa može imati sopstveni naziv, VLAN identifikator, bezbednosnu politiku, NIC teaming i traffic shaping podešavanja.
+</p>
+
+<p>
+Zbog toga port grupa nije samo naziv mreže prikazan prilikom uređivanja virtuelne mašine. Ona predstavlja administrativnu granicu između različitih mrežnih segmenata i jedan je od najvažnijih elemenata pravilnog projektovanja VMware mreža.
+</p>
+
+<h3>Mesto port grupe u VMware mrežnoj arhitekturi</h3>
+
+<p>
+Osnovni put mrežnog saobraćaja virtuelne mašine izgleda ovako:
+</p>
+
+<pre><code class="language-none">Virtuelna mašina
+    |
+Virtuelni mrežni adapter – vNIC
+    |
+Port Group
+    |
+Virtual Switch
+    |
+Fizički uplink – vmnic
+    |
+Fizički mrežni switch
+    |
+Ostatak mreže
+</code></pre>
+
+<p>
+Port grupa se nalazi između virtuelnog mrežnog adaptera i virtuelnog switcha. Ona obezbeđuje skup pravila koja važe za sve virtuelne adaptere povezane na tu grupu.
+</p>
+
+<p>
+Na primer:
+</p>
+
+<pre><code class="language-none">VM-Web01
+    |
+Network adapter 1
+    |
+PG-PROD-WEB
+    |
+vSwitch-Production
+    |
+vmnic2 i vmnic3
+    |
+Fizička produkciona mreža
+</code></pre>
+
+<p>
+U ovom primeru naziv <code>PG-PROD-WEB</code> administratoru jasno pokazuje da virtuelna mašina pripada produkcionoj mreži namenjenoj web serverima.
+</p>
+
+<h3>Zašto su port grupe potrebne?</h3>
+
+<p>
+Bez port grupa sve virtuelne mašine na jednom vSwitch-u morale bi da koriste ista mrežna podešavanja. Port grupe omogućavaju razdvajanje i organizovanje saobraćaja prema njegovoj nameni.
+</p>
+
+<p>
+Tipične port grupe mogu biti:
+</p>
+
+<ul>
+  <li><code>PG-PROD-WEB</code> – produkcioni web serveri</li>
+  <li><code>PG-PROD-DB</code> – produkcioni serverski segment za baze podataka</li>
+  <li><code>PG-DEV</code> – razvojno okruženje</li>
+  <li><code>PG-TEST</code> – testni sistemi</li>
+  <li><code>PG-DMZ</code> – sistemi u demilitarizovanoj zoni</li>
+  <li><code>Management Network</code> – upravljanje ESXi hostom</li>
+  <li><code>vMotion</code> – migracija aktivnih virtuelnih mašina</li>
+  <li><code>iSCSI-01</code> i <code>iSCSI-02</code> – storage saobraćaj</li>
+  <li><code>vSAN</code> – komunikacija vSAN klastera</li>
+</ul>
+
+<p>
+Naziv port grupe ne stvara VLAN niti automatski obezbeđuje mrežnu izolaciju. Naziv služi administratoru i vSphere objektima, dok se stvarno razdvajanje saobraćaja postiže odgovarajućom VLAN, fizičkom i routing konfiguracijom.
+</p>
+
+<h3>Standard Port Group i Distributed Port Group</h3>
+
+<p>
+U VMware okruženju postoje dve osnovne vrste port grupa:
+</p>
+
+<ul>
+  <li><strong>Standard Port Group</strong> – pripada vSphere Standard Switch-u na jednom ESXi hostu</li>
+  <li><strong>Distributed Port Group</strong> – pripada vSphere Distributed Switch-u i centralno se upravlja kroz vCenter Server</li>
+</ul>
+
+<p>
+Standardna port grupa postoji lokalno na svakom hostu. Ako klaster ima četiri ESXi hosta, port grupa potrebna za vMotion ili za virtuelne mašine mora biti pravilno kreirana na svakom hostu na kojem će se ta mreža koristiti.
+</p>
+
+<p>
+Distributed port grupa centralno se definiše na Distributed Switch-u i njena konfiguracija distribuira se povezanim hostovima. Ona omogućava doslednije upravljanje većim okruženjima i podržava dodatne funkcionalnosti.
+</p>
+
+<p>
+U ovoj lekciji fokus je na standardnim port grupama, jer se na njima najjasnije vidi odnos između hosta, virtuelnog switcha, port grupe, VLAN-a i fizičkog uplinka.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Standard Port Group</th>
+      <th>Distributed Port Group</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Opseg konfiguracije</td>
+      <td>Lokalni ESXi host; mora se uskladiti na svakom hostu.</td>
+      <td>vCenter objekat na vSphere Distributed Switch-u; politika se distribuira pridruženim hostovima.</td>
+    </tr>
+    <tr>
+      <td>Upravljanje</td>
+      <td>Host Client, vSphere Client, ESXCLI ili PowerCLI.</td>
+      <td>vSphere Client, VCF PowerCLI ili vSphere API; ESXCLI na hostu služi pre svega za pregled i recovery, ne za redovno upravljanje dvPortGroup objektima.</td>
+    </tr>
+    <tr>
+      <td>Politike i vidljivost</td>
+      <td>VLAN, outbound shaping, security i NIC teaming/failover.</td>
+      <td>Pored zajedničkih politika podržava centralizovanu port-level vidljivost i, zavisno od verzije i licence, mogućnosti kao što su Network I/O Control, health check, port mirroring, NetFlow i traffic filtering and marking.</td>
+    </tr>
+    <tr>
+      <td>Port binding</td>
+      <td>Nije primenljivo kao dvPortGroup izbor.</td>
+      <td>Static binding je uobičajen i preporučen; ephemeral se čuva za opravdane recovery scenarije. Dynamic binding je zastareo.</td>
+    </tr>
+    <tr>
+      <td>Preduslov</td>
+      <td>Ne zahteva vCenter za lokalno postojanje i rad.</td>
+      <td>Zahteva vCenter za centralno upravljanje i odgovarajuće licencno pravo; tačan entitlement mora se proveriti za ugovorenu vSphere/VCF ponudu.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+Distributed port grupa nije „bolja” samo zato što je centralizovana. Ona je opravdana kada doslednost velikog broja hostova, napredna telemetrija i kontrola politika nadmašuju dodatnu zavisnost od vCenter-a i potrebu za pažljivo projektovanim recovery pristupom. Za malu laboratoriju ili samostalan host standardna port grupa je jednostavniji i potpuno valjan izbor.
+</p>
+
+<p>
+Na distribuiranoj port grupi VLAN se savremeno automatizuje cmdletima kao što su <code>Get-VDPortgroup</code> i <code>Set-VDVlanConfiguration</code>. Stariji <code>-VlanId</code> i <code>-VlanTrunkRange</code> parametri cmdleta <code>Set-VDPortgroup</code> označeni su kao zastareli u aktuelnoj VCF PowerCLI referenci. Ova lekcija zato ne prikazuje zastareli obrazac kao preporučenu proceduru.
+</p>
+
+
+<h3>Port grupa za virtuelne mašine</h3>
+
+<p>
+Virtuelna mašina povezuje svoj vNIC sa port grupom namenjenom VM saobraćaju. Operativni sistem gosta zatim koristi taj adapter kao običnu mrežnu karticu.
+</p>
+
+<p>
+Port grupa određuje:
+</p>
+
+<ul>
+  <li>na koji je vSwitch VM povezana</li>
+  <li>koji VLAN koristi njen saobraćaj</li>
+  <li>preko kojih uplinkova saobraćaj može da izlazi</li>
+  <li>koja bezbednosna pravila važe</li>
+  <li>da li se primenjuje traffic shaping</li>
+</ul>
+
+<p>
+IP adresa virtuelne mašine najčešće se ne podešava na port grupi. Ona se konfiguriše unutar operativnog sistema gosta, ručno ili preko DHCP servisa.
+</p>
+
+<p>
+Port grupa obezbeđuje Layer 2 povezanost, dok se Layer 3 konfiguracija, kao što su IP adresa, maska, gateway i DNS, obično podešava u gostujućem operativnom sistemu.
+</p>
+
+<h3>Port grupa za VMkernel adapter</h3>
+
+<p>
+ESXi host koristi VMkernel adaptere za sopstveni mrežni saobraćaj. VMkernel adapter se takođe povezuje sa odgovarajućom port grupom.
+</p>
+
+<p>
+VMkernel port grupe mogu se koristiti za:
+</p>
+
+<ul>
+  <li>management saobraćaj</li>
+  <li>vMotion</li>
+  <li>Provisioning</li>
+  <li>Fault Tolerance logging</li>
+  <li>vSAN</li>
+  <li>iSCSI ili NFS storage</li>
+  <li>vSphere Replication</li>
+  <li>backup i druge infrastrukturne servise</li>
+</ul>
+
+<p>
+VMkernel adapter dobija sopstvenu IP adresu. Njegova port grupa određuje Layer 2 mrežu, VLAN i pravila pristupa fizičkim uplinkovima.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">vmk1 – 10.100.20.11/24
+    |
+PG-vMotion
+    |
+vSwitch-Services
+    |
+vmnic2 i vmnic3
+    |
+VLAN 120
+</code></pre>
+
+<p>
+VMkernel adapteri i njihove servisne funkcije detaljno se obrađuju u posebnoj lekciji.
+</p>
+
+<h3>Network Label – naziv port grupe</h3>
+
+<p>
+Svaka port grupa ima mrežnu oznaku, odnosno naziv koji se prikazuje u vSphere Client-u i koristi pri povezivanju virtuelnih mrežnih adaptera.
+</p>
+
+<p>
+Nazivi treba da budu:
+</p>
+
+<ul>
+  <li>jasni</li>
+  <li>dosledni</li>
+  <li>jedinstveni na odgovarajućem hostu</li>
+  <li>usklađeni između hostova klastera</li>
+  <li>dovoljno opisni da pokažu namenu mreže</li>
+</ul>
+
+<p>
+Loši nazivi:
+</p>
+
+<pre><code class="language-none">Network1
+Network2
+Test
+Nova mreza
+VM Network 2
+</code></pre>
+
+<p>
+Bolji nazivi:
+</p>
+
+<pre><code class="language-none">PG-PROD-WEB-VLAN110
+PG-PROD-DB-VLAN120
+PG-DEV-VLAN210
+PG-DMZ-VLAN310
+PG-vMotion-VLAN410
+</code></pre>
+
+<p>
+Nije obavezno da VLAN ID bude deo naziva, ali to može olakšati administraciju. Organizacija treba da odabere jednu konvenciju i primenjuje je dosledno.
+</p>
+
+<h3>Zašto isti naziv mora postojati na svim hostovima?</h3>
+
+<p>
+Kod standardnih switcheva port grupe su lokalne za ESXi host. Ako virtuelna mašina treba da se migrira pomoću vMotion-a, odgovarajuća mreža mora postojati i na ciljnom hostu.
+</p>
+
+<p>
+Pretpostavimo da VM koristi port grupu:
+</p>
+
+<pre><code class="language-none">PG-PROD-WEB
+</code></pre>
+
+<p>
+Na ciljnom hostu treba proveriti:
+</p>
+
+<ul>
+  <li>da li port grupa postoji</li>
+  <li>da li je njen naziv identičan</li>
+  <li>da li koristi isti VLAN ID</li>
+  <li>da li je povezana sa odgovarajućim fizičkim uplinkovima</li>
+  <li>da li fizički switch portovi prenose isti VLAN</li>
+  <li>da li su teaming i security pravila usklađeni</li>
+</ul>
+
+<p>
+Samo postojanje port grupe istog naziva nije dovoljno ako ona na drugom hostu koristi drugačiji VLAN ili pogrešan fizički uplink.
+</p>
+
+<h3>Pregled standardnih port grupa pomoću ESXCLI-ja</h3>
+
+<p>
+Prikaz svih standardnih port grupa na ESXi hostu:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Primer izlaza:
+</p>
+
+<pre><code class="language-none">Name                Virtual Switch       Active Clients  VLAN ID
+------------------  -------------------  --------------  -------
+Management Network  vSwitch0                          1        0
+VM Network          vSwitch0                          3        0
+PG-PROD-WEB         vSwitch-Production                6      110
+PG-PROD-DB          vSwitch-Production                4      120
+PG-vMotion          vSwitch-Services                  1      410
+</code></pre>
+
+<p>
+Kolone prikazuju:
+</p>
+
+<ul>
+  <li><strong>Name</strong> – naziv port grupe</li>
+  <li><strong>Virtual Switch</strong> – standardni switch kojem port grupa pripada</li>
+  <li><strong>Active Clients</strong> – broj aktivno povezanih klijenata</li>
+  <li><strong>VLAN ID</strong> – VLAN konfiguraciju port grupe</li>
+</ul>
+
+<p>
+Aktivni klijent može biti virtuelni mrežni adapter ili VMkernel adapter povezan sa port grupom.
+</p>
+
+<h3>Pregled celokupne standardne mrežne konfiguracije</h3>
+
+<p>
+Koristan početni pregled:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network vswitch standard portgroup list
+esxcli network nic list
+esxcli network ip interface list
+</code></pre>
+
+<p>
+Dodatni sažeti prikaz:
+</p>
+
+<pre><code class="language-bash">esxcfg-vswitch -l
+</code></pre>
+
+<p>
+Ovaj izlaz pokazuje vezu između:
+</p>
+
+<ul>
+  <li>standardnih switcheva</li>
+  <li>port grupa</li>
+  <li>VLAN identifikatora</li>
+  <li>fizičkih uplinkova</li>
+  <li>broja korišćenih portova</li>
+</ul>
+
+<h3>Kreiranje standardne port grupe pomoću ESXCLI-ja</h3>
+
+<p>
+Pre kreiranja port grupe treba proveriti da ciljni vSwitch postoji:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+Kreiranje port grupe:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  --portgroup-name=PG-LAB \
+  --vswitch-name=vSwitch-Lab
+</code></pre>
+
+<p>
+Kraća forma:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  -p PG-LAB \
+  -v vSwitch-Lab
+</code></pre>
+
+<p>
+Provera rezultata:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Port grupa nakon kreiranja još nema aktivne klijente. Virtuelna mašina ili VMkernel adapter moraju se zasebno povezati sa njom.
+</p>
+
+<h3>Postavljanje VLAN ID-a</h3>
+
+<p>
+VLAN ID standardne port grupe podešava se komandom:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-LAB \
+  --vlan-id=220
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+U ovom primeru port grupa <code>PG-LAB</code> koristi VLAN 220.
+</p>
+
+<p>
+Najčešće VLAN vrednosti imaju sledeće značenje:
+</p>
+
+<ul>
+  <li><strong>0</strong> – saobraćaj bez VLAN označavanja sa strane ESXi port grupe</li>
+  <li><strong>1–4094</strong> – konkretan VLAN koji port grupa označava</li>
+  <li><strong>4095</strong> – prosleđivanje VLAN trunk saobraćaja gostu, za posebne slučajeve</li>
+</ul>
+
+<p>
+VLAN 4095 ne treba koristiti kao uobičajenu konfiguraciju serverske port grupe. Namenjen je scenarijima u kojima gostujući sistem ili virtuelni mrežni uređaj obrađuje više VLAN-ova, na primer kod određenih virtuelnih firewall ili routing rešenja.
+</p>
+
+<p>
+Kompletna VLAN arhitektura, načini označavanja i odnos sa fizičkim switch portovima obrađuju se u narednoj lekciji.
+</p>
+
+<h3>Promena naziva port grupe</h3>
+
+<p>
+Kod standardne port grupe promena naziva najbezbednije se izvodi kroz vSphere Client ili PowerCLI. Pre promene treba utvrditi koje virtuelne mašine i automatizovane skripte koriste postojeći naziv.
+</p>
+
+<p>
+PowerCLI primer:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB" |
+Set-VirtualPortGroup -Name "PG-DEV-VLAN220"
+</code></pre>
+
+<p>
+Promena naziva može uticati na:
+</p>
+
+<ul>
+  <li>skripte koje pretražuju port grupu po imenu</li>
+  <li>template i deployment procedure</li>
+  <li>vMotion proveru kompatibilnosti</li>
+  <li>dokumentaciju i monitoring</li>
+  <li>automatizaciju pomoću Terraform-a, Ansible-a ili PowerCLI-ja</li>
+</ul>
+
+<h3>Uklanjanje port grupe</h3>
+
+<p>
+Pre uklanjanja treba proveriti da port grupa nema aktivne klijente.
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Uklanjanje:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup remove \
+  --portgroup-name=PG-LAB \
+  --vswitch-name=vSwitch-Lab
+</code></pre>
+
+<p>
+Kraća forma:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup remove \
+  -p PG-LAB \
+  -v vSwitch-Lab
+</code></pre>
+
+<p>
+Port grupu ne treba uklanjati dok je koriste:
+</p>
+
+<ul>
+  <li>uključene virtuelne mašine</li>
+  <li>ugašene virtuelne mašine koje će kasnije biti pokrenute</li>
+  <li>template-i</li>
+  <li>VMkernel adapteri</li>
+  <li>automatizovani deployment procesi</li>
+</ul>
+
+<p>
+Provera mora obuhvatiti i ugašene VM-ove, jer broj aktivnih klijenata može biti nula iako je port grupa i dalje upisana u njihovoj konfiguraciji.
+</p>
+
+<h3>Povezivanje virtuelne mašine sa port grupom</h3>
+
+<p>
+U vSphere Client-u:
+</p>
+
+<pre><code class="language-none">Right Click VM
+    Edit Settings
+        Network adapter
+            Network label: PG-PROD-WEB
+            Connected: Enabled
+            Connect at power on: Enabled
+</code></pre>
+
+<p>
+Opcija <strong>Connected</strong> određuje trenutno stanje adaptera, dok <strong>Connect at power on</strong> određuje da li će se adapter automatski povezati pri sledećem uključivanju VM-a.
+</p>
+
+<p>
+Moguće je da adapter trenutno radi, ali da opcija Connect at power on nije uključena. Nakon sledećeg pokretanja VM tada može ostati bez mreže.
+</p>
+
+<h3>Pregled mrežnih adaptera virtuelne mašine pomoću PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              Type,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<p>
+Ovim se proverava:
+</p>
+
+<ul>
+  <li>naziv virtuelnog adaptera</li>
+  <li>tip adaptera, na primer VMXNET3</li>
+  <li>port grupa na koju je povezan</li>
+  <li>MAC adresa</li>
+  <li>stanje veze</li>
+</ul>
+
+<h3>Premeštanje VM adaptera na drugu port grupu</h3>
+
+<p>
+Najpre pronaći željenu standardnu port grupu:
+</p>
+
+<pre><code class="language-powershell">$vmhost = Get-VMHost "esxi01.lab.local"
+
+$portgroup = Get-VirtualPortGroup `
+  -VMHost $vmhost `
+  -Name "PG-PROD-WEB"
+</code></pre>
+
+<p>
+Zatim promeniti mrežu adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter -Name "Network adapter 1" |
+Set-NetworkAdapter `
+  -Portgroup $portgroup `
+  -Confirm:$false
+</code></pre>
+
+<p>
+Posle izmene:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name, NetworkName, ConnectionState
+</code></pre>
+
+<p>
+Premeštanje adaptera između port grupa može odmah prekinuti mrežnu komunikaciju. Pre promene treba proveriti:
+</p>
+
+<ul>
+  <li>da li nova mreža koristi odgovarajući VLAN</li>
+  <li>da li gost ima IP adresu iz odgovarajuće podmreže</li>
+  <li>da li postoji odgovarajući gateway</li>
+  <li>da li firewall dozvoljava saobraćaj</li>
+  <li>da li aplikacija zavisi od postojeće IP adrese</li>
+</ul>
+
+<h3>Prikaz svih standardnih port grupa pomoću PowerCLI-ja</h3>
+
+<p>
+Povezivanje na vCenter:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+</code></pre>
+
+<p>
+Pregled port grupa svih hostova:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost |
+Get-VirtualPortGroup -Standard |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<p>
+Pregled na jednom hostu:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Standard |
+Select-Object Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>Kreiranje port grupe pomoću PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">$vmhost = Get-VMHost "esxi01.lab.local"
+
+$vswitch = Get-VirtualSwitch `
+  -VMHost $vmhost `
+  -Name "vSwitch-Production"
+
+New-VirtualPortGroup `
+  -VirtualSwitch $vswitch `
+  -Name "PG-PROD-WEB" `
+  -VLanId 110
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost $vmhost `
+  -Name "PG-PROD-WEB" |
+Select-Object Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>Promena VLAN ID-a pomoću PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Set-VirtualPortGroup -VLanId 115
+</code></pre>
+
+<p>
+Promena VLAN-a aktivne port grupe može trenutno prekinuti komunikaciju svim povezanim VM-ovima. Ovu operaciju treba izvoditi planski i samo kada je fizička mreža prethodno pripremljena.
+</p>
+
+<h3>Uklanjanje port grupe pomoću PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB" |
+Remove-VirtualPortGroup -Confirm:$false
+</code></pre>
+
+<p>
+Pre uklanjanja treba napraviti izveštaj o VM-ovima koji je koriste.
+</p>
+
+<h3>Pronalaženje VM-ova povezanih sa port grupom</h3>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {$_.NetworkName -eq "PG-PROD-WEB"} |
+Select-Object Parent,
+              Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<p>
+Objekat u koloni <code>Parent</code> predstavlja virtuelnu mašinu kojoj adapter pripada.
+</p>
+
+<p>
+Pregled i uključenih i ugašenih VM-ova važan je pre promene ili uklanjanja port grupe.
+</p>
+
+<h3>Provera VMkernel adaptera povezanih sa port grupom</h3>
+
+<pre><code class="language-powershell">Get-VMHostNetworkAdapter -VMKernel |
+Select-Object VMHost,
+              Name,
+              PortGroupName,
+              IP,
+              SubnetMask,
+              VMotionEnabled,
+              VsanTrafficEnabled
+</code></pre>
+
+<p>
+Ova provera pomaže da se spreči slučajno uklanjanje port grupe koju koristi management, vMotion, vSAN ili storage VMkernel adapter.
+</p>
+
+<h3>Port Group policy inheritance</h3>
+
+<p>
+Standardni vSwitch definiše podrazumevane politike. Port grupa može:
+</p>
+
+<ul>
+  <li>naslediti politiku vSwitch-a</li>
+  <li>primeniti sopstvenu override politiku</li>
+</ul>
+
+<p>
+Politike koje se mogu podešavati obuhvataju:
+</p>
+
+<ul>
+  <li>NIC teaming i failover</li>
+  <li>security</li>
+  <li>traffic shaping</li>
+</ul>
+
+<p>
+Nasleđivanje pojednostavljuje administraciju, dok override omogućava da različite port grupe na istom vSwitch-u koriste različite uplinkove ili bezbednosna pravila.
+</p>
+
+<p>
+Override treba koristiti planski. Veliki broj pojedinačnih odstupanja otežava dijagnostiku i povećava mogućnost greške.
+</p>
+
+<h3>NIC teaming na nivou port grupe</h3>
+
+<p>
+Port grupa može definisati koji fizički uplinkovi su:
+</p>
+
+<ul>
+  <li>aktivni</li>
+  <li>rezervni</li>
+  <li>neiskorišćeni</li>
+</ul>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">vSwitch-Production
+    |
+    +-- vmnic2
+    |
+    +-- vmnic3
+
+PG-PROD-WEB
+    Active: vmnic2
+    Standby: vmnic3
+
+PG-PROD-DB
+    Active: vmnic3
+    Standby: vmnic2
+</code></pre>
+
+<p>
+Na ovaj način obe port grupe imaju redundansu, ali u normalnom radu mogu koristiti različite fizičke adaptere.
+</p>
+
+<p>
+Ovakav dizajn nije isto što i garantovano ravnomerno balansiranje svakog paketa. Izbor uplinka zavisi od load-balancing politike i trenutnog stanja mreže.
+</p>
+
+<h3>Pregled failover politike port grupe</h3>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy failover get \
+  --portgroup-name=PG-PROD-WEB
+</code></pre>
+
+<p>
+Izlaz može prikazati:
+</p>
+
+<ul>
+  <li>load-balancing politiku</li>
+  <li>način detekcije otkaza</li>
+  <li>failback ponašanje</li>
+  <li>obaveštavanje fizičkih switcheva</li>
+  <li>aktivne uplinkove</li>
+  <li>standby uplinkove</li>
+  <li>neiskorišćene uplinkove</li>
+</ul>
+
+<p>
+Ako port grupa nasleđuje politiku vSwitch-a, to će biti vidljivo u njenoj konfiguraciji.
+</p>
+
+<h3>Primer aktivnog i rezervnog uplinka</h3>
+
+<p>
+Pre izmene obavezno proveriti nazive fizičkih adaptera i postojeću politiku:
+</p>
+
+<pre><code class="language-bash">esxcli network nic list
+
+esxcli network vswitch standard portgroup policy failover get \
+  -p PG-PROD-WEB
+</code></pre>
+
+<p>
+Postavljanje aktivnog i standby uplinka:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy failover set \
+  --portgroup-name=PG-PROD-WEB \
+  --active-uplinks=vmnic2 \
+  --standby-uplinks=vmnic3
+</code></pre>
+
+<p>
+Završna provera:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy failover get \
+  -p PG-PROD-WEB
+</code></pre>
+
+<p>
+Ovu promenu ne treba izvoditi ako fizički switch portovi nisu pripremljeni za VLAN koji koristi port grupa.
+</p>
+
+<h3>Vraćanje na politiku vSwitch-a</h3>
+
+<p>
+Ako port grupa više ne treba sopstveni override:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy failover set \
+  --portgroup-name=PG-PROD-WEB \
+  --use-vswitch=true
+</code></pre>
+
+<p>
+Nakon toga port grupa ponovo koristi failover politiku roditeljskog standardnog switcha.
+</p>
+
+<h3>Security policy port grupe</h3>
+
+<p>
+Port grupa može naslediti ili promeniti tri osnovne VMware security politike:
+</p>
+
+<ul>
+  <li><strong>Promiscuous Mode</strong></li>
+  <li><strong>MAC Address Changes</strong></li>
+  <li><strong>Forged Transmits</strong></li>
+</ul>
+
+<p>
+Pregled:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security get \
+  --portgroup-name=PG-PROD-WEB
+</code></pre>
+
+<h4>Promiscuous Mode</h4>
+
+<p>
+Kada je promiscuous režim odbijen, virtuelni adapter normalno prima saobraćaj namenjen njegovoj MAC adresi, kao i odgovarajući broadcast i multicast saobraćaj.
+</p>
+
+<p>
+Kada je dozvoljen, VM može primati širi skup okvira koji prolaze kroz odgovarajući virtuelni mrežni segment. To je potrebno samo u posebnim slučajevima, kao što su određeni sistemi za analizu saobraćaja, IDS rešenja ili virtuelni mrežni uređaji.
+</p>
+
+<p>
+Promiscuous Mode ne treba uključivati kao nasumičan pokušaj rešavanja mrežnog problema.
+</p>
+
+<h4>MAC Address Changes</h4>
+
+<p>
+Ova politika određuje kako ESXi reaguje kada gostujući operativni sistem promeni efektivnu MAC adresu svog mrežnog adaptera.
+</p>
+
+<p>
+Određene cluster, load balancer ili virtuelne mrežne aplikacije mogu zahtevati specifično ponašanje, ali na standardnim serverskim VM-ovima najčešće nema potrebe za promenom podrazumevane sigurnosne konfiguracije.
+</p>
+
+<h4>Forged Transmits</h4>
+
+<p>
+Ova politika kontroliše izlazne Ethernet okvire čija izvorna MAC adresa ne odgovara MAC adresi koju ESXi očekuje za virtuelni adapter.
+</p>
+
+<p>
+Dozvoljavanje forged transmits može biti potrebno kod pojedinih virtuelnih mrežnih uređaja ili aplikacija, ali smanjuje zaštitu od lažnog predstavljanja MAC adresa.
+</p>
+
+<h3>Primer strože sigurnosne politike</h3>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security set \
+  --portgroup-name=PG-PROD-WEB \
+  --allow-promiscuous=false \
+  --allow-mac-change=false \
+  --allow-forged-transmits=false
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security get \
+  -p PG-PROD-WEB
+</code></pre>
+
+<p>
+Pre promene treba proveriti zahteve aplikacija. Stroža politika može prekinuti rad proizvoda koji legitimno koriste promenljive ili virtuelne MAC adrese.
+</p>
+
+<h3>Vraćanje security politike na vSwitch podešavanja</h3>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security set \
+  --portgroup-name=PG-PROD-WEB \
+  --use-vswitch=true
+</code></pre>
+
+<h3>PowerCLI pregled sigurnosne politike</h3>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Get-SecurityPolicy
+</code></pre>
+
+<p>
+Prikaz odabranih svojstava:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Get-SecurityPolicy |
+Select-Object AllowPromiscuous,
+              MacChanges,
+              ForgedTransmits
+</code></pre>
+
+<p>
+Promena mora biti usklađena sa bezbednosnom politikom organizacije i zahtevima konkretne aplikacije.
+</p>
+
+<h3>Traffic shaping</h3>
+
+<p>
+Traffic shaping ograničava ili oblikuje mrežni saobraćaj na osnovu definisanih vrednosti.
+</p>
+
+<p>
+Kod standardnih switcheva oblikovanje saobraćaja prvenstveno se odnosi na odlazni saobraćaj.
+</p>
+
+<p>
+Osnovni parametri su:
+</p>
+
+<ul>
+  <li><strong>Average bandwidth</strong> – prosečno dozvoljeni protok</li>
+  <li><strong>Peak bandwidth</strong> – maksimalni privremeni protok</li>
+  <li><strong>Burst size</strong> – količina podataka koja može biti poslata u kratkom naletu</li>
+</ul>
+
+<p>
+Pregled shaping politike:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy shaping get \
+  --portgroup-name=PG-PROD-WEB
+</code></pre>
+
+<p>
+Traffic shaping se ne koristi kao zamena za pravilno dimenzionisanu mrežu. Pre primene ograničenja treba razumeti karakteristike aplikacije i poslovni uticaj smanjenog protoka.
+</p>
+
+<h3>Utvrđivanje mrežnog porta aktivne VM</h3>
+
+<p>
+Pregled aktivnih VM mrežnih procesa:
+</p>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">World ID  Name         Num Ports  Networks
+--------  -----------  ---------  -----------
+345721    WebServer01          1  PG-PROD-WEB
+345812    DBServer01           2  PG-PROD-DB
+</code></pre>
+
+<p>
+Detalji mrežnih portova određene VM:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list -w 345721
+</code></pre>
+
+<p>
+Izlaz može prikazati:
+</p>
+
+<ul>
+  <li>Port ID</li>
+  <li>vSwitch</li>
+  <li>port grupu</li>
+  <li>MAC adresu</li>
+  <li>aktivni uplink</li>
+</ul>
+
+<p>
+Ova komanda je veoma korisna kada administrator mora da potvrdi kojim fizičkim adapterom trenutno izlazi saobraćaj određene VM.
+</p>
+
+<h3>Praćenje portova pomoću esxtop-a</h3>
+
+<p>
+Pokretanje:
+</p>
+
+<pre><code class="language-bash">esxtop
+</code></pre>
+
+<p>
+Pritiskom na:
+</p>
+
+<pre><code class="language-none">n
+</code></pre>
+
+<p>
+otvara se mrežni prikaz.
+</p>
+
+<p>
+Važne kolone:
+</p>
+
+<ul>
+  <li><strong>PORT-ID</strong> – identifikator virtuelnog porta</li>
+  <li><strong>USED-BY</strong> – VM ili VMkernel komponenta koja koristi port</li>
+  <li><strong>TEAM-PNIC</strong> – fizički adapter koji prenosi saobraćaj</li>
+  <li><strong>PKTTX/s</strong> – broj poslatih paketa</li>
+  <li><strong>PKTRX/s</strong> – broj primljenih paketa</li>
+  <li><strong>MbTX/s</strong> – odlazni protok</li>
+  <li><strong>MbRX/s</strong> – dolazni protok</li>
+  <li><strong>%DRPTX</strong> – odbačeni odlazni paketi</li>
+  <li><strong>%DRPRX</strong> – odbačeni dolazni paketi</li>
+</ul>
+
+<p>
+Podatak o fizičkom adapteru pomaže da se proveri da li teaming politika radi prema očekivanju.
+</p>
+
+
+<h3>Događaji, logovi i dokazi pre promene</h3>
+
+<p>
+Pre promene VLAN-a, uplinka ili security politike sačuvaj vreme promene, trenutno stanje objekta, pogođene VM-ove i poslednje zadatke i događaje u vSphere Client-u. Za host networking relevantan je <code>/var/log/hostd.log</code>, jer hostd obrađuje veliki deo lokalnih konfiguracionih operacija; za vCenter-orkestrirane zadatke koreliši vreme sa <code>/var/log/vmware/vpxd/vpxd.log</code> na vCenter Server Appliance-u. VMkernel događaji o fizičkim NIC linkovima i drajverima traže se u <code>/var/log/vmkernel.log</code>. Ne zaključuj uzrok iz jedne poruke: poveži log sa Tasks and Events zapisom, link statusom, brojačima paketa i poslednjom odobrenom promenom.
+</p>
+
+<pre><code class="language-bash"># Read-only; izvršava se u ESXi Shell-u kao root tokom uskog vremenskog prozora.
+tail -n 200 /var/log/hostd.log
+tail -n 200 /var/log/vmkernel.log
+grep -Ei 'portgroup|vswitch|uplink|link.*(down|up)' /var/log/hostd.log /var/log/vmkernel.log</code></pre>
+
+<p>
+SSH i ESXi Shell ne treba ostavljati uključene bez potrebe. Za produkcioni incident postavi tačan vremenski opseg, sačuvaj relevantan isečak ili support bundle i zatim isključi privremeno omogućen servis prema politici organizacije. Ako promena dodiruje Management Network, obezbedi out-of-band konzolu kao što su iLO, iDRAC ili fizički DCUI; rad iz iste mrežne putanje koju menjaš nema pouzdan rollback ako izgubiš vezu.
+</p>
+
+<h3>Kako razlikovati problem port grupe od problema gosta?</h3>
+
+<p>
+Kada VM nema mrežu, dijagnostika treba da odvoji VMware konfiguraciju od konfiguracije operativnog sistema.
+</p>
+
+<p>
+Na VMware nivou proveriti:
+</p>
+
+<ul>
+  <li>da li je adapter povezan</li>
+  <li>da li je uključeno Connect at power on</li>
+  <li>da li je izabrana prava port grupa</li>
+  <li>da li port grupa koristi pravi VLAN</li>
+  <li>da li vSwitch ima aktivan uplink</li>
+  <li>da li fizički switch prenosi odgovarajući VLAN</li>
+  <li>da li security policy blokira potreban način rada</li>
+</ul>
+
+<p>
+Unutar gosta proveriti:
+</p>
+
+<ul>
+  <li>da li operativni sistem vidi adapter</li>
+  <li>da li adapter ima odgovarajuću IP adresu</li>
+  <li>da li su maska i gateway ispravni</li>
+  <li>da li DNS radi</li>
+  <li>da li lokalni firewall blokira saobraćaj</li>
+  <li>da li potrebni servisi slušaju na očekivanim portovima</li>
+</ul>
+
+<h3>Linux dijagnostika nakon povezivanja na port grupu</h3>
+
+<pre><code class="language-bash">ip -br address
+ip link show
+ip route
+ip route get 8.8.8.8
+</code></pre>
+
+<p>
+Test lokalnog gateway-a:
+</p>
+
+<pre><code class="language-bash">ping -c 4 192.168.110.1
+</code></pre>
+
+<p>
+Test udaljene IP adrese:
+</p>
+
+<pre><code class="language-bash">ping -c 4 8.8.8.8
+</code></pre>
+
+<p>
+Test DNS-a:
+</p>
+
+<pre><code class="language-bash">getent hosts example.com
+</code></pre>
+
+<p>
+Pregled link informacija, ako je dostupan <code>ethtool</code>:
+</p>
+
+<pre><code class="language-bash">sudo ethtool ens192
+</code></pre>
+
+<p>
+Brojači interfejsa:
+</p>
+
+<pre><code class="language-bash">ip -s link show ens192
+</code></pre>
+
+<h3>Windows dijagnostika nakon povezivanja na port grupu</h3>
+
+<pre><code class="language-bash">ipconfig /all
+route print
+</code></pre>
+
+<p>
+Test gateway-a:
+</p>
+
+<pre><code class="language-bash">ping 192.168.110.1
+</code></pre>
+
+<p>
+Test DNS-a:
+</p>
+
+<pre><code class="language-bash">nslookup example.com
+</code></pre>
+
+<p>
+PowerShell pregled adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-NetAdapter |
+Format-Table Name,
+             Status,
+             LinkSpeed,
+             MacAddress
+</code></pre>
+
+<p>
+Pregled IP konfiguracije:
+</p>
+
+<pre><code class="language-powershell">Get-NetIPConfiguration
+</code></pre>
+
+<p>
+Test TCP porta:
+</p>
+
+<pre><code class="language-none">Test-NetConnection 192.168.110.50 -Port 443
+</code></pre>
+
+<h3>Praktikum 1: kreiranje port grupe za testne VM-ove</h3>
+
+<p>
+Cilj vežbe je kreiranje standardne port grupe, povezivanje dve testne virtuelne mašine i potvrda lokalne komunikacije.
+</p>
+
+<h4>Laboratorijska struktura</h4>
+
+<pre><code class="language-none">ESXi host: esxi01.lab.local
+vSwitch: vSwitch-Lab
+Port Group: PG-LAB
+VLAN: 0
+VM-Lab01: 192.168.200.10/24
+VM-Lab02: 192.168.200.20/24
+</code></pre>
+
+<h4>Korak 1 – sačuvati početno stanje</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network vswitch standard portgroup list
+esxcli network nic list
+</code></pre>
+
+<h4>Korak 2 – proveriti postojanje switcha</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard list -v vSwitch-Lab
+</code></pre>
+
+<p>
+Ako switch ne postoji:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard add \
+  --vswitch-name=vSwitch-Lab
+</code></pre>
+
+<p>
+Za potpuno izolovanu vežbu fizički uplink nije potreban.
+</p>
+
+<h4>Korak 3 – kreirati port grupu</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  --portgroup-name=PG-LAB \
+  --vswitch-name=vSwitch-Lab
+</code></pre>
+
+<h4>Korak 4 – postaviti VLAN 0</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-LAB \
+  --vlan-id=0
+</code></pre>
+
+<h4>Korak 5 – potvrditi konfiguraciju</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Očekivano:
+</p>
+
+<pre><code class="language-none">PG-LAB    vSwitch-Lab    0    0
+</code></pre>
+
+<p>
+Raspored kolona može se razlikovati, ali port grupa treba da pripada switchu <code>vSwitch-Lab</code> i koristi VLAN 0.
+</p>
+
+<h4>Korak 6 – povezati virtuelne mašine</h4>
+
+<p>
+U vSphere Client-u za obe testne VM:
+</p>
+
+<pre><code class="language-none">Edit Settings
+    Network adapter 1
+        Network: PG-LAB
+        Connected: Enabled
+        Connect at power on: Enabled
+</code></pre>
+
+<h4>Korak 7 – podesiti IP adrese</h4>
+
+<p>
+Prva VM:
+</p>
+
+<pre><code class="language-none">192.168.200.10/24
+</code></pre>
+
+<p>
+Druga VM:
+</p>
+
+<pre><code class="language-none">192.168.200.20/24
+</code></pre>
+
+<p>
+Gateway nije potreban za komunikaciju u istoj podmreži.
+</p>
+
+<h4>Korak 8 – testirati komunikaciju</h4>
+
+<p>
+Sa prve VM:
+</p>
+
+<pre><code class="language-bash">ping 192.168.200.20
+</code></pre>
+
+<p>
+Sa druge VM:
+</p>
+
+<pre><code class="language-bash">ping 192.168.200.10
+</code></pre>
+
+<h4>Korak 9 – potvrditi aktivne klijente</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Broj aktivnih klijenata trebalo bi da odražava povezane i uključene VM adaptere.
+</p>
+
+<h4>Korak 10 – proveriti portove VM-ova</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Za svaku VM uzeti odgovarajući World ID:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<p>
+Proveriti da izlaz prikazuje:
+</p>
+
+<ul>
+  <li><code>PG-LAB</code></li>
+  <li><code>vSwitch-Lab</code></li>
+  <li>očekivanu MAC adresu</li>
+</ul>
+
+<h3>Praktikum 2: PowerCLI kreiranje i povezivanje VM-a</h3>
+
+<h4>Korak 1 – povezivanje</h4>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+</code></pre>
+
+<h4>Korak 2 – definisanje hosta i switcha</h4>
+
+<pre><code class="language-powershell">$vmhost = Get-VMHost "esxi01.lab.local"
+
+$vswitch = Get-VirtualSwitch `
+  -VMHost $vmhost `
+  -Name "vSwitch-Lab"
+</code></pre>
+
+<h4>Korak 3 – kreiranje port grupe</h4>
+
+<pre><code class="language-powershell">New-VirtualPortGroup `
+  -VirtualSwitch $vswitch `
+  -Name "PG-DEV" `
+  -VLanId 0
+</code></pre>
+
+<h4>Korak 4 – povezivanje VM adaptera</h4>
+
+<pre><code class="language-powershell">$portgroup = Get-VirtualPortGroup `
+  -VMHost $vmhost `
+  -Name "PG-DEV"
+
+Get-VM "VM-Lab01" |
+Get-NetworkAdapter -Name "Network adapter 1" |
+Set-NetworkAdapter `
+  -Portgroup $portgroup `
+  -Connected:$true `
+  -StartConnected:$true `
+  -Confirm:$false
+</code></pre>
+
+<h4>Korak 5 – provera</h4>
+
+<pre><code class="language-powershell">Get-VM "VM-Lab01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h3>Praktikum 3: provera doslednosti port grupa u klasteru</h3>
+
+<p>
+Cilj vežbe je pronalaženje port grupa koje ne postoje na svim ESXi hostovima ili koriste različite VLAN vrednosti.
+</p>
+
+<h4>Osnovni izveštaj</h4>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster "Cluster01"
+
+$report = Get-VMHost -Location $cluster |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VirtualSwitchName,
+      VLanId
+}
+
+$report |
+Sort-Object Name, VMHost |
+Format-Table -AutoSize
+</code></pre>
+
+<h4>Grupisanje po nazivu port grupe</h4>
+
+<pre><code class="language-powershell">$report |
+Group-Object Name |
+ForEach-Object {
+    [PSCustomObject]@{
+        PortGroup = $_.Name
+        HostCount = $_.Count
+        Hosts     = ($_.Group.VMHost -join ', ')
+        VLANs     = (
+            $_.Group.VLanId |
+            Sort-Object -Unique
+        ) -join ', '
+    }
+} |
+Sort-Object PortGroup |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+Izveštaj treba analizirati na sledeći način:
+</p>
+
+<ul>
+  <li>port grupa mora postojati na očekivanom broju hostova</li>
+  <li>kolona VLANs ne bi trebalo da prikazuje više različitih VLAN vrednosti za istu mrežu</li>
+  <li>treba proveriti da li je ista port grupa vezana za odgovarajući vSwitch</li>
+</ul>
+
+<h3>Praktikum 4: pronalaženje port grupa bez VM adaptera</h3>
+
+<p>
+Port grupa bez aktivnih klijenata nije nužno nepotrebna. Mogu je koristiti ugašene VM ili template-i. Zato je potrebno proveriti konfiguraciju svih VM adaptera.
+</p>
+
+<pre><code class="language-powershell">$usedNetworks = Get-VM |
+Get-NetworkAdapter |
+Select-Object -ExpandProperty NetworkName -Unique
+
+Get-VMHost |
+Get-VirtualPortGroup -Standard |
+Where-Object {
+    $_.Name -notin $usedNetworks
+} |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<p>
+Pre uklanjanja pronađenih port grupa dodatno proveriti VMkernel adaptere:
+</p>
+
+<pre><code class="language-powershell">Get-VMHostNetworkAdapter -VMKernel |
+Select-Object VMHost,
+              Name,
+              PortGroupName,
+              IP
+</code></pre>
+
+<h3>Praktikum 5: promena VLAN-a uz kontrolisanu proveru</h3>
+
+<p>
+Ova vežba se izvodi samo u laboratorijskom okruženju ili u odobrenom terminu održavanja.
+</p>
+
+<h4>Korak 1 – evidentirati postojeće stanje</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+
+esxcli network vswitch standard portgroup policy failover get \
+  -p PG-LAB
+
+esxcli network vswitch standard portgroup policy security get \
+  -p PG-LAB
+</code></pre>
+
+<h4>Korak 2 – proveriti povezane VM-ove</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {$_.NetworkName -eq "PG-LAB"} |
+Select-Object Parent,
+              Name,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 3 – promeniti VLAN</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-LAB \
+  --vlan-id=220
+</code></pre>
+
+<h4>Korak 4 – potvrditi promenu</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h4>Korak 5 – testirati komunikaciju</h4>
+
+<p>
+Unutar VM proveriti:
+</p>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ping -c 4 &lt;gateway-VLAN-220&gt;
+</code></pre>
+
+<p>
+Ako komunikacija ne radi, proveriti:
+</p>
+
+<ul>
+  <li>da li fizički switch port prenosi VLAN 220</li>
+  <li>da li uplink pripada odgovarajućem trunku</li>
+  <li>da li IP adresa gosta pripada mreži VLAN-a 220</li>
+  <li>da li gateway za tu mrežu postoji</li>
+  <li>da li firewall dozvoljava saobraćaj</li>
+</ul>
+
+<h4>Korak 6 – rollback</h4>
+
+<p>
+Ako je početna vrednost bila VLAN 0:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-LAB \
+  --vlan-id=0
+</code></pre>
+
+<p>
+Posle rollback-a ponovo proveriti komunikaciju.
+</p>
+
+<h3>Praktikum 6: bezbedno uklanjanje laboratorijske port grupe</h3>
+
+<h4>Korak 1 – pronaći VM adaptere</h4>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {$_.NetworkName -eq "PG-LAB"} |
+Select-Object Parent,
+              Name,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 2 – proveriti VMkernel adaptere</h4>
+
+<pre><code class="language-powershell">Get-VMHostNetworkAdapter -VMKernel |
+Where-Object {$_.PortGroupName -eq "PG-LAB"}
+</code></pre>
+
+<h4>Korak 3 – premestiti ili ukloniti sve klijente</h4>
+
+<p>
+Mrežne adaptere VM-ova povezati na drugu odgovarajuću port grupu ili ukloniti samo laboratorijski adapter.
+</p>
+
+<h4>Korak 4 – ukloniti port grupu</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup remove \
+  --portgroup-name=PG-LAB \
+  --vswitch-name=vSwitch-Lab
+</code></pre>
+
+<h4>Korak 5 – završna provera</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h3>Scenario: VM je posle vMotion migracije ostala bez mreže</h3>
+
+<p>
+Najčešći uzroci su:
+</p>
+
+<ul>
+  <li>port grupa ne postoji na ciljnom hostu</li>
+  <li>port grupa ima drugačiji naziv</li>
+  <li>isti naziv koristi drugačiji VLAN ID</li>
+  <li>ciljni vSwitch nema aktivan uplink</li>
+  <li>fizički switch port ne prenosi potreban VLAN</li>
+  <li>teaming politika koristi pogrešan vmnic</li>
+</ul>
+
+<p>
+Na ciljnom hostu proveriti:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+esxcli network vswitch standard list
+esxcli network nic list
+</code></pre>
+
+<p>
+Zatim proveriti VM:
+</p>
+
+<pre><code class="language-bash">esxcli network vm list
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<p>
+PowerCLI poređenje:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualPortGroup -Standard |
+Where-Object {$_.Name -eq "PG-PROD-WEB"} |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>Scenario: samo jedna VM nema mrežu</h3>
+
+<p>
+Ako druge VM na istoj port grupi rade, vSwitch, VLAN i fizički uplink verovatno funkcionišu. Fokus treba prebaciti na:
+</p>
+
+<ul>
+  <li>stanje virtuelnog adaptera</li>
+  <li>MAC adresu</li>
+  <li>IP konfiguraciju gosta</li>
+  <li>lokalni firewall</li>
+  <li>VMware Tools i drajver VMXNET3 adaptera</li>
+  <li>dupliranu IP adresu</li>
+</ul>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Format-List *
+</code></pre>
+
+<p>
+Na Linux gostu:
+</p>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ip neigh
+ip -s link
+</code></pre>
+
+<p>
+Na Windows gostu:
+</p>
+
+<pre><code class="language-powershell">ipconfig /all
+arp -a
+Get-NetAdapter
+Get-NetIPConfiguration
+</code></pre>
+
+<h3>Scenario: sve VM na port grupi nemaju mrežu</h3>
+
+<p>
+Ako su pogođene sve VM na istoj port grupi, proveravaju se zajedničke komponente:
+</p>
+
+<ol>
+  <li>VLAN ID port grupe</li>
+  <li>vSwitch kojem pripada</li>
+  <li>aktivni i standby uplinkovi</li>
+  <li>link status fizičkih adaptera</li>
+  <li>konfiguracija fizičkog switcha</li>
+  <li>security ili shaping politika port grupe</li>
+</ol>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+
+esxcli network vswitch standard portgroup policy failover get \
+  -p PG-PROD-WEB
+
+esxcli network vswitch standard portgroup policy security get \
+  -p PG-PROD-WEB
+
+esxcli network nic list
+</code></pre>
+
+<h3>Scenario: port grupa postoji, ali nema pristup fizičkoj mreži</h3>
+
+<p>
+Proveriti da li njen vSwitch ima uplink:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+Ako je polje Uplinks prazno, port grupa je izolovana od fizičke mreže.
+</p>
+
+<p>
+Ako uplink postoji:
+</p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic2
+esxcli network nic stats get -n vmnic2
+</code></pre>
+
+<p>
+Zatim proveriti fizički switch:
+</p>
+
+<ul>
+  <li>da li je port uključen</li>
+  <li>da li je link aktivan</li>
+  <li>da li port koristi access ili trunk režim prema dizajnu</li>
+  <li>da li je potreban VLAN dozvoljen</li>
+  <li>da li postoje port-security ograničenja</li>
+</ul>
+
+<h3>Česte greške u radu sa port grupama</h3>
+
+<ul>
+  <li>pretpostavka da naziv port grupe automatski stvara mrežnu izolaciju</li>
+  <li>različit VLAN ID za isti naziv na različitim hostovima</li>
+  <li>port grupa nije kreirana na svim hostovima klastera</li>
+  <li>VM adapter nije označen kao Connected</li>
+  <li>Connect at power on nije uključen</li>
+  <li>VM je premeštena na novu port grupu bez promene IP adrese</li>
+  <li>port grupa je uklonjena jer nema aktivne klijente, iako je koriste ugašene VM</li>
+  <li>management ili storage port grupa menja se bez pristupa udaljenoj konzoli</li>
+  <li>promiscuous mode uključen je bez stvarne potrebe</li>
+  <li>Forged Transmits i MAC Changes promenjeni su bez razumevanja aplikacije</li>
+  <li>teaming override razlikuje se između hostova</li>
+  <li>VLAN 4095 korišćen je kao uobičajena serverska mreža</li>
+</ul>
+
+<h3>Dobre administratorske prakse</h3>
+
+<ul>
+  <li>koristiti jasnu i dokumentovanu konvenciju naziva</li>
+  <li>održavati iste port grupe na svim hostovima klastera</li>
+  <li>redovno proveravati VLAN doslednost pomoću PowerCLI-ja</li>
+  <li>pre promene port grupe pronaći sve povezane VM i VMkernel adaptere</li>
+  <li>ne oslanjati se samo na broj aktivnih klijenata</li>
+  <li>za produkcione promene pripremiti rollback postupak</li>
+  <li>promene prvo testirati na jednoj testnoj VM</li>
+  <li>ne menjati security politike bez dokumentovanog zahteva</li>
+  <li>koristiti najmanja potrebna bezbednosna odstupanja</li>
+  <li>proveriti fizičku mrežu pre aktiviranja novog VLAN-a</li>
+  <li>nakon svake promene testirati gateway, DNS i aplikacione portove</li>
+  <li>automatizovati izveštaje o razlikama između hostova</li>
+  <li>voditi evidenciju o vlasniku i nameni svake port grupe</li>
+</ul>
+
+<h3>Preporučena dokumentacija port grupe</h3>
+
+<p>
+Za svaku produkcionu port grupu korisno je evidentirati:
+</p>
+
+<ul>
+  <li>naziv</li>
+  <li>namenu</li>
+  <li>VLAN ID</li>
+  <li>IP podmrežu</li>
+  <li>default gateway</li>
+  <li>vSwitch ili Distributed Switch</li>
+  <li>ESXi hostove na kojima postoji</li>
+  <li>aktivne i standby uplinkove</li>
+  <li>security override podešavanja</li>
+  <li>traffic shaping podešavanja</li>
+  <li>vlasnika mreže ili aplikacije</li>
+  <li>datum poslednje promene</li>
+</ul>
+
+<h3>Operativna kontrolna lista</h3>
+
+<pre><code class="language-bash"># Prikaz standardnih port grupa
+esxcli network vswitch standard portgroup list
+
+# Kreiranje port grupe
+esxcli network vswitch standard portgroup add \
+  -p PG-LAB \
+  -v vSwitch-Lab
+
+# Podešavanje VLAN-a
+esxcli network vswitch standard portgroup set \
+  -p PG-LAB \
+  --vlan-id=220
+
+# Failover politika
+esxcli network vswitch standard portgroup policy failover get \
+  -p PG-LAB
+
+# Security politika
+esxcli network vswitch standard portgroup policy security get \
+  -p PG-LAB
+
+# Traffic shaping
+esxcli network vswitch standard portgroup policy shaping get \
+  -p PG-LAB
+
+# Aktivne VM mrežne veze
+esxcli network vm list
+
+# Portovi određene VM
+esxcli network vm port list -w &lt;World-ID&gt;
+
+# Fizički adapteri
+esxcli network nic list
+
+# Standardni switchevi
+esxcli network vswitch standard list
+
+# VMkernel adapteri
+esxcli network ip interface list
+
+# Sažeti pregled
+esxcfg-vswitch -l
+</code></pre>
+
+<h3>PowerCLI operativna kontrolna lista</h3>
+
+<pre><code class="language-powershell"># Sve standardne port grupe
+Get-VMHost |
+Get-VirtualPortGroup -Standard
+
+# Port grupe jednog hosta
+Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Standard
+
+# Kreiranje
+$vswitch = Get-VirtualSwitch `
+  -VMHost "esxi01.lab.local" `
+  -Name "vSwitch-Lab"
+
+New-VirtualPortGroup `
+  -VirtualSwitch $vswitch `
+  -Name "PG-LAB" `
+  -VLanId 220
+
+# Mrežni adapteri VM-a
+Get-VM "VM-Lab01" |
+Get-NetworkAdapter
+
+# VM-ovi koji koriste port grupu
+Get-VM |
+Get-NetworkAdapter |
+Where-Object {$_.NetworkName -eq "PG-LAB"}
+
+# VMkernel adapteri
+Get-VMHostNetworkAdapter -VMKernel
+
+# Security politika
+Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB" |
+Get-SecurityPolicy
+</code></pre>
+
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je završena kada administrator može bez nagađanja da nacrta put <code>vNIC → port grupa → vSwitch/dvPortGroup → uplink → fizički switch</code>; razlikuje standardnu i distribuiranu port grupu i njihove granice upravljanja; pročita VLAN, teaming, security i shaping politiku; pronađe sve VM i VMkernel potrošače, uključujući ugašene VM-ove; napravi i validira standardnu laboratorijsku port grupu; poredi konfiguraciju hostova; bezbedno izvede promenu uz početni dokaz, plan povratka i out-of-band pristup kada je ugrožena management mreža; i razdvoji simptom, neposredni uzrok, osnovni uzrok, privremeni workaround i trajnu korektivnu meru.
+</p>
+
+<h3>Zaključak</h3>
+
+<p>
+Port Group predstavlja logičku mrežnu pristupnu tačku preko koje se virtuelne mašine i VMkernel adapteri povezuju sa VMware virtuelnim switchom. Ona određuje naziv mreže, VLAN pripadnost i politike koje upravljaju bezbednošću, fizičkim uplinkovima i protokom saobraćaja.
+</p>
+
+<p>
+Kod vSphere Standard Switch-a port grupe su lokalne za svaki ESXi host. Zbog toga administrator mora da obezbedi dosledne nazive, VLAN vrednosti, teaming i security politike na svim hostovima između kojih se virtuelne mašine mogu migrirati.
+</p>
+
+<p>
+Kvalitetna administracija port grupa ne završava se njihovim kreiranjem. Potrebno je proveriti fizičke uplinkove, VLAN konfiguraciju fizičkog switcha, povezane VM i VMkernel adaptere, stanje virtuelnih mrežnih kartica i IP konfiguraciju gostujućih sistema. ESXCLI, esxtop i PowerCLI omogućavaju da se ove provere izvrše precizno, ponovljivo i na većem broju hostova.
+</p>
+
+<p>
+Najvažnija praktična veština jeste razumevanje da port grupa povezuje virtuelnu konfiguraciju sa stvarnom mrežnom infrastrukturom. Kada su njen VLAN, uplinkovi, sigurnosna pravila i fizički switch pravilno usklađeni, virtuelne mašine dobijaju stabilnu i predvidivu mrežnu povezanost.
+</p>
+
+
+    <footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Networking administrativni i bezbednosni vodiči; Broadcom Knowledge Base članci o VLAN tagging-u, port grupama, management mreži i vMotion povezivosti; ESXCLI referenca; aktuelna VCF PowerCLI cmdlet referenca za standardne i distribuirane port grupe; vSphere Tasks and Events i ESXi/vCenter log reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-21-virtual-switch.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-23-vlan.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,567 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-07-control-plane.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Control plane – mozak Kubernetes klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Control plane predstavlja centralni deo Kubernetes klastera koji donosi odluke, održava željeno stanje sistema i upravlja svim objektima, čvorovima i aplikacijama.">
+
+  <meta name="keywords"
+        content="control plane, Kubernetes control plane, API server, scheduler, controller manager, etcd, Kubernetes arhitektura, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-07-control-plane.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Control plane – mozak Kubernetes klastera">
+
+  <meta property="og:description"
+        content="Razumevanje Control Plane sloja, njegovih komponenti i načina na koji upravlja kompletnim Kubernetes klasterom.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-07-control-plane.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-06-control-plane.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Control plane – mozak Kubernetes klastera">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+   Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-06-control-plane.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-06-control-plane.png"
+           alt="Control plane – mozak Kubernetes klastera">
+
+    </a>
+   
+  <div class="page-subtitle">
+  II. Topologija, komponente i život klastera
+</div>
+   <div class="page-subtitle">
+7. Control plane – API server, scheduler, controller manager i tok upravljačke odluke
+</div>
+<p>
+  Control plane je upravljački sloj Kubernetes klastera. On prima administrativne i aplikativne zahteve, proverava identitet i ovlašćenja, čuva deklarisano stanje sistema, bira čvorove na kojima će se izvršavati Podovi i pokreće kontrolne petlje koje stvarno stanje neprekidno približavaju željenom. Worker čvorovi izvršavaju radna opterećenja, ali control plane odlučuje šta bi trebalo da postoji, gde bi trebalo da radi i kako sistem treba da reaguje kada se čvor, Pod, servis ili druga komponenta udalji od deklarisanog stanja.
+</p>
+<p>
+  Izraz „mozak klastera” koristan je samo ako se ne shvati kao jedan proces ili jedan server. Control plane je skup međuzavisnih komponenti: <code>kube-apiserver</code>, <code>etcd</code>, <code>kube-scheduler</code> i <code>kube-controller-manager</code>, uz <code>cloud-controller-manager</code> kada klaster koristi integraciju sa podržanim cloud okruženjem. U kubeadm klasteru osnovne komponente se najčešće izvršavaju kao statički Podovi koje lokalni kubelet pokreće na svakom control plane čvoru. Njihovi manifesti nalaze se na lokalnom fajl-sistemu, a ne u Kubernetes API objektima kojima se upravlja kao običnim Deployment resursima.
+</p>
+
+<h3>Uloga control plane sloja</h3>
+<p>
+  Administrator Kubernetesu ne izdaje niz proceduralnih instrukcija poput „pokreni kontejner, zatim proveri proces, pa ga ponovo pokreni ako se zaustavi”. Umesto toga, preko API-ja opisuje željeno stanje: na primer, Deployment treba da ima tri dostupne replike određene aplikacije. Control plane prihvata taj zahtev, trajno ga zapisuje i angažuje više nezavisnih komponenti da ga sprovedu. Scheduler bira odgovarajuće čvorove, kontroleri stvaraju i prate potrebne objekte, a kubelet na izabranom worker čvoru komunicira sa kontejnerskim runtime-om i ostvaruje lokalno izvršavanje.
+</p>
+<p>
+  Takva arhitektura razdvaja donošenje odluka od izvršavanja. API server predstavlja kontrolisanu ulaznu tačku. etcd je autoritativno skladište stanja. Scheduler rešava problem raspoređivanja. Controller manager pokreće veliki broj kontrolnih petlji. Nijedna od tih komponenti sama ne predstavlja ceo Kubernetes, niti bi administrator trebalo da pokušava da zaobiđe njihove odgovornosti direktnim menjanjem podataka ili ručnim upravljanjem posledicama.
+</p>
+<p>
+  Control plane nije odgovarajuće mesto za redovna aplikativna opterećenja. Kubeadm control plane čvorovima uobičajeno dodeljuje taint koji sprečava raspoređivanje običnih Podova bez odgovarajuće tolerancije. U malom lab klasteru ta zaštita može biti uklonjena radi uštede resursa, ali takva odluka smanjuje izolaciju, povećava mogućnost iscrpljivanja procesora, memorije i diska i nije model koji treba nekritički preneti u produkciju.
+</p>
+
+<h3>kube-apiserver – kontrolisana ulazna tačka</h3>
+<p>
+  <code>kube-apiserver</code> izlaže Kubernetes HTTP API i predstavlja centralnu komunikacionu tačku control plane-a. <code>kubectl</code>, kubeleti, scheduler, kontroleri, operatori, admission webhook servisi i automatizacioni sistemi pristupaju stanju klastera preko API servera. Ostale komponente ne bi trebalo direktno da menjaju etcd podatke.
+</p>
+<p>
+  Pri obradi zahteva API server najpre uspostavlja bezbednu TLS komunikaciju, zatim autentifikuje klijenta, proverava autorizaciju i primenjuje admission kontrolu. Tek nakon uspešnih provera zahtev može biti validiran i upisan u skladište. Zbog toga odgovor <code>Forbidden</code> ne znači da API server ne radi; često znači da je identitet uspešno prepoznat, ali nema potrebnu RBAC dozvolu. Odgovor <code>Unauthorized</code> češće ukazuje na problem sa autentifikacijom, sertifikatom, tokenom ili drugim akreditivom.
+</p>
+<p>
+  API server izlaže zasebne krajnje tačke <code>/livez</code> i <code>/readyz</code>. Liveness potvrđuje da proces nije u stanju iz kog se ne može oporaviti, dok readiness pokazuje da li instanca trenutno može pravilno da obrađuje saobraćaj. U HA konfiguraciji load balancer treba da šalje nove zahteve samo spremnim instancama. Stariji endpoint <code>/healthz</code> i dalje može postojati radi kompatibilnosti, ali se za savremene provere koriste precizniji <code>/livez</code> i <code>/readyz</code>.
+</p>
+<p>
+  API server može biti živ, ali nespreman zbog problema sa etcd vezom, inicijalizacijom ili zavisnim internim proverama. Zato samo provera TCP porta 6443 nije dovoljan dokaz zdravlja. Otvoren port potvrđuje da nešto sluša, ali ne potvrđuje da API server može da pročita i upiše stanje klastera.
+</p>
+
+<h3>etcd – autoritativno skladište stanja</h3>
+<p>
+  <code>etcd</code> je distribuirano, konzistentno key-value skladište u kome Kubernetes čuva trajno stanje API objekata. Deployment, Pod specifikacije, ConfigMap objekti, Secret objekti, RBAC pravila, Lease zapisi, podaci o čvorovima i drugi resursi postaju deo stanja koje control plane mora da zaštiti. Gubitak etcd podataka može značiti gubitak konfiguracije klastera čak i kada su kontejneri na worker čvorovima privremeno još aktivni.
+</p>
+<p>
+  etcd koristi konsenzus i zahteva kvorum za promene. U klasteru sa tri člana potreban je kvorum od dva, pa sistem može da podnese gubitak jednog člana. Dodavanje četvrtog člana ne povećava broj istovremenih otkaza koje klaster može da podnese, jer kvorum postaje tri. Zbog toga se za HA uobičajeno koriste neparni brojevi članova, najčešće tri ili pet, uz pažljivo planiranu latenciju, pouzdan disk i mrežu.
+</p>
+<p>
+  etcd je naročito osetljiv na latenciju i zastoj diska. Popunjen fajl-sistem, sporo trajno skladište, veliki broj objekata, prekomerni Event zapisi ili mrežni prekidi između članova mogu se na nivou Kubernetes administratora manifestovati kao spor <code>kubectl</code>, isteci zahteva, neuspešan <code>/readyz</code>, odložene kontrolne petlje ili nemogućnost izmena resursa. Visoka CPU iskorišćenost nije jedini relevantan signal; trajanje fsync operacija, rast baze, broj neuspešnih predloga i stabilnost lidera često su važniji.
+</p>
+<p>
+  Direktno uređivanje etcd podataka nije podržan administratorski postupak za ispravljanje Kubernetes objekata. Promene se sprovode kroz API, a etcd se održava alatima i postupcima koji odgovaraju njegovoj verziji. Kod novijih etcd izdanja operacije obnove i provere snapshot-a obavljaju se alatom <code>etcdutl</code>, dok se online snapshot i provera endpointa obično obavljaju alatom <code>etcdctl</code>. Administrator pre postupka mora proveriti verziju binarnih alata i dokumentaciju tačno korišćenog izdanja.
+</p>
+
+<h3>kube-scheduler – izbor odgovarajućeg čvora</h3>
+<p>
+  <code>kube-scheduler</code> prati Podove kojima još nije dodeljen čvor. Najpre filtrira čvorove koji ne ispunjavaju zahteve, a zatim rangira prihvatljive kandidate i upisuje odluku o vezivanju Poda za izabrani čvor. Pri tome uzima u obzir zahteve za procesorom i memorijom, node selector i affinity pravila, taint i toleration odnose, topology spread ograničenja, zahteve trajnih volumena i druge scheduling uslove.
+</p>
+<p>
+  Scheduler ne pokreće kontejner i ne premešta već aktivan Pod sa jednog čvora na drugi. Nakon što je <code>spec.nodeName</code> postavljen, lokalni kubelet preuzima odgovornost za dalje izvršavanje. Ako scheduler prestane da radi, postojeći Podovi mogu nastaviti rad, ali novi Podovi i zamenske replike ostaju u stanju <code>Pending</code> bez dodeljenog čvora.
+</p>
+<p>
+  Administrator ne sme svaki <code>Pending</code> Pod automatski pripisati kvaru schedulera. Scheduler može ispravno raditi, ali ne pronaći čvor koji ispunjava zahteve. Komanda <code>kubectl describe pod</code> tada u događajima obično prikazuje razlog: nedovoljno resursa, nepodudarne oznake, netolerisani taint, konflikt volumena ili nepodudarnost sa affinity pravilima. Kvar schedulera se razlikuje po tome što se događaji o pokušajima raspoređivanja ne pojavljuju, više nepovezanih Podova ostaje bez <code>spec.nodeName</code>, a scheduler Pod ili njegovi logovi pokazuju grešku.
+</p>
+
+<h3>kube-controller-manager – kontrolne petlje željenog stanja</h3>
+<p>
+  <code>kube-controller-manager</code> u jednom procesu pokreće skup kontrolera. Deployment i ReplicaSet kontroleri posredno obezbeđuju potreban broj replika, Node kontroler prati dostupnost čvorova, Job kontroler prati završavanje poslova, EndpointSlice kontroler povezuje Service selektore sa odgovarajućim endpointima, a service account i drugi kontroleri održavaju svoje objekte.
+</p>
+<p>
+  Kontroler posmatra trenutno stanje preko API servera, poredi ga sa željenim stanjem i preduzima korektivnu akciju. Takvo usaglašavanje nije jednokratna operacija. Ako administrator ručno izbriše Pod koji pripada Deployment-u, ReplicaSet kontroler će napraviti novi jer deklarisani broj replika nije promenjen. Ručno popravljanje posledice bez razumevanja vlasničkog lanca često dovodi do toga da Kubernetes „poništi” intervenciju administratora.
+</p>
+<p>
+  U HA control plane-u više instanci scheduler-a i controller manager-a može istovremeno biti pokrenuto, ali se aktivno odlučivanje koordinira izborom lidera. Lease objekti u namespace-u <code>kube-system</code> beleže trenutno vođstvo. Nestabilan izbor lidera može ukazivati na problem sa API dostupnošću, etcd latencijom, mrežom ili opterećenjem control plane čvorova.
+</p>
+
+<h3>cloud-controller-manager i granica cloud integracije</h3>
+<p>
+  <code>cloud-controller-manager</code> odvaja cloud-specifičnu logiku od osnovnih Kubernetes komponenti. U zavisnosti od implementacije, može upravljati informacijama o čvorovima, rutama i cloud load balancer resursima. On nije obavezan u on-premises klasteru bez podržane cloud integracije, niti Kubernetes samim prisustvom ove komponente dobija funkcije određenog provajdera.
+</p>
+<p>
+  Kada Service tipa <code>LoadBalancer</code> ostane bez spoljne adrese, uzrok može biti cloud controller, njegova IAM dozvola, kvota, mrežna konfiguracija ili nepodržana implementacija, a ne kube-scheduler. Odgovornost se zato dijagnostikuje prema kontroleru koji upravlja konkretnim resursom, događajima na Service objektu i logovima cloud kontrolera.
+</p>
+
+<h3>Način izvršavanja control plane komponenti</h3>
+<p>
+  Kubeadm na svakom control plane čvoru uobičajeno zapisuje statičke Pod manifeste u direktorijum <code>/etc/kubernetes/manifests</code>. Kubelet nadgleda taj direktorijum i automatski pokreće ili obnavlja Pod kada se manifest promeni. Podovi se u API-ju vide kao mirror Podovi, ali njihovo brisanje komandom <code>kubectl delete pod</code> nije trajno rešenje: kubelet će ponovo prikazati Pod dok lokalni manifest postoji.
+</p>
+<pre><code class="language-bash">sudo ls -l /etc/kubernetes/manifests
+sudo grep -E 'image:|--advertise-address|--etcd-servers' \
+  /etc/kubernetes/manifests/kube-apiserver.yaml</code></pre>
+<p>
+  U tipičnoj stacked etcd topologiji direktorijum sadrži manifeste <code>kube-apiserver.yaml</code>, <code>kube-controller-manager.yaml</code>, <code>kube-scheduler.yaml</code> i <code>etcd.yaml</code>. Ručna izmena fajla predstavlja direktnu produkcionu promenu i kubelet je može primeniti gotovo odmah. Ne postoji period za „pregled nacrta” nakon čuvanja. Pre izmene moraju postojati validan backup, plan povratka, rezervna administratorska sesija i potvrda da preostale HA instance mogu nositi saobraćaj.
+</p>
+<p>
+  Manifest se ne sme privremeno kopirati u isti nadgledani direktorijum pod drugim imenom. Kubelet može pokušati da obradi svaki odgovarajući manifest i pokrene duplu komponentu sa konfliktnim portovima ili identitetom. Backup kopija se čuva van <code>/etc/kubernetes/manifests</code>, na primer u kontrolisanom direktorijumu promene.
+</p>
+
+<h3>Dostupnost i HA topologije</h3>
+<p>
+  Jedan control plane čvor je prihvatljiv za učenje i određena nekritična okruženja, ali predstavlja jedinstvenu tačku otkaza. Produkcioni HA klaster uobičajeno ima najmanje tri control plane čvora iza stabilnog TCP load balancer endpointa. API klijenti i kubeleti koriste zajedničko DNS ime, dok load balancer proverava spremnost pojedinačnih API servera.
+</p>
+<p>
+  Kod <strong>stacked</strong> topologije svaki control plane čvor istovremeno hostuje lokalnog etcd člana. Rešenje je infrastrukturno jednostavnije, ali gubitak čvora istovremeno smanjuje kapacitet API sloja i etcd članstvo. Kod <strong>external etcd</strong> topologije etcd radi na zasebnim čvorovima. Time se odvajaju resursi i životni ciklusi, ali se povećavaju broj sistema, mrežne zavisnosti, sertifikati, monitoring i operativna složenost.
+</p>
+<p>
+  HA ne znači da svaki kvar ostaje neprimetan. Klaster sa tri etcd člana može da podnese gubitak jednog, ali drugi kvar pre oporavka prvog gubi kvorum. Tri API servera ne pomažu ako sva tri zavise od nedostupnog etcd klastera, zajedničkog load balancera, istog storage sloja ili istog infrastrukturnog domena otkaza. Administrator zato procenjuje cele lance zavisnosti, a ne samo broj virtuelnih mašina.
+</p>
+
+<h3>Bezbednost i granice ovlašćenja</h3>
+<p>
+  Control plane obrađuje najosetljivije podatke i privilegovane odluke klastera. Pristup čvorovima preko SSH-a, mogućnost korišćenja <code>/etc/kubernetes/admin.conf</code>, čitanje PKI direktorijuma ili izmena statičkih Pod manifesta praktično predstavljaju administratorski nivo poverenja nad celim klasterom. Takav pristup ne treba davati samo zato što korisniku treba mogućnost pregleda aplikativnih Podova.
+</p>
+<p>
+  Dnevne provere treba obavljati preko najmanje privilegovanog Kubernetes identiteta. Direktan operativni pristup control plane hostu koristi se za održavanje, dijagnostiku koju API ne može da pruži i odobrene promene. Fajl <code>admin.conf</code> ne kopira se na deljene sisteme i ne ugrađuje u automatizaciju. Za automatizaciju se kreira poseban identitet sa precizno ograničenim RBAC pravima i kontrolisanim životnim ciklusom akreditiva.
+</p>
+<p>
+  API audit log, kada je konfigurisan, omogućava dokumentovanje zahteva i odgovora na nivou metapodataka ili detaljnijeg sadržaja, prema audit politici. Preširoka audit politika može stvoriti veliki obim podataka i rizik izlaganja osetljivog sadržaja. Politika, rotacija, centralno čuvanje i pristup logovima moraju biti planirani zajedno.
+</p>
+
+<h3>Simptomi problema i redosled dijagnostike</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatna oblast</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>kubectl</code> vraća timeout ili connection refused</td>
+      <td>DNS, load balancer, mreža ili API server</td>
+      <td>Rezolucija endpointa, TCP 6443, zatim <code>/readyz</code></td>
+    </tr>
+    <tr>
+      <td>Čitanje radi, ali izmene sporadično ne uspevaju</td>
+      <td>etcd latencija, kvorum, API zagušenje ili admission webhook</td>
+      <td>API verbose odgovor, etcd endpoint status, webhook događaji i metrike</td>
+    </tr>
+    <tr>
+      <td>Novi Podovi ostaju <code>Pending</code></td>
+      <td>Scheduler ili neispunjivi scheduling uslovi</td>
+      <td><code>kubectl describe pod</code>, <code>spec.nodeName</code> i scheduler log</td>
+    </tr>
+    <tr>
+      <td>Obrisani Pod se ne obnavlja</td>
+      <td>Controller manager, vlasnički objekat ili pauzirani Deployment</td>
+      <td>OwnerReferences, željeni broj replika, controller manager log</td>
+    </tr>
+    <tr>
+      <td>API radi, ali jedan control plane Pod nedostaje</td>
+      <td>Lokalni kubelet, manifest, runtime ili host resursi</td>
+      <td><code>systemctl status kubelet</code>, manifest i <code>crictl ps -a</code></td>
+    </tr>
+    <tr>
+      <td>Česte promene scheduler ili controller lidera</td>
+      <td>API/etcd latencija, mrežni prekidi ili preopterećenje</td>
+      <td>Lease objekti, logovi komponenti i etcd metrike</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Dijagnostika ide od spolja ka unutra: klijentski kontekst i DNS, load balancer, API readiness, Kubernetes objekti, statički Podovi, kontejnerski runtime, kubelet, host resursi i tek zatim dublje etcd stanje. Nasumično restartovanje svih komponenti uklanja tragove, može pogoršati gubitak kvoruma i ne daje pouzdan dokaz uzroka.
+</p>
+
+<hr>
+
+<h3>Integrisani praktikum – kontrola zdravlja i bezbedna dijagnostika control plane-a</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Organizacija koristi kubeadm klaster za internu DevOps platformu. Nakon planiranog održavanja virtuelne infrastrukture potrebno je potvrditi da je HA control plane funkcionalan pre vraćanja klastera u pun produkcioni režim. Praktikum obuhvata kontrolu API dostupnosti, statičkih Podova, liderstva, etcd kvoruma, scheduling-a i kontrolnih petlji, uz ograničen negativni test schedulera na jednom control plane čvoru.
+</p>
+<p>
+  <strong>Cilj.</strong> Dokazati da zajednički API endpoint radi, da su sva tri control plane čvora dostupna, da etcd ima tri zdrava člana i lidera, da scheduler raspoređuje nove Podove, da controller manager obnavlja obrisanu repliku i da privremeni gubitak jedne scheduler instance ne prekida scheduling u HA klasteru.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koriste se control plane čvorovi <code>k8s-cp01</code>, <code>k8s-cp02</code> i <code>k8s-cp03</code>, worker čvorovi <code>k8s-worker01</code> i <code>k8s-worker02</code>, stacked etcd topologija i zajednički API endpoint <code>k8s-api.lab.example:6443</code>. Administratorska radna stanica ima <code>kubectl</code> i odobren kubeconfig. SSH pristup preko bastion sistema dozvoljen je samo za control plane proveru.
+</p>
+<p>
+  <strong>Preduslovi i prava pristupa.</strong> Potrebni su pravo čitanja Node, Pod, Event, Lease i Deployment objekata, pravo kreiranja i brisanja resursa u namespace-u <code>cp-validation</code> i odobren <code>sudo</code> pristup na <code>k8s-cp01</code> za čitanje manifesta, kubelet logova i izvođenje etcd klijenta iz postojećeg etcd kontejnera. Za negativni test potrebna je posebna promena sa dozvolom privremenog premeštanja jednog statičkog manifesta. Test se ne sprovodi ako je bilo koja druga scheduler instanca nezdrava.
+</p>
+
+<ol>
+  <li>
+    <strong>Potvrditi klijentski kontekst i dozvole.</strong>
+    Pre bilo kakve promene proverava se da li kubeconfig pokazuje na očekivani HA endpoint i da li identitet ima samo potrebna prava.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}{"\n"}'
+kubectl auth can-i get nodes
+kubectl auth can-i get pods --all-namespaces
+kubectl auth can-i create deployments -n cp-validation
+kubectl auth can-i delete pods -n cp-validation</code></pre>
+    <strong>Validacija:</strong> Server mora biti <code>https://k8s-api.lab.example:6443</code>. Prve dve provere treba da vrate <code>yes</code>. Prava u namespace-u mogu vratiti <code>no</code> pre njegovog kreiranja ako su dodeljena preko RoleBinding-a koji tek treba primeniti; u ovom praktikumu pretpostavlja se unapred pripremljen test identitet sa odgovarajućim ovlašćenjima.
+  </li>
+  <li>
+    <strong>Proveriti API dostupnost i readiness.</strong>
+    Komanda <code>kubectl get --raw</code> koristi postojeću autentifikaciju i TLS poverenje iz kubeconfig-a, pa je bezbednija od isključivanja provere sertifikata.
+    <pre><code class="language-bash">kubectl get --raw='/livez?verbose'
+kubectl get --raw='/readyz?verbose'
+kubectl version
+kubectl cluster-info</code></pre>
+    <strong>Validacija:</strong> Završni status za <code>/livez</code> i <code>/readyz</code> mora biti <code>ok</code>, a pojedinačne provere ne smeju sadržati <code>failed</code>. <code>kubectl version</code> mora prikazati server verziju bez timeout-a. Uspešan TCP spoj uz neuspešan <code>/readyz</code> ne prihvata se kao zdravo stanje.
+  </li>
+  <li>
+    <strong>Pregledati čvorove i control plane Podove.</strong>
+    Ovim se proverava registracija čvorova, Ready stanje i prisustvo očekivanih mirror Podova na sva tri control plane čvora.
+    <pre><code class="language-bash">kubectl get nodes -o wide
+kubectl get pods -n kube-system -o wide \
+  --sort-by='.spec.nodeName'
+kubectl get pods -n kube-system \
+  -l tier=control-plane -o wide</code></pre>
+    <strong>Validacija:</strong> Svih pet čvorova mora biti <code>Ready</code>. Za svaki <code>k8s-cp0X</code> očekuju se lokalne instance API servera, scheduler-a, controller manager-a i etcd-a. Restart broj se poredi sa prethodnim stanjem; veliki ili brzo rastući broj zahteva dalju analizu čak i kada je trenutni status <code>Running</code>.
+  </li>
+  <li>
+    <strong>Proveriti statičke manifeste i lokalni kubelet na k8s-cp01.</strong>
+    Pristup hostu koristi se da se potvrdi izvor konfiguracije mirror Podova.
+    <pre><code class="language-bash">ssh k8s-cp01
+sudo systemctl is-active kubelet
+sudo ls -l /etc/kubernetes/manifests
+sudo crictl ps --name 'kube-apiserver|kube-scheduler|kube-controller-manager|etcd'
+sudo journalctl -u kubelet --since '-30 min' --no-pager | tail -n 100</code></pre>
+    <strong>Validacija:</strong> Kubelet mora biti <code>active</code>, direktorijum mora sadržati četiri očekivana YAML manifesta, a <code>crictl</code> mora prikazati aktivne control plane kontejnere. U kubelet logu ne sme biti ponavljajućih grešaka pri učitavanju manifesta, pokretanju sandbox-a, mountovanju volumena ili komunikaciji sa runtime-om.
+  </li>
+  <li>
+    <strong>Proveriti scheduler i controller manager liderstvo.</strong>
+    Lease objekti pokazuju koja instanca trenutno koordinira aktivno vođstvo.
+    <pre><code class="language-bash">kubectl get lease -n kube-system kube-scheduler \
+  -o custom-columns=NAME:.metadata.name,HOLDER:.spec.holderIdentity,RENEW:.spec.renewTime
+kubectl get lease -n kube-system kube-controller-manager \
+  -o custom-columns=NAME:.metadata.name,HOLDER:.spec.holderIdentity,RENEW:.spec.renewTime</code></pre>
+    <strong>Validacija:</strong> Oba Lease objekta moraju imati popunjen <code>HOLDER</code>, a vreme <code>RENEW</code> mora biti skoro. Prazan holder ili zastareo renewTime zahteva proveru logova odgovarajuće komponente i dostupnosti API servera.
+  </li>
+  <li>
+    <strong>Proveriti etcd endpoint status i kvorum.</strong>
+    Sertifikati se čitaju samo lokalno, a komanda se izvršava iz postojećeg etcd kontejnera na <code>k8s-cp01</code>. Naziv kontejnera se prvo utvrđuje, ne pretpostavlja.
+    <pre><code class="language-bash">ETCD_CONTAINER=$(sudo crictl ps --name etcd -q | head -n 1)
+test -n "$ETCD_CONTAINER" &amp;&amp; echo "$ETCD_CONTAINER"
+
+sudo crictl exec "$ETCD_CONTAINER" etcdctl \
+  --endpoints=https://10.10.10.11:2379,https://10.10.10.12:2379,https://10.10.10.13:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+endpoint status --cluster -w table
+
+sudo crictl exec "$ETCD_CONTAINER" etcdctl \
+  --endpoints=https://10.10.10.11:2379,https://10.10.10.12:2379,https://10.10.10.13:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+endpoint health --cluster -w table</code></pre> <strong>Validacija:</strong> Moraju biti prikazana tri endpointa, tačno jedan lider i uspešna health provera za sva tri člana. Raft indeks treba da bude usklađen ili da pokazuje samo kratkotrajno prihvatljivo odstupanje. Nedostupan jedan član ne znači neposredan gubitak kvoruma, ali blokira nastavak planiranog održavanja dok se redundansa ne obnovi.
+
+  </li>
+  <li>
+    <strong>Kreirati izolovan testni namespace i radno opterećenje.</strong>
+    Namespace odvaja validacione objekte od aplikativnih resursa. Deployment koristi mali javno definisan kontejner; u zatvorenom okruženju image se zamenjuje odobrenom kopijom iz internog registra.
+    <pre><code class="language-bash">exit
+kubectl create namespace cp-validation
+
+cat &gt; /tmp/cp-validation-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-test
+  namespace: cp-validation
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: control-plane-test
+  template:
+    metadata:
+      labels:
+        app: control-plane-test
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+EOF
+
+kubectl apply -f /tmp/cp-validation-deployment.yaml
+kubectl rollout status deployment/control-plane-test \
+  -n cp-validation --timeout=120s
+kubectl get pods -n cp-validation -o wide</code></pre> <strong>Validacija:</strong> Deployment mora dostići stanje <code>2/2 available</code>, a oba Poda moraju dobiti worker čvor u koloni <code>NODE</code>. <code>ImagePullBackOff</code> potvrđuje da je scheduling završen, ali ukazuje na problem registra ili mreže; takav rezultat nije potpuna funkcionalna potvrda.
+
+  </li>
+  <li>
+    <strong>Potvrditi rad kontrolne petlje.</strong>
+    Briše se jedan Pod kojim upravlja Deployment, ne sam Deployment. Controller manager i ReplicaSet kontroler treba da naprave zamenu.
+    <pre><code class="language-bash">OLD_POD=$(kubectl get pods -n cp-validation \
+  -l app=control-plane-test \
+  -o jsonpath='{.items[0].metadata.name}')
+echo "$OLD_POD"
+
+kubectl delete pod "$OLD_POD" -n cp-validation
+kubectl get pods -n cp-validation -w</code></pre> <strong>Validacija:</strong> U kratkom roku mora se pojaviti Pod sa novim imenom, zatim preći u <code>Running</code> i <code>Ready</code>. Posmatranje se prekida sa <code>Ctrl+C</code>. Konačno stanje proverava se komandom: <pre><code class="language-bash">kubectl wait --for=condition=Available \
+  deployment/control-plane-test \
+  -n cp-validation --timeout=120s
+kubectl get deployment,replicaset,pod -n cp-validation</code></pre>
+Uspeh znači da Deployment ponovo ima dve dostupne replike i da obrisani Pod više ne postoji.
+
+  </li>
+  <li>
+    <strong>Izvršiti negativni HA test jedne scheduler instance.</strong>
+    <strong>Upozorenje:</strong> Ovaj korak menja statički manifest i sme se izvoditi samo u odobrenom lab ili kontrolisanom test okruženju. Ne izvodi se u single-control-plane klasteru, tokom drugog incidenta niti bez potvrđenog zdravlja preostalih scheduler instanci. Bezbednija produkciona alternativa je posmatranje planiranog pojedinačnog restarta čvora u okviru odobrenog maintenance postupka.
+    <pre><code class="language-bash">ssh k8s-cp01
+sudo install -d -m 0700 /var/backups/kubernetes/cp-validation
+sudo cp -a /etc/kubernetes/manifests/kube-scheduler.yaml \
+  /var/backups/kubernetes/cp-validation/kube-scheduler.yaml.pre-test
+sudo mv /etc/kubernetes/manifests/kube-scheduler.yaml \
+  /var/backups/kubernetes/cp-validation/kube-scheduler.yaml.disabled</code></pre>
+    <strong>Validacija:</strong> Posle približno jednog kubelet ciklusa scheduler mirror Pod na <code>k8s-cp01</code> treba da nestane, dok Lease treba da ostane ili pređe na zdravu instancu sa drugog control plane čvora.
+    <pre><code class="language-bash">exit
+kubectl get pods -n kube-system -o wide | grep kube-scheduler
+kubectl get lease -n kube-system kube-scheduler \
+  -o custom-columns=HOLDER:.spec.holderIdentity,RENEW:.spec.renewTime</code></pre>
+  </li>
+  <li>
+    <strong>Dokazati da scheduling ostaje funkcionalan.</strong>
+    Deployment se skalira sa dve na tri replike. Novi Pod mora biti raspoređen preko preostalog aktivnog scheduler lidera.
+    <pre><code class="language-bash">kubectl scale deployment/control-plane-test \
+  -n cp-validation --replicas=3
+kubectl rollout status deployment/control-plane-test \
+  -n cp-validation --timeout=120s
+kubectl get pods -n cp-validation \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,PHASE:.status.phase</code></pre>
+    <strong>Validacija:</strong> Sva tri Poda moraju imati popunjen <code>NODE</code> i fazu <code>Running</code>. Ako novi Pod ostane bez čvora, odmah se proveravaju događaji, Lease i scheduler logovi na preostalim čvorovima; test se prekida i manifest vraća.
+  </li>
+  <li>
+    <strong>Vratiti scheduler manifest i potvrditi oporavak.</strong>
+    Rollback vraća tačno prethodno sačuvan fajl. Ne generiše se novi manifest napamet.
+    <pre><code class="language-bash">ssh k8s-cp01
+sudo mv \
+  /var/backups/kubernetes/cp-validation/kube-scheduler.yaml.disabled \
+  /etc/kubernetes/manifests/kube-scheduler.yaml
+sudo sha256sum \
+  /etc/kubernetes/manifests/kube-scheduler.yaml \
+  /var/backups/kubernetes/cp-validation/kube-scheduler.yaml.pre-test
+sudo journalctl -u kubelet --since '-10 min' --no-pager | tail -n 80
+exit
+
+kubectl get pods -n kube-system -o wide | grep kube-scheduler
+kubectl get --raw='/readyz?verbose'</code></pre> <strong>Validacija:</strong> Hash vrednosti moraju biti jednake, scheduler Pod na <code>k8s-cp01</code> mora se vratiti u <code>Running</code>, a API readiness ostati uspešan. Vraćena standby instanca ne mora odmah postati lider.
+
+  </li>
+  <li>
+    <strong>Pregledati relevantne logove i događaje.</strong>
+    Mirror Pod logovi dostupni su preko API-ja dok je API funkcionalan. Kada nije, koriste se <code>crictl logs</code> i kubelet journal na konkretnom hostu.
+    <pre><code class="language-bash">kubectl logs -n kube-system kube-scheduler-k8s-cp01 \
+  --since=20m --tail=200
+kubectl logs -n kube-system kube-controller-manager-k8s-cp01 \
+  --since=20m --tail=200
+kubectl get events -n cp-validation \
+  --sort-by='.metadata.creationTimestamp'
+kubectl get events -n kube-system \
+  --sort-by='.metadata.creationTimestamp' | tail -n 50</code></pre>
+    <strong>Validacija:</strong> Scheduler log treba da pokaže pokretanje i učešće u izboru lidera bez ponavljajućih grešaka. Događaji testnog namespace-a treba da dokumentuju kreiranje, scheduling, pokretanje i zamenu Podova. Pojedinačna prolazna poruka tokom kontrolisanog restarta razlikuje se od greške koja se ponavlja i sprečava napredak objekta.
+  </li>
+  <li>
+    <strong>Ukloniti testne objekte.</strong>
+    Cleanup se sprovodi tek nakon prikupljanja izlaza i logova potrebnih za dokaz promene.
+    <pre><code class="language-bash">kubectl delete namespace cp-validation --wait=true
+rm -f /tmp/cp-validation-deployment.yaml
+kubectl get namespace cp-validation</code></pre>
+    <strong>Validacija:</strong> Poslednja komanda treba da vrati <code>NotFound</code>. Backup manifesta na hostu zadržava se prema pravilima evidencije promene, a zatim bezbedno uklanja kada istekne definisani period i kada je zapis promene zatvoren.
+  </li>
+</ol>
+
+<p>
+  <strong>Lokacije i svrha logova.</strong> Kubelet zapis se u systemd okruženju čita komandom <code>journalctl -u kubelet</code>. Logovi statičkih Podova dostupni su preko <code>kubectl logs -n kube-system</code> dok API radi, odnosno preko <code>crictl logs CONTAINER_ID</code> na control plane hostu kada API nije dostupan. API audit log, ako je omogućen, nalazi se na lokaciji definisanoj parametrom <code>--audit-log-path</code> i koristi se za rekonstrukciju administrativnih API zahteva. Logovi load balancera pokazuju backend health provere i prekide TCP sesija, dok centralni monitoring treba da čuva metrike API servera, schedulera, controller manager-a i etcd-a.
+</p>
+<p>
+  <strong>Tipične greške.</strong> <code>Forbidden</code> se razlikuje od kvara API-ja jer server odgovara i identitet je obično autentifikovan. <code>Pending</code> sa događajem <code>FailedScheduling</code> najčešće ukazuje na uslove raspoređivanja, dok odsustvo scheduling događaja za više novih Podova može ukazati na scheduler. API readiness greška sa etcd proverom usmerava dijagnostiku ka skladištu, ali zahteva potvrdu endpoint statusom i host metrikama. Nestanak mirror Poda uz postojeći manifest ukazuje na kubelet, runtime ili nevalidan manifest, dok brisanje mirror Poda preko API-ja bez uklanjanja manifesta nije trajna intervencija.
+</p>
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> Sva tri API servera moraju biti spremna iza zajedničkog endpointa; pet čvorova mora imati status <code>Ready</code>; sva tri etcd endpointa moraju biti zdrava i imati jednog lidera; scheduler i controller manager Lease moraju imati svež <code>renewTime</code>; testni Deployment mora dostići tri dostupne replike; obrisana replika mora biti automatski zamenjena; scheduling mora ostati funkcionalan tokom gubitka jedne scheduler instance; vraćeni manifest mora imati isti SHA-256 hash kao backup; nakon cleanup-a testni namespace ne sme postojati.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>API dostupnost i latencija.</strong> Prate se <code>/livez</code>, <code>/readyz</code>, stopa grešaka i trajanje API zahteva kroz monitoring i metrike API servera. Provera se obavlja neprekidno, a ručno posle svake promene load balancera, sertifikata, API servera ili etcd-a. Reakciju zahtevaju neuspešan readiness, rast 5xx odgovora ili trajno odstupanje latencije od definisanog SLO-a. Prva reakcija je utvrđivanje da li je problem ograničen na jednu backend instancu. Incident i vremenska linija beleže se u ITSM sistemu, a uspeh se meri dostupnošću endpointa i poštovanjem SLO-a.</li>
+  <li><strong>Stanje statičkih Podova i restartovanja.</strong> Komandom <code>kubectl get pods -n kube-system</code>, runtime metrikama i <code>journalctl -u kubelet</code> prati se status svake instance. Monitoring je neprekidan, a ručna kontrola se radi posle održavanja hosta ili kubeleta. CrashLoopBackOff, odsutan mirror Pod ili rast restart broja zahteva reakciju. Prvo se čuvaju logovi i proveravaju manifest, runtime i host resursi; ne restartuju se sve komponente odjednom. Nalazi se upisuju u zapis promene ili incidenta.</li>
+  <li><strong>etcd zdravlje, kapacitet i kvorum.</strong> Prate se endpoint health, lider, promene lidera, veličina baze, disk latencija, fsync trajanje i alarmi. Monitoring je neprekidan, a eksplicitna provera obavezna je pre nadogradnje ili gašenja control plane čvora. Nedostupan član, česte promene lidera, popunjen disk ili značajno povećana latencija zahtevaju zaustavljanje planirane promene. Prva reakcija je očuvanje kvoruma i sprečavanje dodatnog gašenja članova. Rezultati se dokumentuju u evidenciji kapaciteta i održavanja.</li>
+  <li><strong>Backup i probni restore etcd-a.</strong> Čuva se konzistentan snapshot Kubernetes etcd baze, odgovarajuća PKI dokumentacija i deklarativna konfiguracija potrebna za rekonstrukciju control plane-a. Snapshot se pravi najmanje dnevno i pre svake rizične promene, šifruje i kopira van klastera u kontrolisano skladište sa ograničenim pristupom. Integritet se proverava odgovarajućom <code>etcdutl snapshot status</code> operacijom za instaliranu verziju. Probni restore se periodično izvodi u izolovanom okruženju, nikada preko aktivnog data direktorijuma. Backup je upotrebljiv tek kada obnovljeni etcd može da se pokrene i kada se kontrolni skup očekivanih Kubernetes objekata uspešno pročita. RPO, RTO, hash snapshot-a, verzija alata i rezultat testa beleže se u registru backup poslova i izveštaju disaster recovery testa.</li>
+  <li><strong>Sertifikati.</strong> Rokovi važenja control plane i etcd sertifikata proveravaju se alatima distribucije, na primer <code>kubeadm certs check-expiration</code> u kubeadm klasteru, najmanje mesečno i pre perioda ograničenih promena. Reakcija se pokreće dovoljno rano da obnova, distribucija i restart pojedinačnih komponenti mogu biti izvedeni kontrolisano. Dokumentuju se vlasnik sertifikata, rok, postupak obnove i validacija TLS veze.</li>
+  <li><strong>Promene statičkih manifesta.</strong> Pre promene čuvaju se originalni fajl van nadgledanog direktorijuma, checksum, trenutno stanje i izlaz readiness provera. Promene se rade na jednom HA čvoru, uz validaciju pre prelaska na sledeći. Svaki readiness pad, sintaksna greška ili nestabilnost zaustavlja rollout. U CMDB ili sistemu upravljanja konfiguracijom dokumentuju se verzija, parametri, čvorovi, odobrenje i rollback. Uspeh znači jednake odobrene konfiguracije i zdrave komponente na svim čvorovima.</li>
+  <li><strong>RBAC i privilegovani pristup hostu.</strong> Periodično se proveravaju ClusterRoleBinding objekti, pristup <code>admin.conf</code>, sudo prava i pristup PKI direktorijumu. Pregled se radi najmanje kvartalno i odmah nakon promene radnog mesta ili odlaska zaposlenog. Neopravdani <code>cluster-admin</code>, deljeni kubeconfig ili nepoznat host pristup zahtevaju hitno ograničavanje akreditiva i bezbednosnu analizu. Dokaz pregleda čuva se u sistemu kontrole pristupa, a uspeh se meri brojem uklonjenih nepotrebnih privilegija i odsustvom nepoznatih privilegovanih naloga.</li>
+  <li><strong>Kapacitet control plane čvorova.</strong> Prate se CPU, memorija, load, inode i disk zauzeće, latencija storage-a i mrežna dostupnost. Pragovi se definišu prema SLO-u i istorijskom opterećenju, a ne samo prema generičkom procentu. Nagli rast, trajna zasićenost ili nedostatak prostora zahteva prvo očuvanje API-ja i etcd-a, zatim identifikaciju izvora opterećenja. Trendovi se vode u kapacitivnom planu, a uspeh se meri odsustvom incidenata izazvanih iscrpljivanjem resursa.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>☐ <code>kubectl config view --minify</code> prikazuje odobreni zajednički API endpoint.</li>
+  <li>☐ <code>/livez</code> i <code>/readyz</code> vraćaju završni status <code>ok</code> bez neuspešnih pojedinačnih provera.</li>
+  <li>☐ Svi control plane i worker čvorovi imaju status <code>Ready</code>.</li>
+  <li>☐ Na svakom control plane čvoru postoje očekivani API server, scheduler, controller manager i etcd Podovi.</li>
+  <li>☐ Scheduler i controller manager Lease imaju popunjenog holdera i svež <code>renewTime</code>.</li>
+  <li>☐ etcd endpoint status prikazuje tri zdrava člana, jednog lidera i očuvan kvorum.</li>
+  <li>☐ Novi testni Pod dobija <code>spec.nodeName</code> i prelazi u <code>Running</code>.</li>
+  <li>☐ Brisanje jednog Deployment Poda dovodi do automatskog kreiranja zamenske replike.</li>
+  <li>☐ Kubelet log nema ponavljajuće greške učitavanja statičkih manifesta ili rada runtime-a.</li>
+  <li>☐ Postoji aktuelan etcd snapshot sa zabeleženim hashom, verzijom alata i uspešnim testom integriteta.</li>
+  <li>☐ Promena, validacioni izlazi, odstupanja i rollback rezultat upisani su u odobreni ITSM ili change zapis.</li>
+  <li>☐ Privremeni testni namespace i lokalni testni fajlovi uklonjeni su nakon prikupljanja dokaza.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume control plane kao skup koordinisanih, ali jasno razdvojenih odgovornosti. API server nije skladište, scheduler nije izvršni agent, controller manager nije univerzalni servis za svaki problem, a etcd nije baza koju treba ručno uređivati. Pouzdana dijagnostika nastaje kada se simptom poveže sa komponentom koja donosi konkretnu odluku i sa zavisnostima od kojih ta komponenta zavisi.
+</p>
+<p>
+  Praktična osposobljenost podrazumeva proveru API readiness-a, mirror Podova, kubeleta, liderstva, etcd kvoruma, scheduling-a i kontrolnih petlji. Administrator mora umeti da razlikuje nedostupan API od neuspešne autorizacije, kvar schedulera od neispunjivog Pod zahteva, kvar kontrolera od pogrešno deklarisanog broja replika i stvarni HA od prividne redundanse koja deli istu tačku otkaza.
+</p>
+<p>
+  Produkcione promene control plane-a zahtevaju backup, proveru redundanse, rad na jednoj instanci, neposrednu validaciju i pripremljen rollback. Posebnu odgovornost nose pristup statičkim manifestima, PKI materijalu, etcd podacima i privilegovanom kubeconfig-u. Te mogućnosti prelaze granicu obične administracije aplikacija i moraju biti ograničene, auditovane i korišćene samo u okviru odobrene promene ili incidenta.
+</p>
+<p>
+  Razlog za eskalaciju postoji kada je ugrožen etcd kvorum, kada više API instanci nije spremno, kada postoji sumnja na korupciju podataka, kompromitovanje administratorskih akreditiva, neuspeh obnove iz snapshot-a, nekontrolisana promena statičkih manifesta ili zavisnost od mrežne, storage, load balancer ili cloud infrastrukture izvan ovlašćenja Kubernetes administratora. Odgovoran administrator tada ne nastavlja eksperimentisanje, već čuva dokaze, stabilizuje preostale zdrave komponente, aktivira odgovarajući operativni tim i dokumentuje svaku preduzetu radnju.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za arhitekturu klastera, control plane komponente, Kubernetes API, health endpoint provere, autentifikaciju, RBAC autorizaciju, admission kontrolu, kontrolere, scheduling, leader election, cloud controller manager, kubeadm statičke Podove i HA topologije; zvanične CLI reference za kube-apiserver, kube-scheduler, kube-controller-manager, kubeadm, kubectl i crictl; zvanični etcd operativni vodiči za kvorum, monitoring, održavanje, snapshot, proveru integriteta, disaster recovery i verzijski usklađen restore; zvanične bezbednosne, audit, monitoring, troubleshooting, backup i produkcione administrativne preporuke povezanih Kubernetes komponenti.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-06-kubeadm-i-topologija-klastera.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-08-worker-node.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

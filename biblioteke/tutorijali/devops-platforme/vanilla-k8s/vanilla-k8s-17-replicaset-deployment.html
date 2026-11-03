@@ -1,0 +1,890 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-17-replicaset-deployment.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>ReplicaSet – održavanje željenog broja instanci aplikacije | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes ReplicaSet održava željeni broj identičnih Pod instanci, automatski kreira nedostajuće Pod-ove i uklanja višak instanci aplikacije.">
+
+  <meta name="keywords"
+        content="Kubernetes ReplicaSet, ReplicaSet, replike Pod-ova, desired replicas, željeni broj instanci, selector, pod template, self-healing, Kubernetes objekti, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-17-replicaset-deployment.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="ReplicaSet – održavanje željenog broja instanci aplikacije">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes ReplicaSet koji nadgleda Pod-ove i automatski održava zadati broj identičnih instanci aplikacije u klasteru.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-17-replicaset-deployment.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-17-replicaset.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="ReplicaSet – održavanje željenog broja instanci aplikacije">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-17-replicaset.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-17-replicaset.png"
+           alt="ReplicaSet – održavanje željenog broja instanci aplikacije">
+
+    </a>
+
+   <div class="page-subtitle">
+ IV. Osnovni workload objekti i kontrolne petlje
+</div>
+    <div class="page-subtitle">
+17. ReplicaSet i Deployment – replike, rollout strategije, istorija i povratak verzije
+</div>
+<p>
+  Pod predstavlja najmanju izvršnu jedinicu u Kubernetes-u, ali samostalno kreiran Pod nije dovoljno pouzdan model za većinu produkcionih aplikacija. Ako se takav Pod obriše, ako čvor na kome radi postane nedostupan ili ako administrator tokom održavanja ukloni objekat, Kubernetes nema deklarativnu informaciju da bi trebalo da ga ponovo napravi. ReplicaSet rešava upravo taj problem: administrator navodi koliko istovetnih instanci aplikacije želi, a odgovarajući kontroler neprekidno usklađuje stvarno stanje klastera sa tim željenim stanjem.
+</p>
+<p>
+  ReplicaSet nije proces koji se izvršava unutar aplikacionog kontejnera. To je Kubernetes API objekat iz grupe <code>apps/v1</code>, dok se stvarni reconciliation mehanizam izvršava kao deo kontrolne ravni, odnosno u okviru komponente <code>kube-controller-manager</code>. Zbog toga ReplicaSet nastavlja da održava aplikaciju čak i kada administrator zatvori terminal ili izgubi vezu sa klasterom. Njegov rad nije zasnovan na jednokratnoj komandi, već na trajnoj kontrolnoj petlji koja poredi deklarisani broj replika sa brojem Pod-ova koji odgovaraju selektoru.
+</p>
+<h3>Uloga ReplicaSet objekta</h3>
+<p>
+  Osnovna namena ReplicaSet objekta jeste održavanje stabilnog broja istovetnih Pod replika. Polje <code>spec.replicas</code> predstavlja željeno stanje. Ako je navedeno da aplikacija mora imati tri replike, kontroler pokušava da obezbedi tri Pod-a čije oznake odgovaraju selektoru ReplicaSet-a. Kada postoji manje Pod-ova, kreiraju se novi. Kada ih postoji više, višak se uklanja. Ovakvo ponašanje često se opisuje kao samoisceljivanje, ali je važno razumeti njegovu granicu: ReplicaSet ne popravlja aplikaciju unutar postojećeg Pod-a, već održava broj Pod objekata koji odgovaraju njegovom kriterijumu.
+</p>
+<p>
+  ReplicaSet je pogodan za horizontalno umnožavanje stateless aplikacionih procesa kod kojih sve instance mogu da koriste isti šablon i kod kojih pojedinačni Pod nema trajan identitet. Tipični primeri su HTTP front-end procesi, API servisi, worker procesi koji čitaju poslove iz zajedničkog reda i druge aplikacije čije instance mogu biti zamenjene bez posebnog postupka oporavka lokalnog stanja.
+</p>
+<p>
+  ReplicaSet sam po sebi ne obezbeđuje mrežno otkrivanje Pod-ova, stabilnu pristupnu adresu, raspodelu saobraćaja, trajno skladište, bezbedno čuvanje tajni, automatsko ažuriranje aplikacije niti aplikacionu visoku dostupnost. Za stabilan mrežni pristup obično je potreban Service. Za kontrolisane promene verzije aplikacije uobičajeno se koristi Deployment, koji iznad ReplicaSet objekata obezbeđuje rollout, istoriju revizija i rollback. Za aplikacije kojima su potrebni stabilni identiteti, uređeni redosled pokretanja ili trajni diskovi povezani sa pojedinačnim replikama prikladniji je StatefulSet.
+</p>
+<h3>Kontrolna petlja i željeno stanje</h3>
+<p>
+  Kubernetes kontroleri rade po principu kontinuiranog usklađivanja. ReplicaSet kontroler posmatra ReplicaSet i Pod objekte preko Kubernetes API servera. Za svaki ReplicaSet određuje koji Pod-ovi odgovaraju njegovom selektoru, poredi njihov broj sa vrednošću <code>spec.replicas</code> i preduzima korektivnu radnju. Kreiranje i brisanje Pod-ova zato nisu reakcije na jednu lokalnu skriptu, već API operacije kontrolne ravni.
+</p>
+<p>
+  Ako je željeni broj replika tri, a postoje samo dve odgovarajuće instance, kontroler kreira novi Pod koristeći <code>spec.template</code>. Scheduler zatim bira odgovarajući čvor, kubelet na tom čvoru priprema Pod i pokreće kontejnere. Ako postoje četiri odgovarajuća Pod-a, ReplicaSet bira jedan za uklanjanje kako bi broj ponovo postao tri. Administrator ne treba da zasniva aplikacionu logiku na pretpostavci da će određena replika biti trajno sačuvana.
+</p>
+<p>
+  Kontroler radi eventualno konzistentno. Nakon promene manifestacije nije nužno da novi broj Pod-ova bude vidljiv u istom trenutku kada API server prihvati zahtev. Potrebno je kratko vreme da kontroler registruje promenu, kreira ili ukloni objekte, da scheduler rasporedi nove Pod-ove i da kubelet pokrene kontejnere. Zato uspešan rezultat komande <code>kubectl apply</code> potvrđuje da je API zahtev prihvaćen, ali ne potvrđuje da je aplikacija postala funkcionalna.
+</p>
+<p>
+  Važna produkciona razlika postoji između broja postojećih, pokrenutih i spremnih replika. Pod može postojati, a da bude u stanju <code>Pending</code>, <code>ImagePullBackOff</code>, <code>CrashLoopBackOff</code> ili da njegovi kontejneri još nisu spremni. ReplicaSet prvenstveno održava broj Pod objekata. Readiness probe i statusni podaci omogućavaju administratoru da utvrdi da li su te replike zaista sposobne da primaju saobraćaj.
+</p>
+<h3>Struktura ReplicaSet manifesta</h3>
+<p>
+  Produkciono upotrebljiv ReplicaSet manifest sadrži identitet objekta, selektor, željeni broj replika i Pod šablon. Selektor i oznake u šablonu predstavljaju najvažniju vezu u manifestu. Selektor nije samo opis aplikacije, već operativni kriterijum na osnovu kojeg kontroler odlučuje koje Pod-ove broji i kojima upravlja.
+</p>
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-rs
+  namespace: it-tutorijali
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: web-rs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: web-rs
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27.5-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10</code></pre>
+<p>
+  Polje <code>apiVersion: apps/v1</code> određuje aktuelnu stabilnu API grupu za ReplicaSet. Polje <code>kind</code> identifikuje tip resursa. Sekcija <code>metadata</code> određuje ime i namespace objekta. ReplicaSet je namespace resurs, pa može da upravlja samo Pod-ovima u istom namespace-u.
+</p>
+<p>
+  Polje <code>spec.replicas</code> određuje željeni broj Pod-ova. Ako se izostavi, API podrazumevano koristi jednu repliku. U administrativnoj praksi vrednost treba navesti eksplicitno kako bi namera bila jasna u repozitorijumu konfiguracije, tokom revizije promene i prilikom poređenja okruženja.
+</p>
+<p>
+  Sekcija <code>spec.selector</code> određuje koje Pod-ove ReplicaSet smatra svojim skupom. <code>matchLabels</code> zahteva da Pod poseduje sve navedene parove oznaka. Mogu se koristiti i izrazi u okviru <code>matchExpressions</code>, na primer operatori <code>In</code>, <code>NotIn</code>, <code>Exists</code> i <code>DoesNotExist</code>. Svi uslovi selektora primenjuju se zajedno, odnosno Pod mora zadovoljiti celokupan selektor.
+</p>
+<p>
+  Oznake definisane u <code>spec.template.metadata.labels</code> moraju zadovoljiti selektor ReplicaSet-a. U suprotnom API server odbija manifest jer bi kontroler kreirao Pod-ove koje zatim ne bi mogao da prepozna kao svoje. Selektor ReplicaSet-a u <code>apps/v1</code> ne može se naknadno slobodno menjati. Promena identiteta aplikacionog skupa zbog toga se planira kao kreiranje novog objekta, migracija saobraćaja i kontrolisano uklanjanje starog, a ne kao improvizovana izmena selektora u produkciji.
+</p>
+<p>
+  Sekcija <code>spec.template</code> predstavlja šablon budućih Pod-ova. Ona nema sopstvena polja <code>apiVersion</code> i <code>kind</code>, jer se nalazi unutar ReplicaSet objekta. Svaki Pod kreiran iz šablona dobija generisano ime, odgovarajuće oznake i referencu na vlasnički ReplicaSet u polju <code>metadata.ownerReferences</code>.
+</p>
+<h3>Selektori, oznake i vlasništvo nad Pod-ovima</h3>
+<p>
+  Najveći operativni rizik kod samostalnog ReplicaSet-a predstavlja preširok ili pogrešno izabran selektor. ReplicaSet ne bira Pod-ove prema njihovom imenu, slici kontejnera ili nameni koju administrator ima na umu, već isključivo prema deklarisanom label selectoru. Ako u istom namespace-u postoji zasebno kreiran Pod sa odgovarajućim oznakama i bez kontrolera koji ga već poseduje, ReplicaSet može da ga usvoji i uključi u svoj skup.
+</p>
+<p>
+  Zbog toga generički selektor, kao što je samo <code>app: web</code>, može izazvati sudar sa drugim testnim, migracionim ili dijagnostičkim Pod-ovima. Bezbedniji obrazac koristi više stabilnih oznaka, na primer naziv aplikacije, instancu i komponentu. Selektor ipak ne treba vezivati za promenljivu verziju slike ako će se ista logička aplikacija održavati kroz više izdanja.
+</p>
+<p>
+  Vlasništvo se proverava preko <code>ownerReferences</code>, a ne samo preko oznaka. Pod koji je kreirao ReplicaSet obično sadrži referencu na ReplicaSet i postavljen <code>controller: true</code>. Garbage collector koristi ovu vezu pri kaskadnom brisanju. Standardno brisanje ReplicaSet-a zato uklanja i Pod-ove koje on poseduje, osim ako administrator izričito izabere orphan propagaciju.
+</p>
+<p>
+  Promena oznaka na aktivnom Pod-u može promeniti članstvo u selektovanom skupu. Ako se sa jednog Pod-a ukloni oznaka potrebna selektoru, ReplicaSet ga više ne računa kao odgovarajuću repliku i kreira zamenu. Ovakav postupak može biti koristan za kontrolisanu dijagnostičku izolaciju, ali istovremeno povećava broj Pod-ova i može ostaviti izdvojeni objekat koji treba posebno evidentirati i ukloniti. Zato se label operacije u produkciji tretiraju kao promena ponašanja kontrolera, a ne kao bezazlena kozmetička izmena.
+</p>
+<h3>ReplicaSet, Deployment i drugi workload kontroleri</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Objekat</th>
+      <th>Primarna namena</th>
+      <th>Važna operativna osobina</th>
+      <th>Tipična upotreba</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ReplicaSet</td>
+      <td>Održava zadati broj zamenljivih Pod replika</td>
+      <td>Nema ugrađenu strategiju verzionisanog rollout-a i istoriju aplikacionih revizija</td>
+      <td>Učenje kontrolera, specifični ručno upravljani skupovi i objekti koje kreira Deployment</td>
+    </tr>
+    <tr>
+      <td>Deployment</td>
+      <td>Deklarativno upravlja stateless aplikacijom i pripadajućim ReplicaSet objektima</td>
+      <td>Podržava rolling update, rollout status, istoriju i rollback</td>
+      <td>Standardni izbor za većinu stateless produkcionih aplikacija</td>
+    </tr>
+    <tr>
+      <td>StatefulSet</td>
+      <td>Upravlja Pod-ovima kojima su potrebni stabilni identiteti i uređeno ponašanje</td>
+      <td>Podržava stabilna imena i vezivanje trajnog skladišta po replici</td>
+      <td>Baze podataka, klasterisani stateful sistemi i aplikacije sa identitetom člana</td>
+    </tr>
+    <tr>
+      <td>DaemonSet</td>
+      <td>Obezbeđuje Pod na svim ili izabranim čvorovima</td>
+      <td>Broj Pod-ova zavisi od skupa odgovarajućih čvorova</td>
+      <td>Agenti za logove, monitoring, mrežne i storage komponente</td>
+    </tr>
+    <tr>
+      <td>Job</td>
+      <td>Izvršava posao do uspešnog završetka</td>
+      <td>Upravlja kompletiranjem, a ne trajno aktivnim replikama</td>
+      <td>Batch obrada, migracije i jednokratni poslovi</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  U većini produkcionih implementacija administrator ne kreira ReplicaSet direktno. Deployment kreira i poseduje jedan ili više ReplicaSet objekata i koristi ih za postepeno uvođenje novog Pod šablona. Direktna izmena ReplicaSet-a kojim upravlja Deployment može biti ubrzo poništena ili može narušiti očekivani rollout. Pre svake promene zato treba proveriti kolonu <code>OWNER REFERENCES</code> ili polje <code>metadata.ownerReferences</code>.
+</p>
+<p>
+  Samostalni ReplicaSet nema automatizovanu istoriju revizija i komanda <code>kubectl rollout undo</code> nije mehanizam za njegov rollback. Ako administrator promeni sliku kontejnera u samostalnom ReplicaSet-u, postojeći Pod-ovi se ne zamenjuju automatski samo zato što se promenio šablon. Novi šablon koristiće se prilikom kasnijeg kreiranja Pod-ova, dok stare instance mogu nastaviti da rade. To može proizvesti nekontrolisanu mešavinu verzija. Za redovne aplikacione nadogradnje treba koristiti Deployment.
+</p>
+<h3>Skaliranje, dostupnost i ograničenja</h3>
+<p>
+  Broj replika može se promeniti deklarativnom izmenom manifesta ili komandom <code>kubectl scale</code>. Deklarativna izmena u verzionisanom repozitorijumu uglavnom je poželjnija jer ostavlja audit trag i sprečava da sledeći <code>apply</code> vrati staru vrednost. Imperativno skaliranje je korisno u incidentu ili privremenom operativnom postupku, ali promena mora biti dokumentovana i zatim usklađena sa izvorom konfiguracione istine.
+</p>
+<p>
+  Komanda <code>kubectl scale</code> može koristiti preduslov <code>--current-replicas</code>. Time se sprečava da administrator pregazi promenu koju je u međuvremenu izvršio drugi operator ili automatizacija. Na primer, zahtev za promenu sa tri na pet replika može biti odbijen ako objekat više nema tri replike. To je bezbedniji obrazac u okruženjima sa više administratora.
+</p>
+<p>
+  Veći broj replika ne garantuje visoku dostupnost. Scheduler može rasporediti više Pod-ova na isti čvor ako nisu definisana pravila raspoređivanja. Kvar tog čvora tada privremeno uklanja više replika. Za ozbiljniju otpornost koriste se topology spread constraints, pod anti-affinity, odgovarajući broj radnih čvorova, requests vrednosti, PodDisruptionBudget i pravilno projektovana mrežna pristupna tačka.
+</p>
+<p>
+  ReplicaSet takođe ne garantuje da će aplikacija odgovoriti uspešno. Ako je slika neispravna, konfiguracija nedostupna, readiness provera pogrešna ili čvorovi nemaju dovoljno resursa, kontroler može imati željeni broj Pod objekata bez željenog broja funkcionalnih replika. Administrator zato posmatra status ReplicaSet-a, stanje Pod-ova, događaje, probe, potrošnju resursa, aplikacione logove i Service endpoints.
+</p>
+<h3>Deployment kao upravljač deklarativne isporuke</h3>
+<p>
+  Deployment je viši kontroler za stateless workload-e: administrator menja njegov <code>spec.template</code>, a Deployment kontroler kreira novi ReplicaSet, postepeno menja broj replika starog i novog skupa i evidentira reviziju. Lanac vlasništva je zato <code>Deployment → ReplicaSet → Pod</code>. Direktna izmena Pod-a ili ReplicaSet-a zaobilazi izvor željenog stanja i nije pouzdana metoda isporuke.
+</p>
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: it-tutorijali
+  annotations:
+    kubernetes.io/change-cause: "Početna isporuka nginx 1.27.5"
+spec:
+  replicas: 4
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 180
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: web
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27.5-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5</code></pre>
+<p>
+  Nova revizija nastaje samo kada se promeni Pod šablon, na primer slika, promenljiva okruženja, oznaka ili anotacija unutar <code>spec.template</code>. Skaliranje Deployment-a ne stvara novu reviziju. Anotacija <code>kubernetes.io/change-cause</code> nije obavezna, ali istoriju čini razumljivijom; razlog promene ipak treba trajno čuvati u Git i change evidenciji.
+</p>
+<h3>RollingUpdate, Recreate i proračun kapaciteta</h3>
+<p>
+  Podrazumevana strategija <code>RollingUpdate</code> postepeno povećava novi ReplicaSet i smanjuje stari. <code>maxUnavailable</code> određuje najveći dozvoljeni broj nedostupnih replika u odnosu na željeni broj, dok <code>maxSurge</code> određuje koliko dodatnih Pod-ova sme privremeno postojati. Vrednosti mogu biti apsolutne ili procentualne. Procenat za <code>maxUnavailable</code> zaokružuje se naniže, a za <code>maxSurge</code> naviše; oba parametra ne smeju istovremeno biti nula.
+</p>
+<table>
+  <thead><tr><th>Strategija</th><th>Ponašanje</th><th>Prednost</th><th>Rizik i uslov</th></tr></thead>
+  <tbody>
+    <tr><td>RollingUpdate</td><td>Stari i novi ReplicaSet privremeno rade paralelno</td><td>Može očuvati dostupnost tokom isporuke</td><td>Aplikacione verzije, šema podataka i protokol moraju biti kompatibilni tokom preklapanja; potreban je dodatni kapacitet za surge</td></tr>
+    <tr><td>Recreate</td><td>Stari Pod-ovi se uklanjaju pre kreiranja novih</td><td>Ne zahteva paralelan rad verzija</td><td>Podrazumeva prekid usluge; čak i tada ručno kreirani stari Pod može kratko preklopiti novu verziju</td></tr>
+  </tbody>
+</table>
+<p>
+  Za četiri replike i vrednosti <code>maxUnavailable: 1</code> i <code>maxSurge: 1</code> tokom rollout-a može postojati najviše pet Pod-ova, dok najmanje tri moraju ostati dostupna. To nije isto što i garantovan poslovni kapacitet: readiness proba mora pouzdano predstavljati sposobnost instance da prima saobraćaj, a cluster quota i čvorovi moraju dozvoliti dodatni Pod. PodDisruptionBudget ograničava dobrovoljne poremećaje, ali ne upravlja Deployment rollout-om i ne može sprečiti kvar čvora.
+</p>
+<h3>Istorija revizija, pauza, nastavak i rollback</h3>
+<p>
+  Deployment čuva stare ReplicaSet objekte sa nula replika do granice <code>revisionHistoryLimit</code> (podrazumevano 10). Oni omogućavaju rollback Pod šablona, ali nisu backup aplikacionih podataka, ConfigMap ili Secret sadržaja, Service konfiguracije ni spoljnog sistema. Vrednost nula uklanja mogućnost povratka na raniju reviziju čim se stari ReplicaSet očisti.
+</p>
+<pre><code class="language-bash">kubectl rollout status deployment/web -n it-tutorijali --timeout=180s
+kubectl rollout history deployment/web -n it-tutorijali
+kubectl rollout history deployment/web -n it-tutorijali --revision=2
+kubectl rollout pause deployment/web -n it-tutorijali
+kubectl rollout resume deployment/web -n it-tutorijali
+kubectl rollout undo deployment/web -n it-tutorijali --to-revision=2</code></pre>
+<p>
+  <code>rollout status</code> po pravilu prati najnoviju reviziju; opcija <code>--revision</code> vezuje proveru za konkretnu reviziju i prijavljuje ako je nadjača novija promena. Pauzirani Deployment ne prima nove rollout promene dok se ne nastavi, što omogućava grupisanje više izmena u jednu reviziju. Rollback je promena stanja i pre izvršenja treba pregledati ciljnu reviziju, kompatibilnost konfiguracije i baze podataka, aktuelni saobraćaj i odobrenje za promenu. <code>kubectl rollout undo --dry-run=server</code> može prikazati API rezultat bez trajnog upisa, ali ne dokazuje da će stara verzija aplikacije biti funkcionalna.
+</p>
+<h3>Status Deployment-a i neuspešno napredovanje</h3>
+<p>
+  Polja <code>status.updatedReplicas</code>, <code>readyReplicas</code>, <code>availableReplicas</code> i <code>unavailableReplicas</code> razdvajaju kreirane, spremne i dovoljno dugo dostupne instance. <code>minReadySeconds</code> određuje koliko Pod mora ostati spreman bez pada kontejnera da bi bio raspoloživ. <code>progressDeadlineSeconds</code> mora biti veći od <code>minReadySeconds</code>; po isteku Deployment dobija uslov <code>Progressing=False</code> sa razlogom <code>ProgressDeadlineExceeded</code>. Kubernetes tada prijavljuje zastoj, ali sam ne izvodi rollback.
+</p>
+<p>
+  Česti uzroci zastoja su nepostojeća slika, nedovoljan kapacitet ili quota, neispravan readiness, nedostajuća konfiguracija, admission zabrana i runtime greška. Dokazi se prikupljaju redom: Deployment conditions i događaji, odnos starih i novih ReplicaSet-ova, Pod status i događaji, zatim aktuelni i prethodni kontejnerski logovi. Tek nakon potvrde uzroka bira se korekcija ili povratak poznate dobre revizije.
+</p>
+<pre><code class="language-bash">kubectl get deployment web -n it-tutorijali
+kubectl describe deployment web -n it-tutorijali
+kubectl get rs -n it-tutorijali -l app.kubernetes.io/instance=web
+kubectl get pods -n it-tutorijali -l app.kubernetes.io/instance=web -o wide
+kubectl get events -n it-tutorijali --sort-by=.metadata.creationTimestamp</code></pre>
+<h3>Dijagnostika ReplicaSet i Deployment problema</h3>
+<p>
+  Početna dijagnostika treba da odgovori na četiri pitanja: da li je API objekat pravilno definisan, da li kontroler kreira očekivani broj Pod-ova, da li scheduler može da ih rasporedi i da li se kontejneri uspešno pokreću i postaju spremni. Komande se biraju tako da razdvoje ove slojeve, umesto da administrator nasumično menja manifest.
+</p>
+<pre><code class="language-bash">kubectl get replicaset web-rs -n it-tutorijali
+kubectl describe replicaset web-rs -n it-tutorijali
+kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  -o wide
+kubectl get events -n it-tutorijali \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+<p>
+  U izlazu <code>kubectl get replicaset</code> kolona <code>DESIRED</code> predstavlja deklarisani broj replika, <code>CURRENT</code> broj trenutno evidentiranih Pod-ova, a <code>READY</code> broj spremnih Pod-ova. Kratkotrajna razlika neposredno nakon promene može biti normalna. Razlika koja traje zahteva pregled opisa ReplicaSet-a, Pod događaja i pojedinačnih stanja kontejnera.
+</p>
+<p>
+  Ako je <code>CURRENT</code> manji od <code>DESIRED</code>, moguće je da API ograničenja, quota, admission politika ili drugi kontrolni mehanizam sprečavaju kreiranje. Ako Pod-ovi postoje ali ostaju <code>Pending</code>, problem je češće u resursima, taint-ovima, affinity pravilima, storage zahtevima ili scheduler ograničenjima. Ako su u stanju <code>ImagePullBackOff</code>, proveravaju se naziv slike, registry dostupnost i image pull kredencijali. Kod <code>CrashLoopBackOff</code> analiziraju se aplikacioni logovi, argumenti procesa, konfiguracija i prethodni izlaz kontejnera.
+</p>
+<pre><code class="language-bash">kubectl describe pod POD_NAME -n it-tutorijali
+kubectl logs POD_NAME -n it-tutorijali -c nginx
+kubectl logs POD_NAME -n it-tutorijali -c nginx --previous
+kubectl get pod POD_NAME -n it-tutorijali \
+  -o jsonpath='{.metadata.ownerReferences}'</code></pre>
+<p>
+  Aplikacioni logovi se preuzimaju komandom <code>kubectl logs</code>, koja čita log standardnog izlaza i standardne greške kontejnera preko kubelet-a. Opcija <code>--previous</code> ima vrednost kada se kontejner restartovao. Kubernetes događaji nisu trajni audit dnevnik i mogu isteći, pa se u enterprise klasteru važni događaji, kontrolni audit zapisi i kontejnerski logovi šalju u centralizovani sistem za logovanje. Za probleme u samom kontroleru proveravaju se logovi <code>kube-controller-manager</code> komponente na način koji zavisi od distribucije klastera: kao statički Pod u <code>kube-system</code> namespace-u, kroz systemd dnevnik ili kroz upravljanu cloud kontrolnu ravan.
+</p>
+<h3>Integrisani praktikum: samostalni ReplicaSet za interni web servis</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Interni tim priprema mali stateless web servis za laboratorijsku proveru Kubernetes kontrolne petlje. Potrebne su tri paralelne instance, stabilan pristup preko ClusterIP Service objekta i dokaz da se obrisana replika automatski zamenjuje. Samostalni ReplicaSet koristi se namerno radi razumevanja njegovog ponašanja; za redovnu produkcionu isporuku i ažuriranje verzije iste aplikacije kasnije bi se koristio Deployment.
+</p>
+<p>
+  <strong>Cilj i kriterijumi prihvatanja.</strong> Namespace <code>it-tutorijali</code> mora sadržati ReplicaSet <code>web-rs</code> sa tri spremne replike i Service <code>web-svc</code>. Brisanje jednog Pod-a mora dovesti do automatskog kreiranja zamene. Uklanjanje selektorske oznake sa jednog Pod-a mora pokazati da izdvojeni Pod više nije član upravljanog skupa. HTTP provera kroz Service mora vratiti uspešan odgovor.
+</p>
+<p>
+  <strong>Referentno okruženje i preduslovi.</strong> Koristi se funkcionalan vanilla Kubernetes klaster sa najmanje jednim schedulable worker čvorom, instaliranim <code>kubectl</code> alatom i ispravnim kubeconfig kontekstom. Radna stanica koristi direktorijum <code>~/vanilla-k8s/17-replicaset</code>. Klaster mora imati pristup registry-ju iz kojeg se preuzima slika <code>nginx:1.27.5-alpine</code>. U produkciji sliku treba prevesti kroz odobreni interni registry, skenirati i vezati za nepromenljivi digest.
+</p>
+<p>
+  <strong>Potrebna prava.</strong> Korisnik mora imati najmanje prava za <code>get</code>, <code>list</code>, <code>watch</code>, <code>create</code>, <code>patch</code>, <code>update</code> i <code>delete</code> nad ReplicaSet, Pod i Service objektima u namespace-u <code>it-tutorijali</code>, kao i pravo čitanja događaja i Pod logova. Cluster-admin ovlašćenje nije potrebno i ne treba ga koristiti samo radi ovog zadatka.
+</p>
+<ol>
+  <li>
+    <strong>Proveriti aktivni kontekst, identitet i ovlašćenja.</strong>
+    Pre promene administrator potvrđuje da komande neće biti poslate pogrešnom klasteru i da nalog poseduje samo potrebna namespace prava.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl auth can-i create replicasets.apps -n it-tutorijali
+kubectl auth can-i create services -n it-tutorijali
+kubectl auth can-i delete pods -n it-tutorijali
+kubectl get nodes</code></pre>
+    <strong>Validacija:</strong> Kontekst mora odgovarati laboratorijskom klasteru, provere ovlašćenja moraju vratiti <code>yes</code>, a najmanje jedan worker čvor mora imati status <code>Ready</code>. Ako kontekst nije očekivan, postupak se prekida pre bilo kakve promene.
+  </li>
+  <li>
+    <strong>Kreirati radni direktorijum i namespace manifest.</strong>
+    Direktorijum čuva sve konfiguracione artefakte promene. Namespace se definiše deklarativno kako bi scenario mogao ponovljivo da se primeni.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s/17-replicaset
+cd ~/vanilla-k8s/17-replicaset
+
+cat > namespace.yaml <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+name: it-tutorijali
+labels:
+purpose: training
+EOF
+
+kubectl apply -f namespace.yaml</code></pre> <strong>Validacija:</strong> Namespace mora postojati i imati fazu <code>Active</code>. <pre><code class="language-bash">kubectl get namespace it-tutorijali
+kubectl get namespace it-tutorijali --show-labels</code></pre>
+
+  </li>
+  <li>
+    <strong>Snimiti početno stanje namespace-a.</strong>
+    Ova provera otkriva postojeće objekte i moguće sudare oznaka pre uvođenja ReplicaSet-a.
+    <pre><code class="language-bash">kubectl get all -n it-tutorijali
+kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  --show-labels</code></pre>
+    <strong>Validacija:</strong> Ne sme postojati drugi ReplicaSet sa imenom <code>web-rs</code>, niti nepovezani Pod sa obe selektorske oznake. Ako postoji, prvo se utvrđuju vlasnik i poslovna namena objekta; ne briše se bez odobrene promene.
+  </li>
+  <li>
+    <strong>Kreirati ReplicaSet i Service manifest.</strong>
+    Readiness proba sprečava da Service šalje saobraćaj instanci koja još nije spremna, dok requests i limits omogućavaju scheduler-u i kubelet-u da pravilnije upravljaju resursima.
+    <pre><code class="language-bash">cat &gt; web-rs.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-rs
+  namespace: it-tutorijali
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: web-rs
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: web-rs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: web-rs
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27.5-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: it-tutorijali
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: web-rs
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+EOF</code></pre>
+    <strong>Validacija pre primene:</strong> Serverski dry-run proverava šemu, admission pravila i autorizaciju bez trajnog kreiranja objekata.
+    <pre><code class="language-bash">kubectl apply --dry-run=server -f web-rs.yaml
+kubectl diff -f web-rs.yaml</code></pre>
+    Očekivani rezultat je uspešan dry-run. <code>kubectl diff</code> može vratiti izlazni kod <code>1</code> kada postoje očekivane razlike; to nije isto što i greška validacije.
+  </li>
+  <li>
+    <strong>Primeniti manifest i pratiti usklađivanje.</strong>
+    Komanda kreira ReplicaSet i Service. Nakon toga se eksplicitno čeka da tri Pod-a postanu spremna.
+    <pre><code class="language-bash">kubectl apply -f web-rs.yaml
+
+kubectl get replicaset web-rs -n it-tutorijali
+kubectl wait pod 
+-n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+--for=condition=Ready 
+--timeout=120s</code></pre> <strong>Validacija:</strong> ReplicaSet mora prikazati <code>DESIRED=3</code>, <code>CURRENT=3</code> i <code>READY=3</code>. Ako čekanje istekne, ne ponavlja se naslepo primena manifesta, već se pregledaju Pod statusi i događaji. <pre><code class="language-bash">kubectl get rs,pods -n it-tutorijali -o wide
+kubectl describe replicaset web-rs -n it-tutorijali
+kubectl get events -n it-tutorijali 
+--sort-by=.metadata.creationTimestamp</code></pre>
+
+  </li>
+  <li>
+    <strong>Proveriti selektor i vlasničke reference.</strong>
+    Ova kontrola potvrđuje da posmatrani Pod-ovi zaista pripadaju ReplicaSet-u, a nisu samo objekti sa slučajno sličnim imenima.
+    <pre><code class="language-bash">kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  --show-labels
+
+kubectl get pods -n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+-o custom-columns='POD:.metadata.name,OWNER_KIND:.metadata.ownerReferences[0].kind,OWNER_NAME:.metadata.ownerReferences[0].name,READY:.status.containerStatuses[0].ready'</code></pre> <strong>Validacija:</strong> Moraju biti prikazana tačno tri Pod-a, svaki sa vlasnikom vrste <code>ReplicaSet</code>, vlasnikom <code>web-rs</code> i vrednošću <code>READY=true</code>.
+
+  </li>
+  <li>
+    <strong>Izvršiti funkcionalni test preko Service objekta.</strong>
+    Test se izvršava iz privremenog Pod-a unutar klastera, čime se proveravaju DNS ime Service-a, ClusterIP rutiranje, Service selector i spremni backend Pod-ovi.
+    <pre><code class="language-bash">kubectl run web-client \
+  -n it-tutorijali \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never \
+  --rm -i \
+  --command -- curl -fsS http://web-svc/</code></pre>
+    <strong>Validacija:</strong> Komanda mora vratiti podrazumevanu HTML stranicu nginx servera i završiti se izlaznim kodom nula. Zatim se proverava da Service ima backend krajnje tačke.
+    <pre><code class="language-bash">kubectl get service web-svc -n it-tutorijali
+kubectl get endpointslices -n it-tutorijali \
+  -l kubernetes.io/service-name=web-svc</code></pre>
+    EndpointSlice mora sadržati adrese spremnih Pod-ova. Prazan skup obično ukazuje na nepodudaranje Service selektora, nespremne Pod-ove ili pogrešan port.
+  </li>
+  <li>
+    <strong>Izvršiti negativni test brisanjem jedne replike.</strong>
+    Brisanje Pod-a je destruktivno za tu pojedinačnu instancu, ali je u ovom kontrolisanom scenariju očekivano i služi proveri samoisceljivanja. Test se ne izvodi nad stanjem osetljivom aplikacijom bez potvrde vlasnika servisa.
+    <pre><code class="language-bash">OLD_POD=$(kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  -o jsonpath='{.items[0].metadata.name}')
+
+echo "$OLD_POD"
+kubectl delete pod "$OLD_POD" -n it-tutorijali
+
+kubectl get pods -n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+--watch</code></pre>
+Posmatranje se prekida kombinacijom <code>Ctrl+C</code> kada se pojavi novi Pod i postane spreman. <strong>Validacija:</strong> Ime zamenskog Pod-a mora biti drugačije od vrednosti <code>OLD_POD</code>, a završno stanje mora ponovo biti tri spremne replike. <pre><code class="language-bash">kubectl wait pod 
+-n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+--for=condition=Ready 
+--timeout=120s
+
+kubectl get replicaset web-rs -n it-tutorijali
+kubectl get pods -n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs</code></pre>
+
+  </li>
+  <li>
+    <strong>Testirati bezbednije skaliranje sa preduslovom.</strong>
+    ReplicaSet se privremeno povećava sa tri na pet replika, ali samo ako aktuelna vrednost još iznosi tri. Time se štiti promena od konkurentne intervencije.
+    <pre><code class="language-bash">kubectl scale replicaset web-rs \
+  -n it-tutorijali \
+  --current-replicas=3 \
+  --replicas=5
+
+kubectl wait pod 
+-n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+--for=condition=Ready 
+--timeout=120s</code></pre> <strong>Validacija:</strong> ReplicaSet mora prikazati pet željenih, aktuelnih i spremnih replika. <pre><code class="language-bash">kubectl get replicaset web-rs -n it-tutorijali
+kubectl get pods -n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs 
+--no-headers | wc -l</code></pre>
+Rezultat brojanja mora biti <code>5</code>. Pošto je ovo privremena imperativna promena, manifest se zatim usklađuje vraćanjem na tri replike. <pre><code class="language-bash">kubectl scale replicaset web-rs 
+-n it-tutorijali 
+--current-replicas=5 
+--replicas=3
+
+kubectl apply -f web-rs.yaml
+kubectl get replicaset web-rs -n it-tutorijali</code></pre>
+
+  </li>
+  <li>
+    <strong>Izolovati jedan Pod promenom selektorske oznake.</strong>
+    Ovaj negativni test pokazuje da ReplicaSet upravlja skupom definisanim oznakama. Uklanja se oznaka instance sa jednog Pod-a; kontroler zatim kreira novu repliku da bi ponovo imao tri odgovarajuća Pod-a.
+    <pre><code class="language-bash">QUARANTINE_POD=$(kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl label pod "$QUARANTINE_POD" 
+-n it-tutorijali 
+app.kubernetes.io/instance-
+
+kubectl get pods -n it-tutorijali --show-labels</code></pre> <strong>Validacija:</strong> U namespace-u privremeno treba da postoje četiri Pod-a: tri koja zadovoljavaju selektor ReplicaSet-a i jedan izolovani Pod bez oznake <code>app.kubernetes.io/instance</code>. <pre><code class="language-bash">kubectl get replicaset web-rs -n it-tutorijali
+kubectl get pods -n it-tutorijali 
+-l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs
+kubectl get pod "$QUARANTINE_POD" -n it-tutorijali --show-labels</code></pre>
+Izolovani Pod se ne vraća automatski u skup. Nakon završene dijagnostike uklanja se eksplicitno kako ne bi ostao van kontrole i bez jasne operativne namene. <pre><code class="language-bash">kubectl delete pod "$QUARANTINE_POD" -n it-tutorijali
+kubectl get pods -n it-tutorijali --show-labels</code></pre>
+
+  </li>
+  <li>
+    <strong>Pregledati logove i razlikovati aplikacioni od kontrolnog problema.</strong>
+    Za funkcionalan nginx Pod očekuju se startup poruke i HTTP pristupi. Ako Pod ne nastaje, aplikacioni log ne postoji i fokus se premešta na ReplicaSet događaje, admission odluke i kontrolnu ravan.
+    <pre><code class="language-bash">LOG_POD=$(kubectl get pods -n it-tutorijali \
+  -l app.kubernetes.io/name=web,app.kubernetes.io/instance=web-rs \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl logs "$LOG_POD" -n it-tutorijali -c nginx --tail=50
+kubectl describe pod "$LOG_POD" -n it-tutorijali
+kubectl get events -n it-tutorijali 
+--sort-by=.metadata.creationTimestamp | tail -n 30</code></pre> <strong>Validacija:</strong> Pod ne sme imati ponavljane warning događaje, restart count treba da bude nula, a kontejner mora biti spreman. Kod upravljanih klastera logovi kontrolne ravni možda nisu direktno dostupni korisniku; tada se koriste podržani cloud audit i control-plane log servisi ili se incident eskalira platformskom timu.
+
+  </li>
+  <li>
+    <strong>Izvršiti završnu proveru i sačuvati evidenciju promene.</strong>
+    Završni dokaz obuhvata deklarisano stanje, aktuelne replike, vlasništvo, Service i događaje.
+    <pre><code class="language-bash">kubectl get rs,svc,pods -n it-tutorijali -o wide
+kubectl get replicaset web-rs -n it-tutorijali -o yaml \
+  &gt; web-rs-observed.yaml
+kubectl get events -n it-tutorijali \
+  --sort-by=.metadata.creationTimestamp \
+  &gt; events-observed.txt</code></pre>
+    <strong>Validacija:</strong> ReplicaSet mora imati tri spremne replike, Service mora postojati, svi upravljani Pod-ovi moraju imati vlasnika <code>web-rs</code>, a funkcionalni HTTP test mora biti uspešan. Fajlovi <code>web-rs.yaml</code>, <code>web-rs-observed.yaml</code> i <code>events-observed.txt</code> predstavljaju laboratorijski trag promene; u produkciji se manifest i zapis validacije čuvaju u odobrenom Git repozitorijumu i ITSM evidenciji.
+  </li>
+  <li>
+    <strong>Cleanup laboratorijskog okruženja.</strong>
+    Brisanje namespace-a je destruktivna operacija koja uklanja sve objekte u njemu. Pre komande mora se potvrditi da namespace ne sadrži tuđe workload-e ili podatke.
+    <pre><code class="language-bash">kubectl get all -n it-tutorijali
+kubectl delete namespace it-tutorijali</code></pre>
+    <strong>Validacija:</strong> Namespace više ne sme biti dostupan.
+    <pre><code class="language-bash">kubectl get namespace it-tutorijali</code></pre>
+    Očekivani rezultat je poruka <code>NotFound</code>. Bezbednija alternativa u deljenom namespace-u jeste brisanje samo objekata iz datoteka komandama <code>kubectl delete -f web-rs.yaml</code> i <code>kubectl delete -f namespace.yaml</code>, uz prethodnu proveru zavisnosti.
+  </li>
+</ol>
+<h3>Praktikum: kontrolisani Deployment rollout, kvar i povratak verzije</h3>
+<p>
+  <strong>Kontekst i rizik.</strong> Tim migrira laboratorijski web servis na Deployment, uvodi proverenu novu nginx verziju, namerno pokreće neispravan rollout i vraća poslednju dobru reviziju. Vežba menja i briše workload objekte, zato se izvodi samo u namenskom namespace-u. Potrebna su prava nad Deployment, ReplicaSet, Pod i Service objektima, kao i čitanje događaja i logova. Kriterijum završetka je četiri dostupne replike, uspešan HTTP test, dokumentovana istorija i uklonjen neispravan rollout.
+</p>
+<ol>
+  <li>
+    <strong>Pripremiti čisto početno stanje.</strong> Ako je prethodni ReplicaSet praktikum još aktivan, ukloniti samo njegove objekte, ne ceo namespace.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i create deployments.apps -n it-tutorijali
+kubectl auth can-i patch deployments.apps -n it-tutorijali
+kubectl delete -f web-rs.yaml --ignore-not-found
+kubectl get all -n it-tutorijali</code></pre>
+    <strong>Validacija:</strong> kontekst mora biti laboratorijski, autorizacija mora vratiti <code>yes</code>, a imena <code>web</code> i <code>web-svc</code> moraju biti slobodna. U deljenom namespace-u pre brisanja proveriti vlasništvo svakog objekta.
+  </li>
+  <li>
+    <strong>Kreirati deklarativni Deployment i Service.</strong> Sačuvati sledeći manifest kao <code>web-deployment.yaml</code>; koristi se stabilan selector bez verzije, dok anotacija promene dokumentuje prvu reviziju.
+    <pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: it-tutorijali
+  annotations:
+    kubernetes.io/change-cause: "Revizija 1: nginx 1.27.5-alpine"
+spec:
+  replicas: 4
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 120
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27.5-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: it-tutorijali
+spec:
+  selector:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http</code></pre>
+    <pre><code class="language-bash">kubectl apply --dry-run=server -f web-deployment.yaml
+kubectl diff -f web-deployment.yaml
+kubectl apply -f web-deployment.yaml
+kubectl rollout status deployment/web -n it-tutorijali --timeout=180s</code></pre>
+    <strong>Validacija:</strong> Deployment mora imati <code>4/4</code> ready i available replike. Proveriti lanac vlasništva i HTTP odgovor: <pre><code class="language-bash">kubectl get deploy,rs,pods -n it-tutorijali -o wide
+kubectl rollout history deployment/web -n it-tutorijali
+kubectl run deploy-client -n it-tutorijali --image=curlimages/curl:8.12.1 --restart=Never --rm -i --command -- curl -fsS http://web-svc/</code></pre>
+  </li>
+  <li>
+    <strong>Izvesti kontrolisani dobar rollout.</strong> Pre promene proveriti da ciljana slika postoji u odobrenom registry-ju. Primer koristi laboratorijski tag; produkcija treba da koristi skenirani digest i Git izmenu.
+    <pre><code class="language-bash">kubectl annotate deployment/web -n it-tutorijali \
+  kubernetes.io/change-cause="Revizija 2: nginx 1.28.0-alpine" --overwrite
+kubectl set image deployment/web -n it-tutorijali \
+  nginx=nginx:1.28.0-alpine
+kubectl rollout status deployment/web -n it-tutorijali --timeout=180s
+kubectl rollout history deployment/web -n it-tutorijali
+kubectl get rs,pods -n it-tutorijali -o wide</code></pre>
+    <strong>Očekivani rezultat:</strong> novi ReplicaSet se povećava, stari se smanjuje na nulu, a dostupnost ne pada ispod tri replike. Ponoviti HTTP test i proveriti da četiri Pod-a koriste novu sliku. Ako tag nije dostupan u laboratorijskom registry-ju, izabrati dve unapred potvrđene kompatibilne verzije i zabeležiti zamenu.
+  </li>
+  <li>
+    <strong>Simulirati neuspešan rollout bez rušenja dobrih replika.</strong> Nepostojeći tag je namerna laboratorijska greška. RollingUpdate ograničenja ostavljaju većinu stare verzije dostupnom, ali rollout neće završiti.
+    <pre><code class="language-bash">kubectl annotate deployment/web -n it-tutorijali \
+  kubernetes.io/change-cause="Revizija 3: namerno nepostojeća slika" --overwrite
+kubectl set image deployment/web -n it-tutorijali \
+  nginx=nginx:nepostojeca-tashizza-revizija
+kubectl rollout status deployment/web -n it-tutorijali --timeout=30s</code></pre>
+    Istek lokalnog timeout-a ne mora još značiti <code>ProgressDeadlineExceeded</code>; to su različiti rokovi. Prikupiti dokaze bez dodatnih promena: <pre><code class="language-bash">kubectl describe deployment web -n it-tutorijali
+kubectl get rs,pods -n it-tutorijali -o wide
+kubectl describe pod -n it-tutorijali \
+  -l app.kubernetes.io/instance=web
+kubectl get events -n it-tutorijali --sort-by=.metadata.creationTimestamp</code></pre>
+    <strong>Dijagnoza:</strong> simptom je nezavršen rollout; posledica je smanjen sigurnosni prostor, dok Service i dalje treba da koristi spremne stare Pod-ove. Neposredni uzrok je <code>ErrImagePull/ImagePullBackOff</code>, osnovni uzrok je nevalidirana referenca slike. Privremena mera je zaustavljanje novih promena; trajna mera su registry validacija, digest pinning i admission politika.
+  </li>
+  <li>
+    <strong>Pregledati istoriju i izvršiti rollback.</strong> Pre povratka identifikovati broj poslednje dobre revizije; ne pretpostavljati da je to uvek revizija 2.
+    <pre><code class="language-bash">kubectl rollout history deployment/web -n it-tutorijali
+kubectl rollout history deployment/web -n it-tutorijali --revision=2
+kubectl rollout undo deployment/web -n it-tutorijali --to-revision=2
+kubectl rollout status deployment/web -n it-tutorijali --timeout=180s</code></pre>
+    <strong>Validacija oporavka:</strong> četiri replike moraju biti ready i available, nepostojeća slika ne sme ostati u aktivnom Pod šablonu, HTTP test mora uspeti, a istorija treba da pokaže novu reviziju nastalu rollback-om. <pre><code class="language-bash">kubectl get deployment web -n it-tutorijali
+kubectl get deployment web -n it-tutorijali \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl rollout history deployment/web -n it-tutorijali
+kubectl run rollback-client -n it-tutorijali --image=curlimages/curl:8.12.1 --restart=Never --rm -i --command -- curl -fsS http://web-svc/</code></pre>
+  </li>
+  <li>
+    <strong>Uskladiti izvor istine i očistiti laboratoriju.</strong> Imperativne izmene i rollback moraju se preneti u manifest ili Git repozitorijum; u suprotnom sledeći <code>apply</code> može ponovo uvesti pogrešno stanje. Sačuvati <code>kubectl get deployment web -o yaml</code>, događaje i change zapis. Za cleanup prvo pregledati cilj, zatim obrisati samo manifestom kreirane objekte: <pre><code class="language-bash">kubectl get deploy,rs,svc,pods -n it-tutorijali
+kubectl delete -f web-deployment.yaml
+kubectl get all -n it-tutorijali</code></pre>
+    <strong>Kriterijum završetka:</strong> pre cleanup-a oporavljena aplikacija je prošla rollout i funkcionalnu validaciju; posle cleanup-a ne postoje Deployment, njegovi ReplicaSet-ovi, Pod-ovi ni Service iz vežbe.
+  </li>
+</ol>
+<h3>Tipične greške i način njihovog razlikovanja</h3>
+<ul>
+  <li><strong>Selektor ne odgovara oznakama Pod šablona.</strong> API server odbija kreiranje ili izmenu uz poruku da selektor ne odgovara oznakama šablona. Problem postoji u manifestu pre pokretanja Pod-a.</li>
+  <li><strong>Preširok selektor usvaja tuđi Pod.</strong> Broj replika može izgledati ispravno, ali jedan Pod nema očekivanu konfiguraciju. Proveravaju se oznake, <code>ownerReferences</code>, vreme kreiranja i kompletan Pod spec.</li>
+  <li><strong>Željeni broj je dostignut, ali spremnih replika nema dovoljno.</strong> ReplicaSet radi, dok aplikacija, slika, proba ili infrastruktura imaju problem. Analiziraju se Pod status, događaji i logovi.</li>
+  <li><strong>Pod-ovi ostaju Pending.</strong> Kontroler je kreirao objekte, ali scheduler ne nalazi odgovarajući čvor. <code>kubectl describe pod</code> obično prikazuje razlog kao što su nedovoljni resursi, taint ili nepodudarna pravila raspoređivanja.</li>
+  <li><strong>Ručno skaliranje se kasnije vraća.</strong> GitOps kontroler, Deployment, HorizontalPodAutoscaler ili naredni <code>kubectl apply</code> ponovo nameću deklarisanu vrednost. Pre promene se utvrđuje stvarni vlasnik konfiguracije.</li>
+  <li><strong>Izmenjen je šablon slike, ali stari Pod-ovi ostaju aktivni.</strong> Samostalni ReplicaSet nema Deployment rollout mehanizam. Ne treba ručno brisati sve Pod-ove bez plana dostupnosti; kreira se Deployment ili novi ReplicaSet i saobraćaj se migrira kontrolisano.</li>
+  <li><strong>Brisanje ReplicaSet-a uklanja i Pod-ove.</strong> To je očekivano kaskadno ponašanje vlasničkih referenci. Ako je potrebno privremeno sačuvati Pod-ove, orphan brisanje se koristi samo uz jasan plan preuzimanja, dokumentovanje rizika i kasniji cleanup.</li>
+  <li><strong>Deployment rollout je zastao, ali se nije automatski vratio.</strong> <code>progressDeadlineSeconds</code> samo prijavljuje neuspešno napredovanje. Administrator ili automatizacija moraju doneti kontrolisanu odluku o korekciji ili rollback-u.</li>
+  <li><strong>Rollback nije vratio konfiguraciju ili podatke.</strong> Deployment istorija obuhvata Pod šablon, ne spoljne ConfigMap/Secret vrednosti, Service, bazu ili migraciju šeme. Oporavak tih zavisnosti zahteva zaseban verzionisan i testiran plan.</li>
+  <li><strong>RollingUpdate nema dovoljno kapaciteta za surge Pod.</strong> Novi Pod ostaje Pending zbog quota ili resursa, a rollout stoji. Proveravaju se requests, ResourceQuota, scheduler događaji i realan proračun privremenog kapaciteta pre smanjivanja zaštitnih parametara.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje odnosa željenih i spremnih replika.</strong> Proveravaju se <code>spec.replicas</code>, <code>status.replicas</code>, <code>status.readyReplicas</code> i <code>status.availableReplicas</code> komandama <code>kubectl get rs</code>, API upitima ili metrikama iz kube-state-metrics. Kontrola se obavlja kontinuirano kroz monitoring i neposredno posle svake promene. Razlika koja traje duže od dogovorenog startup perioda zahteva pregled Pod događaja i stanja. Incident, uzrok i vreme oporavka beleže se u ITSM sistemu. Uspeh se meri vremenom do detekcije i vremenom povratka na pun broj spremnih replika.</li>
+  <li><strong>Kontrola vlasništva pre izmene.</strong> Pre svake ručne promene proverava se <code>metadata.ownerReferences</code> komandom <code>kubectl get rs NAME -o yaml</code>. Ako je vlasnik Deployment, ReplicaSet se ne menja direktno, već se promena izvodi na Deployment objektu. Rezultat provere i odobreni nivo izmene navode se u change zapisu. Uspešna praksa nema nedokumentovane direktne izmene objekata kojima upravlja viši kontroler.</li>
+  <li><strong>Revizija selektora i oznaka.</strong> Selektori ReplicaSet-a i Service-a porede se sa oznakama Pod šablona pre primene i posle svake promene aplikacione taksonomije. Koriste se <code>kubectl get ... --show-labels</code>, serverski dry-run i policy alati. Preširok selektor, Pod bez očekivanog vlasnika ili Service bez EndpointSlice adresa zahteva obustavljanje rollout-a i korekciju manifesta. Standard oznaka dokumentuje se u platformskom repozitorijumu.</li>
+  <li><strong>Deklarativno upravljanje brojem replika.</strong> Trajna vrednost čuva se u verzionisanom manifestu ili GitOps repozitorijumu. Imperativno skaliranje koristi se za incident ili odobrenu privremenu intervenciju, uz <code>--current-replicas</code> kada je moguće. Odmah nakon događaja izvor konfiguracione istine usklađuje se sa odobrenim stanjem. Uspeh se meri odsustvom konfiguracionog drift-a.</li>
+  <li><strong>Monitoring neuspešnih kreiranja i restartovanja.</strong> Prate se Kubernetes događaji, broj nedostupnih replika, Pod faze, restart count, readiness i liveness rezultati. Reakciju zahtevaju ponovljeni <code>FailedCreate</code>, <code>FailedScheduling</code>, <code>ImagePullBackOff</code>, <code>CrashLoopBackOff</code> ili rast restart count-a. Prva reakcija je klasifikacija sloja problema pre izmene: API/admission, scheduler, runtime, mreža ili aplikacija.</li>
+  <li><strong>Centralizovanje logova i audit podataka.</strong> Kontejnerski stdout i stderr šalju se u centralni log sistem, Kubernetes audit događaji u zaštićeno skladište, a control-plane logovi u platformsku observability infrastrukturu. Retencija se određuje bezbednosnim i regulatornim zahtevima. Nedostatak logova tokom incidenta tretira se kao operativni nedostatak. Uspeh se proverava periodičnim testom pronalaženja konkretnog Pod-a, API zahteva i vremena promene.</li>
+  <li><strong>Backup deklarativnog i klasterskog stanja.</strong> ReplicaSet manifest, povezani Service, ConfigMap, Secret reference, policy objekti i change dokumentacija čuvaju se u verzionisanom i kontrolisano dostupnom repozitorijumu. Klaster administratori zasebno obezbeđuju backup etcd-a ili podržani backup upravljane platforme. Sam izvoz komandom <code>kubectl get -o yaml</code> nije potpuna zamena za klasterski backup. Integritet se proverava kontrolnim sumama, Git istorijom i probnim restore-om u izolovanom klasteru. Backup je upotrebljiv tek kada obnovljeni objekti dostignu očekivani broj spremnih replika i prođu funkcionalni test.</li>
+  <li><strong>Kontrola dostupnosti na nivou čvorova.</strong> Posle promene broja replika proverava se raspored komandom <code>kubectl get pods -o wide</code> i po potrebi se uvode topology spread ili anti-affinity pravila. Ako kritične replike ostanu koncentrisane na jednom čvoru ili u jednoj zoni, eskalira se arhitekti aplikacije i platformskom timu. Uspeh se meri preživljavanjem unapred definisanog scenarija otkaza.</li>
+  <li><strong>Kontrola rollout-a i revizija.</strong> Pre isporuke dokumentuju se očekivani kapacitet, <code>maxSurge</code>, <code>maxUnavailable</code>, readiness kriterijum, rok napredovanja i poznata dobra revizija. Tokom promene prate se Deployment conditions, oba ReplicaSet-a, dostupne replike, događaji i aplikacioni SLI-jevi. Rollback se ne smatra uspešnim dok tehnički status i funkcionalni test ne potvrde oporavak.</li>
+</ul>
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Potvrđen je tačan kubeconfig kontekst i korisnički identitet pre promene.</li>
+  <li>Komande <code>kubectl auth can-i</code> potvrdile su samo potrebna namespace ovlašćenja.</li>
+  <li>ReplicaSet selektor potpuno odgovara oznakama u <code>spec.template.metadata.labels</code>.</li>
+  <li>Provereno je da selektor ne obuhvata postojeće nepovezane Pod-ove.</li>
+  <li>Serverski dry-run prihvatio je manifest bez schema ili admission greške.</li>
+  <li><code>kubectl get rs</code> prikazuje jednak broj željenih, aktuelnih i spremnih replika.</li>
+  <li>Svi upravljani Pod-ovi imaju <code>ownerReferences</code> usmeren na očekivani ReplicaSet.</li>
+  <li>Service selector vraća očekivane EndpointSlice adrese spremnih Pod-ova.</li>
+  <li>HTTP test kroz Service završen je uspešnim izlaznim kodom.</li>
+  <li>Brisanje testnog Pod-a dovelo je do kreiranja nove spremne replike.</li>
+  <li>Posle testa nije ostao izolovan, orphan ili dodatni Pod van željenog skupa.</li>
+  <li>Privremena promena broja replika vraćena je u deklarisano stanje manifesta.</li>
+  <li>Pregledani su događaji, restart count i poslednji aplikacioni logovi.</li>
+  <li>Manifest, rezultat validacije i promena evidentirani su u odobrenom repozitorijumu i change zapisu.</li>
+  <li>Za produkcionu nadogradnju potvrđeno je da se koristi Deployment umesto ručno ažuriranog samostalnog ReplicaSet-a.</li>
+  <li>Izračunati su maksimalan ukupan i minimalan dostupan broj Pod-ova za izabrane RollingUpdate parametre.</li>
+  <li>Provereni su <code>minReadySeconds</code>, <code>progressDeadlineSeconds</code> i pouzdanost readiness probe.</li>
+  <li>Istorija revizija sadrži razumljiv razlog promene i poznatu dobru reviziju.</li>
+  <li>Neuspešan rollout dijagnostikovan je dokazima pre rollback-a.</li>
+  <li>Rollback je potvrđen statusom, slikom aktivnog šablona, brojem dostupnih replika i funkcionalnim testom.</li>
+  <li>Manifest ili Git izvor istine usklađen je sa oporavljenim stanjem.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije razume ReplicaSet kao kontroler broja zamenljivih Pod-ova, a Deployment kao viši kontroler njihove deklarativne isporuke. Njihovo ponašanje proizlazi iz željenog broja replika, selektora, Pod šablona, vlasničkog lanca i kontrolnih petlji koje neprekidno usklađuju stvarno stanje.
+</p>
+<p>
+  Praktična administratorska veština nije samo kreiranje manifesta. Potrebno je proveriti kontekst, ovlašćenja, postojeće oznake i vlasništvo, validirati manifest na API serveru, pratiti nastanak Pod-ova, razlikovati broj postojećih od broja spremnih replika, potvrditi Service endpoints i izvršiti kontrolisani negativni test. Jednako je važno znati kako se promena vraća, kako se uklanjaju izdvojeni Pod-ovi i kako se rezultat evidentira.
+</p>
+<p>
+  Najveći produkcioni rizici potiču od preširokih selektora, direktnog menjanja ReplicaSet-a kojim upravlja Deployment, pretpostavke da više Pod-ova automatski znači visoku dostupnost i pokušaja da se samostalni ReplicaSet koristi kao zamena za kontrolisani rollout. ReplicaSet održava broj zamenljivih Pod-ova, ali ne obezbeđuje stabilan identitet, trajno stanje, aplikacionu konzistentnost niti bezbednu strategiju nadogradnje.
+</p>
+<p>
+  Administrator može bezbedno da skalira workload, proveri vlasništvo, izračuna rollout kapacitet, prati reviziju, dijagnostikuje zastoj i vrati poznatu dobru verziju. Rollback ipak nije sinonim za potpuni oporavak: podaci, šema, konfiguracione zavisnosti i spoljne usluge imaju sopstveni životni ciklus. Promene koje utiču na te elemente, Service routing, raspored kroz zone ili raspoloživost zahtevaju koordinaciju sa vlasnikom aplikacije, platformskim timom i odgovornim arhitektom.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za ReplicaSet i Deployment kontrolere, deklarativne promene i kontrolne petlje; Kubernetes API referenca za <code>apps/v1</code>, selektore, vlasničke reference, Deployment strategije, uslove napredovanja i istoriju revizija; zvanična <code>kubectl</code> referenca za apply, diff, scale, wait, set image, rollout status, history, pause, resume i undo; zvanična dokumentacija za Pod probe, Service i EndpointSlice, događaje, logove, scheduling, resurse, dostupnost i troubleshooting workload-a.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-16-pod.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-18-daemonset-job-cronjob.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

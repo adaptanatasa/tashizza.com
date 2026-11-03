@@ -1,0 +1,2084 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-30-storage-troubleshooting.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Storage troubleshooting – kada datastore nestane, uspori ili se popuni | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite osnovne korake za dijagnostiku VMware storage problema kada datastore nestane, postane nedostupan, uspori ili ostane bez slobodnog prostora.">
+
+  <meta name="keywords"
+        content="VMware storage troubleshooting, datastore nestao, datastore nedostupan, datastore pun, spor datastore, VMware storage problemi, NFS, iSCSI, Fibre Channel, VMFS, VMDK, ESXi storage, vSphere storage, storage latency, APD, PDL, vCenter, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-30-storage-troubleshooting.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Storage troubleshooting – kada datastore nestane, uspori ili se popuni">
+
+  <meta property="og:description"
+        content="Upoznajte praktičan redosled provere VMware storage infrastrukture kada datastore nestane, uspori, postane nedostupan ili ostane bez prostora.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-30-storage-troubleshooting.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-30-storage-troubleshooting.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Storage troubleshooting – kada datastore nestane, uspori ili se popuni">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+       Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-30-storage-troubleshooting.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-30-storage-troubleshooting.png"
+           alt="Storage troubleshooting – kada datastore nestane, uspori ili se popuni">
+
+    </a>
+
+   <div class="page-subtitle">
+  VI. Skladištenje, politike i integritet podataka
+</div>
+
+<div class="page-subtitle">
+   30. Storage troubleshooting – kapacitet, latencija, putanje i nedostupan datastore
+</div>
+
+<p>
+  Storage problem u VMware infrastrukturi retko ostaje ograničen samo na disk. Kada ESXi host izgubi pristup datastore-u, posledice se mogu pojaviti kao zamrznuta virtuelna mašina, neuspešan snapshot, nemogućnost pokretanja VM-a, usporena aplikacija, nedostupna konfiguraciona datoteka, prekid migracije ili host koji veoma sporo odgovara na zahteve vCenter servera.
+</p>
+
+<p>
+  Zbog toga storage troubleshooting ne počinje nasumičnim rescan-om, restartovanjem servisa ili promenom multipathing politike. Najpre se utvrđuje opseg incidenta, zatim storage sloj u kojem se problem nalazi, a tek nakon toga se izvodi kontrolisana korektivna radnja.
+</p>
+
+<p>
+  Administrator mora da odgovori na nekoliko osnovnih pitanja:
+</p>
+
+<ul>
+  <li>Da li je problem zahvatio jednu virtuelnu mašinu ili više njih?</li>
+  <li>Da li je nedostupan jedan datastore ili svi datastore-i određenog tipa?</li>
+  <li>Da li problem postoji na jednom ESXi hostu ili na celom klasteru?</li>
+  <li>Da li je izgubljena jedna putanja ili sve putanje do uređaja?</li>
+  <li>Da li je datastore nestao, postao nedostupan, usporio ili ostao bez prostora?</li>
+  <li>Da li je uzrok na ESXi hostu, mreži, SAN fabric-u ili storage sistemu?</li>
+  <li>Da li je neposredno pre incidenta izvedena neka promena?</li>
+</ul>
+
+<p>
+  Najvažniji cilj nije da datastore što pre ponovo izgleda zeleno u vCenter-u, već da se pristup podacima obnovi bez dodatnog rizika, da se sačuvaju tragovi incidenta i da se utvrdi stvarni osnovni uzrok.
+</p>
+
+<p>
+  Lekcija je operativno usmerena na savremena vSphere 8.x okruženja i proverena je i prema aktuelnim Broadcom ESXCLI i VCF PowerCLI referencama. Nazivi pojedinih polja, alarma i menija mogu se razlikovati između tačkastih izdanja i klijentskih interfejsa, dok osnovni dijagnostički model — datastore, fajl sistem, uređaj, putanja, adapter i transport — ostaje isti. Pre izmene driver-a, firmware-a, SATP/PSP politike ili naprednih parametara obavezno se proveravaju matrica kompatibilnosti, release notes konkretnog build-a i dokumentacija proizvođača storage sistema.
+</p>
+
+<h3>Najčešće kategorije storage problema</h3>
+
+<p>
+  Problemi se u praksi mogu grupisati u nekoliko osnovnih kategorija:
+</p>
+
+<ul>
+  <li>datastore je prikazan kao inaccessible ili unmounted;</li>
+  <li>blokovski uređaj više nije vidljiv ESXi hostu;</li>
+  <li>jedna ili više storage putanja su izgubljene;</li>
+  <li>sve putanje do uređaja su izgubljene – APD;</li>
+  <li>storage sistem je potvrdio trajni gubitak uređaja – PDL;</li>
+  <li>NFS datastore više ne može da se montira ili koristi;</li>
+  <li>iSCSI sesije ili target portali nisu dostupni;</li>
+  <li>Fibre Channel LUN nije pravilno prezentovan;</li>
+  <li>latencija je visoka i VM-ovi sporo izvršavaju diskovne operacije;</li>
+  <li>datastore je skoro popunjen ili potpuno popunjen;</li>
+  <li>snapshot datoteke nekontrolisano rastu;</li>
+  <li>VMFS datastore nije vidljiv na svim hostovima;</li>
+  <li>datastore postoji, ali virtuelne mašine postaju inaccessible ili Unknown.</li>
+</ul>
+
+<h3>Prvo pravilo – utvrditi opseg incidenta</h3>
+
+<p>
+  Opseg problema često odmah usmerava dijagnostiku.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatniji sloj problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Jedna virtuelna mašina je spora</td>
+      <td>VMDK, guest OS, snapshot, pojedinačni workload ili VM konfiguracija</td>
+    </tr>
+    <tr>
+      <td>Sve VM na jednom datastore-u su spore</td>
+      <td>Datastore, LUN, NFS export, storage pool ili zajedničke putanje</td>
+    </tr>
+    <tr>
+      <td>Svi datastore-i na jednom hostu su problematični</td>
+      <td>HBA, NIC, VMkernel mreža, driver, firmware ili host konfiguracija</td>
+    </tr>
+    <tr>
+      <td>Isti datastore je nedostupan na svim hostovima</td>
+      <td>Storage sistem, target, LUN prezentacija, NFS server ili fabric</td>
+    </tr>
+    <tr>
+      <td>Datastore je nedostupan samo na jednom hostu</td>
+      <td>Lokalna putanja, adapter, VMkernel mreža, zoning ili host stanje</td>
+    </tr>
+    <tr>
+      <td>Svi hostovi vide samo polovinu putanja</td>
+      <td>Otkaz fabric-a, switch-a, storage kontrolera ili target portova</td>
+    </tr>
+    <tr>
+      <td>VM-ovi ne mogu da se uključe zbog nedostatka prostora</td>
+      <td>Popunjen datastore, snapshot rast, swap ili log datoteke</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Drugo pravilo – utvrditi šta ESXi još uvek vidi</h3>
+
+<p>
+  Datastore, fajl sistem, storage uređaj, adapter i putanja nisu isti objekat. Datastore može biti nedostupan iako uređaj još postoji. Uređaj može biti vidljiv, ali VMFS nije montiran. Adapter može biti online, ali bez putanje do konkretnog LUN-a.
+</p>
+
+<p>
+  Zbog toga se provera izvodi od višeg prema nižem sloju:
+</p>
+
+<ol>
+  <li>datastore i fajl sistem;</li>
+  <li>VMFS extent ili NFS mount;</li>
+  <li>storage uređaj;</li>
+  <li>putanje do uređaja;</li>
+  <li>storage adapter;</li>
+  <li>mrežni ili SAN transport;</li>
+  <li>storage target, kontroler i fizički medij.</li>
+</ol>
+
+<h3>Početni CLI pregled</h3>
+
+<pre><code class="language-bash"># pregled datastore-a i montiranih fajl sistema
+esxcli storage filesystem list
+
+# pregled VMFS datastore-a i pripadajućih uređaja
+esxcli storage vmfs extent list
+
+# pregled blokovskih storage uređaja
+esxcli storage core device list
+
+# pregled storage adaptera
+esxcli storage core adapter list
+
+# pregled svih storage putanja
+esxcli storage core path list
+
+# pregled NMP uređaja i politika
+esxcli storage nmp device list
+
+# pregled NFS 3 datastore-a
+esxcli storage nfs list
+
+# pregled NFS 4.1 datastore-a
+esxcli storage nfs41 list
+
+# pregled iSCSI adaptera
+esxcli iscsi adapter list
+
+# pregled aktivnih iSCSI sesija
+esxcli iscsi session list
+
+# pregled Fibre Channel adaptera
+esxcli storage san fc list</code></pre>
+
+<p>
+  Izlaz komandi treba sačuvati u incidentnoj dokumentaciji. Posebno su važni ime datastore-a, UUID, NAA identifikator uređaja, adapter, stanje putanja, politika izbora putanje i vreme kada je stanje zabeleženo.
+</p>
+
+<h3>Datastore je inaccessible</h3>
+
+<p>
+  Status <code>inaccessible</code> znači da ESXi trenutno ne može da pristupi datastore-u. To ne znači automatski da su podaci obrisani ili da je fajl sistem oštećen. Uzrok može biti prekid mreže, gubitak svih putanja, uklonjena LUN prezentacija, NFS problem, administrativni unmount ili privremeno stanje storage kontrolera.
+</p>
+
+<p>
+  Prvo treba proveriti da li je datastore nedostupan na jednom ili na svim hostovima.
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+  Za VMFS datastore treba povezati ime datastore-a sa odgovarajućim uređajem:
+</p>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<p>
+  Nakon što se utvrdi NAA identifikator, proveravaju se uređaj i putanje:
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<p>
+  Ako uređaj postoji, ali VMFS nije montiran, problem nije isti kao kada uređaj uopšte nije vidljiv. Ne treba odmah kreirati novi datastore na uređaju koji sadrži postojeće podatke. Takva operacija može dovesti do gubitka postojeće strukture.
+</p>
+
+<h3>Datastore je unmounted</h3>
+
+<p>
+  Datastore može biti administrativno demontiran, ali uređaj i dalje može biti priključen hostu. Pre pokušaja ponovnog montiranja treba proveriti zbog čega je datastore demontiran i da li je u toku planirana procedura uklanjanja.
+</p>
+
+<p>
+  Pregled poznatih VMFS volumena može se izvršiti komandama:
+</p>
+
+<pre><code class="language-bash">esxcfg-volume -l</code></pre>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+  Ako se pronađe postojeći VMFS volume koji nije montiran, mora se utvrditi da li je to originalni volume, snapshot ili replika sa promenjenim potpisom. Ne treba nasumično koristiti mount, resignature ili force opcije bez razumevanja porekla uređaja.
+</p>
+
+<h3>Storage rescan – kada pomaže, a kada ne</h3>
+
+<p>
+  Rescan nalaže ESXi hostu da ponovo proveri storage adaptere i otkrije nove ili promenjene uređaje. Koristan je nakon:
+</p>
+
+<ul>
+  <li>prezentovanja novog LUN-a;</li>
+  <li>obnove storage putanje;</li>
+  <li>ispravke zoning-a ili LUN masking-a;</li>
+  <li>dodavanja iSCSI target portala;</li>
+  <li>promene storage konfiguracije koju ESXi još nije otkrio.</li>
+</ul>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<p>
+  Za pojedinačni adapter:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba64</code></pre>
+
+<p>
+  Rescan ne popravlja neispravan kabl, pogrešan VLAN, uklonjenu LUN prezentaciju, nedostupan NFS server, neispravan storage kontroler ili pogrešno podešen MTU. Ako se uzrok ne otkloni, ponavljanje rescan-a samo proizvodi dodatne log poruke.
+</p>
+
+<h3>All Paths Down – APD</h3>
+
+<p>
+  APD označava stanje u kojem ESXi nema nijednu dostupnu putanju do storage uređaja, ali nije dobio potvrdu da je uređaj trajno uklonjen. Host zato određeno vreme nastavlja da pokušava pristup i očekuje da se putanje možda oporave.
+</p>
+
+<p>
+  APD može nastati zbog:
+</p>
+
+<ul>
+  <li>otkaza oba storage fabric-a;</li>
+  <li>prekida svih iSCSI mrežnih putanja;</li>
+  <li>nedostupnosti storage kontrolera;</li>
+  <li>isključenja svih target portova;</li>
+  <li>prekida NFS mreže ili rada NFS servera;</li>
+  <li>pogrešne promene zoning-a ili LUN masking-a;</li>
+  <li>pogrešnog VLAN-a, MTU-a ili IP konfiguracije;</li>
+  <li>ARP konflikta ili duplirane IP adrese u storage mreži;</li>
+  <li>fizičkog prekida kablova ili switch infrastrukture.</li>
+</ul>
+
+<p>
+  Tokom APD stanja VM-ovi mogu postati neodzivni, hostd i vpxa servisi mogu sporo odgovarati, a operacije u vCenter-u mogu dugo čekati zato što I/O zahtevi ne dobijaju odgovor.
+</p>
+
+<p>
+  U podrazumevanoj APD obradi ESXi najpre čeka da se putanja oporavi; u aktuelnim vSphere 8.x referencama podrazumevani APD timeout je 140 sekundi. To nije obećanje da će se workload posle 140 sekundi automatski oporaviti: dalji odgovor zavisi od vrste datastore-a, stanja VM-a i vSphere HA podešavanja za datastore sa APD-om. HA reakcija i dodatni „delay for failure response” predstavljaju zasebnu klastersku politiku, koja se obrađuje u lekciji 32; tokom ovog incidenta najvažnije je ne prikriti kvar restartovanjem management agenata pre prikupljanja dokaza.
+</p>
+
+<h3>Provera APD stanja</h3>
+
+<pre><code class="language-bash">grep -Ei "APD|All Paths Down|NMP|naa\." \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<p>
+  Kod APD incidenta rešava se uzrok na storage, mrežnom ili SAN sloju. Host ne može softverskim rescan-om da obnovi putanju koja fizički ili logički ne postoji.
+</p>
+
+<h3>Permanent Device Loss – PDL</h3>
+
+<p>
+  PDL označava da je ESXi dobio nedvosmislen odgovor da storage uređaj više nije dostupan tom hostu. Tipičan primer je kada je LUN mapping uklonjen sa storage sistema bez prethodne kontrolisane procedure na ESXi hostovima.
+</p>
+
+<p>
+  PDL se razlikuje od APD-a:
+</p>
+
+<ul>
+  <li>kod APD-a uređaj možda još postoji, ali nijedna putanja trenutno ne radi;</li>
+  <li>kod PDL-a storage sloj potvrđuje da uređaj više nije dostupan hostu.</li>
+</ul>
+
+<p>
+  PDL može nastati zbog:
+</p>
+
+<ul>
+  <li>uklanjanja LUN-a iz host ili initiator grupe;</li>
+  <li>promene LUN masking-a;</li>
+  <li>brisanja LUN-a na storage sistemu;</li>
+  <li>neispravnog odgovora storage sistema;</li>
+  <li>pogrešno izvedene dekomisije datastore-a;</li>
+  <li>nekonzistentne prezentacije uređaja između hostova.</li>
+</ul>
+
+<h3>Provera PDL poruka</h3>
+
+<pre><code class="language-bash">grep -Ei "PDL|Permanent Device Loss|PERM LOSS" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<p>
+  Ne treba pokušavati da se PDL rešava kreiranjem novog datastore-a na uređaju ili nasumičnim restartovanjem servisa. Najpre se proverava storage prezentacija i utvrđuje da li je uređaj uklonjen namerno ili greškom.
+</p>
+
+<h3>APD i PDL – praktično poređenje</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Karakteristika</th>
+      <th>APD</th>
+      <th>PDL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Značenje</td>
+      <td>Nijedna putanja trenutno nije dostupna</td>
+      <td>Uređaj je potvrđeno trajno nedostupan</td>
+    </tr>
+    <tr>
+      <td>Da li uređaj možda još postoji?</td>
+      <td>Da</td>
+      <td>Storage ga više ne prezentuje hostu</td>
+    </tr>
+    <tr>
+      <td>Tipičan uzrok</td>
+      <td>Mreža, fabric, target ili kontroler</td>
+      <td>Uklonjen mapping ili LUN</td>
+    </tr>
+    <tr>
+      <td>Osnovna reakcija</td>
+      <td>Obnoviti storage putanju</td>
+      <td>Potvrditi nameru i prezentaciju uređaja</td>
+    </tr>
+    <tr>
+      <td>Rizik</td>
+      <td>Dugotrajno čekanje I/O operacija</td>
+      <td>VM i datastore ostaju bez uređaja</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Path redundancy degraded</h3>
+
+<p>
+  Gubitak jedne storage putanje ne mora odmah prekinuti rad virtuelnih mašina. Ako druge putanje rade, I/O se nastavlja, ali infrastruktura više nema punu redundansu.
+</p>
+
+<p>
+  Takav alarm ne treba ignorisati zato što „sve još radi”. Sledeći kvar može ukloniti i poslednju dostupnu putanju.
+</p>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<pre><code class="language-bash">esxcli storage nmp device list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<p>
+  Potrebno je utvrditi:
+</p>
+
+<ul>
+  <li>koja putanja je izgubljena;</li>
+  <li>koji adapter je koristi;</li>
+  <li>koji target port je na drugoj strani;</li>
+  <li>da li je pogođen jedan host ili ceo klaster;</li>
+  <li>da li su nestale sve putanje kroz jedan fabric ili switch;</li>
+  <li>da li preostale putanje imaju dovoljno kapaciteta;</li>
+  <li>da li je promenjen odnos optimized i non-optimized putanja.</li>
+</ul>
+
+<h3>NFS datastore troubleshooting</h3>
+
+<p>
+  Kod NFS-a ESXi zavisi od VMkernel mreže, IP dostupnosti NFS servera, export dozvola, verzije protokola i ispravnog identiteta udaljenog servera.
+</p>
+
+<p>
+  Posebno kod NFS 4.1 nije dovoljno pretpostaviti da će saobraćaj uvek koristiti VMkernel adapter koji administrator smatra „NFS adapterom”. Izbor izvorišne adrese zavisi od VMkernel TCP/IP steka i rutiranja; ako je server u drugoj mreži, zahtev može otići sa management adrese i biti odbijen export politikom. Zato se zajedno proveravaju ruta, stvarna izvorišna VMkernel adresa, dozvole na serveru i, kada je potrebno, paketni trag — ne samo uspešan ping.
+</p>
+
+<h4>Pregled NFS 3 datastore-a</h4>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<h4>Pregled NFS 4.1 datastore-a</h4>
+
+<pre><code class="language-bash">esxcli storage nfs41 list</code></pre>
+
+<p>
+  U izlazu treba proveriti:
+</p>
+
+<ul>
+  <li>ime volumena;</li>
+  <li>adresu ili ime NFS servera;</li>
+  <li>export putanju;</li>
+  <li>da li je datastore dostupan;</li>
+  <li>da li je montiran;</li>
+  <li>da li je read-only;</li>
+  <li>koja verzija NFS protokola se koristi.</li>
+</ul>
+
+<h4>Provera VMkernel mreže</h4>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<pre><code class="language-bash">esxcli network ip route ipv4 list</code></pre>
+
+<h4>Testiranje NFS servera sa odgovarajućeg VMkernel adaptera</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.30.20</code></pre>
+
+<h4>Testiranje jumbo frame putanje</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 -d -s 8972 192.168.30.20</code></pre>
+
+<p>
+  Ako običan test prolazi, a test sa velikim paketom i zabranjenom fragmentacijom ne prolazi, moguće je da MTU nije dosledno podešen na ESXi hostu, fizičkom switch-u ili storage uređaju.
+</p>
+
+<h4>Provera ESXi firewall pravila</h4>
+
+<pre><code class="language-bash">esxcli network firewall ruleset list |
+  grep -i nfs</code></pre>
+
+<h4>Provera NFS log poruka</h4>
+
+<pre><code class="language-bash">grep -Ei "NFS|SunRPC|mount|APD" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<p>
+  Najčešći NFS uzroci su:
+</p>
+
+<ul>
+  <li>NFS server nije dostupan;</li>
+  <li>promenjena je IP adresa ili mrežna putanja;</li>
+  <li>export putanja više ne postoji;</li>
+  <li>ESXi VMkernel adresa nije dozvoljena u export pravilima;</li>
+  <li>export je postao read-only;</li>
+  <li>promenjen je backend storage iza iste NFS adrese;</li>
+  <li>postoji duplirana IP adresa;</li>
+  <li>MTU nije usklađen;</li>
+  <li>DNS ime pokazuje na pogrešnu adresu;</li>
+  <li>NFS 3 i NFS 4.1 konfiguracije nisu usklađene.</li>
+</ul>
+
+<h3>iSCSI troubleshooting</h3>
+
+<p>
+  iSCSI problem može postojati na više nivoa: VMkernel mreža, physical NIC, VLAN, port binding, target discovery, CHAP autentifikacija, iSCSI sesija, LUN masking ili sam storage uređaj.
+</p>
+
+<h4>Pregled iSCSI adaptera</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter list</code></pre>
+
+<h4>Detalji adaptera</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter get \
+  --adapter vmhba64</code></pre>
+
+<h4>Pregled discovery portala</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget list \
+  --adapter vmhba64</code></pre>
+
+<h4>Pregled iSCSI target-a</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter target list \
+  --adapter vmhba64</code></pre>
+
+<h4>Pregled aktivnih sesija</h4>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<h4>Pregled port binding-a</h4>
+
+<pre><code class="language-bash">esxcli iscsi networkportal list \
+  --adapter vmhba64</code></pre>
+
+<h4>Testiranje target adresa</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.40.20</code></pre>
+
+<pre><code class="language-bash">vmkping -I vmk3 192.168.41.20</code></pre>
+
+<h4>Pregled fizičkog mrežnog adaptera</h4>
+
+<pre><code class="language-bash">esxcli network nic list</code></pre>
+
+<pre><code class="language-bash">esxcli network nic stats get \
+  --nic-name vmnic4</code></pre>
+
+<p>
+  Posebno treba obratiti pažnju na:
+</p>
+
+<ul>
+  <li>receive i transmit errors;</li>
+  <li>dropped pakete;</li>
+  <li>link status i brzinu;</li>
+  <li>pogrešan VLAN;</li>
+  <li>MTU neusaglašenost;</li>
+  <li>dupliranu IP adresu;</li>
+  <li>MAC flapping ili ARP konflikt;</li>
+  <li>neusklađen port binding;</li>
+  <li>nepostojeću iSCSI sesiju;</li>
+  <li>pogrešan CHAP podatak;</li>
+  <li>LUN koji nije mapiran initiator-u.</li>
+</ul>
+
+<p>
+  Uspešan <code>vmkping</code> potvrđuje osnovnu IP dostupnost, ali ne dokazuje da TCP port 3260, iSCSI autentifikacija, target discovery i LUN masking rade ispravno.
+</p>
+
+<h3>Fibre Channel troubleshooting</h3>
+
+<p>
+  Kod Fibre Channel-a putanja obuhvata HBA adapter, optički modul, kabl, FC switch port, zoning, storage target port, storage kontroler i LUN masking.
+</p>
+
+<h4>Pregled FC adaptera</h4>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<p>
+  Treba proveriti:
+</p>
+
+<ul>
+  <li>WWPN i WWNN;</li>
+  <li>link state;</li>
+  <li>brzinu porta;</li>
+  <li>da li je adapter prijavljen u fabric;</li>
+  <li>da li oba HBA porta rade;</li>
+  <li>da li adapteri vide očekivane uređaje.</li>
+</ul>
+
+<h4>Pregled FC statistike</h4>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba2</code></pre>
+
+<h4>Pregled FC događaja</h4>
+
+<pre><code class="language-bash">esxcli storage san fc events get \
+  --adapter vmhba2</code></pre>
+
+<h4>Pregled uređaja koje vidi adapter</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<p>
+  Ako je jedan FC adapter online, a drugi ne vidi uređaje, proveravaju se:
+</p>
+
+<ul>
+  <li>HBA port i firmware;</li>
+  <li>SFP modul i optički kabl;</li>
+  <li>FC switch port;</li>
+  <li>zoning za odgovarajući WWPN;</li>
+  <li>storage host grupa;</li>
+  <li>LUN masking;</li>
+  <li>target port i storage kontroler.</li>
+</ul>
+
+<h3>Datastore je spor</h3>
+
+<p>
+  Spor datastore se ne dijagnostikuje samo subjektivnim utiskom korisnika. Potrebno je meriti IOPS, throughput, queue vrednosti i latenciju na ESXi hostu, a zatim podatke uporediti sa storage sistemom i mrežnom ili SAN infrastrukturom.
+</p>
+
+<p>
+  Problem može biti:
+</p>
+
+<ul>
+  <li>u virtuelnoj mašini ili guest operativnom sistemu;</li>
+  <li>na VMDK nivou;</li>
+  <li>u ESXi kernel redu čekanja;</li>
+  <li>na HBA ili NIC adapteru;</li>
+  <li>u FC ili Ethernet mreži;</li>
+  <li>na storage target portu;</li>
+  <li>u storage kontroleru, cache-u ili diskovima;</li>
+  <li>u prevelikom broju paralelnih backup ili snapshot operacija;</li>
+  <li>u preopterećenom datastore-u ili storage pool-u.</li>
+</ul>
+
+<h3>Storage latencija u esxtop alatu</h3>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>
+  Nakon pokretanja:
+</p>
+
+<ul>
+  <li>pritisnuti <code>u</code> za storage device prikaz;</li>
+  <li>pritisnuti <code>d</code> za storage adapter prikaz;</li>
+  <li>pritisnuti <code>v</code> za prikaz virtuelnih diskova VM-ova.</li>
+</ul>
+
+<p>
+  Najvažnije kolone u device prikazu su:
+</p>
+
+<ul>
+  <li>
+    <strong>CMDS/s</strong> – broj I/O komandi u sekundi;
+  </li>
+  <li>
+    <strong>READS/s</strong> – broj operacija čitanja u sekundi;
+  </li>
+  <li>
+    <strong>WRITES/s</strong> – broj operacija pisanja u sekundi;
+  </li>
+  <li>
+    <strong>MBREAD/s</strong> – količina pročitanih podataka;
+  </li>
+  <li>
+    <strong>MBWRTN/s</strong> – količina upisanih podataka;
+  </li>
+  <li>
+    <strong>DAVG/cmd</strong> – prosečna latencija uređaja i spoljne storage putanje;
+  </li>
+  <li>
+    <strong>KAVG/cmd</strong> – prosečna latencija unutar ESXi kernel sloja;
+  </li>
+  <li>
+    <strong>GAVG/cmd</strong> – ukupna latencija koju vidi guest;
+  </li>
+  <li>
+    <strong>QAVG/cmd</strong> – vreme provedeno u redu čekanja.</li>
+</ul>
+
+<p>
+  Približno važi:
+</p>
+
+<pre><code class="language-none">GAVG ≈ DAVG + KAVG</code></pre>
+
+<p>
+  Visok <code>DAVG</code> češće usmerava analizu prema storage sistemu, target portu, mreži ili SAN fabric-u. Visok <code>KAVG</code> može ukazivati na queuing i zadržavanje zahteva u ESXi hostu. Visok <code>GAVG</code> pokazuje ukupno kašnjenje koje dobija virtuelna mašina.
+</p>
+
+<p>
+  Vrednosti ne treba tumačiti izolovano niti koristiti jednu univerzalnu granicu za sve aplikacije. Važno je poređenje sa:
+</p>
+
+<ul>
+  <li>normalnim baznim stanjem;</li>
+  <li>zahtevima aplikacije;</li>
+  <li>merenjem na storage array-u;</li>
+  <li>stanjem mrežnih ili FC portova;</li>
+  <li>periodom kada se problem zaista pojavio.</li>
+</ul>
+
+<h3>Praćenje pojedinačnog VMDK-a</h3>
+
+<p>
+  Kada je problem vezan za jednu virtuelnu mašinu, u alatu <code>esxtop</code> može se koristiti prikaz virtuelnih diskova:
+</p>
+
+<ol>
+  <li>pokrenuti <code>esxtop</code>;</li>
+  <li>pritisnuti <code>v</code>;</li>
+  <li>pronaći GID virtuelne mašine;</li>
+  <li>pritisnuti <code>e</code>;</li>
+  <li>uneti GID radi filtriranja prikaza.</li>
+</ol>
+
+<p>
+  Time se proverava da li je latencija vezana za jedan VMDK, jednu virtuelnu mašinu ili širi storage problem.
+</p>
+
+<h3>Queue problemi</h3>
+
+<p>
+  Storage uređaj može biti zdrav, ali I/O zahtevi mogu čekati zato što je queue zasićen. Queue dubina postoji na više nivoa:
+</p>
+
+<ul>
+  <li>virtuelni SCSI kontroler;</li>
+  <li>ESXi uređaj;</li>
+  <li>HBA ili NIC adapter;</li>
+  <li>storage target port;</li>
+  <li>storage kontroler;</li>
+  <li>fizički disk ili flash grupa.</li>
+</ul>
+
+<p>
+  Queue vrednosti ne treba menjati bez vendor preporuke. Povećavanje queue depth-a može samo premestiti problem na storage sistem i povećati latenciju za druge hostove.
+</p>
+
+<h3>Datastore je skoro popunjen</h3>
+
+<p>
+  Popunjen datastore nije samo problem kapaciteta. Može sprečiti:
+</p>
+
+<ul>
+  <li>uključivanje virtuelne mašine;</li>
+  <li>kreiranje VM swap datoteke;</li>
+  <li>rast snapshot delta datoteka;</li>
+  <li>konsolidaciju snapshot-a;</li>
+  <li>Storage vMotion operaciju;</li>
+  <li>backup operacije;</li>
+  <li>rast VM log datoteka;</li>
+  <li>normalan rad thin provisioned VMDK-a.</li>
+</ul>
+
+<h3>Pregled kapaciteta datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+  Pregled preko PowerCLI-ja:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+  Select-Object Name,
+                Type,
+                CapacityGB,
+                FreeSpaceGB,
+                @{
+                  Name = "FreePercent"
+                  Expression = {
+                    [math]::Round(
+                      ($_.FreeSpaceGB / $_.CapacityGB) * 100,
+                      2
+                    )
+                  }
+                }</code></pre>
+
+<h3>Najčešći potrošači prostora</h3>
+
+<ul>
+  <li>osnovni VMDK diskovi;</li>
+  <li>snapshot delta datoteke;</li>
+  <li>VM swap datoteke;</li>
+  <li>memory snapshot datoteke;</li>
+  <li>ISO slike;</li>
+  <li>stari template-i i klonovi;</li>
+  <li>napuštene VM datoteke;</li>
+  <li>log datoteke;</li>
+  <li>backup staging datoteke;</li>
+  <li>neobrisane datoteke nakon neuspelih migracija;</li>
+  <li>thin provisioned diskovi koji su porasli do punog kapaciteta.</li>
+</ul>
+
+<h3>Pregled velikih datoteka</h3>
+
+<p>
+  Na ESXi hostu može se pregledati sadržaj konkretnog direktorijuma:
+</p>
+
+<pre><code class="language-bash">cd /vmfs/volumes/IME_DATASTOREA/IME_VM_DIREKTORIJUMA</code></pre>
+
+<pre><code class="language-bash">ls -lh</code></pre>
+
+<p>
+  Za pregled zauzeća direktorijuma:
+</p>
+
+<pre><code class="language-bash">du -h -d 1 /vmfs/volumes/IME_DATASTOREA</code></pre>
+
+<p>
+  Ove komande treba koristiti pažljivo na velikim datastore-ima. Rekurzivno pretraživanje velikog broja datoteka može stvoriti dodatno opterećenje.
+</p>
+
+<h3>Snapshot rast i popunjen datastore</h3>
+
+<p>
+  Snapshot ne predstavlja potpunu kopiju virtuelne mašine. Nakon kreiranja snapshot-a novi upisi se usmeravaju u delta datoteke, koje mogu rasti dok ne dostignu značajan deo kapaciteta osnovnog diska.
+</p>
+
+<p>
+  Snapshot može postati veliki zbog:
+</p>
+
+<ul>
+  <li>dugog perioda čuvanja;</li>
+  <li>velikog broja upisa u VM;</li>
+  <li>neuspelog backup procesa;</li>
+  <li>prekinute konsolidacije;</li>
+  <li>više uzastopnih snapshot-a;</li>
+  <li>nedovoljnog slobodnog prostora za konsolidaciju.</li>
+</ul>
+
+<h3>Pregled snapshot-a preko PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-VM |
+  Get-Snapshot |
+  Select-Object VM,
+                Name,
+                Created,
+                SizeGB,
+                Description</code></pre>
+
+<h3>Pronalaženje starijih snapshot-a</h3>
+
+<pre><code class="language-powershell">Get-VM |
+  Get-Snapshot |
+  Where-Object {
+    $_.Created -lt (Get-Date).AddDays(-3)
+  } |
+  Select-Object VM,
+                Name,
+                Created,
+                SizeGB</code></pre>
+
+<p>
+  Snapshot se ne uklanja ručnim brisanjem <code>-delta.vmdk</code>, <code>-sesparse.vmdk</code> ili drugih datoteka iz datastore-a. Uklanjanje i konsolidacija izvode se kroz vSphere mehanizme.
+</p>
+
+<h3>Thin provisioning i datastore kapacitet</h3>
+
+<p>
+  Thin VMDK u početku zauzima manje fizičkog prostora od svog deklarisanog kapaciteta. Kako guest upisuje podatke, VMDK raste. Ako je zbir mogućeg rasta svih thin diskova veći od fizičkog kapaciteta datastore-a, postoji rizik od overcommit-a.
+</p>
+
+<p>
+  Administrator mora pratiti:
+</p>
+
+<ul>
+  <li>trenutno zauzeće datastore-a;</li>
+  <li>provisioned kapacitet VM-ova;</li>
+  <li>brzinu rasta VMDK diskova;</li>
+  <li>snapshot rast;</li>
+  <li>slobodan prostor na storage pool-u;</li>
+  <li>mogućnost proširenja LUN-a ili NFS volume-a.</li>
+</ul>
+
+<h3>VMFS datastore ne vidi isti kapacitet na svim hostovima</h3>
+
+<p>
+  Nakon proširenja LUN-a storage sistem može prikazati novi kapacitet, ali pojedini hostovi još mogu videti staru veličinu. Potrebno je:
+</p>
+
+<ol>
+  <li>potvrditi da je LUN proširen na storage sistemu;</li>
+  <li>proveriti da je promena primenjena na sve host grupe;</li>
+  <li>izvršiti rescan na svim relevantnim hostovima;</li>
+  <li>proveriti novu veličinu uređaja;</li>
+  <li>tek zatim proširiti VMFS datastore kroz podržani postupak.</li>
+</ol>
+
+<pre><code class="language-bash">esxcli storage core device list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<p>
+  Ne treba proširivati VMFS dok svi hostovi ne vide ispravan uređaj i očekivanu veličinu.
+</p>
+
+<h3>Virtuelna mašina je inaccessible ili Unknown</h3>
+
+<p>
+  Ako ESXi ne može da pročita <code>.vmx</code> datoteku virtuelne mašine, vCenter može prikazati VM kao inaccessible ili Unknown. To često nije problem same VM registracije, već posledica nedostupnog datastore-a.
+</p>
+
+<p>
+  Pre uklanjanja VM-a iz inventory-ja treba proveriti:
+</p>
+
+<ul>
+  <li>da li je datastore dostupan;</li>
+  <li>da li postoji direktorijum VM-a;</li>
+  <li>da li su <code>.vmx</code> i VMDK datoteke čitljive;</li>
+  <li>da li drugi hostovi vide isti datastore;</li>
+  <li>da li je u toku APD ili PDL stanje;</li>
+  <li>da li je VM registrovan na hostu koji je izgubio pristup.</li>
+</ul>
+
+<h3>Važne log datoteke</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Log</th>
+      <th>Najvažnija namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/var/log/vmkernel.log</code></td>
+      <td>Storage putanje, adapteri, SCSI greške, APD, PDL, NFS i latencija</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vobd.log</code></td>
+      <td>Storage i hardverska upozorenja i observations</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/hostd.log</code></td>
+      <td>Host management operacije i datastore zadaci</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vpxa.log</code></td>
+      <td>Komunikacija hosta sa vCenter serverom</td>
+    </tr>
+    <tr>
+      <td><code>/var/log/fdm.log</code></td>
+      <td>vSphere HA i datastore heartbeat događaji</td>
+    </tr>
+    <tr>
+      <td><code>vmware.log</code> u VM direktorijumu</td>
+      <td>Problemi konkretne virtuelne mašine i virtuelnih diskova</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Efikasna pretraga logova</h3>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|NFS|iSCSI|naa\.|vmhba|I/O error|latency" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<p>
+  Za praćenje novih događaja u realnom vremenu:
+</p>
+
+<pre><code class="language-bash">tail -f /var/log/vmkernel.log</code></pre>
+
+<p>
+  Logove treba povezati sa tačnim vremenom incidenta. Vreme na ESXi hostovima, vCenter serveru, storage sistemu i mrežnim uređajima mora biti sinhronizovano kako bi se događaji mogli pravilno uporediti.
+</p>
+
+<h3>Šta ne treba raditi tokom storage incidenta</h3>
+
+<ul>
+  <li>Ne kreirati novi datastore na uređaju koji možda sadrži postojeći VMFS.</li>
+  <li>Ne formatirati LUN zato što je datastore trenutno nevidljiv.</li>
+  <li>Ne menjati PSP politiku nasumično.</li>
+  <li>Ne uklanjati VM iz inventory-ja pre provere datastore-a.</li>
+  <li>Ne brisati snapshot delta datoteke ručno.</li>
+  <li>Ne restartovati sve hostove istovremeno.</li>
+  <li>Ne izvoditi masovni rescan bez procene uticaja.</li>
+  <li>Ne uklanjati LUN sa storage sistema pre unmount i detach postupka.</li>
+  <li>Ne pretpostavljati da je storage zdrav samo zato što jedna putanja radi.</li>
+  <li>Ne menjati driver, firmware ili queue depth tokom aktivnog incidenta bez plana.</li>
+  <li>Ne ignorisati datastore alarm samo zato što virtuelne mašine još rade.</li>
+</ul>
+
+<h3>Praktikum – početno evidentiranje stanja</h3>
+
+<p>
+  Pre bilo kakve korektivne radnje treba zabeležiti početno stanje. Cilj je da administrator može da odgovori šta je bilo vidljivo pre promene, šta se promenilo i da li je oporavak zaista potpun.
+</p>
+
+<h4>Topologija, preduslovi i granice rizika</h4>
+
+<ul>
+  <li>jedan vCenter Server i najmanje dva ESXi hosta, kako bi se stanje pogođenog hosta moglo uporediti sa zdravim hostom;</li>
+  <li>jedan zajednički VMFS ili NFS datastore i najmanje jedna nekritična laboratorijska virtuelna mašina;</li>
+  <li>nalog sa read-only privilegijama za početno prikupljanje podataka, a administratorski nalog samo za unapred odobrene korektivne radnje;</li>
+  <li>ESXi Shell ili SSH uključen samo tokom kontrolisanog prozora, uz evidentiranje pristupa i ponovno isključivanje ako ga bezbednosna politika ne zahteva trajno;</li>
+  <li>VCF PowerCLI radna stanica povezana sa vCenter Serverom za poređenje hostova i kapaciteta;</li>
+  <li>sinhronizovano vreme na hostovima, vCenter-u, mrežnim uređajima i storage sistemu.</li>
+</ul>
+
+<p>
+  Read-only komande u ovom praktikumu mogu se bezbedno izvršavati u produkciji uz uobičajenu kontrolu pristupa. Rescan menja stanje otkrivanja uređaja i izvodi se tek kada je osnovni transportni ili prezentacioni uzrok otklonjen. Prekid putanje, uklanjanje LUN mapping-a, gašenje NFS servisa, resignature, detach i ručno brisanje datoteka nisu dozvoljene produkcione simulacije. U laboratoriji se degraded-path stanje bezbednije demonstrira administrativnim isključivanjem samo jedne redundantne test putanje, uz potvrđenu drugu putanju i unapred definisan rollback.
+</p>
+
+<h4>Kriterijum početnog stanja</h4>
+
+<p>
+  Pre simulacije moraju biti zabeleženi naziv i UUID datastore-a, NAA identifikator ili NFS server/export, očekivani broj putanja, SATP/PSP, adapteri, slobodan prostor i početne vrednosti latencije. Laboratorija se smatra vraćenom u početno stanje tek kada se svi ti podaci ponovo podudaraju, nema novih APD/PDL događaja, a testna VM uspešno čita i upisuje podatke.
+</p>
+
+<h4>Korak 1 – evidentirati datastore-e</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<h4>Korak 2 – povezati VMFS datastore-e sa uređajima</h4>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<h4>Korak 3 – evidentirati uređaje</h4>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<h4>Korak 4 – evidentirati putanje</h4>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<h4>Korak 5 – proveriti multipathing politiku</h4>
+
+<pre><code class="language-bash">esxcli storage nmp device list</code></pre>
+
+<h4>Korak 6 – evidentirati adaptere</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<h4>Korak 7 – sačuvati relevantne logove</h4>
+
+<pre><code class="language-bash">cp /var/log/vmkernel.log \
+  /tmp/vmkernel-storage-incident.log</code></pre>
+
+<pre><code class="language-bash">cp /var/log/vobd.log \
+  /tmp/vobd-storage-incident.log</code></pre>
+
+<p>
+  U produkciji treba koristiti zvanični support bundle i centralizovano čuvanje logova, ali lokalne kopije mogu pomoći da se sačuva neposredni trag događaja.
+</p>
+
+<h3>Scenario 1 – datastore je nedostupan samo na jednom hostu</h3>
+
+<p>
+  U klasteru sa četiri ESXi hosta isti VMFS datastore radi na tri hosta, dok je na četvrtom prikazan kao inaccessible.
+</p>
+
+<h4>Zaključak iz opsega problema</h4>
+
+<p>
+  Pošto storage radi na ostalim hostovima, verovatnije je da je problem vezan za pogođeni host, njegov adapter, mrežnu ili FC putanju, zoning, port binding ili lokalno stanje uređaja.
+</p>
+
+<h4>Korak 1 – proveriti datastore i uređaj</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<h4>Korak 2 – proveriti putanje uređaja</h4>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<h4>Korak 3 – uporediti sa zdravim hostom</h4>
+
+<p>
+  Iste komande treba izvršiti na jednom zdravom hostu i uporediti:
+</p>
+
+<ul>
+  <li>broj putanja;</li>
+  <li>stanje putanja;</li>
+  <li>adaptere;</li>
+  <li>target portove;</li>
+  <li>SATP i PSP politiku;</li>
+  <li>veličinu uređaja;</li>
+  <li>NAA identifikator.</li>
+</ul>
+
+<h4>Korak 4 – proveriti adapter</h4>
+
+<p>
+  Za iSCSI:
+</p>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi networkportal list \
+  --adapter vmhba64</code></pre>
+
+<p>
+  Za Fibre Channel:
+</p>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<h4>Korak 5 – pregledati log</h4>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|naa\.|vmhba|NMP" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<h4>Korak 6 – nakon otklanjanja uzroka izvršiti rescan</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<h4>Potvrda oporavka</h4>
+
+<ul>
+  <li>datastore je ponovo mounted i accessible;</li>
+  <li>uređaj ima očekivanu veličinu;</li>
+  <li>vraćen je očekivani broj putanja;</li>
+  <li>nema novih APD ili PDL poruka;</li>
+  <li>VM-ovi normalno izvršavaju I/O operacije.</li>
+</ul>
+
+<h3>Scenario 2 – datastore je nedostupan na svim hostovima</h3>
+
+<p>
+  Svi hostovi u klasteru istovremeno gube pristup istom datastore-u.
+</p>
+
+<h4>Zaključak iz opsega problema</h4>
+
+<p>
+  Kada isti datastore nestane sa svih hostova, verovatniji uzrok je na zajedničkom sloju:
+</p>
+
+<ul>
+  <li>storage kontroler;</li>
+  <li>LUN prezentacija;</li>
+  <li>NFS server ili export;</li>
+  <li>target portovi;</li>
+  <li>zajednički switch ili fabric;</li>
+  <li>planirana ili pogrešna storage promena.</li>
+</ul>
+
+<h4>Korak 1 – proveriti da li postoji uređaj</h4>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<h4>Korak 2 – proveriti putanje</h4>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<h4>Korak 3 – proveriti APD i PDL događaje</h4>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|PERM LOSS|All Paths Down" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<h4>Korak 4 – proveriti storage tim i promene</h4>
+
+<p>
+  Potrebno je potvrditi:
+</p>
+
+<ul>
+  <li>da li je LUN i dalje aktivan;</li>
+  <li>da li je host grupa promenjena;</li>
+  <li>da li je NFS export aktivan;</li>
+  <li>da li je storage kontroler u failover-u;</li>
+  <li>da li je izvršeno održavanje;</li>
+  <li>da li su target portovi online;</li>
+  <li>da li je došlo do prekida fabric-a ili mreže.</li>
+</ul>
+
+<h4>Korak 5 – obnoviti zajednički uzrok</h4>
+
+<p>
+  Tek nakon obnove storage, mrežnog ili SAN sloja izvršava se rescan na pogođenim hostovima.
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<h4>Važna mera opreza</h4>
+
+<p>
+  Ne treba istovremeno restartovati sve hostove klastera. Oporavak se izvodi kontrolisano, uz potvrdu stanja storage-a i očuvanje kapaciteta za preostale workload-e.
+</p>
+
+<h3>Scenario 3 – NFS datastore je inaccessible</h3>
+
+<p>
+  NFS datastore je vidljiv u inventory-ju, ali nije dostupan. Drugi datastore-i rade normalno.
+</p>
+
+<h4>Korak 1 – proveriti mount stanje</h4>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<p>
+  Za NFS 4.1:
+</p>
+
+<pre><code class="language-bash">esxcli storage nfs41 list</code></pre>
+
+<h4>Korak 2 – proveriti VMkernel adresu i routing</h4>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<pre><code class="language-bash">esxcli network ip route ipv4 list</code></pre>
+
+<h4>Korak 3 – testirati NFS server</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.30.20</code></pre>
+
+<h4>Korak 4 – proveriti MTU</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 -d -s 8972 192.168.30.20</code></pre>
+
+<h4>Korak 5 – pregledati mrežni adapter</h4>
+
+<pre><code class="language-bash">esxcli network nic stats get \
+  --nic-name vmnic4</code></pre>
+
+<h4>Korak 6 – pregledati log</h4>
+
+<pre><code class="language-bash">grep -Ei "NFS|SunRPC|APD|mount" \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<h4>Korak 7 – proveriti storage stranu</h4>
+
+<ul>
+  <li>NFS servis je pokrenut.</li>
+  <li>Export putanja postoji.</li>
+  <li>ESXi VMkernel subnet ima read/write pristup.</li>
+  <li>NFS server nije promenjen iza iste IP adrese bez odgovarajuće procedure.</li>
+  <li>Nema duplirane IP adrese.</li>
+  <li>Storage mrežni interfejsi su online.</li>
+  <li>Odgovarajuća verzija NFS protokola je omogućena.</li>
+</ul>
+
+<h4>Potvrda oporavka</h4>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+  Nakon obnove pristupa proveravaju se virtuelne mašine koje koriste datastore, jer neke mogu ostati u stanju koje zahteva dodatnu proveru ili registraciju.
+</p>
+
+<h3>Scenario 4 – iSCSI target odgovara na ping, ali LUN nije vidljiv</h3>
+
+<p>
+  VMkernel adapter može da ping-uje iSCSI target, ali ESXi ne prikazuje očekivani uređaj.
+</p>
+
+<h4>Korak 1 – proveriti adapter</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter list</code></pre>
+
+<h4>Korak 2 – proveriti discovery portal</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget list \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 3 – proveriti target</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter target list \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 4 – proveriti sesije</h4>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<p>
+  Ako nema sesije, proveravaju se:
+</p>
+
+<ul>
+  <li>TCP port 3260;</li>
+  <li>CHAP podaci;</li>
+  <li>target servis;</li>
+  <li>port binding;</li>
+  <li>VLAN i routing;</li>
+  <li>duplirana IP ili ARP problem.</li>
+</ul>
+
+<p>
+  Ako sesija postoji, ali LUN nije vidljiv, proveravaju se:
+</p>
+
+<ul>
+  <li>initiator IQN;</li>
+  <li>storage host grupa;</li>
+  <li>LUN masking;</li>
+  <li>mapiranje LUN-a kroz odgovarajući target;</li>
+  <li>pristup preko oba storage kontrolera.</li>
+</ul>
+
+<h4>Korak 5 – izvršiti kontrolisani rescan</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 6 – proveriti uređaje</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 7 – proveriti putanje</h4>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<h3>Scenario 5 – Fibre Channel LUN ima samo jednu putanju</h3>
+
+<p>
+  LUN je dostupan, ali ESXi prikazuje samo jednu putanju umesto očekivanih četiri.
+</p>
+
+<h4>Korak 1 – proveriti HBA adaptere</h4>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<h4>Korak 2 – proveriti uređaje po adapteru</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba3</code></pre>
+
+<h4>Korak 3 – proveriti putanje konkretnog LUN-a</h4>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<h4>Korak 4 – proveriti FC statistiku</h4>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba3</code></pre>
+
+<h4>Korak 5 – proveriti SAN sloj</h4>
+
+<ul>
+  <li>Da li su oba HBA WWPN-a pravilno zonirana?</li>
+  <li>Da li oba fabric-a rade?</li>
+  <li>Da li su storage target portovi online?</li>
+  <li>Da li su oba initiator-a u storage host grupi?</li>
+  <li>Da li je LUN mapiran kroz oba kontrolera?</li>
+  <li>Da li FC switch prijavljuje port greške?</li>
+</ul>
+
+<h4>Korak 6 – nakon ispravke izvršiti rescan</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba3</code></pre>
+
+<h4>Potvrda oporavka</h4>
+
+<p>
+  Potrebno je potvrditi ne samo broj putanja već i da one prolaze kroz očekivane nezavisne fabric-e, HBA adaptere, target portove i storage kontrolere.
+</p>
+
+<h3>Scenario 6 – virtuelne mašine su spore, ali CPU i memorija nisu opterećeni</h3>
+
+<p>
+  Korisnici prijavljuju spor rad aplikacije. CPU ready, potrošnja memorije i mreža ne pokazuju ozbiljno zagušenje.
+</p>
+
+<h4>Korak 1 – pokrenuti esxtop</h4>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>
+  Pritisnuti <code>u</code> i pratiti:
+</p>
+
+<ul>
+  <li><code>DAVG/cmd</code>;</li>
+  <li><code>KAVG/cmd</code>;</li>
+  <li><code>GAVG/cmd</code>;</li>
+  <li><code>QAVG/cmd</code>;</li>
+  <li><code>CMDS/s</code>;</li>
+  <li><code>READS/s</code> i <code>WRITES/s</code>.</li>
+</ul>
+
+<h4>Korak 2 – izolovati VM ili VMDK</h4>
+
+<p>
+  U alatu <code>esxtop</code> pritisnuti <code>v</code>, pronaći VM i filtrirati njen GID.
+</p>
+
+<h4>Korak 3 – proveriti putanje</h4>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<h4>Korak 4 – proveriti mrežne greške za NFS ili iSCSI</h4>
+
+<pre><code class="language-bash">esxcli network nic stats get \
+  --nic-name vmnic4</code></pre>
+
+<h4>Korak 5 – proveriti storage log</h4>
+
+<pre><code class="language-bash">grep -Ei "latency|performance has deteriorated|I/O|naa\." \
+  /var/log/vmkernel.log |
+  tail -n 200</code></pre>
+
+<h4>Korak 6 – uporediti sa storage sistemom</h4>
+
+<p>
+  Za isti vremenski interval treba prikupiti:
+</p>
+
+<ul>
+  <li>storage controller latency;</li>
+  <li>disk ili flash pool latency;</li>
+  <li>cache stanje;</li>
+  <li>target port throughput;</li>
+  <li>queue depth i outstanding I/O;</li>
+  <li>eventualni controller failover;</li>
+  <li>rebuild, deduplication, replication ili backup aktivnosti.</li>
+</ul>
+
+<h4>Tumačenje</h4>
+
+<ul>
+  <li>Visok DAVG i visoka array latencija upućuju na storage sistem.</li>
+  <li>Visok DAVG, ali niska array latencija, upućuju na mrežu ili SAN putanju.</li>
+  <li>Visok KAVG upućuje na queuing ili ESXi kernel sloj.</li>
+  <li>Problem samo na jednom VMDK-u može biti vezan za VM workload ili virtuelni kontroler.</li>
+  <li>Problem na svim uređajima jednog adaptera može biti vezan za HBA, NIC ili driver.</li>
+</ul>
+
+<h3>Scenario 7 – datastore je popunjen zbog snapshot-a</h3>
+
+<p>
+  Datastore je dostigao kritičan nivo, a pregled pokazuje velike snapshot delta datoteke.
+</p>
+
+<h4>Korak 1 – proveriti slobodan prostor</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<h4>Korak 2 – pregledati snapshot-e</h4>
+
+<pre><code class="language-powershell">Get-VM |
+  Get-Snapshot |
+  Select-Object VM,
+                Name,
+                Created,
+                SizeGB</code></pre>
+
+<h4>Korak 3 – identifikovati razlog snapshot-a</h4>
+
+<ul>
+  <li>Da li snapshot pripada aktivnom backup poslu?</li>
+  <li>Da li je backup posao završen ili neuspešan?</li>
+  <li>Da li vCenter prikazuje potrebu za konsolidacijom?</li>
+  <li>Da li postoji dovoljno prostora za uklanjanje snapshot-a?</li>
+  <li>Da li postoji više povezanih delta diskova?</li>
+</ul>
+
+<h4>Korak 4 – obezbediti prostor pre konsolidacije</h4>
+
+<p>
+  Moguće bezbedne mere, u zavisnosti od okruženja, uključuju:
+</p>
+
+<ul>
+  <li>migraciju druge VM na drugi datastore;</li>
+  <li>uklanjanje nepotrebnih ISO datoteka;</li>
+  <li>proširenje datastore-a;</li>
+  <li>proširenje underlying LUN-a ili NFS volume-a;</li>
+  <li>zaustavljanje dodatnih snapshot i backup poslova;</li>
+  <li>Storage vMotion VM-a kada postoji dovoljno odredišnog kapaciteta.</li>
+</ul>
+
+<h4>Korak 5 – ukloniti snapshot kroz vSphere</h4>
+
+<p>
+  Snapshot datoteke se ne brišu ručno. Uklanjanje se izvodi kroz Snapshot Manager, PowerCLI ili odgovarajući vSphere API postupak.
+</p>
+
+<h4>Korak 6 – pratiti prostor i latenciju</h4>
+
+<p>
+  Konsolidacija može generisati značajan I/O. Tokom operacije treba pratiti:
+</p>
+
+<ul>
+  <li>slobodan prostor;</li>
+  <li>storage latenciju;</li>
+  <li>rast ili smanjenje delta datoteka;</li>
+  <li>vCenter zadatak;</li>
+  <li>VM i host logove.</li>
+</ul>
+
+<h3>Scenario 8 – datastore je potpuno popunjen</h3>
+
+<p>
+  Datastore više nema raspoloživ prostor, pojedine VM su pauzirane ili ne mogu da izvršavaju upis.
+</p>
+
+<h4>Prvi cilj – zaustaviti dalji rast</h4>
+
+<ul>
+  <li>zaustaviti nove snapshot operacije;</li>
+  <li>pauzirati backup poslove koji stvaraju snapshot-e;</li>
+  <li>zaustaviti nepotrebno kreiranje VM-ova i klonova;</li>
+  <li>utvrditi koji VM ili proces najbrže troši prostor.</li>
+</ul>
+
+<h4>Drugi cilj – bezbedno osloboditi ili dodati kapacitet</h4>
+
+<p>
+  Prioritet imaju mere koje ne ugrožavaju VM datoteke:
+</p>
+
+<ul>
+  <li>proširenje datastore-a kada storage to podržava;</li>
+  <li>migracija manje kritičnih VM-ova;</li>
+  <li>uklanjanje nepotrebnih ISO slika;</li>
+  <li>uklanjanje starih, potvrđeno nepotrebnih datoteka;</li>
+  <li>kontrolisana konsolidacija snapshot-a nakon obezbeđivanja prostora.</li>
+</ul>
+
+<h4>Šta ne raditi</h4>
+
+<ul>
+  <li>ne brisati nasumične VMDK datoteke;</li>
+  <li>ne brisati delta diskove;</li>
+  <li>ne uklanjati VM direktorijum;</li>
+  <li>ne pretpostavljati da je velika datoteka nepotrebna;</li>
+  <li>ne pokretati više konsolidacija paralelno bez procene opterećenja.</li>
+</ul>
+
+<h3>Scenario 9 – VMFS datastore se ne pojavljuje nakon rescan-a</h3>
+
+<p>
+  ESXi vidi uređaj, ali postojeći VMFS datastore nije automatski montiran.
+</p>
+
+<h4>Korak 1 – potvrditi uređaj</h4>
+
+<pre><code class="language-bash">esxcli storage core device list \
+  --device naa.ID_UREĐAJA</code></pre>
+
+<h4>Korak 2 – pregledati VMFS extent-e</h4>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<h4>Korak 3 – pregledati nemontirane VMFS volumene</h4>
+
+<pre><code class="language-bash">esxcfg-volume -l</code></pre>
+
+<h4>Korak 4 – utvrditi poreklo uređaja</h4>
+
+<p>
+  Potrebno je proveriti da li je uređaj:
+</p>
+
+<ul>
+  <li>originalni produkcioni LUN;</li>
+  <li>storage snapshot;</li>
+  <li>replika drugog VMFS datastore-a;</li>
+  <li>disaster recovery kopija;</li>
+  <li>LUN sa promenjenim identitetom;</li>
+  <li>uređaj koji je već montiran na drugom mestu.</li>
+</ul>
+
+<p>
+  Mount i resignature imaju različite posledice. Odluka se donosi tek nakon potvrde porekla uređaja i namene kopije.
+</p>
+
+<h3>Scenario 10 – datastore je uklonjen bez pravilne procedure</h3>
+
+<p>
+  Storage administrator je uklonio LUN mapping pre nego što je datastore demontiran i uređaj detached sa ESXi hostova.
+</p>
+
+<h4>Mogući simptomi</h4>
+
+<ul>
+  <li>PDL poruke;</li>
+  <li>inaccessible datastore;</li>
+  <li>spor hostd ili vCenter rad;</li>
+  <li>virtuelne mašine označene kao inaccessible;</li>
+  <li>stari uređaj ostaje u host konfiguraciji;</li>
+  <li>problemi tokom rescan-a.</li>
+</ul>
+
+<h4>Postupak</h4>
+
+<ol>
+  <li>Utvrditi da li je uklanjanje bilo namerno.</li>
+  <li>Proveriti da li na datastore-u postoje potrebne VM ili druge datoteke.</li>
+  <li>Ako je uklanjanje bilo greška, obnoviti LUN prezentaciju sa istim identitetom.</li>
+  <li>Ako je uklanjanje bilo namerno, očistiti zavisnosti prema podržanoj proceduri.</li>
+  <li>Proveriti datastore heartbeat, ISO veze i registrovane VM-ove.</li>
+  <li>Izvršiti kontrolisani rescan.</li>
+  <li>Proveriti da li su stari uređaji i reference uklonjeni.</li>
+</ol>
+
+<h3>Bezbedna procedura uklanjanja VMFS datastore-a</h3>
+
+<ol>
+  <li>Identifikovati sve VM-ove i datoteke na datastore-u.</li>
+  <li>Migrirati ili ugasiti zavisne virtuelne mašine.</li>
+  <li>Odvojiti ISO slike povezane sa VM-ovima.</li>
+  <li>Proveriti template-e, swap datoteke i dump lokacije.</li>
+  <li>Proveriti vSphere HA datastore heartbeat konfiguraciju.</li>
+  <li>Proveriti Storage DRS i datastore cluster članstvo.</li>
+  <li>Demontirati datastore sa svih hostova.</li>
+  <li>Detach-ovati uređaj sa svih hostova kada je primenljivo.</li>
+  <li>Tek zatim ukloniti LUN mapping ili storage objekat.</li>
+  <li>Izvršiti rescan i potvrditi uklanjanje.</li>
+  <li>Ažurirati dokumentaciju i monitoring.</li>
+</ol>
+
+<h3>PowerCLI pregled datastore kapaciteta</h3>
+
+<pre><code class="language-powershell">Get-Datastore |
+  Sort-Object FreeSpaceGB |
+  Select-Object Name,
+                Type,
+                CapacityGB,
+                FreeSpaceGB,
+                @{
+                  Name = "UsedPercent"
+                  Expression = {
+                    [math]::Round(
+                      (1 - ($_.FreeSpaceGB / $_.CapacityGB)) * 100,
+                      2
+                    )
+                  }
+                }</code></pre>
+
+<h3>Pronalaženje datastore-a sa manje od 15% slobodnog prostora</h3>
+
+<pre><code class="language-powershell">Get-Datastore |
+  Where-Object {
+    ($_.FreeSpaceGB / $_.CapacityGB) -lt 0.15
+  } |
+  Select-Object Name,
+                CapacityGB,
+                FreeSpaceGB,
+                @{
+                  Name = "FreePercent"
+                  Expression = {
+                    [math]::Round(
+                      ($_.FreeSpaceGB / $_.CapacityGB) * 100,
+                      2
+                    )
+                  }
+                }</code></pre>
+
+<h3>Pregled datastore-a po ESXi hostovima</h3>
+
+<pre><code class="language-powershell">Get-Cluster -Name "PROD-CLUSTER" |
+  Get-VMHost |
+  ForEach-Object {
+    $VMHost = $_
+
+    Get-Datastore -VMHost $VMHost |
+      Select-Object @{
+        Name = "VMHost"
+        Expression = { $VMHost.Name }
+      },
+      Name,
+      Type,
+      CapacityGB,
+      FreeSpaceGB
+  }</code></pre>
+
+<h3>Poređenje storage uređaja i multipathing politika</h3>
+
+<pre><code class="language-powershell">Get-Cluster -Name "PROD-CLUSTER" |
+  Get-VMHost |
+  ForEach-Object {
+    $VMHost = $_
+
+    Get-ScsiLun -VMHost $VMHost -LunType disk |
+      Select-Object @{
+        Name = "VMHost"
+        Expression = { $VMHost.Name }
+      },
+      CanonicalName,
+      Vendor,
+      Model,
+      CapacityGB,
+      MultipathPolicy,
+      OperationalState
+  }</code></pre>
+
+<h3>Pregled storage putanja kroz PowerCLI</h3>
+
+<pre><code class="language-powershell">Get-Cluster -Name "PROD-CLUSTER" |
+  Get-VMHost |
+  ForEach-Object {
+    $VMHost = $_
+
+    Get-ScsiLun -VMHost $VMHost -LunType disk |
+      Get-ScsiLunPath |
+      Select-Object @{
+        Name = "VMHost"
+        Expression = { $VMHost.Name }
+      },
+      Name,
+      State,
+      SanId,
+      ScsiLun
+  }</code></pre>
+
+<h3>Operativna procedura za visoku latenciju</h3>
+
+<ol>
+  <li>Zabeležiti tačno vreme problema.</li>
+  <li>Utvrditi pogođene VM-ove, hostove i datastore-e.</li>
+  <li>Prikupiti <code>esxtop</code> podatke.</li>
+  <li>Utvrditi DAVG, KAVG, GAVG i QAVG.</li>
+  <li>Proveriti storage putanje.</li>
+  <li>Proveriti adapter greške.</li>
+  <li>Proveriti mrežne ili FC switch portove.</li>
+  <li>Prikupiti array statistiku za isti period.</li>
+  <li>Proveriti backup, snapshot, replikaciju i maintenance procese.</li>
+  <li>Uporediti stanje sa normalnim baznim vrednostima.</li>
+  <li>Otkloniti uzrok na odgovarajućem sloju.</li>
+  <li>Ponoviti merenje nakon korekcije.</li>
+</ol>
+
+<h3>Operativna procedura za gubitak putanje</h3>
+
+<ol>
+  <li>Utvrditi koji uređaj i datastore su pogođeni.</li>
+  <li>Utvrditi broj preostalih aktivnih putanja.</li>
+  <li>Proveriti da li je problem na jednom ili svim hostovima.</li>
+  <li>Identifikovati adapter, fabric, switch i target port.</li>
+  <li>Proveriti da li preostala putanja ima dovoljno kapaciteta.</li>
+  <li>Otkloniti fizički ili konfiguracioni uzrok.</li>
+  <li>Izvršiti rescan tek nakon korekcije.</li>
+  <li>Potvrditi vraćanje svih očekivanih putanja.</li>
+  <li>Proveriti latenciju nakon oporavka.</li>
+  <li>Zabeležiti osnovni uzrok i preventivnu meru.</li>
+</ol>
+
+<h3>Operativna procedura za datastore sa malo prostora</h3>
+
+<ol>
+  <li>Potvrditi trenutni slobodan prostor.</li>
+  <li>Utvrditi brzinu trošenja prostora.</li>
+  <li>Identifikovati najveće potrošače.</li>
+  <li>Proveriti snapshot-e i backup poslove.</li>
+  <li>Zaustaviti nepotrebno dodatno zauzeće.</li>
+  <li>Obezbediti novi kapacitet ili migrirati workload.</li>
+  <li>Kontrolisano ukloniti nepotrebne podatke.</li>
+  <li>Potvrditi da su VM-ovi stabilni.</li>
+  <li>Podesiti ili korigovati alarme.</li>
+  <li>Dokumentovati razlog zbog kog alarm nije ranije sprečio incident.</li>
+</ol>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>
+    Za svaki produkcioni datastore dokumentovati naziv, UUID, NAA identifikator, protokol, kapacitet, namenu i pripadajući storage pool.
+  </li>
+  <li>
+    Dokumentovati mapiranje između ESXi hostova, HBA ili IQN identiteta, target portova i LUN-ova.
+  </li>
+  <li>
+    Redovno proveravati da svi hostovi u klasteru vide isti broj očekivanih putanja.
+  </li>
+  <li>
+    Ne čekati potpuni gubitak datastore-a da bi se reagovalo na degraded path alarm.
+  </li>
+  <li>
+    Održavati bazne vrednosti IOPS-a, throughput-a i latencije za normalne periode rada.
+  </li>
+  <li>
+    Sinhronizovati vreme na ESXi hostovima, vCenter serveru, switch-evima i storage sistemu.
+  </li>
+  <li>
+    Slati ESXi, vCenter, SAN i storage logove u centralizovani sistem za nadzor.
+  </li>
+  <li>
+    Postaviti alarme za slobodan prostor pre kritičnog nivoa, a ne tek kada datastore postane skoro potpuno popunjen.
+  </li>
+  <li>
+    Posebno pratiti datastore-e sa thin provisioned diskovima i čestim snapshot operacijama.
+  </li>
+  <li>
+    Snapshot koristiti kratkotrajno i uklanjati ga nakon završetka planirane operacije.
+  </li>
+  <li>
+    Redovno proveravati snapshot-e koje su ostavili neuspešni backup poslovi.
+  </li>
+  <li>
+    Ne tretirati storage snapshot kao jedini backup podataka.
+  </li>
+  <li>
+    Pre rescan-a proveriti da li je uzrok problema zaista otklonjen.
+  </li>
+  <li>
+    Pre promene PSP, SATP, queue depth-a, driver-a ili firmware-a proveriti Broadcom Compatibility Guide i preporuku proizvođača.
+  </li>
+  <li>
+    Firmware HBA ili NIC adaptera i odgovarajući driver posmatrati kao kompatibilan par.
+  </li>
+  <li>
+    Jumbo frame koristiti samo kada je MTU usklađen i testiran duž cele storage putanje.
+  </li>
+  <li>
+    Za iSCSI i NFS koristiti namensku ili odgovarajuće izolovanu storage mrežu.
+  </li>
+  <li>
+    Za Fibre Channel koristiti redundantne fabric-e bez zajedničke tačke otkaza.
+  </li>
+  <li>
+    Pre uklanjanja LUN-a izvršiti potpun unmount i detach postupak na svim hostovima.
+  </li>
+  <li>
+    Ne izvoditi istovremene storage promene na svim hostovima bez pilot provere na jednom kontrolisanom sistemu.
+  </li>
+  <li>
+    Tokom incidenta čuvati početne logove i izlaze komandi pre restartovanja servisa ili hosta.
+  </li>
+  <li>
+    Posle oporavka proveriti ne samo dostupnost datastore-a već i putanje, performanse i stanje virtuelnih mašina.
+  </li>
+  <li>
+    Za svaku veću storage promenu imati plan vraćanja i jasno definisane kriterijume uspeha.
+  </li>
+</ul>
+
+<h3>Kontrolna lista – datastore je nestao</h3>
+
+<ol>
+  <li>Utvrđen je opseg incidenta.</li>
+  <li>Provereno je stanje na drugim hostovima.</li>
+  <li>Datastore je povezan sa NFS export-om ili NAA uređajem.</li>
+  <li>Proveren je storage adapter.</li>
+  <li>Proverene su sve putanje.</li>
+  <li>Provereni su APD i PDL događaji.</li>
+  <li>Proverene su mrežne ili FC veze.</li>
+  <li>Proverena je storage prezentacija.</li>
+  <li>Sačuvani su logovi.</li>
+  <li>Uzrok je otklonjen pre rescan-a.</li>
+  <li>Potvrđen je povratak svih putanja.</li>
+  <li>Proveren je rad virtuelnih mašina.</li>
+</ol>
+
+<h3>Kontrolna lista – datastore je spor</h3>
+
+<ol>
+  <li>Zabeleženo je tačno vreme problema.</li>
+  <li>Utvrđeno je da li je pogođena jedna VM ili više njih.</li>
+  <li>Prikupljene su DAVG, KAVG, GAVG i QAVG vrednosti.</li>
+  <li>Proverene su putanje i multipathing politika.</li>
+  <li>Proverene su NIC ili HBA greške.</li>
+  <li>Provereni su switch portovi.</li>
+  <li>Provereni su storage kontroleri i target portovi.</li>
+  <li>Provereni su snapshot i backup procesi.</li>
+  <li>Vrednosti su upoređene sa baznim stanjem.</li>
+  <li>Nakon korekcije ponovljeno je merenje.</li>
+</ol>
+
+<h3>Kontrolna lista – datastore je skoro popunjen</h3>
+
+<ol>
+  <li>Potvrđen je stvarni kapacitet i slobodan prostor.</li>
+  <li>Utvrđena je brzina rasta zauzeća.</li>
+  <li>Identifikovani su najveći direktorijumi i VM-ovi.</li>
+  <li>Provereni su snapshot-i.</li>
+  <li>Provereni su aktivni backup poslovi.</li>
+  <li>Zaustavljeno je nepotrebno dodatno zauzeće.</li>
+  <li>Obezbeđen je prostor za eventualnu konsolidaciju.</li>
+  <li>Kapacitet je proširen ili je workload migriran.</li>
+  <li>Potvrđen je normalan rad VM-ova.</li>
+  <li>Korigovani su alarmi i planiranje kapaciteta.</li>
+</ol>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je savladana kada administrator može da demonstrira sledeće proverljive sposobnosti bez nasumičnih promena produkcionog stanja:
+</p>
+
+<ul>
+  <li>iz simptoma određuje da li je incident ograničen na VM, datastore, host, klaster, fabric ili storage sistem;</li>
+  <li>povezuje VMFS naziv i UUID sa extent-om i NAA uređajem, odnosno NFS datastore sa serverom, export-om, verzijom protokola i VMkernel putanjom;</li>
+  <li>razlikuje inaccessible, unmounted, degraded path, APD i PDL i za svako stanje bira odgovarajući sledeći dokaz;</li>
+  <li>read-only komandama dokumentuje adaptere, uređaje, putanje, sesije, kapacitet, događaje i relevantne logove;</li>
+  <li>tumači DAVG, KAVG, GAVG, QAVG, QUED i greške adaptera u kontekstu bazne linije i merenja storage sistema;</li>
+  <li>prepoznaje kada je rescan opravdan, a kada bi samo prikrio ili ponovio simptom;</li>
+  <li>zaustavlja rast popunjenog datastore-a bez ručnog brisanja VMDK ili snapshot delta datoteka;</li>
+  <li>definiše bezbednu korekciju, rollback, kriterijum oporavka i dokaz da su redundansa, performanse i workload zaista stabilni;</li>
+  <li>u incidentnom zapisu razdvaja simptom i posledicu, neposredni tehnički uzrok, osnovni uzrok, privremeno zaobilazno rešenje i trajnu preventivnu meru.</li>
+</ul>
+
+<h3>Pitanja za proveru znanja</h3>
+
+<ol>
+  <li>Zašto inaccessible datastore ne znači automatski da su podaci izgubljeni?</li>
+  <li>Koja komanda povezuje VMFS datastore sa NAA uređajem?</li>
+  <li>Koja je razlika između storage uređaja, putanje i datastore-a?</li>
+  <li>Kada storage rescan može pomoći?</li>
+  <li>Zašto rescan ne rešava neispravan VLAN ili uklonjenu LUN prezentaciju?</li>
+  <li>Koja je osnovna razlika između APD i PDL stanja?</li>
+  <li>Zašto gubitak jedne putanje zahteva reakciju iako VM-ovi još rade?</li>
+  <li>Koje komande se koriste za proveru NFS 3 i NFS 4.1 datastore-a?</li>
+  <li>Zašto uspešan vmkping nije dovoljan dokaz da iSCSI radi?</li>
+  <li>Koji slojevi učestvuju u Fibre Channel putanji?</li>
+  <li>Šta predstavljaju DAVG, KAVG i GAVG vrednosti?</li>
+  <li>Kako se u esxtop alatu prati pojedinačni VMDK?</li>
+  <li>Zašto queue depth ne treba povećavati bez vendor preporuke?</li>
+  <li>Koje datoteke najčešće popunjavaju datastore?</li>
+  <li>Zašto se snapshot delta datoteke ne smeju ručno brisati?</li>
+  <li>Kako thin provisioning može dovesti do popunjavanja datastore-a?</li>
+  <li>Zašto se LUN ne uklanja sa storage sistema pre unmount i detach procedure?</li>
+  <li>Koje podatke treba prikupiti pre restartovanja hosta tokom incidenta?</li>
+  <li>Zašto je sinhronizacija vremena važna za troubleshooting?</li>
+  <li>Kako se potvrđuje da je storage incident zaista završen?</li>
+</ol>
+
+<h3>Zaključak</h3>
+
+<p>
+  Storage troubleshooting u VMware okruženju zahteva sistematičan rad kroz više povezanih slojeva. Datastore koji je nestao iz vCenter prikaza može i dalje imati vidljiv uređaj, uređaj može imati izgubljene putanje, a putanja može biti prekinuta na hostu, mrežnom switch-u, SAN fabric-u, target portu ili storage kontroleru. Zbog toga se problem ne rešava jednom univerzalnom komandom.
+</p>
+
+<p>
+  Kada datastore postane nedostupan, prvo se utvrđuje opseg incidenta, zatim se datastore povezuje sa odgovarajućim NFS export-om ili NAA uređajem, proveravaju se putanje, adapteri i transport, a potom i storage prezentacija. Razlikovanje APD i PDL stanja posebno je važno jer jedno označava privremeni gubitak svih putanja, dok drugo označava da je uređaj potvrđeno uklonjen iz pristupa hosta.
+</p>
+
+<p>
+  Kada je datastore spor, administrator mora da meri, a ne da nagađa. DAVG, KAVG, GAVG i queue pokazatelji pomažu da se kašnjenje razdvoji između storage uređaja, spoljne putanje i ESXi kernel sloja. Rezultati sa hosta zatim se porede sa podacima storage sistema i mrežne ili SAN infrastrukture za isti vremenski interval.
+</p>
+
+<p>
+  Kada se datastore popunjava, cilj nije samo trenutno oslobađanje nekoliko gigabajta. Potrebno je utvrditi da li prostor troše snapshot-i, rast thin diskova, backup poslovi, ISO datoteke, klonovi ili nedovoljno planiran kapacitet. Posebno je važno da se VMDK i snapshot datoteke ne brišu ručno, jer takva intervencija može trajno prekinuti lanac virtuelnog diska.
+</p>
+
+<p>
+  Dobar VMware administrator tokom incidenta istovremeno štiti podatke, čuva dokaze, ograničava uticaj i radi od simptoma prema osnovnom uzroku. Tek kada su datastore, uređaj, sve očekivane putanje, performanse i virtuelne mašine ponovo stabilni, incident se može smatrati završenim.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom dokumentacija za VMware vSphere Storage 8.x, VMFS i NFS datastore-e, iSCSI i Fibre Channel SAN, Pluggable Storage Architecture, multipathing i failover; ESXCLI i aktuelne VCF PowerCLI reference; Broadcom Knowledge Base članci za APD, PDL, NFS povezivost, VMFS mount i resignature i esxtop analizu; Broadcom Compatibility Guide i dokumentacija proizvođača storage, HBA, NIC i SAN komponenti.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-29-nfs-iscsi-fc.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-31-vmotion.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

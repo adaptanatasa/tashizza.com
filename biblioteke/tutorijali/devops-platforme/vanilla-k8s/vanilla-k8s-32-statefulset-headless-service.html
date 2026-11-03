@@ -1,0 +1,650 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-32-statefulset-headless-service.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>StatefulSet – aplikacije kojima su važni identitet i trajni podaci | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="StatefulSet omogućava pokretanje Kubernetes aplikacija kojima su potrebni stabilan identitet, trajni podaci i kontrolisano pokretanje i gašenje instanci.">
+
+  <meta name="keywords"
+        content="Kubernetes StatefulSet, StatefulSet, Persistent Volume, Persistent Volume Claim, stabilan identitet, stateful aplikacije, baze podataka, PostgreSQL, MySQL, MongoDB, Kafka, Kubernetes storage, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-32-statefulset-headless-service.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="StatefulSet – aplikacije kojima su važni identitet i trajni podaci">
+
+  <meta property="og:description"
+        content="Saznajte kako Kubernetes StatefulSet obezbeđuje stabilan identitet Pod-ova, trajno skladištenje podataka i kontrolisano upravljanje stateful aplikacijama.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-32-statefulset-headless-service.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-30-statefulset.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="StatefulSet – aplikacije kojima su važni identitet i trajni podaci">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-30-statefulset.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-30-statefulset.png"
+           alt="StatefulSet – aplikacije kojima su važni identitet i trajni podaci">
+
+    </a>
+
+
+<div class="page-subtitle">
+ VII. Storage i stateful aplikacije
+</div>
+   <div class="page-subtitle">
+32. StatefulSet i Headless Service – stabilan identitet, redosled i trajni podaci
+</div>
+
+<p>
+  Većina kontejnerskih aplikacija projektovana je tako da pojedinačna instanca može biti uklonjena i zamenjena drugom bez posledica. Deployment je zato pogodan za stateless servise čiji su podovi međusobno zamenljivi. Baze podataka, distribuirani sistemi, brokeri poruka, klasteri za pretragu i aplikacije sa lokalnim trajnim stanjem imaju drugačije zahteve: instanca često mora da zadrži prepoznatljivo ime, stabilnu mrežnu adresu, sopstveni disk i kontrolisan redosled pokretanja ili gašenja. Kubernetes za takve radne terete pruža objekat <strong>StatefulSet</strong>.
+</p>
+<p>
+  StatefulSet ne pretvara automatski aplikaciju u visoko dostupnu aplikaciju, ne sinhronizuje podatke između replika i ne rešava izbor primarne instance. Njegova uloga je da obezbedi stabilan identitet i determinističko upravljanje podovima. Replikacija, konsenzus, failover, backup i oporavak ostaju odgovornost same aplikacije, njenog operatora ili posebno projektovanog administrativnog postupka.
+</p>
+<h3>Zašto stateful aplikacijama nije dovoljan Deployment</h3>
+<p>
+  Pod kojim upravlja Deployment dobija ime sa promenljivim sufiksom, na primer <code>web-7c98b7f9b5-kp2xm</code>. Kada se pod zameni, nova instanca dobija drugo ime i novi mrežni identitet. Takvo ponašanje je poželjno kada su sve instance iste i kada podaci žive u spoljašnjoj bazi, objekt skladištu ili drugom nezavisnom servisu.
+</p>
+<p>
+  StatefulSet svakoj replici dodeljuje stabilan ordinalni broj. Ako se objekat zove <code>docstore</code>, podovi se nazivaju <code>docstore-0</code>, <code>docstore-1</code> i <code>docstore-2</code>. Kada se <code>docstore-1</code> ponovo kreira, zadržava isto logičko ime i ponovo dobija PVC namenjen upravo toj replici. Aplikacija može koristiti ordinal za izbor uloge, formiranje klasterskog članstva, particionisanje podataka ili određivanje redosleda inicijalizacije.
+</p>
+<p>
+  Ordinali podrazumevano počinju od nule. Polje <code>spec.ordinals.start</code>, stabilno od Kubernetes 1.31, omogućava drugi početni ordinal kada aplikativni model to izričito zahteva. Kubernetes svakom podu dodaje labelu <code>apps.kubernetes.io/pod-index</code> sa njegovim ordinalom; ona je pogodnija za selekciju, metrike i konfiguraciju od parsiranja imena poda. Promena početnog ordinala nije bezazleno preimenovanje: menja skup identiteta i nazive PVC-ova, pa se planira kao migracija članstva i podataka.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>Deployment</th>
+      <th>StatefulSet</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Identitet podova</td>
+      <td>Podovi su međusobno zamenljivi</td>
+      <td>Svaki pod ima stabilno ime i ordinal</td>
+    </tr>
+    <tr>
+      <td>Mrežni identitet</td>
+      <td>Pristup se obično obavlja preko zajedničkog servisa</td>
+      <td>Svaki pod može imati stabilan DNS zapis</td>
+    </tr>
+    <tr>
+      <td>Trajno skladište</td>
+      <td>Može koristiti PVC, ali nema automatski poseban PVC po replici</td>
+      <td><code>volumeClaimTemplates</code> kreira poseban PVC za svaki pod</td>
+    </tr>
+    <tr>
+      <td>Redosled operacija</td>
+      <td>Replike se uglavnom tretiraju paralelno</td>
+      <td>Podrazumevano kontrolisano kreiranje, ažuriranje i gašenje</td>
+    </tr>
+    <tr>
+      <td>Tipična namena</td>
+      <td>Web API, frontend, stateless worker</td>
+      <td>Baze, brokeri, distribuirani sistemi i klasteri sa identitetom</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Stabilan identitet, ordinal i headless servis</h3>
+<p>
+  StatefulSet koristi polje <code>spec.serviceName</code> kako bi se povezao sa servisom koji upravlja mrežnim domenom njegovih podova. Uobičajeno se koristi <strong>headless Service</strong>, odnosno servis sa vrednošću <code>clusterIP: None</code>. Takav servis ne obezbeđuje jednu virtuelnu ClusterIP adresu iza koje se balansiraju svi podovi, već omogućava DNS-u da objavi adrese pojedinačnih instanci.
+</p>
+<p>
+  U namespace-u <code>stateful-lab</code>, StatefulSet <code>docstore</code> i headless servis <code>docstore-headless</code> daju imena poput:
+</p>
+<pre><code class="language-none">docstore-0.docstore-headless.stateful-lab.svc.cluster.local
+docstore-1.docstore-headless.stateful-lab.svc.cluster.local
+docstore-2.docstore-headless.stateful-lab.svc.cluster.local</code></pre>
+<p>
+  Stabilnost se odnosi na logički identitet, a ne na nepromenljivu IP adresu. IP adresa poda može se promeniti posle ponovnog kreiranja. Klijenti i članovi klastera zato treba da koriste DNS ime, a ne zapamćenu IP adresu. Administrator mora uzeti u obzir i DNS keširanje: neuspešan upit može privremeno ostati u kešu, pa aplikacija koja odmah traži novokreirani pod može kratko dobijati negativan odgovor.
+</p>
+<p>
+  Polje <code>publishNotReadyAddresses: true</code> ponekad se koristi kada aplikacija mora da otkrije buduće članove pre nego što oni postanu Ready. To je čest zahtev sistema koji tokom inicijalizacije formiraju klaster. Ova opcija se ne uključuje rutinski, jer omogućava DNS objavljivanje podova koji još nisu spremni da prihvate normalan saobraćaj.
+</p>
+<p>
+  Governing Service treba kreirati pre StatefulSet-a. Headless servis obezbeđuje otkrivanje članova, ali često nije dovoljan kao klijentska ulazna tačka. Produkcioni sistem zato može imati i drugi, običan Service koji bira samo Ready podove ili samo replike određene uloge. Aplikacija ne sme zaključivati ko je lider samo iz DNS redosleda: DNS ne pruža konsenzus, fencing ni garanciju prioriteta odgovora.
+</p>
+<h3>Trajno skladište kroz volumeClaimTemplates</h3>
+<p>
+  Najvažnija veza između StatefulSet-a i trajnog skladištenja ostvaruje se pomoću <code>volumeClaimTemplates</code>. Kubernetes za svaki ordinal kreira poseban PersistentVolumeClaim. Za pod <code>docstore-0</code> nastaje PVC <code>data-docstore-0</code>, za sledeću repliku <code>data-docstore-1</code> i tako dalje. Svaki pod ponovo koristi svoj zahtev kada bude zamenjen.
+</p>
+<p>
+  StatefulSet sam po sebi ne obezbeđuje disk. Klaster mora imati odgovarajući StorageClass, CSI drajver i skladišni sistem ili unapred pripremljene PersistentVolume objekte. Ako dinamičko provisioniranje ne radi, PVC ostaje u stanju <code>Pending</code>, a pod se najčešće ne može rasporediti. Administrator tada proverava događaje PVC-a, StorageClass, CSI kontrolere, dostupne kapacitete i topološka ograničenja skladišta.
+</p>
+<p>
+  Pristupni režim <code>ReadWriteOnce</code> znači da volumen može biti priključen za čitanje i pisanje sa jednog noda; ne znači nužno da ga može koristiti samo jedan pod. Tačno ponašanje zavisi od drajvera i načina montiranja. Kada je potrebna stroga zaštita da isti volumen koristi samo jedan pod u celom klasteru, podržani CSI drajver može koristiti <code>ReadWriteOncePod</code>. Administrator mora proveriti mogućnosti konkretnog drajvera, a ne zaključivati samo na osnovu naziva pristupnog režima.
+</p>
+<p>
+  PVC-ovi se tradicionalno ne brišu automatski kada se StatefulSet obriše ili smanji broj replika, čime se podaci štite od slučajnog gubitka. Savremeni Kubernetes API podržava <code>persistentVolumeClaimRetentionPolicy</code>, sa ponašanjem <code>Retain</code> ili <code>Delete</code> za brisanje StatefulSet-a i smanjivanje broja replika. U produkciji je <code>Retain</code> bezbedniji podrazumevani izbor. Politika <code>Delete</code> zahteva potvrđenu backup strategiju, jasno vlasništvo nad podacima i testiran postupak oporavka.
+</p>
+<p>
+  Ova retention politika je stabilna od Kubernetes 1.32 i podrazumevano zadržava PVC-ove. Na starijim klasterima treba proveriti dostupnost API polja i feature gate <code>StatefulSetAutoDeletePVC</code>. Ona upravlja brisanjem PVC objekta, ali konačna sudbina stvarnog storage resursa zavisi i od <code>persistentVolumeReclaimPolicy</code> pripadajućeg PV-a. Kombinacija <code>whenScaled: Delete</code> i PV politike <code>Delete</code> može ukloniti i backend volumen; zato se oba nivoa proveravaju pre skaliranja naniže.
+</p>
+<h3>Redosled kreiranja, skaliranja i gašenja</h3>
+<p>
+  Podrazumevana vrednost <code>podManagementPolicy: OrderedReady</code> nalaže kontroleru da podove kreira po rastućem ordinalu. <code>docstore-0</code> mora postati Ready pre kreiranja <code>docstore-1</code>, a zatim se čeka <code>docstore-2</code>. Pri smanjenju broja replika podovi se uklanjaju obrnutim redosledom. Ovo ponašanje odgovara sistemima kod kojih naredni član zavisi od prethodnog.
+</p>
+<p>
+  Vrednost <code>Parallel</code> omogućava paralelno kreiranje i uklanjanje podova. Ona je pogodna samo kada aplikacija nema zahtev za strogo uređenim članstvom. Parallel ne ukida stabilna imena i PVC-ove, ali uklanja čekanje između ordinala. Pre promene administrator mora proveriti dokumentaciju aplikacije, jer ubrzavanje skaliranja može izazvati istovremeni bootstrap više članova, konflikt u izboru lidera ili preopterećenje skladišta.
+</p>
+<p>
+  Opcionalno polje <code>minReadySeconds</code> određuje koliko sekundi novokreirani pod mora neprekidno biti Running i Ready, bez pada kontejnera, pre nego što se smatra Available za napredovanje rolling update-a. Podrazumevana vrednost je nula, odnosno nema dodatnog perioda čekanja. Za aplikacije kojima je posle Ready probe potrebno vreme za stabilizaciju, razumna nenulta vrednost može sprečiti prebrzo ažuriranje sledeće replike.
+</p>
+<h3>Ažuriranje StatefulSet-a</h3>
+<p>
+  Strategija <code>RollingUpdate</code> ažurira podove obrnutim ordinalnim redosledom. Kontroler obično čeka da ažurirani pod postane Running i Ready pre prelaska na sledeći. Polje <code>partition</code> omogućava da se ažuriraju samo podovi čiji je ordinal jednak ili veći od zadate vrednosti. Time se može izvesti kontrolisani canary postupak, na primer prvo ažurirati samo <code>docstore-2</code>, proveriti ga, zatim smanjiti particiju na 1 i na kraju na 0.
+</p>
+<p>
+  Alternativna strategija <code>OnDelete</code> ne zamenjuje pod automatski nakon izmene šablona. Administrator ili automatizacija moraju obrisati svaki pod kako bi bio kreiran iz nove specifikacije. Ova strategija daje ručnu kontrolu, ali povećava rizik da različite replike dugo koriste različite verzije.
+</p>
+<p>
+  Polje <code>rollingUpdate.maxUnavailable</code> omogućava istovremenu zamenu više podova, ali je u Kubernetes 1.35 i dalje beta mogućnost i odgovarajući feature gate je podrazumevano isključen. Ne treba ga stavljati u prenosiv manifest bez provere servera. Čak i kada je omogućen, vrednost veća od jedan prihvatljiva je samo ako aplikativni kvorum, replikacija, PDB i kapacitet storage sistema dopuštaju toliki paralelni gubitak članova.
+</p>
+<p>
+  Posebno važan operativni problem nastaje kada novi šablon proizvodi pod koji nikada ne postane Ready, na primer zbog pogrešne slike ili neispravne konfiguracije. Posle vraćanja StatefulSet specifikacije na ispravnu verziju može biti potrebno ručno obrisati već kreirani neispravan pod kako bi kontroler napravio novu instancu iz popravljene specifikacije. Administrator zato tokom ažuriranja prati podove, revision oznake, događaje i aplikativne logove, a ne samo rezultat komande <code>kubectl apply</code>.
+</p>
+<h3>Readiness, liveness i zaštita dostupnosti</h3>
+<p>
+  Readiness proba određuje da li je instanca spremna za servisni saobraćaj i utiče na napredovanje uređenog ažuriranja. Liveness proba treba da otkrije proces koji više ne može da se oporavi bez restarta. Preagresivna liveness proba može napraviti restart petlju upravo dok baza ili distribuirani servis obavlja dug oporavak podataka. Za spor početak rada koristi se startup proba, koja odlaže aktiviranje liveness i readiness proba dok se aplikacija ne inicijalizuje.
+</p>
+<p>
+  PodDisruptionBudget ograničava dobrovoljne prekide, kao što su drain noda ili određene operacije održavanja, ali ne sprečava kvar noda, direktno brisanje poda ili sve oblike administratorske promene. PDB takođe ne garantuje dostupnost ako aplikacija nema dovoljnu replikaciju ili ako su sve replike raspoređene u istom failure domenu.
+</p>
+<p>
+  Za produkcione klastere potrebno je kombinovati PDB sa <code>topologySpreadConstraints</code>, pod anti-affinity pravilima ili odgovarajućim operatorskim mehanizmima. Cilj je da kvar jednog noda ili zone ne ukloni većinu članova. Pravila raspoređivanja moraju biti realna u odnosu na broj nodova; prestroga obavezna anti-affinity politika može ostaviti podove trajno u stanju Pending.
+</p>
+<h3>Kada StatefulSet jeste, a kada nije odgovarajuće rešenje</h3>
+<p>
+  StatefulSet je opravdan kada aplikacija koristi stabilno članstvo, poseban trajni volumen po replici, ordinalnu ulogu ili kontrolisan redosled operacija. Tipični primeri su relacioni i NoSQL sistemi, koordinacioni servisi, distribuirani redovi, pretraživački klasteri i druge aplikacije čiji proizvođač izričito podržava rad u Kubernetes-u.
+</p>
+<p>
+  StatefulSet nije potreban samo zato što aplikacija zapisuje podatke. Jedna aplikacija može biti stateless, dok podatke čuva u upravljanoj bazi ili objekt skladištu. Takođe nije dovoljan za aplikaciju koja nije projektovana za distribuirani rad. Pokretanje tri nezavisne baze sa tri različita PVC-a ne stvara automatski jedan redundantni klaster baze podataka.
+</p>
+<p>
+  Kada za tehnologiju postoji zreo Kubernetes Operator, on je često sigurniji od ručno napisanog StatefulSet-a. Operator može upravljati bootstrap postupkom, članstvom, sertifikatima, backup-om, izborom lidera i bezbednim ažuriranjem. Administrator ipak mora razumeti StatefulSet, jer operator najčešće koristi iste osnovne Kubernetes objekte i jer dijagnostika zahteva razumevanje podova, PVC-ova, servisa i događaja.
+</p>
+<h3>Integrisani praktikum: StatefulSet sa stabilnim identitetom i posebnim diskom po replici</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong></p>
+<p>
+  Interni servis za obradu dokumenata koristi tri radne instance. Svaka instanca čuva sopstveni lokalni identifikacioni zapis i skup obrađenih test podataka. Cilj praktikuma nije izgradnja distribuirane baze, već proverljiva demonstracija svojstava na kojima se takvi sistemi zasnivaju: stabilnog ordinalnog identiteta, DNS imena, zasebnog PVC-a po replici, opstanka podataka posle zamene poda i kontrolisanog skaliranja.
+</p>
+<p><strong>Referentno okruženje i preduslovi.</strong></p>
+<ul>
+  <li>Kubernetes klaster sa najmanje dva schedulable worker noda i funkcionalnim CoreDNS servisom.</li>
+  <li>Instaliran i funkcionalan CSI drajver sa podrazumevanim StorageClass-om koji podržava zahtev od najmanje 1 GiB.</li>
+  <li><code>kubectl</code> podešen za odgovarajući klaster.</li>
+  <li>Korisnik sme da kreira i čita namespace, Service, StatefulSet, Pod, PVC, ConfigMap i Event objekte u namenskom namespace-u.</li>
+  <li>Pravo za <code>pods/exec</code> potrebno je samo za funkcionalnu proveru fajlova i DNS-a.</li>
+</ul>
+<p>
+  U produkciji prava treba obezbediti namespaced Role i RoleBinding objektima. Privilegije za menjanje StorageClass-a, PersistentVolume objekata ili CSI komponenti nisu potrebne za redovnu implementaciju i ne treba ih dodeljivati aplikativnom administratoru.
+</p>
+<ol>
+  <li>
+    <strong>Napravite radni direktorijum i proverite kontekst.</strong>
+    Sve manifest datoteke biće sačuvane u direktorijumu <code>statefulset-lab</code>. Pre promene treba potvrditi da <code>kubectl</code> pokazuje na očekivani klaster i identitet.
+    <pre><code class="language-bash">mkdir -p statefulset-lab
+cd statefulset-lab
+kubectl config current-context
+kubectl auth whoami
+kubectl auth can-i create statefulsets.apps --namespace stateful-lab
+kubectl auth can-i create persistentvolumeclaims --namespace stateful-lab
+kubectl auth can-i create pods/exec --namespace stateful-lab</code></pre>
+    <strong>Validacija:</strong> Kontekst mora odgovarati laboratorijskom klasteru, a provere potrebnih prava treba da vrate <code>yes</code>. Ako <code>kubectl auth whoami</code> nije podržan u korišćenoj verziji klijenta ili servera, identitet proverite kroz aktuelni kubeconfig i proces izdavanja pristupa.
+  </li>
+  <li>
+    <strong>Proverite skladište pre kreiranja aplikacije.</strong>
+    Potrebno je utvrditi koji StorageClass je podrazumevan, koji provisioner koristi i kakav je njegov režim vezivanja volumena.
+    <pre><code class="language-bash">kubectl get storageclass
+kubectl get storageclass -o custom-columns='NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\.kubernetes\.io/is-default-class,PROVISIONER:.provisioner,BINDING:.volumeBindingMode,EXPANSION:.allowVolumeExpansion'</code></pre>
+    <strong>Validacija:</strong> Najmanje jedan StorageClass treba da ima oznaku podrazumevane klase ili se njegovo ime mora eksplicitno uneti u kasniji manifest. Provisioner mora pripadati instaliranom CSI drajveru. Ako nema odgovarajuće klase, zaustavite implementaciju i eskalirajte timu koji upravlja skladištem.
+  </li>
+  <li>
+    <strong>Kreirajte namespace sa bezbednosnim oznakama.</strong>
+    Referentni workload radi bez root korisnika i bez dodatnih Linux capabilities, pa namespace može primeniti restricted Pod Security profil.
+    <pre><code class="language-bash">cat &gt; 00-namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stateful-lab
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+EOF
+kubectl apply -f 00-namespace.yaml
+kubectl get namespace stateful-lab --show-labels</code></pre>
+    <strong>Validacija:</strong> Namespace mora biti u stanju <code>Active</code>, a tri Pod Security oznake treba da imaju vrednost <code>restricted</code>.
+  </li>
+  <li>
+    <strong>Kreirajte headless servis.</strong>
+    Servis neće imati ClusterIP adresu. Njegova svrha je objavljivanje DNS zapisa pojedinačnih podova.
+    <pre><code class="language-bash">cat &gt; 10-headless-service.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: docstore-headless
+  namespace: stateful-lab
+  labels:
+    app.kubernetes.io/name: docstore
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: docstore
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+EOF
+kubectl apply -f 10-headless-service.yaml
+kubectl get service docstore-headless -n stateful-lab -o wide</code></pre>
+    <strong>Validacija:</strong> Kolona <code>CLUSTER-IP</code> mora prikazati <code>None</code>. Selector mora odgovarati labeli koja će biti postavljena na podove.
+  </li>
+  <li>
+    <strong>Kreirajte StatefulSet sa tri replike i zasebnim PVC-ovima.</strong>
+    Init kontejner upisuje ordinalni hostname samo ako identifikacioni fajl još ne postoji. Glavni kontejner zatim iz trajnog direktorijuma formira stranicu koja prikazuje sačuvani identitet. Pod radi kao neprivilegovani korisnik.
+    <pre><code class="language-bash">cat &gt; 20-statefulset.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: docstore
+  namespace: stateful-lab
+  labels:
+    app.kubernetes.io/name: docstore
+spec:
+  serviceName: docstore-headless
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  minReadySeconds: 5
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docstore
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docstore
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: initialize-identity
+          image: busybox:1.36.1
+          command:
+            - sh
+            - -ec
+            - |
+              if [ ! -f /var/lib/docstore/identity.txt ]; then
+                printf '%s\n' "${HOSTNAME}" &gt; /var/lib/docstore/identity.txt
+              fi
+              printf '&lt;html&gt;&lt;body&gt;&lt;h1&gt;%s&lt;/h1&gt;&lt;p&gt;Persistent identity: %s&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;\n' \
+                "${HOSTNAME}" "$(cat /var/lib/docstore/identity.txt)" \
+                &gt; /var/lib/docstore/index.html
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/docstore
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.27.5-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/nginx/html
+              readOnly: false
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: docstore
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+EOF
+kubectl apply -f 20-statefulset.yaml
+kubectl rollout status statefulset/docstore -n stateful-lab --timeout=5m</code></pre>
+    <strong>Validacija:</strong> Rollout treba da se završi porukom da su sve tri replike uspešno ažurirane. Ako se zaustavi na prvom podu, odmah proverite PVC, događaje i logove pre bilo kakvog ručnog brisanja. U ovom laboratorijskom primeru glavni kontejner ima read-write mount zato što naredne vežbe namerno upisuju kontrolni fajl i menjaju početnu stranicu; u produkciji aplikaciji se dodeljuju samo prava koja zaista zahteva.
+    <pre><code class="language-bash">kubectl get statefulset,pods,pvc -n stateful-lab -o wide
+kubectl get pods -n stateful-lab -l app.kubernetes.io/name=docstore \
+  -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[0].ready,NODE:.spec.nodeName,IP:.status.podIP'
+kubectl get pvc -n stateful-lab \
+  -o custom-columns='PVC:.metadata.name,STATUS:.status.phase,VOLUME:.spec.volumeName,ACCESS:.status.accessModes,STORAGE:.status.capacity.storage'</code></pre>
+    Očekuju se podovi <code>docstore-0</code>, <code>docstore-1</code> i <code>docstore-2</code>, kao i tri Bound PVC-a: <code>data-docstore-0</code>, <code>data-docstore-1</code> i <code>data-docstore-2</code>.
+  </li>
+  <li>
+    <strong>Potvrdite stabilni identitet i sadržaj diskova.</strong>
+    Iz svakog poda čita se identifikacioni fajl. Vrednost mora odgovarati ordinalnom imenu poda.
+    <pre><code class="language-bash">for pod in docstore-0 docstore-1 docstore-2; do
+  printf '%s: ' "$pod"
+  kubectl exec -n stateful-lab "$pod" -- cat /usr/share/nginx/html/identity.txt
+done</code></pre>
+    <strong>Validacija:</strong> Rezultat treba da bude:
+    <pre><code class="language-none">docstore-0: docstore-0
+docstore-1: docstore-1
+docstore-2: docstore-2</code></pre>
+    Ako dva poda prikazuju isti identitet, proverite volume mount konfiguraciju i stvarne PV/PVC veze. Svaki pod mora koristiti različit PVC.
+  </li>
+  <li>
+    <strong>Proverite DNS pojedinačnih instanci.</strong>
+    Privremeni dijagnostički pod koristi se samo za proveru servisa. Opcija <code>--rm</code> uklanja ga po završetku.
+    <pre><code class="language-bash">kubectl run dns-check \
+  -n stateful-lab \
+  --image=busybox:1.36.1 \
+  --restart=Never \
+  --rm -i \
+  --command -- sh -ec '
+    nslookup docstore-headless;
+    nslookup docstore-0.docstore-headless;
+    nslookup docstore-1.docstore-headless;
+    nslookup docstore-2.docstore-headless
+  '</code></pre>
+    <strong>Validacija:</strong> Upiti za pojedinačne podove treba da vrate njihove aktuelne IP adrese. Ako servis postoji, ali nema odgovora, proverite Endpoints ili EndpointSlice objekte, selector i CoreDNS.
+    <pre><code class="language-bash">kubectl get endpointslice -n stateful-lab \
+  -l kubernetes.io/service-name=docstore-headless -o wide
+kubectl get pods -n kube-system -l k8s-app=kube-dns
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100</code></pre>
+  </li>
+  <li>
+    <strong>Izvršite test opstanka podataka posle zamene poda.</strong>
+    Najpre se u trajni volumen poda <code>docstore-1</code> upisuje kontrolna vrednost, zatim se pod briše bez brisanja PVC-a. Brisanje normalnog poda nije isto što i brisanje podataka; kontroler će ga ponovo kreirati sa istim identitetom.
+    <pre><code class="language-bash">kubectl exec -n stateful-lab docstore-1 -- \
+  sh -c 'printf "%s\n" "change-ticket-CHG-2026-0730" &gt; /usr/share/nginx/html/acceptance.txt'
+kubectl exec -n stateful-lab docstore-1 -- \
+  cat /usr/share/nginx/html/acceptance.txt
+kubectl delete pod docstore-1 -n stateful-lab
+kubectl wait --for=condition=Ready pod/docstore-1 \
+  -n stateful-lab --timeout=3m
+kubectl exec -n stateful-lab docstore-1 -- \
+  cat /usr/share/nginx/html/acceptance.txt</code></pre>
+    <strong>Validacija:</strong> Posle ponovnog kreiranja poda fajl mora i dalje sadržati <code>change-ticket-CHG-2026-0730</code>. Proverite da je pod dobio isti PVC:
+    <pre><code class="language-bash">kubectl get pod docstore-1 -n stateful-lab \
+  -o jsonpath='{.spec.volumes[?(@.name=="data")].persistentVolumeClaim.claimName}{"\n"}'</code></pre>
+    Očekivani rezultat je <code>data-docstore-1</code>.
+  </li>
+  <li>
+    <strong>Izvedite negativni test spremnosti.</strong>
+    Privremeno preimenujte početnu stranicu na poslednjem podu. Nginx će za korenski URL vratiti neuspešan status, pa readiness proba treba da označi kontejner kao NotReady. Pod ostaje pokrenut, ali se ne smatra spremnim.
+    <pre><code class="language-bash">kubectl exec -n stateful-lab docstore-2 -- \
+  mv /usr/share/nginx/html/index.html /usr/share/nginx/html/index.html.disabled
+kubectl get pod docstore-2 -n stateful-lab -w</code></pre>
+    Posmatranje prekinite kada kolona READY postane <code>0/1</code>. Zatim proverite događaje i vratite fajl:
+    <pre><code class="language-bash">kubectl describe pod docstore-2 -n stateful-lab
+kubectl exec -n stateful-lab docstore-2 -- \
+  mv /usr/share/nginx/html/index.html.disabled /usr/share/nginx/html/index.html
+kubectl wait --for=condition=Ready pod/docstore-2 \
+  -n stateful-lab --timeout=2m</code></pre>
+    <strong>Validacija:</strong> Događaji treba da pokažu neuspeh readiness probe, a posle vraćanja fajla pod mora ponovo postati Ready. Ako se kontejner restartovao, proverite da li je problem trajao dovoljno dugo da aktivira i liveness probu.
+  </li>
+  <li>
+    <strong>Proverite ponašanje pri skaliranju naniže i naviše.</strong>
+    StatefulSet se smanjuje na dve replike. Pod sa najvećim ordinalom biće uklonjen, ali zbog politike <code>Retain</code> njegov PVC ostaje.
+    <pre><code class="language-bash">kubectl scale statefulset docstore -n stateful-lab --replicas=2
+kubectl rollout status statefulset/docstore -n stateful-lab --timeout=3m
+kubectl get pods,pvc -n stateful-lab</code></pre>
+    <strong>Validacija:</strong> Pod <code>docstore-2</code> više ne postoji, ali PVC <code>data-docstore-2</code> ostaje u stanju Bound. Ponovnim skaliranjem na tri replike vraća se isti ordinal i isti disk.
+    <pre><code class="language-bash">kubectl scale statefulset docstore -n stateful-lab --replicas=3
+kubectl rollout status statefulset/docstore -n stateful-lab --timeout=3m
+kubectl get pod docstore-2 -n stateful-lab
+kubectl get pvc data-docstore-2 -n stateful-lab</code></pre>
+    Pod i PVC moraju biti dostupni. Ovaj rezultat potvrđuje zadržavanje skladišta, ali ne predstavlja backup.
+  </li>
+  <li>
+    <strong>Prikupite operativne podatke i logove.</strong>
+    Kubernetes događaji su dopunski i vremenski ograničeni zapis. Za istragu treba prikupiti specifikaciju, stanje podova, PVC-ove, događaje i logove kontejnera.
+    <pre><code class="language-bash">kubectl get statefulset docstore -n stateful-lab -o yaml &gt; docstore-observed.yaml
+kubectl get pods,pvc,endpointslice -n stateful-lab -o wide &gt; docstore-status.txt
+kubectl get events -n stateful-lab \
+  --sort-by='.metadata.creationTimestamp' &gt; docstore-events.txt
+kubectl logs -n stateful-lab docstore-0 -c initialize-identity &gt; docstore-0-init.log
+kubectl logs -n stateful-lab docstore-0 -c web --tail=200 &gt; docstore-0-web.log</code></pre>
+    <strong>Validacija:</strong> Datoteke treba da sadrže podatke i ne smeju prikazivati neočekivane greške. U realnoj promeni čuvaju se uz change ticket, vreme izvođenja, izvršioca i rezultat kriterijuma prihvatanja.
+  </li>
+</ol>
+<p><strong>Tipične greške i način razlikovanja.</strong></p>
+<ul>
+  <li><strong>Pod je Pending, a PVC Pending:</strong> proveriti događaje PVC-a, StorageClass, CSI provisioner i kapacitet skladišta. Ovo je prvenstveno problem provisioniranja ili vezivanja volumena.</li>
+  <li><strong>PVC je Bound, ali pod je Pending:</strong> proveriti scheduler događaje, zone noda, volume node affinity, taints, resurse i affinity pravila.</li>
+  <li><strong>Pod je ContainerCreating:</strong> proveriti <code>kubectl describe pod</code>, CSI node plugin i kubelet događaje; česti uzroci su attach ili mount greške.</li>
+  <li><strong>Pod je Running, ali NotReady:</strong> proveriti readiness probu i aplikativne logove. To nije isto što i neuspešno raspoređivanje.</li>
+  <li><strong>StatefulSet rollout stoji na jednom ordinalu:</strong> analizirati baš taj pod. OrderedReady namerno sprečava nastavak dok problematična replika ne postane Ready.</li>
+  <li><strong>DNS ime ne radi:</strong> proveriti pod ime, <code>serviceName</code>, headless Service selector, EndpointSlice i CoreDNS. IP adresa poda nije zamena za stabilno DNS ime.</li>
+  <li><strong>Pod koristi stari sadržaj posle promene slike:</strong> persistentni fajlovi nisu automatski zamenjeni promenom kontejnerske slike. Potrebna je eksplicitna migracija podataka ili konfiguracije.</li>
+</ul>
+<p><strong>Dijagnostički tok incidenta.</strong></p>
+<ol>
+  <li><strong>Simptom, obim i posledica:</strong> evidentirati koji ordinali nisu Ready, da li je pogođen klijentski saobraćaj, članstvo ili kvorum i kada je odstupanje počelo.</li>
+  <li><strong>Dokazi pre promene:</strong> sačuvati StatefulSet i ControllerRevision stanje, Pod/PVC/PV/EndpointSlice događaje, poslednje rollout promene, aplikativne metrike i logove. Ne brisati pod samo zato što je Pending ili NotReady.</li>
+  <li><strong>Hipoteza i neposredni uzrok:</strong> redom razdvojiti scheduling, PVC provisioning, attach/mount, image/config, probe, DNS i aplikativni kvar. Korelisati vreme Kubernetes događaja sa CSI, kubelet i aplikativnim zapisima.</li>
+  <li><strong>Osnovni uzrok:</strong> utvrditi zašto je neispravna slika, nedostupan storage domen, pogrešna proba ili nekompatibilna šema dospela u produkciju; restart nije analiza osnovnog uzroka.</li>
+  <li><strong>Zaobilazno i trajno rešenje:</strong> privremeno zaustaviti rollout, vratiti provereni šablon ili obnoviti storage/DNS zavisnost. Trajna mera može biti validacija manifesta, canary particija, promena kapaciteta, korekcija probe ili aplikativna migracija.</li>
+  <li><strong>Potvrda oporavka:</strong> proveriti Ready i Available replike, kvorum, greške klijenata, DNS, PVC veze i reprezentativne podatke tokom definisanog perioda posmatranja, pa dokumentovati uzrok, korekciju i preventivnu meru.</li>
+</ol>
+<p><strong>Rollback i cleanup.</strong></p>
+<p>
+  Rollback aplikativne verzije vrši se vraćanjem proverene slike ili manifesta, a zatim praćenjem rollout-a. Za ozbiljne stateful aplikacije pre rollback-a mora se proveriti kompatibilnost formata podataka; starija verzija programa možda ne može čitati podatke koje je migrirala novija verzija.
+</p>
+<pre><code class="language-bash">kubectl rollout history statefulset/docstore -n stateful-lab
+kubectl rollout undo statefulset/docstore -n stateful-lab
+kubectl rollout status statefulset/docstore -n stateful-lab --timeout=5m</code></pre>
+<p>
+  Za uklanjanje laboratorije prvo se brišu StatefulSet i servis. PVC-ovi se zbog Retain politike ne brišu automatski.
+</p>
+<p>
+  Brisanje samog StatefulSet objekta ne pruža istu uređenu garanciju gašenja kao skaliranje na nulu. Za aplikaciju kojoj je redosled kritičan najpre se izvodi kontrolisano skaliranje na nulu, potvrđuje završetak članova i tek zatim briše kontroler. U ovoj laboratoriji nema pravog klasterskog protokola, pa je neposredno brisanje prihvatljivo za demonstraciju retention politike.
+</p>
+<pre><code class="language-bash">kubectl delete statefulset docstore -n stateful-lab
+kubectl delete service docstore-headless -n stateful-lab
+kubectl get pvc -n stateful-lab</code></pre>
+<p>
+  <strong>Upozorenje:</strong> sledeća komanda trajno uklanja PVC objekte, a storage reclaim politika može izazvati i brisanje stvarnih volumena i svih podataka. Izvršava se samo u laboratoriji ili posle potvrđenog backup-a, odobrenja vlasnika podataka i provere da volumen nije potreban.
+</p>
+<pre><code class="language-bash">kubectl delete pvc \
+  data-docstore-0 data-docstore-1 data-docstore-2 \
+  -n stateful-lab
+kubectl delete namespace stateful-lab</code></pre>
+<p><strong>Merljivi kriterijumi prihvatanja.</strong></p>
+<ul>
+  <li>StatefulSet prikazuje <code>3/3</code> Ready replike.</li>
+  <li>Postoje tačno tri poda sa ordinalima 0, 1 i 2.</li>
+  <li>Postoje tačno tri Bound PVC-a, po jedan za svaki ordinal.</li>
+  <li>Svaki pod vraća sopstveni stabilni identitet.</li>
+  <li>DNS ime svakog poda razrešava se na njegovu aktuelnu adresu.</li>
+  <li>Kontrolni fajl na <code>docstore-1</code> opstaje posle brisanja i ponovnog kreiranja poda.</li>
+  <li>Negativni readiness test uklanja pod iz Ready stanja, a vraćanje ispravnog fajla vraća ga u Ready bez ručne zamene PVC-a.</li>
+  <li>Skaliranje na dve replike uklanja <code>docstore-2</code>, ali zadržava njegov PVC; skaliranje na tri ponovo povezuje isti PVC.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje spremnosti i broja replika.</strong> Komandama <code>kubectl get statefulset</code>, <code>kubectl get pods</code> i monitoring metrikama proveravati željeni, aktuelni i Ready broj replika. Provera se obavlja kontinuirano kroz monitoring i posle svake promene. Odstupanje duže od definisanog SLO perioda zahteva pregled problematičnog ordinala, događaja, probe i aplikativnih logova. Incident, pogođeni pod, trajanje i uzrok dokumentuju se u incident sistemu; uspeh prakse meri se vremenom detekcije i oporavka.</li>
+  <li><strong>Kontrola kapaciteta volumena.</strong> Pratiti iskorišćenost fajl sistema iz node ili aplikativnog monitoring sistema, a PVC kapacitet proveravati kroz Kubernetes API i storage platformu. Upozorenje se obično postavlja pre 80%, a kritično stanje pre 90%, uz prilagođavanje stopi rasta i vremenu potrebnom za proširenje. Prva reakcija je potvrda trenda, identifikacija najvećih potrošača i provera da li StorageClass podržava proširenje. Dokumentuju se pređašnji i novi kapacitet, prognoza rasta i change ticket; uspeh znači da je proširenje završeno bez prekida i da fajl sistem vidi novi kapacitet.</li>
+  <li><strong>Kontrolisano ažuriranje.</strong> Pre promene sačuvati manifest, trenutne revision podatke, stanje replika, backup status i kompatibilnost aplikativne šeme. Tokom ažuriranja pratiti <code>kubectl rollout status</code>, podove, probe, aplikativne metrike i greške klijenata. Svako zaustavljanje rollout-a ili povećanje grešaka iznad dogovorenog praga prekida dalju promociju. Dokumentuju se verzije, ordinali, vreme, rezultati provera i odluka o nastavku ili rollback-u.</li>
+  <li><strong>Raspored po failure domenima.</strong> Posle promene broja replika, nodova ili zona proveriti raspored podova komandom <code>kubectl get pods -o wide</code> i monitoring inventarom. Ako većina kvoruma zavisi od jednog noda ili zone, prva reakcija je procena rizika i priprema bezbedne izmene affinity ili topology spread pravila. Uspeh se meri time da simulirani gubitak dozvoljenog failure domena ne uklanja potreban broj dostupnih članova.</li>
+  <li><strong>Backup i probni restore.</strong> Čuvaju se aplikativno konzistentni podaci, potrebni metapodaci, konfiguracija, tajne prema bezbednosnoj proceduri i verzija aplikacije. Snapshot samog diska nije dovoljan ako aplikacija nije dovedena u konzistentno stanje. Učestalost se određuje prema RPO zahtevu, a kopije se čuvaju izvan klastera i, kada je potrebno, izvan primarne lokacije. Integritet se proverava checksum vrednostima, statusom backup posla i čitljivošću kataloga. Probni restore se periodično radi u izolovanom namespace-u ili klasteru; uspeh potvrđuju pokretanje aplikacije, provera reprezentativnih podataka i izmereni RTO. Rezultat se dokumentuje u backup registru i evidenciji disaster recovery testa.</li>
+  <li><strong>Kontrola prisilnog brisanja.</strong> StatefulSet pod se ne briše sa <code>--force --grace-period=0</code> dok nije potvrđeno da stara instanca više ne radi. U suprotnom se može pojaviti drugi pod sa istim identitetom dok je prethodni još aktivan, što može izazvati split-brain i oštećenje podataka. Prisilno brisanje zahteva odobrenje, proveru noda i storage attachment-a, dokumentovan razlog i neposrednu validaciju članstva aplikacije.</li>
+</ul>
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>Potvrđen je ispravan <code>kubectl</code> kontekst i namenski namespace.</li>
+  <li>Provere <code>kubectl auth can-i</code> potvrđuju samo prava potrebna za implementaciju i dijagnostiku.</li>
+  <li>StorageClass, CSI provisioner, režim vezivanja i mogućnost proširenja volumena evidentirani su pre implementacije.</li>
+  <li><code>spec.serviceName</code> odgovara imenu postojećeg headless servisa.</li>
+  <li>Selector StatefulSet-a tačno odgovara labelama šablona podova.</li>
+  <li>Svi očekivani PVC-ovi imaju stanje Bound i svaki pod koristi PVC svog ordinala.</li>
+  <li>Readiness, liveness i startup ponašanje usklađeni su sa realnim vremenom inicijalizacije aplikacije.</li>
+  <li>Podovi su raspoređeni preko odgovarajućih nodova ili failure domena.</li>
+  <li>Izvršen je test zamene jednog poda i potvrđen opstanak podataka.</li>
+  <li>DNS imena pojedinačnih podova uspešno se razrešavaju kroz headless servis.</li>
+  <li>Politika zadržavanja PVC-ova eksplicitno je proverena i dokumentovana.</li>
+  <li>Backup je uspešno završen, integritet proveren i probni restore potvrđen prema RPO/RTO zahtevima.</li>
+  <li>Manifest, događaji, rezultati validacije i odluka o prihvatanju sačuvani su uz change dokumentaciju.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator posle ove lekcije treba da razume da je StatefulSet kontroler identiteta i životnog ciklusa stateful replika, a ne mehanizam koji samostalno pruža replikaciju, backup ili visoku dostupnost. Mora umeti da poveže ordinalni identitet, headless servis, DNS, <code>volumeClaimTemplates</code>, StorageClass i konkretni CSI drajver u jednu proverljivu celinu.
+</p>
+<p>
+  U praktičnom radu administrator mora umeti da implementira StatefulSet sa najmanjim potrebnim pravima, proveri redosled kreiranja, pronađe PVC svake replike, potvrdi opstanak podataka posle zamene poda i razlikuje scheduling, provisioning, mount, readiness i aplikativni problem. Promene broja replika, slike, probe, retention politike ili skladišta izvode se tek nakon provere posledica po članstvo aplikacije, format podataka i dostupnost.
+</p>
+<p>
+  Poseban produkcioni rizik predstavljaju prisilno brisanje podova, pogrešno shvaćeni pristupni režimi volumena, neproveren rollback i pretpostavka da više replika automatski znači redundantne podatke. Administrator je odgovoran da tehničko stanje dokumentuje, da ne prekorači odobrena ovlašćenja i da eskalira problem timu za skladište, mrežu, aplikaciju ili platformu kada uzrok izlazi iz njegove zone odgovornosti. Razlog za hitnu eskalaciju su moguć split-brain, gubitak kvoruma, oštećenje podataka, neuspešan restore, nepoznato stanje starog poda ili operacija koja bi mogla nepovratno obrisati volumen.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za StatefulSet kontroler i <code>apps/v1</code> API; administrativni vodiči za PersistentVolume, PersistentVolumeClaim, StorageClass i CSI; reference za headless Service, DNS, probe, PodDisruptionBudget i topološko raspoređivanje; zvanični postupci za skaliranje, rolling update, rollback, bezbedno brisanje i dijagnostiku stateful radnih opterećenja
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-31-pv-pvc-storageclass-csi.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-33-snapshot-backup-restore.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

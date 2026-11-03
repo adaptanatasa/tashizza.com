@@ -1,0 +1,597 @@
+
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-27-dns-u-klasteru.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>DNS u klasteru – kako servisi pronalaze jedni druge | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes DNS omogućava Pod-ovima i servisima da se međusobno pronalaze pomoću stabilnih DNS naziva, bez oslanjanja na promenljive IP adrese unutar klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes DNS, CoreDNS, DNS u Kubernetes klasteru, service discovery, otkrivanje servisa, Kubernetes Service DNS, DNS nazivi servisa, namespace DNS, cluster.local, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-27-dns-u-klasteru.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="DNS u klasteru – kako servisi pronalaze jedni druge">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes DNS i CoreDNS mehanizam koji aplikacijama omogućava da pronalaze servise pomoću stabilnih imena unutar različitih namespace-ova.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-27-dns-u-klasteru.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-22-dns-u-klasteru.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="DNS u klasteru – kako servisi pronalaze jedni druge">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-22-dns-u-klasteru.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-22-dns-u-klasteru.png"
+           alt="DNS u klasteru – kako servisi pronalaze jedni druge">
+
+    </a>
+ 
+
+
+  <div class="page-subtitle">
+  VI. Mreža, DNS i pristup aplikacijama
+</div>
+   <div class="page-subtitle">
+27. DNS u klasteru – CoreDNS, imena servisa, search domeni i keširanje
+</div>
+<p>
+  Kubernetes aplikacije se ne mogu pouzdano povezivati korišćenjem IP adresa pojedinačnih Pod-ova. Pod može biti obrisan, ponovo kreiran na drugom worker čvoru i dobiti novu IP adresu, dok se broj njegovih instanci može menjati tokom skaliranja i rollout procesa. Service obezbeđuje stabilnu mrežnu apstrakciju, a klasterski DNS omogućava aplikacijama da taj Service pronađu pomoću predvidljivog imena. Zajedno, Service i DNS čine osnovni mehanizam otkrivanja servisa unutar Kubernetes klastera.
+</p>
+<p>
+  Za administratora DNS nije samo pomoćna funkcija. Neispravan klasterski DNS može istovremeno prekinuti komunikaciju velikog broja aplikacija, iako su njihovi Pod-ovi, Service objekti i mrežne rute formalno dostupni. Zbog toga administrator mora razumeti kako nastaje DNS zapis, kako kubelet formira konfiguraciju resolvera u Pod-u, kako CoreDNS dobija podatke iz Kubernetes API-ja i kako razlikovati problem DNS rezolucije od problema mrežne dostupnosti ili same aplikacije.
+</p>
+<h3>Uloga DNS-a u Kubernetes klasteru</h3>
+<p>
+  Kubernetes klasterski DNS omogućava workload-ovima da koriste logička imena umesto promenljivih IP adresa. Kada aplikacija iz jednog Pod-a treba da pristupi servisu <code>catalog-api</code>, ona ne mora znati IP adresu Service objekta niti adrese njegovih backend Pod-ova. Dovoljno je da pošalje zahtev na DNS ime kao što je <code>catalog-api</code>, <code>catalog-api.shop-prod</code> ili potpuno kvalifikovano ime <code>catalog-api.shop-prod.svc.cluster.local</code>.
+</p>
+<p>
+  DNS ne prosleđuje aplikativni saobraćaj. Njegov zadatak je da ime prevede u odgovarajući zapis, najčešće IPv4 adresu predstavljenu A zapisom ili IPv6 adresu predstavljenu AAAA zapisom. Nakon rezolucije, mrežna komunikacija se odvija preko Kubernetes mrežnog modela, Service mehanizma, kube-proxy implementacije ili odgovarajućeg dataplane-a koji obezbeđuje CNI rešenje. Uspešna DNS rezolucija zato ne garantuje da je aplikacija dostupna, kao što neuspešna TCP konekcija ne dokazuje automatski da DNS ne radi.
+</p>
+<p>
+  Standardni klasterski domen je najčešće <code>cluster.local</code>, ali administrator može izabrati drugi domen prilikom formiranja klastera. Naziv domena ne treba pretpostavljati u skriptama i dijagnostici bez provere. U kubeadm okruženju relevantne vrednosti mogu se proveriti u konfiguraciji kubeleta, CoreDNS Corefile-u i DNS konfiguraciji konkretnog Pod-a.
+</p>
+<h3>Kako nastaje DNS zapis za Service</h3>
+<p>
+  Kada se u namespace-u <code>shop-prod</code> kreira Service nazvan <code>catalog-api</code>, klasterski DNS može objaviti zapis oblika <code>catalog-api.shop-prod.svc.cluster.local</code>. Deo <code>catalog-api</code> predstavlja ime Service objekta, <code>shop-prod</code> namespace, <code>svc</code> zonu za servise, a <code>cluster.local</code> klasterski domen.
+</p>
+<p>
+  Kod običnog Service-a sa dodeljenom <code>clusterIP</code> adresom, A ili AAAA zapis pokazuje na virtuelnu adresu Service-a. DNS ne vraća IP adrese pojedinačnih backend Pod-ova. Izbor backend-a obavlja mrežni Service mehanizam na osnovu EndpointSlice objekata povezanih sa Service-om. Zbog toga se promena Pod-ova iza Service-a obično ne odražava promenom DNS imena ili Service IP adrese.
+</p>
+<p>
+  CoreDNS sa Kubernetes dodatkom posmatra objekte preko Kubernetes API-ja i na osnovu njih dinamički odgovara na upite. DNS zapisi se ne održavaju ručnim uređivanjem tradicionalnih zonskih fajlova. Ako Service bude obrisan, zapis prestaje da postoji; ako se kreira novi Service sa drugim imenom, DNS klijenti moraju koristiti novo ime. Promena selector-a Service-a menja backend skup, ali ne menja njegov DNS naziv.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Upit</th>
+      <th>Kontekst</th>
+      <th>Tipičan rezultat</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>catalog-api</code></td>
+      <td>Pod je u namespace-u <code>shop-prod</code></td>
+      <td>Resolver dopunjava ime lokalnim DNS search domenom i pronalazi Service</td>
+    </tr>
+    <tr>
+      <td><code>catalog-api.shop-prod</code></td>
+      <td>Pod je u bilo kom namespace-u</td>
+      <td>Pronalaženje Service-a uz navođenje namespace-a</td>
+    </tr>
+    <tr>
+      <td><code>catalog-api.shop-prod.svc.cluster.local</code></td>
+      <td>Potpuno kvalifikovano ime</td>
+      <td>Direktan upit za klasterski Service zapis</td>
+    </tr>
+    <tr>
+      <td><code>catalog-api.default</code></td>
+      <td>Service ne postoji u namespace-u <code>default</code></td>
+      <td>NXDOMAIN ili drugi negativan odgovor</td>
+    </tr>
+  </tbody>
+</table>
+<h3>CoreDNS i tok DNS upita</h3>
+<p>
+  CoreDNS je preporučeni klasterski DNS server i podrazumevana komponenta u savremenim kubeadm instalacijama. Najčešće je pokrenut kao Deployment u namespace-u <code>kube-system</code>, dok Service obično zadržava istorijski naziv <code>kube-dns</code>. Naziv Service-a zato ne znači da klaster koristi staru kube-dns implementaciju; stvarna implementacija proverava se pregledom Pod-ova, Deployment-a i kontejnerske slike.
+</p>
+<p>
+  Kada proces u Pod-u zatraži rezoluciju imena, standardna resolver biblioteka čita <code>/etc/resolv.conf</code>. Kubelet taj fajl generiše za Pod na osnovu njegove <code>dnsPolicy</code> postavke, opcione <code>dnsConfig</code> konfiguracije i klasterske DNS adrese. Upit se šalje DNS Service-u ili, kada je uveden NodeLocal DNSCache, lokalnom DNS agentu na worker čvoru. CoreDNS zatim obrađuje upit kroz lanac dodataka definisanih u ConfigMap objektu <code>coredns</code>.
+</p>
+<p>
+  Tipičan Corefile sadrži dodatak <code>kubernetes</code> za klastersku zonu, <code>forward</code> za prosleđivanje spoljnih upita, <code>cache</code> za keširanje, <code>errors</code> za prijavljivanje grešaka, <code>health</code> i <code>ready</code> za zdravstvene provere i <code>prometheus</code> za metrike. Redosled i dostupnost dodataka zavise od distribucije i administratorske konfiguracije, pa produkcioni Corefile ne treba menjati kopiranjem generičkog primera bez provere postojeće implementacije.
+</p>
+<p>
+  Za ime iz zone <code>cluster.local</code>, Kubernetes dodatak koristi podatke o Service i EndpointSlice objektima. Za spoljne domene, kao što je javni servis proizvođača, upit se uobičajeno prosleđuje upstream resolverima. Ako unutrašnja Kubernetes imena rade, a spoljna ne rade, administrator proverava <code>forward</code> konfiguraciju, resolver na čvoru, firewall, rute i dostupnost korporativnih DNS servera. Ako spoljna imena rade, a Service imena ne rade, fokus se pomera na Kubernetes dodatak, RBAC, API dostupnost, namespace i postojanje Service-a.
+</p>
+<h3>Search domeni, kratka imena i opcija ndots</h3>
+<p>
+  Pod sa podrazumevanom politikom <code>ClusterFirst</code> obično dobija search listu sličnu sledećoj:
+</p>
+<pre><code class="language-none">search shop-prod.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.96.0.10
+options ndots:5</code></pre>
+<p>
+  Zbog search liste aplikacija iz namespace-a <code>shop-prod</code> može koristiti kratko ime <code>catalog-api</code>. Resolver redom pokušava odgovarajuće sufikse dok ne dobije odgovor. Pod iz drugog namespace-a ne treba da se oslanja na isto kratko ime, već da navede najmanje <code>catalog-api.shop-prod</code>. Time se izbegava zavisnost od namespace-a iz kojeg je workload pokrenut.
+</p>
+<p>
+  Opcija <code>ndots:5</code> znači da se ime sa manje od pet tačaka obično prvo pokušava kroz search domene. Ime koje programer smatra spoljnim, na primer <code>api.partner.example</code>, može zato proizvesti nekoliko neuspešnih klasterskih upita pre upita za originalno ime. U aplikacijama koje generišu veliki broj DNS zahteva ovo može povećati latenciju i opterećenje CoreDNS-a. Potpuno kvalifikovano ime završeno tačkom, na primer <code>api.partner.example.</code>, resolver može tretirati kao apsolutno ime, ali podrška i ponašanje aplikacije moraju biti provereni.
+</p>
+<p>
+  Administrator ne treba globalno menjati <code>ndots</code> samo radi jednog workload-a. Promena može uticati na način na koji aplikacije pronalaze kratka imena. Pre izmene potrebno je prikupiti DNS metrike, potvrditi obrazac upita, testirati aplikaciju i razmotriti ciljanu <code>dnsConfig</code> postavku na konkretnom Pod template-u.
+</p>
+<p>
+  Linux resolver ima i praktična ograničenja: uobičajeno je dozvoljeno najviše tri <code>nameserver</code> unosa, a kubelet pri formiranju Pod konfiguracije mora uklopiti klasterski DNS sa nasleđenim resolverima čvora. Preduga search lista ili prevelik zbir njene dužine može dovesti do upozorenja <code>DNSConfigForming</code> u događajima Pod-a. Zato se stvarno stanje proverava unutar pogođenog Pod-a i u njegovim događajima, a ne samo u konfiguraciji čvora.
+</p>
+<h3>Keširanje, TTL i NodeLocal DNSCache</h3>
+<p>
+  CoreDNS <code>cache</code> dodatak smanjuje broj ponovljenih upita prema narednim plugin-ovima i upstream resolverima. TTL (vreme važenja zapisa) određuje koliko dugo klijent ili posredni resolver sme da zadrži odgovor. Kubernetes plugin podrazumevano koristi kratak TTL, a administrator ga može menjati direktivom <code>ttl</code> u dozvoljenom opsegu od 0 do 3600 sekundi; vrednost 0 onemogućava keširanje tih odgovora. Duži TTL smanjuje QPS, ali produžava vreme tokom kojeg klijenti mogu koristiti zastareli odgovor. Kratak TTL ubrzava uočavanje promene, ali povećava opterećenje DNS sloja. Odluka se zato zasniva na merenju, ponašanju klijentskih biblioteka i prihvatljivom vremenu konvergencije.
+</p>
+<p>
+  Pozitivno keširanje čuva uspešne odgovore, dok negativno keširanje privremeno pamti odgovore kao što je NXDOMAIN. Negativni keš je koristan protiv ponovljenih upita za nepostojeća imena, ali može kratko zadržati neuspeh i nakon što je Service kreiran. Pri incidentu zato treba zabeležiti TTL iz odgovora komandom <code>dig</code>, proveriti da li postoji lokalni aplikativni keš i ponoviti test nakon isteka TTL-a; restart aplikacije nije prva niti univerzalna korektivna mera.
+</p>
+<p>
+  NodeLocal DNSCache, stabilna Kubernetes mogućnost od verzije 1.18, pokreće lokalni caching agent kao DaemonSet na čvorovima. Pod šalje upit lokalnoj instanci, čime se smanjuju međučvorska latencija, zavisnost od iptables DNAT putanje i pritisak UDP DNS tokova na conntrack tabelu. Agent može prosljeđivati promašaje ka CoreDNS-u preko TCP-a i izlaže metrike po čvoru. To poboljšava otpornost i vidljivost, ali uvodi novu komponentu: kvar lokalnog agenta može pogoditi sve Pod-ove na jednom čvoru, a način vezivanja adresa i kubelet <code>clusterDNS</code> konfiguracije razlikuje se između iptables i IPVS režima. Uvođenje zato zahteva zvanični manifest prilagođen mrežnom režimu, rezervisanu lokalnu adresu bez konflikta, postepenu validaciju i dokumentovan rollback.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Sloj keša</th>
+      <th>Korist</th>
+      <th>Rizik i dokaz koji se proverava</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Aplikacija ili OS biblioteka</td>
+      <td>Najkraća putanja za ponovljeni upit</td>
+      <td>Klijent može ignorisati TTL ili dugo zadržati adresu; proveriti dokumentaciju i ponašanje procesa</td>
+    </tr>
+    <tr>
+      <td>CoreDNS <code>cache</code></td>
+      <td>Smanjuje ponovnu obradu i upstream QPS</td>
+      <td>Stari ili negativni odgovor do isteka TTL-a; proveriti TTL, hit/miss metrike i Corefile</td>
+    </tr>
+    <tr>
+      <td>NodeLocal DNSCache</td>
+      <td>Niža latencija, manji conntrack pritisak i metrike po čvoru</td>
+      <td>Čvorski blast radius; proveriti DaemonSet, lokalnu adresu, logove i razliku između zdravih i pogođenih čvorova</td>
+    </tr>
+  </tbody>
+</table>
+<h3>DNS zapisi za obične, headless i imenovane servise</h3>
+<p>
+  Običan ClusterIP Service vraća svoju stabilnu virtuelnu adresu. Headless Service ima <code>clusterIP: None</code> i ne obezbeđuje jednu virtuelnu Service IP adresu. DNS odgovor za headless Service može sadržati adrese odgovarajućih backend endpoint-a, što klijentu omogućava direktan izbor instance. Ovakav model se koristi kod StatefulSet aplikacija, baza podataka, distribuiranih sistema i drugih rešenja koja zahtevaju identitet pojedinačnih članova.
+</p>
+<p>
+  Headless Service nije zamena za standardni load balancing. Klijentska aplikacija mora pravilno obraditi više odgovora, promene endpoint-a, redosled adresa, TTL i neuspele članove. Ako aplikacija očekuje jednu stabilnu adresu iza koje platforma bira backend, običan Service je prikladnije rešenje.
+</p>
+<p>
+  Kada Service port ima ime, DNS može objaviti SRV zapis koji sadrži port i cilj. Oblik upita je približno <code>_http._tcp.catalog-api.shop-prod.svc.cluster.local</code>. SRV zapis je koristan aplikacijama koje podržavaju otkrivanje i adrese i porta, ali mnogi HTTP klijenti ga ne koriste automatski. Postojanje SRV zapisa zato ne znači da će ga aplikacija koristiti bez odgovarajuće konfiguracije.
+</p>
+<p>
+  StatefulSet u kombinaciji sa headless Service-om može obezbediti stabilna imena pojedinačnih Pod-ova, na primer <code>postgresql-0.postgresql-headless.shop-prod.svc.cluster.local</code>. Stabilnost imena ne znači da Pod nikada neće biti zamenjen; znači da se isti logički identitet može ponovo povezati sa novom instancom odgovarajućeg ordinala.
+</p>
+<p>
+  Kubernetes DNS specifikacija definiše i zapise za Pod-ove, ali administrator ne treba da gradi aplikativnu arhitekturu na slučajnim ili implementaciono zavisnim imenima. Za Pod koji je endpoint headless Service-a ime i objavljivanje zapisa zavise od <code>hostname</code>, <code>subdomain</code>, spremnosti endpoint-a i opcione postavke <code>publishNotReadyAddresses</code>. Poslednja postavka je namenjena posebnim bootstrap i discovery protokolima: može objaviti nespremnu instancu i time prebacuje odgovornost za proveru zdravlja na klijenta. Za stabilan identitet članova preferira se dokumentovan StatefulSet i headless Service obrazac.
+</p>
+<h3>DNS politika i prilagođavanje konfiguracije Pod-a</h3>
+<p>
+  Polje <code>dnsPolicy</code> određuje osnovu DNS konfiguracije Pod-a. Najčešća vrednost je <code>ClusterFirst</code>, pri kojoj se klasterski upiti šalju klasterskom DNS-u, a ostali upiti se prosleđuju prema upstream resolverima. Vrednost <code>Default</code> nasleđuje DNS ponašanje iz konfiguracije čvora. <code>None</code> omogućava eksplicitnu konfiguraciju kroz <code>dnsConfig</code>, ali zahteva pažljivo navođenje nameserver-a, search domena i opcija.
+</p>
+<p>
+  Za Pod-ove koji koriste <code>hostNetwork: true</code>, politika <code>ClusterFirstWithHostNet</code> se koristi kada je i dalje potrebna klasterska DNS rezolucija. Bez odgovarajuće politike host-network workload može naslediti resolver čvora i izgubiti očekivanu rezoluciju Kubernetes Service imena.
+</p>
+<p>
+  Prilagođavanje <code>dnsConfig</code> opravdano je samo kada workload ima dokazanu potrebu. Ručno navođenje javnog resolvera može zaobići korporativne DNS kontrole, split-horizon zone, bezbednosno evidentiranje i interne domene. Takođe može onemogućiti rezoluciju klasterskih imena ako je politika pogrešno postavljena. Svaka promena mora biti deo deklarativnog manifesta, code review-a i kontrolisane implementacije, a ne ručna izmena <code>/etc/resolv.conf</code> unutar kontejnera.
+</p>
+<h3>ExternalName Service i granice DNS apstrakcije</h3>
+<p>
+  Service tipa <code>ExternalName</code> ne dobija ClusterIP i ne prosleđuje saobraćaj ka Pod-ovima. DNS vraća alias, odnosno CNAME, prema vrednosti iz <code>spec.externalName</code>. Ovaj tip može aplikacijama ponuditi stabilno interno ime za spoljni servis, ali ne proverava dostupnost cilja, ne obezbeđuje TLS terminaciju i ne menja identitet koji aplikacija šalje u HTTP Host zaglavlju ili TLS SNI polju.
+</p>
+<p>
+  Zbog toga ExternalName može biti neprikladan kada sertifikat spoljnog sistema ne obuhvata ime koje klijent koristi, kada protokol zavisi od originalnog hostname-a ili kada je potrebna kontrola saobraćaja, health checking i failover. Administrator mora razlikovati DNS alias od proxy-ja ili gateway-a. DNS može preusmeriti ime, ali ne transformiše aplikativnu sesiju.
+</p>
+<h3>Najčešći simptomi i administratorska dijagnostika</h3>
+<p>
+  Simptom <code>Could not resolve host</code>, <code>Name or service not known</code> ili <code>Temporary failure in name resolution</code> ukazuje na problem u procesu rezolucije, ali ne određuje automatski njegov uzrok. Administrator dijagnostiku vodi slojevito: proverava ime i namespace, konfiguraciju resolvera u Pod-u, dostupnost DNS Service-a, CoreDNS Pod-ove, EndpointSlice objekte, logove, mrežne politike i upstream resolvere.
+</p>
+<ul>
+  <li><strong>NXDOMAIN za jedno ime:</strong> najčešće ukazuje na pogrešno ime, pogrešan namespace, nepostojeći Service ili očekivanje zapisa koji Kubernetes ne objavljuje.</li>
+  <li><strong>Timeout za sva imena:</strong> može ukazivati na nedostupan DNS Service, blokiran UDP/TCP port 53, problem kube-proxy/CNI dataplane-a ili neispravne CoreDNS instance.</li>
+  <li><strong>Klasterska imena rade, spoljna ne rade:</strong> proveravaju se upstream resolveri, CoreDNS <code>forward</code> konfiguracija, resolver čvora i izlazna mrežna pravila.</li>
+  <li><strong>Spoljna imena rade, Service imena ne rade:</strong> proveravaju se Kubernetes dodatak, API konekcija CoreDNS-a, RBAC, zona klastera i postojanje Service objekta.</li>
+  <li><strong>DNS radi iz jednog namespace-a, ali ne iz drugog:</strong> proveravaju se korišćeno kratko ime, search domeni i NetworkPolicy pravila za izvorni Pod.</li>
+  <li><strong>Rezolucija je povremeno spora:</strong> analiziraju se CoreDNS resursi, broj replika, throttling, latencija upstream servera, broj search pokušaja, negativni odgovori i opterećenje conntrack tabele.</li>
+</ul>
+<p>
+  Komanda <code>nslookup</code> ili <code>dig</code> proverava DNS, dok <code>curl</code>, <code>wget</code> ili aplikativni klijent proverava i naredne slojeve. Ako <code>dig</code> vrati ispravnu adresu, ali <code>curl</code> dobije timeout, problem se traži u Service portu, EndpointSlice objektima, NetworkPolicy pravilima, aplikaciji ili mrežnom dataplane-u. Ako upit prema DNS imenu ne radi, a direktan upit prema Service IP adresi radi, DNS postaje glavni pravac istrage.
+</p>
+<hr>
+<h3>Integrisani praktikum: validacija otkrivanja servisa u produkcionom namespace-u</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Razvojni tim implementira interni kataloški API u namespace-u <code>shop-prod</code>. API mora biti dostupan drugim aplikacijama preko stabilnog imena <code>catalog-api.shop-prod.svc.cluster.local</code>. Administrator pre puštanja aplikacije u rad treba da potvrdi da Service ima aktivne endpoint-e, da DNS vraća očekivanu adresu, da kratko ime radi samo u odgovarajućem namespace-u i da se DNS problem može razlikovati od problema aplikativne konekcije.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koristi se vanilla Kubernetes klaster sa funkcionalnim CNI dodatkom, CoreDNS Deployment-om u namespace-u <code>kube-system</code> i podrazumevanim klasterskim domenom <code>cluster.local</code>. Scenario koristi namespace <code>shop-prod</code>, Deployment <code>catalog-api</code>, ClusterIP Service <code>catalog-api</code> i dijagnostički Pod <code>dns-toolbox</code>.
+</p>
+<p>
+  <strong>Prava pristupa.</strong> Za implementaciju su potrebna prava za čitanje i kreiranje namespace, Deployment, Pod i Service objekata, kao i čitanje EndpointSlice objekata u namespace-u <code>shop-prod</code>. Za infrastrukturnu dijagnostiku potrebna su read prava nad Service, Pod, Deployment, ConfigMap i log resursima u namespace-u <code>kube-system</code>. Izmena CoreDNS ConfigMap objekta nije potrebna i ne treba je dozvoliti aplikativnom administratoru.
+</p>
+<p>
+  <strong>Preduslovi.</strong> Komanda <code>kubectl</code> mora koristiti ispravan kontekst, API server mora biti dostupan, a worker čvorovi u stanju <code>Ready</code>. Administrator mora evidentirati broj promene, ciljnu verziju manifesta i vlasnika aplikacije.
+</p>
+<ol>
+  <li>
+    <strong>Proveriti kontekst i osnovno stanje klastera.</strong>
+    Pre kreiranja objekata administrator potvrđuje da radi nad odgovarajućim klasterom. Greška u kontekstu može dovesti do implementacije produkcionog workload-a u pogrešnom okruženju.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+kubectl get namespace shop-prod</code></pre>
+    <strong>Validacija:</strong> API server i DNS Service treba da budu prikazani u rezultatu <code>cluster-info</code>, svi planirani worker čvorovi treba da budu <code>Ready</code>, a poslednja komanda može vratiti <code>NotFound</code> ako namespace još nije kreiran. <code>NotFound</code> je u ovom trenutku prihvatljivo početno stanje, dok timeout ili greška autorizacije zahtevaju prekid postupka.
+  </li>
+  <li>
+    <strong>Proveriti klasterski DNS pre aplikativne promene.</strong>
+    Ova provera sprečava pogrešno pripisivanje postojećeg infrastrukturnog problema novoj aplikaciji.
+    <pre><code class="language-bash">kubectl -n kube-system get deployment coredns
+kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
+kubectl -n kube-system get service kube-dns
+kubectl -n kube-system get endpointslice -l kubernetes.io/service-name=kube-dns</code></pre>
+    <strong>Validacija:</strong> CoreDNS Deployment treba da ima jednak broj željenih i dostupnih replika. Pod-ovi treba da budu <code>Running</code> i <code>Ready</code>, Service treba da ima ClusterIP adresu i portove 53/UDP i 53/TCP, a EndpointSlice najmanje jednu spremnu adresu. Ako selektor Pod-ova ne vrati rezultat, proverava se stvarna labela pomoću <code>kubectl -n kube-system get pods --show-labels</code>.
+  </li>
+  <li>
+    <strong>Kreirati deklarativni manifest referentne aplikacije.</strong>
+    Manifest se čuva u fajlu <code>27-dns-shop-prod.yaml</code>. Nginx služi kao jednostavan HTTP backend, jer omogućava da se DNS i Service funkcionalnost validiraju bez zavisnosti od poslovne aplikacije.
+    <pre><code class="language-bash">cat &gt; 27-dns-shop-prod.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  namespace: shop-prod
+  labels:
+    app.kubernetes.io/name: catalog-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: catalog-api
+    spec:
+      containers:
+        - name: catalog-api
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-api
+  namespace: shop-prod
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: catalog-api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http
+EOF
+kubectl apply --dry-run=server -f 27-dns-shop-prod.yaml
+kubectl apply -f 27-dns-shop-prod.yaml</code></pre>
+    <strong>Validacija:</strong> Server-side dry run mora proći bez greške pre stvarne primene. Nakon primene svi objekti treba da budu kreirani ili neizmenjeni ako već odgovaraju manifestu.
+    <pre><code class="language-bash">kubectl -n shop-prod rollout status deployment/catalog-api --timeout=120s
+kubectl -n shop-prod get deployment,pods,service -o wide</code></pre>
+    Deployment treba da ima dve dostupne replike, oba Pod-a treba da budu <code>Ready</code>, a Service treba da dobije ClusterIP adresu.
+  </li>
+  <li>
+    <strong>Potvrditi vezu između Service-a i backend Pod-ova.</strong>
+    DNS zapis može postojati i kada Service nema nijedan backend. Zato se EndpointSlice proverava pre funkcionalnog testa.
+    <pre><code class="language-bash">kubectl -n shop-prod get service catalog-api -o yaml
+kubectl -n shop-prod get endpointslice \
+  -l kubernetes.io/service-name=catalog-api -o wide
+kubectl -n shop-prod get pods \
+  -l app.kubernetes.io/name=catalog-api \
+  -o custom-columns='NAME:.metadata.name,IP:.status.podIP,READY:.status.containerStatuses[*].ready'</code></pre>
+    <strong>Validacija:</strong> Service selector mora odgovarati labelama Pod-ova. EndpointSlice treba da sadrži IP adrese oba spremna Pod-a i port 80, dok Service izlaže port 8080. Ova razlika je očekivana: klijent koristi port 8080, a Service prosleđuje zahtev na imenovani kontejnerski port <code>http</code>.
+  </li>
+  <li>
+    <strong>Kreirati dijagnostički Pod u istom namespace-u.</strong>
+    Dijagnostički Pod koristi sliku koja sadrži DNS i mrežne alate. U produkciji treba koristiti interno odobrenu i skeniranu sliku iz organizacionog registra; javna slika ovde predstavlja bezbednu zamensku vrednost za laboratorijski scenario.
+    <pre><code class="language-bash">cat &gt; 27-dns-toolbox.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-toolbox
+  namespace: shop-prod
+  labels:
+    app.kubernetes.io/name: dns-toolbox
+spec:
+  restartPolicy: Always
+  containers:
+    - name: dns-toolbox
+      image: registry.k8s.io/e2e-test-images/dnsutils:1.3
+      command:
+        - sleep
+        - "3600"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+EOF
+kubectl apply --dry-run=server -f 27-dns-toolbox.yaml
+kubectl apply -f 27-dns-toolbox.yaml
+kubectl -n shop-prod wait \
+  --for=condition=Ready pod/dns-toolbox \
+  --timeout=120s</code></pre>
+    <strong>Validacija:</strong> Pod mora preći u stanje <code>Ready</code>. Ako slika ne može da se preuzme zbog zatvorenog enterprise registra, manifest treba prilagoditi odobrenoj internoj slici, a ne privremeno otvarati nekontrolisan internet pristup.
+  </li>
+  <li>
+    <strong>Pregledati DNS konfiguraciju koju je kubelet dodelio Pod-u.</strong>
+    Ovim se potvrđuju nameserver, search domeni i resolver opcije koje aplikacija stvarno koristi.
+    <pre><code class="language-bash">kubectl -n shop-prod exec dns-toolbox -- cat /etc/resolv.conf
+kubectl -n shop-prod get pod dns-toolbox \
+  -o jsonpath='{.spec.dnsPolicy}{"\n"}'</code></pre>
+    <strong>Validacija:</strong> Politika treba da bude <code>ClusterFirst</code>, eksplicitno ili kao podrazumevana vrednost. Search lista treba da počinje domenom namespace-a <code>shop-prod.svc.cluster.local</code>, a nameserver treba da odgovara klasterskoj DNS adresi ili adresi NodeLocal DNSCache-a ako je ta komponenta uvedena.
+  </li>
+  <li>
+    <strong>Validirati kratko, namespace i potpuno kvalifikovano ime.</strong>
+    Tri oblika upita potvrđuju search mehanizam i postojanje punog Service zapisa.
+    <pre><code class="language-bash">kubectl -n shop-prod exec dns-toolbox -- \
+  nslookup catalog-api
+
+kubectl -n shop-prod exec dns-toolbox -- \
+  nslookup catalog-api.shop-prod
+
+kubectl -n shop-prod exec dns-toolbox -- \
+  nslookup catalog-api.shop-prod.svc.cluster.local</code></pre>
+    <strong>Validacija:</strong> Sva tri upita treba da vrate istu ClusterIP adresu Service-a. Adresa se poredi sa sledećim rezultatom:
+    <pre><code class="language-bash">kubectl -n shop-prod get service catalog-api \
+  -o jsonpath='{.spec.clusterIP}{"\n"}'</code></pre>
+    Ako kratko ime ne radi, a FQDN radi, problem je u search domenima ili prilagođenoj DNS konfiguraciji Pod-a. Ako nijedan oblik ne radi, proveravaju se CoreDNS, Service i mrežni pristup portu 53.
+
+  </li>
+  <li>
+    <strong>Izvršiti funkcionalnu proveru preko DNS imena.</strong>
+    DNS test potvrđuje samo rezoluciju. HTTP zahtev potvrđuje i Service port, endpoint-e, mrežni dataplane i backend aplikaciju.
+    <pre><code class="language-bash">kubectl -n shop-prod exec dns-toolbox -- \
+  wget -qO- http://catalog-api:8080/</code></pre>
+    <strong>Validacija:</strong> Komanda treba da vrati podrazumevanu Nginx HTML stranicu i exit status 0. Status se može eksplicitno proveriti:
+    <pre><code class="language-bash">kubectl -n shop-prod exec dns-toolbox -- \
+  sh -c 'wget -qO- http://catalog-api:8080/ &gt;/dev/null; echo exit_status=$?'</code></pre>
+    Očekivani rezultat je <code>exit_status=0</code>. Ako DNS upit radi, ali HTTP zahtev ne radi, DNS se ne smatra uzrokom dok se ne provere Service port, EndpointSlice, NetworkPolicy i aplikativni logovi.
+  </li>
+  <li>
+    <strong>Izvršiti negativni test pogrešnog namespace-a.</strong>
+    Test potvrđuje da klaster ne vraća zapis za nepostojeću kombinaciju imena i namespace-a.
+    <pre><code class="language-bash">kubectl -n shop-prod exec dns-toolbox -- \
+  nslookup catalog-api.default</code></pre>
+    <strong>Očekivani rezultat:</strong> Upit treba da vrati NXDOMAIN ili ekvivalentnu poruku da ime nije pronađeno. To je ispravno ponašanje, jer Service <code>catalog-api</code> postoji u namespace-u <code>shop-prod</code>, a ne u <code>default</code>. Ako bi rezultat vratio adresu, administrator bi proverio da li u namespace-u <code>default</code> postoji istoimeni Service.
+  </li>
+  <li>
+    <strong>Razlikovati DNS kvar od mrežnog ili aplikativnog kvara.</strong>
+    Prvo se čuva rezultat rezolucije, zatim se Service testira po imenu i direktnoj ClusterIP adresi.
+    <pre><code class="language-bash">SERVICE_IP="$(kubectl -n shop-prod get service catalog-api \
+  -o jsonpath='{.spec.clusterIP}')"
+
+kubectl -n shop-prod exec dns-toolbox -- \
+  nslookup catalog-api.shop-prod.svc.cluster.local
+
+kubectl -n shop-prod exec dns-toolbox -- \
+  wget -qO- http://catalog-api:8080/ &gt;/dev/null
+
+kubectl -n shop-prod exec dns-toolbox -- \
+  wget -qO- "http://${SERVICE_IP}:8080/" &gt;/dev/null</code></pre>
+    <strong>Tumačenje:</strong> Ako oba HTTP testa rade, DNS i Service putanja su funkcionalni. Ako direktna ClusterIP adresa radi, a ime ne radi, istraga ostaje na DNS sloju. Ako DNS vraća ispravnu adresu, ali oba HTTP testa ne rade, proveravaju se Service, EndpointSlice, NetworkPolicy, kube-proxy ili CNI dataplane i backend aplikacija.
+
+  </li>
+  <li>
+    <strong>Pregledati CoreDNS logove bez menjanja Corefile-a.</strong>
+    Standardni logovi otkrivaju restartovanja, probleme sa Kubernetes API-jem, upstream timeout-e i greške dodataka. Query logging možda nije uključen, što nije greška.
+    <pre><code class="language-bash">kubectl -n kube-system logs deployment/coredns \
+  --since=15m --prefix=true
+
+kubectl -n kube-system get events \
+  --sort-by=.lastTimestamp | tail -n 30
+
+kubectl -n kube-system describe deployment coredns</code></pre> <strong>Validacija:</strong> Ne treba da postoje ponavljani API timeout-i, poruke o nemogućnosti učitavanja Kubernetes zone, kontinuirani upstream timeout-i ili česta restartovanja. Privremeno uključivanje <code>log</code> dodatka u Corefile-u može proizvesti veliko opterećenje i količinu zapisa, pa se radi samo uz odobrenu promenu, definisan vremenski period i plan vraćanja.
+
+  </li>
+  <li>
+    <strong>Dokumentovati merljive kriterijume prihvatanja.</strong>
+    Promena se prihvata kada su ispunjeni sledeći kriterijumi: obe replike Deployment-a su dostupne; Service ima jednu ClusterIP adresu; EndpointSlice sadrži dve spremne backend adrese; kratko ime, namespace ime i FQDN vraćaju istu Service adresu; HTTP zahtev preko DNS imena završava statusom 0; pogrešno namespace ime vraća negativan DNS odgovor; CoreDNS nema nova restartovanja niti ponavljane greške tokom testa.
+    <pre><code class="language-bash">kubectl -n shop-prod get deployment catalog-api
+kubectl -n shop-prod get service catalog-api
+kubectl -n shop-prod get endpointslice \
+  -l kubernetes.io/service-name=catalog-api
+kubectl -n kube-system get pods \
+  -l k8s-app=kube-dns \
+  -o custom-columns='NAME:.metadata.name,RESTARTS:.status.containerStatuses[*].restartCount'</code></pre>
+    Rezultati, vreme testiranja, korišćeni kontekst, verzija manifesta i identifikator promene čuvaju se u sistemu za upravljanje promenama ili repozitorijumu operativne dokumentacije.
+  </li>
+  <li>
+    <strong>Cleanup laboratorijskog scenarija.</strong>
+    U produkciji se aplikacija ne uklanja nakon uspešne validacije. Sledeća komanda koristi se samo kada je scenario izveden u privremenom laboratorijskom klasteru ili kada je odobreno potpuno uklanjanje referentnog namespace-a.
+    <p><strong>Upozorenje:</strong> Brisanje namespace-a uklanja sve resurse u njemu. Pre izvršenja proveriti kontekst i sadržaj namespace-a.</p>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl -n shop-prod get all
+kubectl delete namespace shop-prod</code></pre>
+    <strong>Bezbednija alternativa:</strong> Ako treba ukloniti samo dijagnostički Pod, a zadržati aplikaciju, koristi se:
+    <pre><code class="language-bash">kubectl -n shop-prod delete pod dns-toolbox
+rm -f 27-dns-toolbox.yaml</code></pre>
+    Manifest aplikacije <code>27-dns-shop-prod.yaml</code> zadržava se u version control sistemu ako predstavlja odobreno željeno stanje.
+  </li>
+</ol>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje dostupnosti CoreDNS replika.</strong> Najmanje svakodnevno i nakon nadogradnje klastera proveravaju se željene, dostupne i nedostupne replike komandom <code>kubectl -n kube-system get deployment coredns</code> i kroz monitoring. Reakcija je potrebna kada dostupne replike padnu ispod planiranog minimuma ili se stanje ne oporavi u definisanom intervalu. Prva reakcija je pregled Pod statusa, događaja, resursa i logova. Incident, uzrok, trajanje i pogođeni workload-ovi dokumentuju se u incident sistemu. Uspešnost se meri dostupnošću DNS servisa i vremenom oporavka.</li>
+  <li><strong>Praćenje DNS latencije i grešaka.</strong> CoreDNS Prometheus metrike prate broj zahteva, trajanje odgovora, tipove odgovora i greške dodataka. Analiza se radi kontinuirano, sa alarmima zasnovanim na uobičajenom stanju klastera. Nagli rast SERVFAIL odgovora, timeout-a ili p95/p99 latencije zahteva proveru CoreDNS kapaciteta, upstream resolvera i mreže. Grafikoni, pragovi i izmene čuvaju se u monitoring repozitorijumu i operativnom runbook-u.</li>
+  <li><strong>Kontrola restartovanja i resursnog pritiska.</strong> Posle promene broja workload-ova, node pool-a ili DNS konfiguracije proveravaju se restart count, CPU throttling, memorija i OOM događaji. Koriste se <code>kubectl top pod -n kube-system</code>, monitoring i <code>kubectl describe pod</code>. OOMKilled, kontinuiran throttling ili rast reda DNS zahteva zahtevaju analizu limita, zahteva i broja replika, a ne automatsko povećavanje resursa bez kapacitetskog plana.</li>
+  <li><strong>Provera EndpointSlice objekata.</strong> Posle promene selector-a, labela, readiness probe-a ili rollout-a proverava se da li Service ima očekivane spremne endpoint-e. Komanda <code>kubectl get endpointslice -n NAMESPACE -l kubernetes.io/service-name=SERVICE</code> koristi se pri svakoj implementaciji i incidentu dostupnosti. Prazan skup endpoint-a zahteva proveru selector-a, labela i spremnosti Pod-ova pre eskalacije mrežnom timu.</li>
+  <li><strong>Kontrola NetworkPolicy pravila za DNS.</strong> Posle uvođenja default-deny politike proverava se da li workload može da šalje UDP i, zbog velikih odgovora ili fallback-a, TCP saobraćaj na port 53 prema dozvoljenom DNS odredištu. Test se obavlja iz stvarnog workload namespace-a. Timeout uz funkcionalan CoreDNS iz drugog namespace-a često zahteva pregled egress pravila. Dozvola se dokumentuje u manifestu politike i bezbednosnom opisu toka saobraćaja.</li>
+  <li><strong>Kontrolisana izmena Corefile-a.</strong> Pre izmene čuvaju se postojeći ConfigMap manifest, broj replika, logovi i bazne metrike. Izmena prolazi code review, testiranje i plan povratka. Posle promene proveravaju se rollout, sintaksne greške, readiness, klasterski i spoljni upiti. Uspeh znači da nema porasta grešaka i da su prethodno definisani testovi ponovljivi. Ručno uređivanje bez evidentirane kopije nije prihvatljiva produkciona praksa.</li>
+  <li><strong>Backup i oporavak DNS konfiguracije.</strong> CoreDNS ConfigMap, Deployment specifikacija, RBAC objekti i konfiguracija eventualnog NodeLocal DNSCache-a čuvaju se deklarativno u zaštićenom Git repozitorijumu i kroz redovan backup Kubernetes kontrolnog stanja. Integritet se proverava review procesom, potpisom ili checksum kontrolom repozitorijuma i probnim vraćanjem u izolovanom klasteru. Backup je upotrebljiv tek kada obnovljeni DNS uspešno razrešava testni Service i spoljni kontrolni domen.</li>
+  <li><strong>Kapacitetsko planiranje.</strong> Broj CoreDNS replika i resursi proveravaju se posle značajnog povećanja broja čvorova, Pod-ova, Service objekata ili DNS intenzivnih aplikacija. Reakciju ne određuje samo broj objekata, već merena latencija, QPS, throttling i raspoloživost. Kod velikih klastera razmatraju se autoscaling i NodeLocal DNSCache, ali tek nakon merenja i testiranja kompatibilnosti.</li>
+</ul>
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>☐ Potvrđen je tačan <code>kubectl</code> kontekst i svi potrebni worker čvorovi imaju stanje <code>Ready</code>.</li>
+  <li>☐ CoreDNS Deployment ima očekivan broj dostupnih replika, a njegovi Pod-ovi nemaju neobjašnjiva restartovanja.</li>
+  <li>☐ Service <code>kube-dns</code> ima ispravnu ClusterIP adresu i portove 53/UDP i 53/TCP.</li>
+  <li>☐ DNS Service ima najmanje jedan spreman EndpointSlice endpoint.</li>
+  <li>☐ Aplikativni Service selector odgovara labelama ciljnih Pod-ova.</li>
+  <li>☐ EndpointSlice aplikativnog Service-a sadrži očekivan broj spremnih backend adresa.</li>
+  <li>☐ U testnom Pod-u su provereni <code>/etc/resolv.conf</code>, nameserver, search domeni i <code>dnsPolicy</code>.</li>
+  <li>☐ Kratko ime, ime sa namespace-om i FQDN vraćaju očekivanu Service adresu.</li>
+  <li>☐ Negativni test sa nepostojećim namespace-om vraća NXDOMAIN ili ekvivalentan negativan odgovor.</li>
+  <li>☐ Aplikativni zahtev preko DNS imena završava očekivanim odgovorom i exit statusom 0.</li>
+  <li>☐ Provereno je da NetworkPolicy pravila ne blokiraju potreban UDP i TCP DNS saobraćaj.</li>
+  <li>☐ CoreDNS logovi i događaji ne pokazuju ponavljane API, plugin ili upstream greške.</li>
+  <li>☐ Rezultati validacije, vreme testa, manifest i identifikator promene evidentirani su u odgovarajućem sistemu.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da Kubernetes DNS nije nezavisni imenik ručno održavanih hostova, već dinamički servis za otkrivanje objekata zasnovan na stanju Kubernetes API-ja. Treba da razlikuje DNS ime Service-a od IP adresa backend Pod-ova, običan Service od headless Service-a, klasterski zapis od ExternalName aliasa i uspešnu rezoluciju od uspešne aplikativne konekcije.
+</p>
+<p>
+  Praktična odgovornost administratora obuhvata proveru CoreDNS dostupnosti, resolver konfiguracije u Pod-u, Service i EndpointSlice objekata, namespace konteksta, mrežnih pravila i upstream DNS zavisnosti. Promena Corefile-a, DNS politike ili resolver opcija mora biti zasnovana na merenju, testirana iz stvarnog workload okruženja i praćena planom povratka. Posebno je važno ne pripisivati svaki timeout DNS-u i ne zatvarati incident nakon uspešnog <code>nslookup</code> testa ako aplikativna komunikacija i dalje ne radi.
+</p>
+<p>
+  Granica administratorskog ovlašćenja nastaje kada rešavanje zahteva promenu korporativnih DNS zona, firewall pravila, CNI dataplane-a, cloud mreže, aplikativnog resolvera ili sertifikata spoljnog sistema. Tada administrator prikuplja ponovljive testove, vremena, izvore i odredišta, DNS odgovore, relevantne logove i metrike, a zatim eskalira odgovornom timu bez nekontrolisanog menjanja zajedničke infrastrukture. Pouzdano klastersko otkrivanje servisa postiže se tek kada su implementacija, monitoring, bezbednosna pravila i dokumentovanje promene deo istog operativnog procesa.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za DNS zapise Service i Pod objekata, prilagođavanje DNS servisa i NodeLocal DNSCache; Kubernetes API i kubectl reference; CoreDNS administrativna dokumentacija i reference za kubernetes, cache, forward, ready i prometheus dodatke; zvanični vodiči za NetworkPolicy, monitoring i DNS troubleshooting
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-26-clusterip-nodeport-loadbalancer.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-28-ingress-gateway-api.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>
+
+

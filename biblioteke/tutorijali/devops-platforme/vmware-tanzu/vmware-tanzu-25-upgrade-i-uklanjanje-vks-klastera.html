@@ -1,0 +1,597 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-25-upgrade-i-uklanjanje-vks-klastera.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Upgrade klastera – održavanje Kubernetes verzija i sigurnosti | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upgrade Kubernetes klastera u VMware Tanzu okruženju – održavanje podržanih verzija, bezbednosnih zakrpa, kompatibilnosti komponenti i stabilnosti Workload Cluster-a.">
+
+  <meta name="keywords"
+        content="upgrade klastera, Kubernetes upgrade, VMware Tanzu, Tanzu Kubernetes Grid, TKG, Workload Cluster, Kubernetes verzije, sigurnosne zakrpe, lifecycle management, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-25-upgrade-i-uklanjanje-vks-klastera.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Upgrade klastera – održavanje Kubernetes verzija i sigurnosti">
+
+  <meta property="og:description"
+        content="Dvadeseta lekcija VMware & Tanzu tutorijala – nadogradnja Kubernetes klastera, održavanje podržanih verzija, sigurnosti i stabilnosti Tanzu okruženja.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-25-upgrade-i-uklanjanje-vks-klastera.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-25-upgrade-klastera.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Upgrade klastera – održavanje Kubernetes verzija i sigurnosti">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware & Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-25-upgrade-klastera.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-25-upgrade-klastera.png"
+           alt="Upgrade klastera – održavanje Kubernetes verzija i sigurnosti">
+
+    </a>
+       <div class="page-subtitle">
+  VI. Kreiranje i lifecycle VKS klastera
+</div>
+    <div class="page-subtitle">
+ 25. Upgrade i uklanjanje VKS klastera – kontrolisani lifecycle bez gubitka workload-a
+</div>
+<p>Upgrade Kubernetes klastera nije obična zamena verzije softvera, već kontrolisana promena čitavog skupa međuzavisnih komponenti: Kubernetes kontrolne ravni, kubelet procesa na čvorovima, operativnog sistema i VM image-a, mrežnog dodatka, skladišnih drajvera, sistemskih paketa i VKS kontrolera koji upravljaju životnim ciklusom klastera. U vSphere Supervisor okruženju administrator zato ne nadograđuje pojedinačne čvorove ručnim instaliranjem paketa, već menja deklarisano željeno stanje VKS <code>Cluster</code> objekta. Cluster API i vSphere Kubernetes Service zatim postepeno zamenjuju postojeće virtuelne mašine novim čvorovima zasnovanim na podržanom VMware Kubernetes Release-u (VKr; u starijoj dokumentaciji Tanzu Kubernetes Release, TKr).</p>
+<p>Dobro izveden upgrade produžava podržani životni ciklus platforme, uklanja poznate ranjivosti, donosi ispravke stabilnosti i održava kompatibilnost sa infrastrukturom i aplikacijama. Loše pripremljen upgrade može zaustaviti aplikacije zbog neispravnih PodDisruptionBudget pravila, nedovoljnog kapaciteta, nedostupnog registra image-a, nepodržanog preskakanja Kubernetes verzija ili nekompatibilnog CSI, CNI ili ingress dodatka. Zbog toga je osnovni administratorski zadatak da pre promene utvrdi ne samo da li je nova verzija dostupna, već i da li je ceo sistem sposoban da bezbedno podnese postepenu zamenu čvorova.</p>
+<p>Uklanjanje klastera je druga, nepovratna lifecycle operacija. Brisanje <code>Cluster</code> objekta pokreće kaskadno razgrađivanje control plane, worker i infrastrukturnih resursa; ono nije metod pauziranja niti troubleshooting prečica. Pre njega workload, podaci, DNS i load-balancer odredišta, backup poslovi i operativno vlasništvo moraju biti preseljeni ili arhivirani uz dokaz da je oporavak moguć.</p>
+
+<h3>Šta se zapravo menja tokom upgrade-a</h3>
+<p>Kubernetes klaster se sastoji od komponenti koje ne moraju u svakom trenutku imati potpuno istu verziju. Tokom rolling upgrade-a privremeno postoji dozvoljeni version skew: deo kontrolne ravni ili radnih čvorova može još koristiti stariju verziju dok se novi čvorovi priključuju klasteru. Ta tolerancija je ograničena pravilima Kubernetes projekta i matricom podrške konkretnog Tanzu izdanja. Preskakanje nepodržanih minor verzija ne treba pokušavati čak ni kada CLI tehnički prihvata ciljnu vrednost, jer API uklanjanja, promene formata podataka i zavisnosti dodataka mogu prekinuti postupak.</p>
+<p>U VKS okruženju tipičan upgrade workload klastera obuhvata:</p>
+<ul>
+  <li>izbor podržanog VMware Kubernetes Release-a, odnosno VKr-a, koji povezuje Kubernetes verziju sa odgovarajućim komponentama i base OS image-om;</li>
+  <li>ažuriranje <code>spec.topology.version</code> željenog stanja Cluster API resursa u Supervisor Namespace-u;</li>
+  <li>kreiranje novih control plane virtuelnih mašina, njihovo priključivanje etcd kvorumu i uklanjanje starih instanci;</li>
+  <li>postepenu zamenu worker čvorova u svakom node pool-u;</li>
+  <li>drain workload-a sa starih čvorova uz poštovanje eviction pravila i PodDisruptionBudget objekata;</li>
+  <li>usklađivanje sistemskih paketa kao što su CoreDNS, kube-proxy, Antrea i Tanzu packages, u granicama koje određuje izdanje platforme.</li>
+</ul>
+<p>Čvor se zato ne smatra uspešno nadograđenim samo zato što virtuelna mašina postoji. Novi čvor mora da preuzme odgovarajući VM image, pokrene container runtime i kubelet, registruje se kod API servera, dobije CNI konfiguraciju, pređe u stanje <code>Ready</code> i bude sposoban da izvršava Pod-ove. Tek tada kontroler može bezbedno da ukloni odgovarajući stari čvor.</p>
+
+<h3>Redosled upgrade-a i granice kompatibilnosti</h3>
+<p>Redosled zavisi od modela implementacije. Ova lekcija obrađuje VKS klastere kojima upravlja vSphere Supervisor. Od vSphere 8.0 Update 3 VKS servis može da se ažurira nezavisno od Supervisor-a, ali konkretna kombinacija vCenter/ESXi, Supervisor, VKS, ClusterClass, VKr, VM image-a i dodataka i dalje mora biti potvrđena u release notes i matrici interoperabilnosti. Standalone Tanzu Kubernetes Grid sa management klasterom i <code>tanzu cluster upgrade</code>, kao i Tanzu Kubernetes Grid Integrated Edition sa Ops Manager/BOSH lifecycle-om, predstavljaju druge proizvode i njihove komande nisu primarni VKS postupak.</p>
+<p>Za savremene ClusterClass klastere verzija se menja u <code>Cluster.spec.topology.version</code>. Promena Kubernetes verzije može automatski rebase-ovati klaster na najnoviji podržani <code>ClusterClass</code>, osim kada postoji anotacija <code>kubernetes.vmware.com/skip-auto-cc-rebase</code>. Za VKS 3.4 i Kubernetes 1.33 ili noviji Broadcom preporučuje <code>builtin-generic-v3.4.0</code>; starije ugrađene klase i legacy <code>TanzuKubernetesCluster</code> model su označeni za povlačenje. Rebase može promeniti šemu promenljivih i pokrenuti rollout svih čvorova, pa se testira sa manifestom konkretnog klastera.</p>
+<p>Administrator mora razlikovati tri vrste verzija:</p>
+<table>
+  <thead>
+    <tr>
+      <th>Verzija</th>
+      <th>Značenje</th>
+      <th>Administratorska posledica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Tanzu Kubernetes Grid verzija</td>
+      <td>Verzija platforme, CLI plug-inova, kontrolera i podržanih paketa</td>
+      <td>Određuje matricu podržanih Kubernetes, OS i infrastrukturnih verzija</td>
+    </tr>
+    <tr>
+      <td>Kubernetes odnosno TKr verzija</td>
+      <td>Kubernetes izdanje sa Tanzu komponentama i tačno određenim build-om</td>
+      <td>Predstavlja ciljnu verziju workload klastera</td>
+    </tr>
+    <tr>
+      <td>OS i VM template verzija</td>
+      <td>Photon OS ili Ubuntu image iz kojeg se kreiraju novi čvorovi</td>
+      <td>Template mora biti uvezen, dostupan i kompatibilan sa ciljnim TKr-om</td>
+    </tr>
+  </tbody>
+</table>
+<p>U produkciji nije bezbedno pretpostaviti da je svaka novija Kubernetes verzija automatski dostupna. Komanda za prikaz dostupnih upgrade putanja uzima u obzir release objekte koje management klaster poznaje i kompatibilnost sa postojećim klasterom. Ako ciljna verzija nije prikazana, administrator ne treba ručno da menja <code>spec.version</code> Cluster API objekta samo da bi zaobišao kontrolu. Najpre se proveravaju Tanzu release informacije, podržani VM template-i, verzija management klastera, stanje TKr kontrolera i zvanična matrica interoperabilnosti.</p>
+
+<h3>Bezbednosni razlog za redovan upgrade</h3>
+<p>Kubernetes minor izdanje ima ograničen period upstream podrške, a proizvođač dodatno određuje period podrške svog distribuiranog izdanja. Klaster koji dugo ostaje na staroj verziji ne predstavlja samo administrativni dug. On može sadržati ranjive API server, kubelet, container runtime, CNI, DNS ili operativne sistemske pakete, dok novije sigurnosne ispravke više nisu dostupne za korišćeni release.</p>
+<p>Ipak, hitnost bezbednosne ispravke ne ukida potrebu za kontrolom promene. Pre ubrzanog upgrade-a treba utvrditi da li se objavljena ranjivost odnosi na uključenu komponentu, omogućenu funkciju i realan attack path. Privremene mere mogu uključiti ograničenje pristupa API serveru, promenu RBAC prava, onemogućavanje rizične funkcije, NetworkPolicy pravila ili dodatni nadzor, ali one ne zamenjuju prelazak na podržanu verziju. Izuzetak je situacija u kojoj proizvođač izričito preporuči određenu mitigaciju dok kompatibilan patch još nije dostupan.</p>
+
+<h3>Preduslovi za kontrolisan upgrade</h3>
+<p>Klaster koji već ima nerešene operativne probleme nije dobar kandidat za upgrade. Promena verzije otežava razdvajanje starih problema od novih i može pretvoriti povremenu grešku u potpuni zastoj. Pre otvaranja change prozora administrator treba da potvrdi sledeće:</p>
+<ul>
+  <li>management i workload klasteri nemaju dugotrajne <code>NotReady</code>, <code>CrashLoopBackOff</code>, <code>Pending</code> ili <code>Unknown</code> objekte;</li>
+  <li>control plane ima zdrav etcd kvorum, stabilan API endpoint i sinhronizovano vreme;</li>
+  <li>ciljni TKr i odgovarajući OS template postoje i označeni su kao kompatibilni i aktivni;</li>
+  <li>vSphere datastore, cluster i resource pool imaju kapacitet za privremeno paralelno postojanje starih i novih VM-ova;</li>
+  <li>DNS, NTP, load balancer, proxy i registry servisi dostupni su sa svih potencijalnih ESXi hostova i mrežnih segmenata;</li>
+  <li>PodDisruptionBudget pravila dozvoljavaju najmanje jedno kontrolisano iseljenje Pod-a;</li>
+  <li>stateful aplikacije imaju proverene aplikativne backup-e, a ne samo snapshot virtuelne mašine;</li>
+  <li>CSI, CNI, ingress, observability i security agent verzije podržavaju ciljnu Kubernetes verziju;</li>
+  <li>release notes su pregledane zbog uklonjenih API verzija, promenjenih podrazumevanih vrednosti i poznatih problema;</li>
+  <li>postoji odobren change zapis, vlasnik promene, kontakt aplikativnog tima i jasan kriterijum za zaustavljanje postupka.</li>
+</ul>
+<p>Posebno se proverava kapacitet. Rolling upgrade zahteva privremeno kreiranje dodatne virtuelne mašine pre uklanjanja stare. Ako datastore nema prostora, resource pool nema CPU ili memoriju, DHCP opseg nema slobodnu adresu ili load balancer nema slobodan VIP odnosno backend kapacitet, novi čvor neće postati operativan. Takav problem se često pogrešno tumači kao Kubernetes greška iako uzrok postoji u vSphere ili mrežnom sloju.</p>
+
+<h3>Dostupnost aplikacija tokom zamene čvorova</h3>
+<p>Rolling upgrade smanjuje infrastrukturni prekid, ali ne može sam da obezbedi visoku dostupnost loše projektovane aplikacije. Deployment sa jednom replikom će tokom drain-a ostati bez aktivnog Pod-a dok se zamenska instanca ne pokrene na drugom čvoru. StatefulSet sa lokalno vezanim volumenom može imati duži prekid, a pogrešno podešen PodDisruptionBudget može potpuno blokirati eviction.</p>
+<p>Pre upgrade-a administrator proverava raspodelu replika, anti-affinity ili topology spread pravila, readiness probe-ove, kapacitet preostalih čvorova i ponašanje persistent volume-a pri ponovnom attach-u. PodDisruptionBudget treba da štiti dostupnost, ali ne sme zahtevati nemoguć rezultat. Na primer, Deployment sa dve replike i pravilom <code>minAvailable: 2</code> ne dozvoljava dobrovoljno iseljenje nijednog Pod-a. Praktičnije je koristiti tri replike raspoređene na različite čvorove i <code>minAvailable: 2</code>, pod uslovom da aplikacija zaista podržava takav model.</p>
+
+<h3>Normalan tok i simptomi problema</h3>
+<p>Tokom normalnog upgrade-a broj čvorova se privremeno povećava. Novi Machine objekat prelazi kroz faze provisioninga, VM se pojavljuje u vCenter-u, čvor se registruje u Kubernetes-u i postaje <code>Ready</code>. Zatim se stari čvor označava kao unschedulable, workload se iseljava i stara Machine i VM instanca nestaju. Različite Kubernetes verzije među čvorovima tokom ograničenog perioda predstavljaju očekivano stanje.</p>
+<p>Problem postoji kada se ista Machine instanca stalno kreira i briše, novi čvor dugo ostaje <code>NotReady</code>, drain stoji bez napretka, broj nedostupnih replika raste ili control plane gubi kvorum. Najčešći uzroci su:</p>
+<ul>
+  <li>nemogućnost preuzimanja container image-a zbog DNS-a, proxy-ja, sertifikata, registra ili sporog ESXi mrežnog puta;</li>
+  <li>blokirana eviction operacija zbog PodDisruptionBudget-a ili Pod-a kojim ne upravlja odgovarajući kontroler;</li>
+  <li>nedovoljan infrastrukturni kapacitet ili nedostupan VM template;</li>
+  <li>nekompatibilan ili neaktivan TKr;</li>
+  <li>neuspešna CNI inicijalizacija, zbog koje kubelet radi, ali čvor ne postaje mrežno spreman;</li>
+  <li>istekao sertifikat, pogrešno vreme ili nedostupnost API endpoint-a;</li>
+  <li>nepodržana OS arhitektura ili pogrešni <code>--os-name</code>, <code>--os-version</code> i <code>--os-arch</code> parametri.</li>
+</ul>
+
+<hr>
+
+<h3>Integrisani praktikum A: upgrade produkcionog VKS klastera</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Organizacija koristi vSphere Supervisor i VKS. Produkcioni workload klaster <code>prod-apps</code> nalazi se u Supervisor Namespace-u <code>production</code> i ima tri control plane i tri worker čvora. Tačan početni i ciljni VKr ne unose se napamet: pre promene se čitaju iz postojećeg <code>Cluster</code> objekta, dostupnih release resursa i zvaničnih release notes instaliranog VKS izdanja. Primeri komandi u starijim TKGm okruženjima nisu zamenljivi sa VKS komandama.</p>
+<p><strong>Cilj.</strong> Izvršiti rolling upgrade klastera bez gubitka Kubernetes objekata i uz očuvanje dostupnosti referentne aplikacije <code>orders-api</code> u namespace-u <code>orders</code>. Prihvatljiva je pojedinačna zamena worker čvorova, ali aplikacija tokom celog postupka mora imati najmanje dve dostupne replike.</p>
+<p><strong>Referentno okruženje i prava.</strong> Administratorska radna stanica <code>tkg-admin01</code> ima Tanzu CLI, kompatibilan <code>kubectl</code>, pristup management i workload kubeconfig kontekstima i direktorijum <code>/srv/tkg/change-2026-07-27</code>. Korisnik ima pravo da čita i nadograđuje workload klaster <code>prod-apps</code> u namespace-u <code>production</code>, čita Cluster API objekte i prikuplja dijagnostiku. Posebna vSphere administratorska prava nisu potrebna za samo pokretanje upgrade-a, ali infrastrukturni administrator mora biti dostupan za proveru template-a, datastore-a, mreže i ESXi hostova.</p>
+<p><strong>Preduslovi.</strong> Backup aplikativne baze je uspešno završen i testiran kroz probni restore. Management klaster je u podržanoj verziji, ciljna Kubernetes verzija je dostupna, a Ubuntu template odgovarajućeg build-a postoji u vCenter content library ili VM template inventaru. Monitoring i alerting su aktivni, nema planiranih infrastrukturnih radova, a aplikativni tim je potvrdio funkcionalni test endpoint-a <code>/health/ready</code>.</p>
+
+<p><strong>Aktuelna VKS operacija.</strong> U Supervisor context-u najpre se izvozi postojeći <code>Cluster</code>, server-side dry-run-om validira samo odobrena promena, a zatim se menja <code>spec.topology.version</code>. Sledeći primer menja stanje i izvršava se tek posle svih pre-flight kapija:</p>
+<pre><code class="language-bash">kubectl config use-context &lt;SUPERVISOR_CONTEXT&gt;
+kubectl get cluster prod-apps -n production -o yaml \
+  &gt; prod-apps-cluster-before.yaml
+
+kubectl get cluster prod-apps -n production \
+  -o jsonpath='{.spec.topology.class}{"\t"}{.spec.topology.version}{"\n"}'
+
+TARGET_VKR='&lt;PUNI_PODRZANI_VKR_STRING&gt;'
+test "$TARGET_VKR" != '&lt;PUNI_PODRZANI_VKR_STRING&gt;' || exit 1
+
+kubectl patch cluster prod-apps -n production --type=merge \
+  --dry-run=server \
+  -p "{\"spec\":{\"topology\":{\"version\":\"${TARGET_VKR}\"}}}"
+
+# State-changing: ukloniti --dry-run tek posle pregleda rezultata i odobrenja.
+kubectl patch cluster prod-apps -n production --type=merge \
+  -p "{\"spec\":{\"topology\":{\"version\":\"${TARGET_VKR}\"}}}"</code></pre>
+<p><strong>Validacija:</strong> željena verzija mora biti tačan VKr koji okruženje podržava; control plane Machine objekti zamenjuju se pre worker objekata, kvorum ostaje zdrav, a aplikacija ne pada ispod dve dostupne replike. Ako je potreban ClusterClass rebase ili konverzija promenljivih, primenjuje se unapred pregledan kompletan manifest prema dokumentaciji instalirane VKS verzije, a ne improvizovani patch.</p>
+
+<p><strong>Napomena o sačuvanoj osnovi.</strong> Sledeći detaljan tok koristi stariji standalone TKGm CLI kao uporedni operativni scenario za health, PDB, kapacitet, monitoring i incidentnu disciplinu. Komande <code>tanzu cluster available-upgrades get</code> i <code>tanzu cluster upgrade</code> ne izvršavaju se nad VKS klasterom; u VKS-u zamenjuje ih prethodno prikazana promena <code>Cluster</code> objekta. Ostatak kontrola i dokazivanja ostaje primenljiv uz stvarne Supervisor/workload kontekste.</p>
+
+<ol>
+  <li>
+    <strong>Pripremite change direktorijum i zabeležite verzije klijentskih alata.</strong>
+    Ovi podaci omogućavaju kasniji audit i razlikovanje serverskog problema od nekompatibilnog CLI plug-ina.
+    <pre><code class="language-bash">mkdir -p /srv/tkg/change-2026-07-27
+cd /srv/tkg/change-2026-07-27
+
+date -Is | tee change-start.txt
+tanzu version | tee tanzu-version.txt
+tanzu plugin list | tee tanzu-plugins.txt
+kubectl version --client -o yaml | tee kubectl-client-version.yaml
+tanzu context list | tee tanzu-contexts.txt</code></pre> <strong>Validacija:</strong> Aktivni Tanzu context mora pokazivati na <code>tkg-mgmt-vsphere</code>, a verzije CLI-ja i plug-inova moraju odgovarati izdanju koje upravlja okruženjem. Ne nastavljati ako CLI prikazuje grešku učitavanja plug-ina ili nepoznate komande.
+
+  </li>
+  <li>
+    <strong>Preuzmite početno stanje management resursa.</strong>
+    Komanda <code>tanzu cluster get</code> prikazuje sažeto stanje klastera, dok Cluster API objekti otkrivaju da li već postoji neuspešan reconciliation ili Machine u tranziciji.
+    <pre><code class="language-bash">tanzu cluster get prod-apps -n production --show-details \
+  | tee prod-apps-before.txt
+
+kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+
+kubectl get cluster,machine,machinedeployment,kubeadmcontrolplane 
+-n production -o wide 
+| tee capi-before.txt
+
+kubectl get events -n production --sort-by=.lastTimestamp 
+| tail -n 80 
+| tee management-events-before.txt</code></pre> <strong>Validacija:</strong> Klaster mora biti u stabilnom i spremnom stanju, KubeadmControlPlane mora imati očekivan broj spremnih replika, a MachineDeployment objekti moraju imati jednak željeni, ažurirani i dostupni broj replika. Stari događaji mogu sadržati upozorenja, ali ne sme postojati aktivno ponavljanje grešaka kao što su neuspešno kloniranje VM-a, bootstrap timeout ili nemogućnost pronalaženja template-a.
+
+  </li>
+  <li>
+    <strong>Proverite zdravlje workload klastera i aplikacije.</strong>
+    Pre promene se prelazi u workload context i beleži stanje svih čvorova, sistemskih Pod-ova, persistent volume objekata i aplikativnih replika.
+    <pre><code class="language-bash">kubectl config use-context prod-apps-admin@prod-apps
+
+kubectl get nodes -o wide | tee nodes-before.txt
+kubectl get pods -A -o wide | tee pods-before.txt
+kubectl get pvc,pv -A | tee storage-before.txt
+kubectl get --raw='/readyz?verbose' | tee apiserver-readyz-before.txt
+
+kubectl get deployment,pod,pdb -n orders -o wide 
+| tee orders-before.txt
+
+kubectl rollout status deployment/orders-api 
+-n orders --timeout=120s
+
+kubectl get deployment orders-api -n orders 
+-o jsonpath='{.status.availableReplicas}{" available of "}{.spec.replicas}{" desired\n"}'</code></pre> <strong>Validacija:</strong> Svih šest čvorova mora biti <code>Ready</code>, API readiness provera mora završiti bez neuspešnih stavki, sistemski Pod-ovi ne smeju biti u trajnom <code>Pending</code> ili <code>CrashLoopBackOff</code> stanju, a <code>orders-api</code> mora imati tri željene i najmanje tri dostupne replike pre početka promene.
+
+  </li>
+  <li>
+    <strong>Proverite da li PodDisruptionBudget dozvoljava drain.</strong>
+    PDB se ne procenjuje samo na osnovu YAML definicije. Statusna polja pokazuju koliko je dobrovoljnih prekida trenutno dozvoljeno.
+    <pre><code class="language-bash">kubectl get pdb orders-api-pdb -n orders -o yaml \
+  | tee orders-api-pdb-before.yaml
+
+kubectl get pdb orders-api-pdb -n orders 
+-o jsonpath='{.status.currentHealthy}{" healthy; "}{.status.desiredHealthy}{" required; "}{.status.disruptionsAllowed}{" disruptions allowed\n"}'</code></pre> <strong>Validacija:</strong> Za tri zdrave replike i zahtev da najmanje dve ostanu dostupne, <code>disruptionsAllowed</code> treba da bude najmanje <code>1</code>. Ako je vrednost <code>0</code>, ne menjati PDB automatski. Najpre utvrditi da li neka replika nije spremna, da li readiness probe ne prolazi ili je deklarisani minimum stroži od realnog broja replika.
+
+  </li>
+  <li>
+    <strong>Izvršite negativni test kontrolisane evikcije.</strong>
+    Test se radi pomoću dry-run drain operacije nad worker čvorom. Cilj nije stvarno iseljenje workload-a, već otkrivanje objekata koji bi blokirali upgrade.
+    <pre><code class="language-bash">WORKER_NODE=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' \
+  -o jsonpath='{.items[0].metadata.name}')
+
+echo "$WORKER_NODE" | tee selected-worker.txt
+
+kubectl drain "$WORKER_NODE" 
+--ignore-daemonsets 
+--delete-emptydir-data 
+--dry-run=server</code></pre> <strong>Validacija:</strong> Dry-run mora pokazati da bi Pod-ovi mogli biti evict-ovani. Poruke o ignorisanim DaemonSet Pod-ovima su očekivane. Greška zbog PDB-a, unmanaged Pod-a ili local storage-a zahteva analizu pre upgrade-a. Opcija <code>--delete-emptydir-data</code> ovde je bezbedna samo zato što je korišćen dry-run; u stvarnom ručnom drain-u može ukloniti efemerne podatke i ne koristi se bez saglasnosti vlasnika aplikacije.
+
+  </li>
+  <li>
+    <strong>Prikažite samo verzije koje Tanzu smatra dostupnim za konkretan klaster.</strong>
+    Ovim se potvrđuje podržana upgrade putanja. Ciljna vrednost se kopira tačno iz izlaza komande.
+    <pre><code class="language-bash">kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+
+tanzu cluster available-upgrades get prod-apps -n production 
+| tee available-upgrades.txt
+
+tanzu kubernetes-release get 
+| tee kubernetes-releases.txt</code></pre> <strong>Validacija:</strong> Izabrani TKr mora biti naveden kao kompatibilan i aktivan, a ciljna verzija mora predstavljati podržani sledeći korak. U nastavku praktikuma promenljiva <code>TARGET_TKR</code> mora se zameniti stvarnom vrednošću iz ovog izlaza. <pre><code class="language-bash">export TARGET_TKR='v1.29.x+vmware.y-tkg.z'
+
+test "$TARGET_TKR" != 'v1.29.x+vmware.y-tkg.z' 
+|| { echo "TARGET_TKR nije postavljen na stvarnu vrednost"; exit 1; }</code></pre>
+
+  </li>
+  <li>
+    <strong>Potvrdite kapacitet i dostupnost infrastrukturnih zavisnosti.</strong>
+    Deo provere obavlja vSphere administrator u vCenter-u: slobodan datastore prostor, CPU i memorija u resource pool-u, stanje ESXi hostova i postojanje odgovarajućeg Ubuntu 22.04 template-a. Sa Kubernetes strane proveravaju se neuspešne scheduling poruke i infrastrukturni objekti.
+    <pre><code class="language-bash">kubectl get vspheremachine -n production -o wide \
+  | tee vsphere-machines-before.txt
+
+kubectl get events -n production 
+--field-selector type=Warning 
+--sort-by=.lastTimestamp 
+| tail -n 50 
+| tee warning-events-before.txt</code></pre> <strong>Validacija:</strong> Mora postojati kapacitet za najmanje jednu dodatnu control plane i jednu dodatnu worker VM instancu, u skladu sa rollout strategijom. Nedostupan template, quota ili datastore greška predstavljaju razlog za odlaganje upgrade-a.
+
+  </li>
+  <li>
+    <strong>Pokrenite upgrade sa eksplicitnim OS parametrima.</strong>
+    Za vSphere okruženja u kojima dokumentacija ciljnog Tanzu izdanja zahteva izbor OS-a, navođenje OS parametara sprečava pogrešan izbor image-a. Komanda menja željeno stanje klastera i pokreće rolling zamenu čvorova.
+    <p><strong>Upozorenje:</strong> Ovo je produkciona promena. Nakon pokretanja ne prekidati proces nasumičnim brisanjem Machine ili VM objekata. Pre komande mora postojati odobren change i potvrđen backup.</p>
+    <pre><code class="language-bash">tanzu cluster upgrade prod-apps \
+  -n production \
+  --target "$TARGET_TKR" \
+  --os-name ubuntu \
+  --os-version 22.04 \
+  --os-arch amd64 \
+  -v 6 2&gt;&amp;1 | tee tanzu-upgrade-console.log</code></pre>
+    <strong>Validacija:</strong> CLI mora potvrditi ciljnu verziju i početak upgrade-a. Ako konkretna verzija Tanzu CLI-ja koristi interaktivni izbor umesto parametra <code>--target</code>, primenjuje se sintaksa iz instalirane CLI reference; ne treba izmišljati ili forsirati nepodržanu opciju. Konzolni izlaz se čuva kao deo change dokumentacije.
+  </li>
+  <li>
+    <strong>Pratite Cluster API objekte tokom zamene control plane čvorova.</strong>
+    U drugom terminalu posmatraju se KubeadmControlPlane, Machine i vSphereMachine objekti. Privremeno povećanje broja instanci je očekivano; gubitak većine control plane replika nije.
+    <pre><code class="language-bash">kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+
+watch -n 10 
+"kubectl get kubeadmcontrolplane,machine,vspheremachine -n production -o wide"</code></pre> <strong>Validacija:</strong> Novi control plane Machine treba da bude kreiran, bootstrap-ovan i označen kao spreman pre uklanjanja stare instance. Kod tročlanog control plane-a najmanje dve zdrave članice moraju čuvati kvorum. Ako nova instanca ne napreduje, ne brisati dodatne control plane čvorove i ne pokretati paralelni upgrade.
+
+  </li>
+  <li>
+    <strong>Pratite workload dostupnost i zamenu worker čvorova.</strong>
+    Workload context pokazuje da li drain i rescheduling funkcionišu, dok periodično beleženje broja dostupnih replika daje merljiv dokaz dostupnosti.
+    <pre><code class="language-bash">kubectl config use-context prod-apps-admin@prod-apps
+
+while true; do
+date -Is
+kubectl get nodes
+kubectl get deployment orders-api -n orders 
+-o jsonpath='{.status.availableReplicas}{" available of "}{.spec.replicas}{" desired\n"}'
+kubectl get pods -n orders -o wide
+sleep 20
+done | tee availability-during-upgrade.log</code></pre> <strong>Validacija:</strong> Tokom zamene pojedinačni stari čvor može postati <code>SchedulingDisabled</code>, a novi kratko biti <code>NotReady</code>. Aplikacija mora zadržati najmanje dve dostupne replike. Ako broj padne ispod dve, upgrade se smatra neuspešnim prema kriterijumu prihvatanja i pokreće se incidentna procedura.
+
+  </li>
+  <li>
+    <strong>Dijagnostikujte čvor koji ostaje u stanju NotReady.</strong>
+    Prvo se proveravaju Kubernetes uslovi i događaji, a zatim management objekti. Ako je omogućen bezbedan administrativni SSH pristup novoj VM instanci, proveravaju se kubelet i containerd logovi.
+    <pre><code class="language-bash">kubectl describe node &lt;NOVI_NODE&gt;
+kubectl get events -A --sort-by=.lastTimestamp | tail -n 100
+
+kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+kubectl describe machine &lt;MACHINE_NAME&gt; -n production
+kubectl describe vspheremachine &lt;VSPHEREMACHINE_NAME&gt; -n production</code></pre> <p>Na problematičnom čvoru, uz odobreni pristup:</p> <pre><code class="language-bash">sudo systemctl status kubelet --no-pager
+sudo journalctl -u kubelet --since "30 minutes ago"
+sudo journalctl -u containerd --since "30 minutes ago"
+sudo crictl ps -a
+sudo crictl images</code></pre> <strong>Validacija:</strong> Greška kubelet registracije upućuje na API, sertifikat, vreme ili bootstrap problem. CNI poruke upućuju na Antrea ili mrežni dodatak. Ponavljani <code>PullImage</code> timeout uz dostupan DNS može ukazati na spor ili nestabilan registry put sa konkretnog ESXi hosta. Takav slučaj zahteva korelaciju sa vSphere mrežom, a ne nasumično restartovanje svih kontrolera.
+
+  </li>
+  <li>
+    <strong>Privremeno pauzirajte reconciliation samo radi kontrolisane dijagnostike.</strong>
+    Ovaj postupak se koristi kada Cluster API neprekidno briše i ponovo kreira problematičnu instancu, čime administrator nema dovoljno vremena za analizu.
+    <p><strong>Upozorenje:</strong> Pauziranje zaustavlja automatsko usklađivanje željenog i stvarnog stanja klastera. Ne koristiti kao trajno rešenje i obavezno evidentirati vreme, razlog i odgovornu osobu.</p>
+    <pre><code class="language-bash">kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+
+kubectl patch cluster prod-apps -n production 
+--type merge 
+-p '{"spec":{"paused":true}}'
+
+kubectl get cluster prod-apps -n production 
+-o jsonpath='{.spec.paused}{"\n"}'</code></pre> <strong>Validacija:</strong> Vrednost mora biti <code>true</code>, nakon čega se obavlja ciljana provera VM-a, registra, DNS-a, proxy-ja ili ESXi hosta. Po završetku dijagnostike reconciliation se obavezno vraća: <pre><code class="language-bash">kubectl patch cluster prod-apps -n production 
+--type merge 
+-p '{"spec":{"paused":false}}'
+
+kubectl get cluster prod-apps -n production 
+-o jsonpath='{.spec.paused}{"\n"}'</code></pre>
+Očekivani rezultat je <code>false</code>, nakon čega kontroleri nastavljaju postupak.
+
+  </li>
+  <li>
+    <strong>Izvršite završnu tehničku validaciju.</strong>
+    Po završetku CLI operacije ne oslanjajte se samo na poruku o uspehu. Proveravaju se verzije svih čvorova, uslovi Cluster API resursa, sistemski Pod-ovi i odsustvo starih Machine instanci.
+    <pre><code class="language-bash">kubectl config use-context prod-apps-admin@prod-apps
+
+kubectl get nodes 
+-o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type,VERSION:.status.nodeInfo.kubeletVersion,OS:.status.nodeInfo.osImage' 
+| tee nodes-after.txt
+
+kubectl get pods -A -o wide | tee pods-after.txt
+kubectl get --raw='/readyz?verbose' | tee apiserver-readyz-after.txt
+kubectl get deployment,pod,pdb -n orders -o wide 
+| tee orders-after.txt
+
+kubectl rollout status deployment/orders-api 
+-n orders --timeout=180s</code></pre> <strong>Validacija:</strong> Svih šest čvorova mora biti <code>Ready</code>, kubelet verzije moraju odgovarati ciljnom TKr-u, API readiness provera ne sme sadržati neuspeh, svi sistemski servisi moraju biti stabilni, a <code>orders-api</code> mora imati tri dostupne replike.
+
+  </li>
+  <li>
+    <strong>Izvršite funkcionalni test aplikacije.</strong>
+    Tehnički zdrav Kubernetes klaster nije dovoljan dokaz da aplikacija radi. Test se izvršava sa unapred odobrene administratorske stanice preko produkcionog ingress endpoint-a.
+    <pre><code class="language-bash">curl --fail --silent --show-error \
+  --connect-timeout 5 \
+  --max-time 15 \
+  https://orders.example.invalid/health/ready \
+  | tee orders-health-after.txt</code></pre>
+    <strong>Validacija:</strong> Komanda mora završiti izlaznim statusom <code>0</code>, TLS validacija mora uspeti, a aplikacija treba da vrati očekivani readiness odgovor. Domen <code>orders.example.invalid</code> je bezbedna zamenska vrednost i u realnom okruženju menja se odobrenim internim ili javnim FQDN-om.
+  </li>
+  <li>
+    <strong>Sačuvajte završno stanje i zatvorite promenu.</strong>
+    Dokumentuju se trajanje, korišćeni TKr, eventualna odstupanja, incidenti, vreme nedostupnosti i vlasnici verifikacije.
+    <pre><code class="language-bash">kubectl config use-context tkg-mgmt-vsphere-admin@tkg-mgmt-vsphere
+
+tanzu cluster get prod-apps -n production --show-details 
+| tee prod-apps-after.txt
+
+kubectl get cluster,machine,machinedeployment,kubeadmcontrolplane 
+-n production -o wide 
+| tee capi-after.txt
+
+date -Is | tee change-end.txt
+
+tar -czf /srv/tkg/change-2026-07-27/prod-apps-upgrade-evidence.tar.gz 
+/srv/tkg/change-2026-07-27/*.txt 
+/srv/tkg/change-2026-07-27/*.yaml 
+/srv/tkg/change-2026-07-27/*.log</code></pre> <strong>Validacija:</strong> Arhiva mora moći da se pročita komandom <code>tar -tzf</code>, change zapis mora sadržati novu verziju i rezultate funkcionalnog testa, a monitoring ne sme pokazivati povećanu stopu grešaka najmanje tokom definisanog post-change perioda.
+
+  </li>
+</ol>
+
+<h3>Integrisani praktikum B: kontrolisana dekomisija VKS klastera</h3>
+<p><strong>Kontekst i cilj.</strong> Klaster <code>old-apps</code> u Supervisor Namespace-u <code>production</code> zamenjen je klasterom <code>prod-apps</code>. Cilj je uklanjanje bez gubitka podataka i bez orphaned VM, storage, mrežnih ili operativnih resursa. Operacija je destruktivna; bezbedna laboratorijska varijanta završava se server-side dry-run-om.</p>
+
+<ol>
+  <li><strong>Potvrdite identitet i blast radius.</strong>
+    <pre><code class="language-bash">kubectl config use-context &lt;SUPERVISOR_CONTEXT&gt;
+kubectl get cluster old-apps -n production \
+  -o custom-columns='NAME:.metadata.name,NAMESPACE:.metadata.namespace,VERSION:.spec.topology.version,CLASS:.spec.topology.class'
+kubectl get machine -n production \
+  -l cluster.x-k8s.io/cluster-name=old-apps -o wide</code></pre>
+    <p><strong>Validacija:</strong> dva administratora potvrđuju ime, namespace, vlasnika, CMDB zapis i da cilj nije aktivni <code>prod-apps</code>.</p>
+  </li>
+  <li><strong>Inventarišite workload i podatke.</strong>
+    <pre><code class="language-bash">kubectl config use-context &lt;OLD_APPS_WORKLOAD_CONTEXT&gt;
+kubectl get all -A -o yaml &gt; old-apps-workloads.yaml
+kubectl get pvc,pv,volumesnapshot -A -o wide \
+  | tee old-apps-storage.txt
+kubectl get storageclass \
+  -o custom-columns='NAME:.metadata.name,RECLAIM:.reclaimPolicy,PROVISIONER:.provisioner'
+kubectl get ingress,service -A -o wide \
+  | tee old-apps-entrypoints.txt</code></pre>
+    <p><strong>Validacija:</strong> vlasnik svakog stateful workload-a potvrđuje poslednji uspešan backup i probni restore, kao i sudbinu svakog volumena. Izvoz manifesta nije backup sadržaja PV-a. Reclaim politika <code>Delete</code> može ukloniti backing volume; <code>Retain</code> čuva podatke, ali zahteva dokumentovan reclamation ili sanitization.</p>
+  </li>
+  <li><strong>Migrirajte potrošače pre infrastrukture.</strong>
+    <p>DNS/load balancer, GitOps i CI/CD odredišta, registry nalozi, secrets integracija, monitoring i backup poslovi prebacuju se na ciljni klaster. Tokom dogovorenog soak perioda proveravaju se realan saobraćaj, queue lag, replikacija i poslovne transakcije. Brisanje je <em>no-go</em> dok stari endpoint prima legitiman saobraćaj ili sadrži jedinu kopiju podatka.</p>
+  </li>
+  <li><strong>Sačuvajte konačni manifest i simulirajte brisanje.</strong>
+    <pre><code class="language-bash">kubectl config use-context &lt;SUPERVISOR_CONTEXT&gt;
+kubectl get cluster old-apps -n production -o yaml \
+  &gt; old-apps-cluster-final.yaml
+kubectl delete cluster old-apps -n production --dry-run=server</code></pre>
+    <p><strong>Validacija:</strong> API prihvata zahtev, ali Cluster, Machine i VM resursi i dalje postoje. Ako konkretno VKS/VCF izdanje propisuje VCF CLI workflow radi čišćenja dodatnih resursa, koristi se ta zvanična procedura.</p>
+  </li>
+  <li><strong>Izvršite odobreno brisanje.</strong>
+    <p><strong>Upozorenje:</strong> naredna komanda je nepovratna state-changing operacija; povratak znači ponovnu izgradnju klastera i restore.</p>
+    <pre><code class="language-bash">read -r -p 'Upišite DELETE old-apps/production: ' CONFIRM
+test "$CONFIRM" = 'DELETE old-apps/production' || exit 1
+kubectl delete cluster old-apps -n production --wait=false</code></pre>
+    <p><strong>Validacija:</strong> API potvrđuje prihvatanje zahteva. <code>--wait=false</code> ne znači da je dekomisija završena, već omogućava odvojeno posmatranje teardown-a.</p>
+  </li>
+  <li><strong>Pratite kaskadno uklanjanje.</strong>
+    <pre><code class="language-bash">watch -n 10 \
+  'kubectl get cluster,kubeadmcontrolplane,machinedeployment,machine -n production -o wide'
+kubectl get events -n production --sort-by=.lastTimestamp \
+  | tail -n 120</code></pre>
+    <p><strong>Troubleshooting:</strong> za dug <code>Terminating</code> pregledajte finalizer-e, CAPV/VKS kontroler, vCenter Tasks and Events, CSI detach i pristup zavisnostima. Finalizer znači da čišćenje nije završeno. Njegovo ručno uklanjanje može ostaviti VM, disk, VIP ili IP adresu i dozvoljeno je samo kroz odgovarajući Broadcom KB/support postupak.</p>
+  </li>
+  <li><strong>Dokažite završetak u svim sistemima.</strong>
+    <pre><code class="language-bash">kubectl get cluster old-apps -n production
+kubectl get machine -n production \
+  -l cluster.x-k8s.io/cluster-name=old-apps
+kubectl get events -n production --sort-by=.lastTimestamp \
+  | tail -n 80</code></pre>
+    <p><strong>Kriterijum završetka:</strong> Cluster vraća <code>NotFound</code>, nema zavisnih Machine objekata ni orphaned VM/storage/network resursa, backup retention je dokumentovan, monitoring i GitOps su očišćeni, CMDB status je <code>retired</code>, a vlasnik aplikacije potvrđuje ciljni servis.</p>
+  </li>
+</ol>
+
+<h3>Rollback i oporavak od neuspeha</h3>
+<p>Rolling upgrade TKG klastera nije isto što i instalacija paketa koju je moguće jednostavno vratiti jednom komandom. Nakon što su Kubernetes API podaci, control plane i čvorovi prešli na novu verziju, direktan downgrade uglavnom nije podržan bez rekonstrukcije klastera. Zato se rollback plan zasniva na zaustavljanju promene, otklanjanju infrastrukturnog uzroka i nastavku reconciliation-a, ili na oporavku aplikacija u prethodno pripremljenom klasteru.</p>
+<p>Ručna promena Cluster API verzije nazad na staru, vraćanje snapshot-a pojedinačnih control plane VM-ova ili istovremeno vraćanje samo dela etcd članova može dovesti do nekonzistentnog stanja i gubitka kvoruma. VM snapshot nije zamena za podržani etcd ili aplikativni backup. Ako se control plane ne stabilizuje, izgubljen je kvorum, podaci u etcd-u su sumnjivi ili je potrebna nepodržana verzijska regresija, administrator prikuplja dijagnostički bundle i eskalira proizvođaču pre destruktivnih intervencija.</p>
+<p>Bezbedan operativni povratak podrazumeva jednu od sledećih strategija:</p>
+<ul>
+  <li>otkloniti registry, DNS, proxy, template, datastore ili ESXi problem i dozvoliti Cluster API kontrolerima da završe deklarisani upgrade;</li>
+  <li>pauzirati reconciliation samo privremeno radi dijagnostike, a zatim ga ponovo uključiti;</li>
+  <li>ako aplikacija ne podržava novu verziju, preusmeriti saobraćaj na prethodno pripremljeni paralelni klaster i vratiti aplikativne podatke iz proverenog backup-a;</li>
+  <li>za ozbiljno oštećenje management klastera primeniti zvaničnu proceduru njegovog backup-a i restore-a ili otvoriti Broadcom support zahtev sa dijagnostičkim podacima.</li>
+</ul>
+
+<h3>Logovi i troubleshooting izvori</h3>
+<p>Lokalni Tanzu CLI logovi beleže operacije kreiranja, upgrade-a i brisanja klastera i obično se nalaze ispod korisničkog direktorijuma <code>~/.config/tanzu/tkg/logs/</code>, organizovani prema klasteru i operaciji. Oni su prvi izvor kada CLI prijavi neuspeh, ne može da pronađe release ili prekine čekanje na resurse.</p>
+<p>U management klasteru najvažniji su događaji i logovi Cluster API provider kontrolera, bootstrap i control plane kontrolera, Tanzu package kontrolera i vSphere provider-a. Precizni nazivi namespace-ova i deployment-a zavise od Tanzu izdanja, pa se najpre pronalaze, a zatim čitaju:</p>
+<pre><code class="language-bash">kubectl get deployments -A \
+  | grep -E 'capi|capv|kubeadm|tanzu|kapp|tkr'
+
+kubectl logs -n &lt;NAMESPACE&gt; deployment/&lt;CONTROLLER_DEPLOYMENT&gt; 
+--since=30m
+
+kubectl get events -n production 
+--sort-by=.lastTimestamp</code></pre>
+
+<p>Na čvoru se koriste <code>journalctl -u kubelet</code> i <code>journalctl -u containerd</code>. Kubelet logovi objašnjavaju registraciju čvora, statuse Pod-ova, volume mount i CNI probleme. Containerd logovi pokazuju neuspešno preuzimanje ili raspakivanje image-a, sertifikate registra i timeout greške. U vCenter-u se prate Tasks and Events za kloniranje VM-a, prilagođavanje guest sistema, uključivanje VM-a, datastore ili resource pool greške. Za ozbiljan incident koristi se Tanzu diagnostics plug-in ili zvanično podržan support bundle alat, a paket se prilaže support zahtevu zajedno sa vremenskim opsegom i opisom simptoma.</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Vodite registar verzija i podrške.</strong> Najmanje jednom mesečno i nakon objave novog Tanzu izdanja evidentirajte verziju management klastera, workload klastera, TKr-a, Tanzu CLI-ja, OS image-a i ključnih paketa. Koristite <code>tanzu cluster get</code>, <code>tanzu kubernetes-release get</code>, <code>kubectl get nodes</code> i inventar vCenter template-a. Klaster koji ulazi u poslednji interni kvartal podrške zahteva plan promene. Podaci se čuvaju u CMDB-u i patch kalendaru, a uspeh se meri procentom klastera na podržanim izdanjima.</li>
+  <li><strong>Pratite sigurnosna obaveštenja i release notes.</strong> Pregled se radi nakon svake proizvođačke sigurnosne objave i najmanje nedeljno za kritične platforme. Reakciju zahtevaju ranjivosti koje utiču na korišćeni Kubernetes, container runtime, CNI, ingress ili OS build. Prva reakcija je procena izloženosti i podržanog patch puta, ne nekontrolisani hitni upgrade. Odluke, privremene mitigacije i rokovi evidentiraju se u vulnerability management sistemu. Uspeh se meri vremenom od objave relevantne ranjivosti do primenjene ispravke.</li>
+  <li><strong>Automatizujte pre-upgrade health proveru.</strong> Pre svakog change prozora prikupite stanje čvorova, sistemskih Pod-ova, PDB objekata, API readiness-a, storage objekata i Cluster API resursa. Svako <code>NotReady</code> stanje, PDB sa nula dozvoljenih prekida ili neuspešan API readiness test zaustavlja promenu. Izveštaj se prilaže change tiketu. Uspeh se meri brojem upgrade-a koji nisu pokrenuti nad već degradiranim klasterom.</li>
+  <li><strong>Testirajte upgrade putanju u neprodukcionom okruženju.</strong> Nakon dostupnosti ciljnog TKr-a izvršite upgrade reprezentativnog test klastera sa istim CNI, CSI, ingress, policy i observability komponentama. Reakciju zahtevaju uklonjeni API objekti, neuspešan drain, promene performansi i nekompatibilni webhook-ovi. Rezultati se čuvaju uz release qualification dokument. Uspeh znači da su tehnički i aplikativni testovi završeni pre produkcionog termina.</li>
+  <li><strong>Pratite trajanje zamene jednog čvora.</strong> Tokom svakog upgrade-a beležite vreme od kreiranja Machine objekta do stanja <code>Ready</code> i vreme drain-a starog čvora. Odstupanje veće od dvostruke istorijske srednje vrednosti zahteva proveru registra, mreže, datastore-a i scheduler kapaciteta. Podaci se čuvaju u change evidenciji ili monitoring sistemu. Uspešnost se meri stabilnim trajanjem i odsustvom ponovnog kreiranja Machine objekata.</li>
+  <li><strong>Čuvajte i testirajte backup aplikativnog stanja.</strong> Kubernetes manifesti, deklarativne konfiguracije i stateful podaci čuvaju se prema RPO zahtevu aplikacije, u odvojenom i kontrolisanom storage-u. Backup mora imati checksum, retention politiku, enkripciju i ograničena prava pristupa. Probni restore se radi najmanje kvartalno i pre velikog verzijskog skoka. Upotrebljiv backup potvrđuje se pokretanjem obnovljene aplikacije i proverom integriteta podataka, ne samo uspešnim završetkom backup zadatka.</li>
+  <li><strong>Održavajte slobodan infrastrukturni kapacitet.</strong> Pre upgrade-a i nakon promene kapaciteta node pool-a proveravaju se datastore prostor, resource pool rezervacije, IP adrese, load balancer kapacitet i vSphere alarmi. Ako nema resursa za najmanje jednu dodatnu instancu po aktivnoj rollout strategiji, promena se odlaže ili se privremeno obezbeđuje kapacitet. Rezultat se dokumentuje u change tiketu, a uspeh se meri odsustvom provisioning grešaka zbog kvote ili kapaciteta.</li>
+  <li><strong>Ne ostavljajte klaster pauziran.</strong> Nakon svake dijagnostike proverite <code>spec.paused</code> za Cluster objekte. Provera se radi odmah nakon incidenta i dnevno kroz automatizovani audit. Vrednost <code>true</code> bez aktivnog odobrenog incidenta zahteva hitnu proveru i kontrolisano ponovno uključivanje reconciliation-a. Razlog i trajanje pauze beleže se u incidentu. Uspeh se meri odsustvom nenamerno pauziranih produkcionih klastera.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>□ <code>tanzu cluster get prod-apps -n production --show-details</code> prikazuje stabilan klaster bez aktivnog neuspešnog reconciliation-a.</li>
+  <li>□ Svih šest čvorova je pre promene bilo u stanju <code>Ready</code>.</li>
+  <li>□ <code>orders-api</code> je pre promene imao tri dostupne replike, a PDB najmanje jedno dozvoljeno ometanje.</li>
+  <li>□ Dry-run drain worker čvora nije prijavio blokirajući PDB, unmanaged Pod ili drugi nerešen eviction problem.</li>
+  <li>□ Ciljni TKr je prikazan komandom <code>tanzu cluster available-upgrades get</code> i označen je kao kompatibilan i aktivan.</li>
+  <li>□ Odgovarajući Ubuntu 22.04 VM template postoji i potvrđen je kapacitet za privremene dodatne VM instance.</li>
+  <li>□ Aplikativni backup je završen, integritet je proveren i postoji dokumentovan rezultat probnog restore-a.</li>
+  <li>□ Tokom upgrade-a aplikacija nije pala ispod dve dostupne replike.</li>
+  <li>□ Nakon upgrade-a svi čvorovi prikazuju ciljnu kubelet verziju i stanje <code>Ready</code>.</li>
+  <li>□ API <code>/readyz?verbose</code>, sistemski Pod-ovi, persistent volume objekti i rollout aplikacije završili su bez greške.</li>
+  <li>□ Funkcionalni HTTPS test aplikacije završen je izlaznim statusom <code>0</code>.</li>
+  <li>□ Cluster objekat nema <code>spec.paused: true</code>, a završni logovi i dokazi priloženi su change zapisu.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razume da upgrade Tanzu Kubernetes klastera predstavlja deklarativnu zamenu kontrolne ravni i radnih čvorova, a ne ručno ažuriranje paketa na postojećim virtuelnim mašinama. Mora umeti da odredi podržanu putanju preko dostupnih TKr objekata, proveri kompatibilnost management klastera, OS image-a i infrastrukturnih zavisnosti, kao i da proceni da li aplikacije mogu da prežive drain i privremeno smanjenje kapaciteta.</p>
+<p>Praktična odgovornost obuhvata beleženje početnog stanja, proveru PDB pravila, kapaciteta, backup-a i aplikativne dostupnosti, kontrolisano pokretanje upgrade-a, praćenje Cluster API i Kubernetes resursa i završnu funkcionalnu validaciju. Administrator mora razlikovati očekivano privremeno mešanje verzija od simptoma problema kao što su ponovljeno kreiranje Machine objekata, dugotrajni <code>NotReady</code> čvorovi, image pull timeout, blokiran drain ili gubitak control plane kvoruma.</p>
+<p>Granica tehnologije je jasna: rolling upgrade ne obezbeđuje dostupnost aplikacije koja nema dovoljan broj replika, ispravan readiness model, podržan storage ili pravilno definisan disruption budžet. Takođe ne garantuje jednostavan downgrade. Zbog toga su paralelni klaster, provereni aplikativni backup i dokumentovana recovery procedura često pouzdaniji rollback mehanizam od pokušaja vraćanja pojedinačnih VM snapshot-a.</p>
+<p>Administrator može samostalno da nastavi ili zaustavi standardnu promenu dok su uslovi i postupci unutar podržane dokumentacije. Gubitak etcd kvoruma, potreba za ručnom izmenom sertifikata ili Cluster API internih objekata, sumnja na korupciju podataka, nepodržan downgrade i ponavljano neuspešna rekonstrukcija control plane-a predstavljaju razlog za eskalaciju Broadcom podršci i infrastrukturnim vlasnicima. Profesionalno izveden upgrade završava se tek kada je nova verzija tehnički zdrava, aplikativno proverena, bezbednosno opravdana i potpuno dokumentovana.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom dokumentacija i release notes za vSphere Supervisor, VMware vSphere Kubernetes Service, VKr/TKr izdanja, Cluster API, ClusterClass upgrade i brisanje VKS klastera; Broadcom Knowledge Base članci za nepodržane upgrade putanje, zaglavljene rolling redeployment operacije, PDB, admission webhook, package, node i finalizer probleme; zvanična Kubernetes dokumentacija za version skew, Eviction API, drain, PodDisruptionBudget, readiness, topology spread i persistent storage lifecycle; vSphere administrativne, Tasks and Events, CSI/CNI, dijagnostičke, backup i recovery reference.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-24-node-pool-topologija-i-skaliranje.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-26-mrezni-model-supervisor-i-vks.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

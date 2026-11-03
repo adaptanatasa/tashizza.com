@@ -1,0 +1,448 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-04-kubernetes-ekosistem.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kubernetes ekosistem – kubectl, kubelet, API server, scheduler i controller manager | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes ekosistem – upoznajte ključne komponente kao što su kubectl, kubelet, API server, scheduler i controller manager i razumejte kako zajedno upravljaju Kubernetes klasterom.">
+
+  <meta name="keywords"
+        content="Kubernetes ekosistem, kubectl, kubelet, kube-apiserver, scheduler, controller manager, control plane, worker node, Kubernetes arhitektura, vanilla Kubernetes, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-04-kubernetes-ekosistem.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Kubernetes ekosistem – kubectl, kubelet, API server, scheduler i controller manager">
+
+  <meta property="og:description"
+        content="Razumejte uloge ključnih Kubernetes komponenti i način na koji zajedno obezbeđuju rad, upravljanje i automatizaciju klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-04-kubernetes-ekosistem.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-04-kubernetes-ekosistem.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Kubernetes ekosistem – kubectl, kubelet, API server, scheduler i controller manager">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-04-kubernetes-ekosistem.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-04-kubernetes-ekosistem.png"
+           alt="Kubernetes ekosistem – kubectl, kubelet, API server, scheduler i controller manager">
+
+    </a>
+  
+<div class="page-subtitle">
+  I. Uvod u Vanilla Kubernetes i platformsku odgovornost
+</div>
+<div class="page-subtitle">
+  4. Kubernetes projekat i ekosistem – granice jezgra, interfejsi, dodaci i model odgovornosti
+</div>
+
+<p>
+  Kubernetes nije gotova infrastrukturna platforma sastavljena od jednog proizvoda, već upstream projekat koji obezbeđuje deklarativni API, kontrolne petlje i mehanizme za raspoređivanje i vođenje kontejnerizovanih radnih opterećenja. Da bi klaster zaista bio upotrebljiv, jezgro se povezuje sa operativnim sistemom, container runtime-om, mrežnim i storage implementacijama, DNS-om, registry servisom, load balancer-om, identitetom, monitoringom, backup-om i drugim komponentama. Neke od njih pripadaju Kubernetes projektu, neke drugim CNCF projektima, neke vendoru ili cloud provajderu, a neke mora da obezbedi i vodi lokalni platformski tim.
+</p>
+<p>
+  Zato izraz <em>vanilla Kubernetes</em> ne znači „Kubernetes bez zavisnosti”, niti automatski znači minimalan, jednostavan ili produkciono spreman sistem. On u ovom tutorijalu označava rad sa upstream modelom bez skrivenog vendorskog platformskog sloja. Vrednost takvog pristupa jeste jasna vidljivost granica: administrator mora znati šta garantuje Kubernetes API, šta obezbeđuje izabrani dodatak, ko održava infrastrukturu i na kom mestu prestaje odgovornost jednog tima, a počinje odgovornost drugog.
+</p>
+<p>
+  U julu 2026. upstream projekat održava poslednje tri minor grane: 1.34, 1.35 i 1.36. Primeri su zasnovani na Kubernetes 1.36, ali se operativne odluke ne smeju donositi samo prema broju verzije API servera. Za svaki klaster proveravaju se patch nivo, version-skew pravila, podrška operativnog sistema i kernela, kao i matrice kompatibilnosti za runtime, CNI i CSI implementacije. Alpha mogućnost nije produkciona garancija; beta i stabilna mogućnost takođe zahtevaju proveru feature gate-a, konkretne implementacije i politike podrške dobavljača.
+</p>
+
+<h3>Kubernetes kao upstream projekat i CNCF ekosistem</h3>
+<p>
+  Kubernetes je open-source projekat pod okriljem Cloud Native Computing Foundation (CNCF). Razvoj nije isto što i klasično vlasništvo jednog proizvođača: tehnički rad organizovan je kroz zajednicu, posebne interesne grupe (<em>Special Interest Groups</em>, SIG), radne grupe, release timove i javne procese unapređenja. Kubernetes Enhancement Proposal (KEP) dokumentuje motivaciju, dizajn, rizike, testiranje, faze sazrevanja i plan uklanjanja ili povratka značajnijih funkcionalnosti. Administrator ne mora da bude developer jezgra, ali pri uvođenju nove funkcije mora da pročita njenu dokumentaciju, stanje funkcionalnosti i relevantni KEP, umesto da mogućnost proceni samo prema postojanju YAML polja.
+</p>
+<p>
+  CNCF landscape je katalog velikog broja projekata i proizvoda, a ne preporučena lista komponenti koje treba instalirati u svaki klaster. Status projekta u CNCF-u govori o procesu i zrelosti projekta, ali ne zamenjuje tehničku procenu za konkretno okruženje. Produkcioni izbor zahteva proveru održavanja, bezbednosnog procesa, podržanih Kubernetes verzija, načina nadogradnje, migracije podataka, observability-ja, licencnih uslova, kompetencija tima i izlazne strategije.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pojam</th>
+      <th>Šta stvarno označava</th>
+      <th>Šta ne dokazuje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Upstream Kubernetes</td>
+      <td>Referentni open-source projekat, API-ji, komponente, dokumentacija i release proces</td>
+      <td>Da je konkretan sklop infrastrukture automatski produkciono podržan</td>
+    </tr>
+    <tr>
+      <td>Kubernetes distribucija</td>
+      <td>Pakovanje Kubernetes-a sa odabranim komponentama, instalacijom, lifecycle-om i podrškom</td>
+      <td>Da se svi dodaci, politike i operativni postupci podudaraju sa drugom distribucijom</td>
+    </tr>
+    <tr>
+      <td>Managed Kubernetes</td>
+      <td>Usluga u kojoj provajder vodi definisani deo platforme, često control plane</td>
+      <td>Da je korisnik oslobođen odgovornosti za workload, pristup, podatke, trošak i sve dodatke</td>
+    </tr>
+    <tr>
+      <td>Certified Kubernetes / conformance</td>
+      <td>Dokaz da proizvod za prijavljenu verziju prolazi propisani skup conformance testova</td>
+      <td>Jednake performanse, bezbednosne podrazumevane vrednosti, CNI/CSI mogućnosti, SLA ili upgrade postupak</td>
+    </tr>
+    <tr>
+      <td>CNCF projekat</td>
+      <td>Projekat prihvaćen u određeni CNCF nivo i governance proces</td>
+      <td>Da je baš taj projekat najbolji ili podržan izbor za lokalnu arhitekturu</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Granica jezgra: šta Kubernetes obezbeđuje, a šta namerno ne bira</h3>
+<p>
+  Jezgro obezbeđuje API i osnovne kontrolne mehanizme: objekte za opis željenog stanja, kontrolnu ravan, node agenta i pravila prema kojima se stanje posmatra i usklađuje. U narednim lekcijama biće detaljno obrađeni API server, scheduler, controller manager, kubelet, etcd i kube-proxy. Za ovu lekciju važnija je granica: upstream Kubernetes namerno ne isporučuje jednu obaveznu produkcionu implementaciju Pod mreže, trajnog storage-a, spoljnog load balancer-a, registry-ja, centralnog identiteta, backup-a, SIEM-a ili kompletnog observability sistema.
+</p>
+<p>
+  Minimalno pokrenut control plane zato nije isto što i završena platforma. Kubeadm, na primer, automatizuje bootstrap određenih Kubernetes komponenti, ali ne provisionuje mašine, ne projektuje HA endpoint, ne instalira izabranu Pod mrežu, ne obezbeđuje trajni storage niti vodi dugoročni lifecycle svih dodataka. Ako nakon <code>kubeadm init</code> CoreDNS Podovi čekaju mrežu, to nije dokaz da je CoreDNS pokvaren: CNI zasnovana Pod mreža još nije obezbeđena.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sposobnost platforme</th>
+      <th>Upstream ugovor ili jezgro</th>
+      <th>Implementacija koju treba izabrati ili obezbediti</th>
+      <th>Ključni dokaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Izvršavanje kontejnera</td>
+      <td>Kubelet i Container Runtime Interface (CRI)</td>
+      <td>CRI kompatibilan runtime, najčešće containerd ili CRI-O</td>
+      <td>Runtime socket, verzija, podržana CRI verzija i uspešan Pod sandbox</td>
+    </tr>
+    <tr>
+      <td>Pod mreža</td>
+      <td>Kubernetes mrežni model</td>
+      <td>CNI implementacija i njena konfiguracija</td>
+      <td>Node/Pod status, CNI DaemonSet i test Pod-to-Pod/DNS konektivnosti</td>
+    </tr>
+    <tr>
+      <td>Trajni volumeni</td>
+      <td>PV/PVC/StorageClass API i CSI integracija</td>
+      <td>CSI driver, backend i politike storage-a</td>
+      <td>CSIDriver/CSINode objekti, vezan PVC i test pisanja, restarta i čitanja</td>
+    </tr>
+    <tr>
+      <td>Service tipa LoadBalancer</td>
+      <td>Service API i status</td>
+      <td>Cloud controller ili druga load-balancer implementacija</td>
+      <td>Dodeljen spoljašnji endpoint i funkcionalan tok saobraćaja</td>
+    </tr>
+    <tr>
+      <td>DNS otkrivanje servisa</td>
+      <td>DNS zasnovana service discovery specifikacija</td>
+      <td>Najčešće CoreDNS kao klasterski dodatak</td>
+      <td>Spremni DNS Podovi i uspešna rezolucija iz test Poda</td>
+    </tr>
+    <tr>
+      <td>Ingress/Gateway saobraćaj</td>
+      <td>API objekti</td>
+      <td>Odgovarajući controller; kreiranje objekta samo po sebi nije data plane</td>
+      <td>Prihvaćen status, programirana ruta, TLS i end-to-end zahtev</td>
+    </tr>
+    <tr>
+      <td>Monitoring, logovi i backup</td>
+      <td>API, metrike i događaji dostupni iz pojedinih komponenti</td>
+      <td>Alati, skladišta, retencija, alarmi i procedure oporavka</td>
+      <td>Upit, alarm, zaštićena kopija i dokazani restore</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Standardni interfejsi: CRI, CNI i CSI kao ugovori, ne proizvodi</h3>
+<p>
+  Interfejs smanjuje čvrstu vezanost jezgra za jednu implementaciju. On definiše način komunikacije i očekivano ponašanje, ali ne čini sve implementacije funkcionalno jednakim. Kompatibilnost sa interfejsom je početni uslov; produkcioni izbor zahteva zasebnu proveru mogućnosti, podrške, performansi i operativnog lifecycle-a.
+</p>
+<ul>
+  <li><strong>CRI</strong> je gRPC interfejs između kubelet-a i container runtime-a. Docker Engine sam po sebi nije CRI runtime, a ugrađeni <em>dockershim</em> uklonjen je iz Kubernetes-a 1.24. Ako se Docker Engine namerno koristi, potreban je dodatni CRI adapter kao što je <code>cri-dockerd</code>; to uvodi još jednu komponentu i vlasnika lifecycle-a. Za novu vanilla laboratoriju racionalniji su direktno CRI kompatibilni runtime-i, npr. containerd ili CRI-O.</li>
+  <li><strong>CNI</strong> definiše operacije kojima runtime mrežni plug-in priprema i uklanja mrežu za sandbox. Različite CNI implementacije mogu nuditi različite data plane tehnologije, NetworkPolicy mogućnosti, enkripciju, observability, BGP integraciju, IPAM i Windows podršku. Kubernetes API može prihvatiti NetworkPolicy, ali bez implementacije koja je sprovodi politika neće pružiti očekivanu segmentaciju.</li>
+  <li><strong>CSI</strong> omogućava storage dobavljačima da razvijaju drivere izvan Kubernetes repozitorijuma. CSI kompatibilnost ne odgovara na pitanja o snapshot-u, kloniranju, proširenju, topologiji, RWX režimu, enkripciji ili crash-konzistentnosti; te mogućnosti moraju biti potvrđene za driver, backend i konkretnu verziju.</li>
+</ul>
+<p>
+  Granica interfejsa je i granica dijagnostike. Ako je PVC prihvaćen u API-ju, ali provisionovanje ne uspeva, treba korelisati Kubernetes događaje sa CSI controller/node komponentama i storage backend-om. Ako Pod ima čvor, ali sandbox mreža ne nastaje, događaji i kubelet log vode ka CNI konfiguraciji i njenom data plane-u. Restartovanje API servera ne rešava kvar u eksternom storage-u ili IPAM-u i samo proširuje blast radius.
+</p>
+
+<h3>Dodaci, controller-i, operatori i proširenje API-ja</h3>
+<p>
+  <em>Add-on</em> je širok operativni naziv za komponentu koja proširuje ili omogućava klastersku sposobnost. CoreDNS, metrics server, CNI implementacija, CSI driver, ingress ili Gateway controller mogu se isporučiti kao Podovi i drugi Kubernetes resursi, ali nisu zbog toga automatski deo jezgra niti pokriveni istim lifecycle-om. Njihove verzije, privilegije, konfiguracija i podaci moraju imati vlasnika.
+</p>
+<p>
+  Controller posmatra resurse i usklađuje stvarno stanje sa željenim. Operator je obrazac kojim se controllersko znanje proširuje na životni ciklus određene aplikacije ili platforme. CustomResourceDefinition (CRD) proširuje Kubernetes API novim tipom resursa, ali sama CRD šema najčešće ne obavlja operativni posao: potreban je controller koji reaguje na objekte. Brisanje CRD-a može obrisati sve pripadajuće custom resurse; zato se CRD ne uklanja kao bezazlena „konfiguraciona datoteka”. Pre promene proveravaju se finalizer-i, konverzioni webhook, stored versions, backup i vendorska procedura.
+</p>
+<p>
+  Admission webhook može validirati ili menjati zahtev pre čuvanja objekta. Time politika postaje centralna, ali webhook ulazi u kritičnu putanju API zahteva. Pogrešna konfiguracija, istekao sertifikat ili nedostupan servis mogu blokirati deployment-e; vrednost <code>failurePolicy</code> određuje da li se u određenom kvaru zahtev odbija ili propušta. Izbor nije univerzalan: bezbednosna kontrola visokog rizika često zahteva zatvoreno ponašanje, dok nekritična dopuna metapodataka možda zahteva pažljivo projektovano otvoreno ponašanje i alarm.
+</p>
+
+<h3>Conformance, prenosivost i verzijske granice</h3>
+<p>
+  Kubernetes conformance testira obavezno ponašanje standardnih, stabilnih API mogućnosti za prijavljenu verziju. To je važan temelj prenosivosti workload-a i alata, ali nije sertifikat celog operativnog dizajna. Manifest koji koristi standardni Deployment i Service obično je prenosiviji od manifesta vezanog za vendorski CRD, ali stvarni rezultat i dalje zavisi od image arhitekture, admission politika, StorageClass naziva, LoadBalancer implementacije, podržanih access mode-ova, mrežnih politika, identiteta i dostupnog kapaciteta.
+</p>
+<p>
+  Stabilan API nije obećanje da će svaka vrednost i podrazumevana postavka zauvek ostati ista. Administrator prati deprecation vodiče i release napomene, proverava API-je pre nadogradnje i održava komponente unutar podržanog version-skew-a. Alpha API ili funkcionalnost može biti promenjena ili uklonjena bez uobičajene garancije kompatibilnosti; beta funkcionalnost može biti podrazumevano uključena ili isključena u zavisnosti od verzije; vendor može imati užu matricu podrške od upstream projekta.
+</p>
+
+<h3>Model deljene odgovornosti</h3>
+<p>
+  Odgovornost se ne određuje prema tome ko je poslednji izvršio <code>kubectl</code> komandu, već prema ugovorenom vlasništvu nad slojem, promenom i oporavkom. U samostalno izgrađenom vanilla klasteru lokalni tim ima najširu odgovornost; u managed servisu provajder preuzima deo control plane-a, ali korisnik obično i dalje bira ili konfiguriše node pool-ove, pristup, workload-e, podatke i mnoge dodatke. Tačna granica mora se čitati iz dokumentacije i ugovora konkretne usluge.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Tipični vlasnik u samostalnom vanilla klasteru</th>
+      <th>Odgovornost koju treba eksplicitno dodeliti</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Fizička/virtuelna infrastruktura, DNS, NTP, load balancer</td><td>Infrastrukturni i mrežni tim</td><td>Kapacitet, dostupnost, firmware/hypervisor, mrežne putanje, sertifikati i oporavak</td></tr>
+    <tr><td>OS, kernel, runtime i kubelet</td><td>Node/platform tim</td><td>Hardening, patching, kompatibilnost, resursi, logovi i zamena čvora</td></tr>
+    <tr><td>Control plane i etcd</td><td>Kubernetes platform tim</td><td>HA, PKI, upgrade, backup, restore, audit i API SLO</td></tr>
+    <tr><td>CNI, CSI, DNS i edge controller-i</td><td>Platform tim uz mrežni/storage tim</td><td>Verzije, privilegije, politike, backend, upgrade redosled i rollback</td></tr>
+    <tr><td>Namespace, RBAC i policy granice</td><td>Platform i bezbednosni tim</td><td>Delegacija, najmanje privilegije, izuzeci, audit i periodični pregled</td></tr>
+    <tr><td>Workload, image i aplikativni podaci</td><td>Aplikativni/DevOps tim</td><td>Manifest, resursi, probe, ranjivosti, tajne, backup podataka i aplikativni restore</td></tr>
+  </tbody>
+</table>
+<p>
+  Za svaku komponentu evidencija treba da sadrži najmanje: poslovnog i tehničkog vlasnika, verziju, izvor manifesta ili paketa, licencu, podržane Kubernetes verzije, privilegije, zavisnosti, podatke koje čuva, monitoring, backup, upgrade i rollback postupak, EOL datum i eskalacioni kontakt. Komponenta bez vlasnika nije „besplatna funkcionalnost”, već nepoznat operativni dug.
+</p>
+
+<h3>Integrisani praktikum – inventar ekosistema i dokazivanje granica odgovornosti</h3>
+<p>
+  <strong>Kontekst i cilj.</strong> Tim je preuzeo postojeći laboratorijski ili razvojni klaster, ali nema pouzdan dokument o tome koje su komponente upstream jezgro, koje su dodaci i ko ih održava. Cilj je da se bez promene stanja prikupi inventar, prepoznaju interfejsi i controller-i, izradi preliminarna RACI matrica i potvrdi jedna granica kroz bezbedan negativni test.
+</p>
+<p>
+  <strong>Preduslovi i rizik.</strong> Potrebni su <code>kubectl</code>, odobren read-only pristup klasteru i pravo za <code>get</code>/<code>list</code> nad node, namespace, Pod i relevantnim cluster-scoped resursima. Komande do koraka čišćenja čitaju stanje. Izlaz može sadržati interne adrese, image registry-je, nazive storage sistema i bezbednosno osetljive konfiguracije; fajl se čuva u zaštićenom radnom direktorijumu i ne objavljuje bez redakcije.
+</p>
+<ol>
+  <li>
+    <strong>Potvrditi kontekst, verziju i efektivna prava.</strong>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl version
+kubectl auth can-i get nodes
+kubectl auth can-i list pods --all-namespaces
+kubectl auth can-i list customresourcedefinitions.apiextensions.k8s.io</code></pre>
+    <p><strong>Validacija:</strong> kontekst mora biti očekivani laboratorijski klaster. Rezultat <code>no</code> ne zaobilazi se tuđim privilegovanim kubeconfig-om; beleži se kao ograničenje inventara i traži odobren read-only pristup.</p>
+  </li>
+  <li>
+    <strong>Napraviti lokalni dokaz početnog stanja.</strong>
+    <pre><code class="language-bash">LAB_DIR="$HOME/vanilla-k8s-lab04"
+mkdir -p "$LAB_DIR"
+chmod 700 "$LAB_DIR"
+
+kubectl cluster-info &gt;"$LAB_DIR/cluster-info.txt"
+kubectl get nodes -o wide &gt;"$LAB_DIR/nodes.txt"
+kubectl get namespaces &gt;"$LAB_DIR/namespaces.txt"
+kubectl get pods -A -o wide &gt;"$LAB_DIR/pods.txt"
+kubectl get events -A --sort-by=.metadata.creationTimestamp &gt;"$LAB_DIR/events.txt"</code></pre>
+    <p><strong>Očekivani rezultat:</strong> komande završavaju izlaznim kodom 0 i daju vremenski određen snapshot. Events su ograničene retencije i nisu trajni audit zapis; služe samo kao pomoćni dokaz trenutnog stanja.</p>
+  </li>
+  <li>
+    <strong>Identifikovati runtime i osnovne node podatke kroz API.</strong>
+    <pre><code class="language-bash">kubectl get nodes -o custom-columns='NAME:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion,KUBELET:.status.nodeInfo.kubeletVersion' \
+  | tee "$LAB_DIR/node-components.txt"</code></pre>
+    <p><strong>Tumačenje:</strong> vrednost kao <code>containerd://...</code> ili <code>cri-o://...</code> identifikuje runtime koji kubelet prijavljuje. Ovaj izlaz ne dokazuje da je verzija podržana; upoređuje se sa upstream i vendorskom matricom. Host pristup nije potreban za ovaj read-only korak.</p>
+  </li>
+  <li>
+    <strong>Pronaći mrežne, DNS, storage i edge implementacije.</strong>
+    <pre><code class="language-bash">kubectl get pods -n kube-system -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[*].image,NODE:.spec.nodeName' \
+  | tee "$LAB_DIR/kube-system-components.txt"
+
+kubectl get storageclass,csidriver 2&gt;"$LAB_DIR/storage-errors.txt" \
+  | tee "$LAB_DIR/storage-components.txt"
+
+kubectl get ingressclass,gatewayclass 2&gt;"$LAB_DIR/edge-errors.txt" \
+  | tee "$LAB_DIR/edge-components.txt"
+
+kubectl get crd -o custom-columns='NAME:.metadata.name,GROUP:.spec.group' \
+  | tee "$LAB_DIR/crds.txt"</code></pre>
+    <p><strong>Validacija:</strong> za svaku pronađenu implementaciju beleže se image, verzija, namespace, vlasnik i izvor instalacije. Prazan rezultat može značiti da sposobnost nije instalirana; <code>Forbidden</code> znači da inventar nema dovoljno prava i ne sme se tumačiti kao odsustvo komponente. Gateway API resursi mogu izostati ako njihove CRD definicije nisu instalirane.</p>
+  </li>
+  <li>
+    <strong>Razlikovati deklarisani API od aktivnog controller-a.</strong>
+    <pre><code class="language-bash">kubectl api-resources --api-group=networking.k8s.io
+kubectl api-resources --api-group=storage.k8s.io
+kubectl get deployments,statefulsets,daemonsets -A \
+  -o custom-columns='NS:.metadata.namespace,KIND:.kind,NAME:.metadata.name,READY:.status.numberReady' \
+  | tee "$LAB_DIR/controllers.txt"</code></pre>
+    <p><strong>Dokaz:</strong> postojanje API resursa pokazuje da API prihvata određenu vrstu objekta; ne dokazuje da postoji spoljašnji controller niti da je data plane funkcionalan. Za svaku sposobnost moraju se povezati API objekat, controller, node/data-plane komponenta i spoljašnji backend.</p>
+  </li>
+  <li>
+    <strong>Izvršiti bezbedan negativni test odgovornosti.</strong>
+    <pre><code class="language-bash">kubectl auth can-i create deployments.apps --namespace=default
+kubectl auth can-i patch nodes
+kubectl auth can-i delete customresourcedefinitions.apiextensions.k8s.io
+kubectl auth can-i create clusterrolebindings.rbac.authorization.k8s.io</code></pre>
+    <p><strong>Očekivani rezultat:</strong> read-only inventarski identitet vraća <code>no</code> za state-changing cluster-scoped operacije. Rezultat <code>yes</code> ne koristi se za stvarnu promenu; evidentira se kao preširoka privilegija i prosleđuje vlasniku RBAC-a na pregled.</p>
+  </li>
+  <li>
+    <strong>Napraviti matricu odgovornosti i evidenciju praznina.</strong>
+    <p>Za svaku komponentu popuniti kolone: sposobnost, komponenta i verzija, upstream/vendor, interfejs, tehnički vlasnik, podrška/EOL, privilegije, monitoring, backup podataka, upgrade, rollback i eskalacija. Stavke bez dokaza označiti kao <em>nepotvrđeno</em>, a ne popunjavati pretpostavkom.</p>
+  </li>
+  <li>
+    <strong>Cleanup lokalnog dokaza.</strong> Kubernetes stanje nije menjano. Nakon što je odobreni inventar prenet u CMDB ili zaštićeni change zapis, lokalne kopije se uklanjaju u skladu sa politikom organizacije. Bezbedan laboratorijski cleanup je:
+    <pre><code class="language-bash">find "$LAB_DIR" -maxdepth 1 -type f -print
+# Nakon pregleda tačne liste i potvrde da je dokaz sačuvan na odobrenom mestu:
+rm -i "$LAB_DIR"/*.txt
+rmdir "$LAB_DIR"</code></pre>
+    <p><strong>Upozorenje:</strong> <code>rm</code> menja lokalno stanje. Koristi se eksplicitna putanja, interaktivna potvrda i prethodni pregled; ne koristi se široka rekurzivna komanda.</p>
+  </li>
+</ol>
+<p>
+  <strong>Kriterijum završetka:</strong> postoji verzionisan i vremenski označen inventar; za runtime, CNI, DNS, CSI i edge sloj zabeleženi su implementacija ili potvrđeno odsustvo; CRD-ovi su povezani sa vlasnicima controller-a; svaka komponenta ima vlasnika ili otvorenu operativnu prazninu; nijedna cluster-scoped promena nije izvršena; osetljivi izlazi su zaštićeni i laboratorijski trag je kontrolisano uklonjen.
+</p>
+
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<ul>
+  <li><strong>API objekat postoji, ali funkcionalnost ne radi:</strong> objekat je deklaracija; proveravaju se controller, data plane, backend, status i događaji.</li>
+  <li><strong>CoreDNS je Pending neposredno posle bootstrap-a:</strong> najpre se potvrđuje da je instalirana i spremna CNI mreža, umesto da se nasumično menja DNS Deployment.</li>
+  <li><strong>Service tipa LoadBalancer zauvek ima Pending spoljašnju adresu:</strong> proverava se postojanje i konfiguracija load-balancer/cloud-controller implementacije; upstream Service API sam ne stvara fizički uređaj.</li>
+  <li><strong>PVC ostaje Pending:</strong> proveravaju se StorageClass, provisioner, CSI controller, topologija, parametri i backend kapacitet, uz jasno razdvajanje platformskog i storage vlasnika.</li>
+  <li><strong>CRD postoji, ali custom resurs se ne usklađuje:</strong> traže se odgovarajući controller/operator, leader, logovi, RBAC i webhook zavisnosti; CRD nije dokaz aktivnog operatora.</li>
+  <li><strong>Klaster je conformant, ali manifest nije prenosiv:</strong> manifest verovatno zavisi od vendorskog CRD-a, specifične StorageClass, admission politike, image arhitekture ili dodatne usluge koju conformance ne pokriva.</li>
+  <li><strong>Dodatak je instaliran bez vlasnika:</strong> zabrana promene nije trajno rešenje; komponenta se klasifikuje, procenjuje rizik i formalno dodeljuje vlasniku ili kontrolisano zamenjuje/uklanja.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li>Voditi jedinstven inventar jezgra i dodataka sa verzijom, izvorom, licencom, privilegijama, kompatibilnošću i EOL datumom.</li>
+  <li>Za svaki dodatak odrediti vlasnika, SLO, izvore logova i metrika, upgrade redosled, backup podataka i testiran rollback.</li>
+  <li>Pre izbora projekta napraviti dokaz koncepta koji meri stvarne zahteve: failure mode, performanse, bezbednost, operativnu složenost i migraciju, a ne broj funkcija u marketinškoj tabeli.</li>
+  <li>Razdvojiti API kompatibilnost od pune platformske prenosivosti i dokumentovati sve vendorske CRD-ove, anotacije i klase.</li>
+  <li>Ograničiti privilegije controller-a i operatora; pregledati ServiceAccount, ClusterRoleBinding, hostPath, hostNetwork i pristup Secret objektima.</li>
+  <li>Ne nadograđivati Kubernetes jezgro bez matrice kompatibilnosti svih kritičnih dodataka i dokumentovanog redosleda promene.</li>
+  <li>Incident usmeravati vlasniku sloja tek nakon dokaza, ali zadržati jednog incident koordinatora kada kvar prelazi više granica odgovornosti.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Čitalac razlikuje upstream Kubernetes, distribuciju, managed servis, CNCF projekat i conformant proizvod.</li>
+  <li>Može da objasni šta Kubernetes jezgro obezbeđuje, a koje sposobnosti zahtevaju dodatnu implementaciju.</li>
+  <li>Razlikuje CRI, CNI i CSI specifikaciju od proizvoda koji je implementira.</li>
+  <li>Ne poistovećuje CRD sa aktivnim controller-om niti API objekat sa funkcionalnim data plane-om.</li>
+  <li>Za klaster može read-only komandama da identifikuje runtime, sistemske dodatke, CSI drivere, klase i CRD-ove.</li>
+  <li>Za svaku kritičnu komponentu može da navede vlasnika, zavisnosti, dokaz zdravlja, upgrade i rollback putanju.</li>
+  <li>Razume granice conformance programa i ume da prepozna izvore vezivanja workload-a za konkretnu platformu.</li>
+  <li>Pre promene proverava kompatibilnost jezgra, dodataka i infrastrukture, umesto da verzije posmatra odvojeno.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Kubernetes projekat obezbeđuje snažno i prenosivo API-orijentisano jezgro, ali produkciona platforma nastaje tek kada se to jezgro odgovorno poveže sa izabranim implementacijama mreže, izvršavanja, skladišta, identiteta, dostupnosti, bezbednosti i operacija. CRI, CNI i CSI omogućavaju zamenjivost na nivou ugovora; oni ne uklanjaju razlike u sposobnostima, kvalitetu, podršci i riziku konkretnih proizvoda.
+</p>
+<p>
+  Zreo administrator zato ne pita samo „da li komponenta radi”, već i ko je njen vlasnik, koju verziju i privilegije ima, koje podatke čuva, od čega zavisi, kako se nadograđuje i kako se platforma oporavlja kada komponenta otkaže. Takva mapa sprečava da se svaki kvar proglasi „Kubernetes problemom” i priprema čitaoca za naredne lekcije u kojima će pojedinačni slojevi, topologija klastera, control plane i worker čvorovi biti obrađeni sa punom tehničkom dubinom.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična dokumentacija Kubernetes projekta za arhitekturu, komponente, API i proširivost; release, version-skew, deprecation i feature-state reference; zvanične CRI, CNI i CSI specifikacije i integraciona dokumentacija; kubeadm vodiči za mrežne dodatke; Kubernetes conformance testovi i CNCF dokumentacija o projektu, governance-u i Certified Kubernetes programu; zvanične bezbednosne i administrativne smernice za controller-e, admission webhook-ove, CRD-ove i dodatke.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-03-kontejneri-i-orkestracija.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-05-lokalni-i-lab-klasteri.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

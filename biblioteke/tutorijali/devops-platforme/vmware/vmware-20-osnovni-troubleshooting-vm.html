@@ -1,0 +1,2041 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-20-osnovni-troubleshooting-vm.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Osnovni troubleshooting VM-a – kada se sistem ne podiže ili ne radi stabilno | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite osnovne metode rešavanja problema sa VMware virtuelnim mašinama kada se sistem ne podiže, radi sporo ili pokazuje nestabilnost u radu.">
+
+  <meta name="keywords"
+        content="VMware troubleshooting, troubleshooting VM, VMware problemi, virtuelna mašina, VM, boot problem, performanse VM, VMware logovi, ESXi, vCenter, vSphere, dijagnostika, rešavanje problema, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-20-osnovni-troubleshooting-vm.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Osnovni troubleshooting VM-a – kada se sistem ne podiže ili ne radi stabilno">
+
+  <meta property="og:description"
+        content="Upoznajte najčešće probleme sa VMware virtuelnim mašinama i naučite osnovne korake za dijagnostiku i rešavanje kvarova.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-20-osnovni-troubleshooting-vm.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-20-osnovni-troubleshooting-vm.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Osnovni troubleshooting VM-a – kada se sistem ne podiže ili ne radi stabilno">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-20-osnovni-troubleshooting-vm.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-20-osnovni-troubleshooting-vm.png"
+           alt="Osnovni troubleshooting VM-a – kada se sistem ne podiže ili ne radi stabilno">
+
+    </a>
+
+ <div class="page-subtitle">
+  IV. Svakodnevna administracija i prvi troubleshooting
+</div>
+
+<div class="page-subtitle">
+ 20. Osnovni troubleshooting VM-a – od simptoma do prvih pouzdanih dokaza
+</div>
+
+<p>
+Troubleshooting virtuelne mašine predstavlja sistematično pronalaženje uzroka problema na jednom od nekoliko povezanih slojeva: ESXi hostu, datastore-u, virtuelnom hardveru, virtuelnoj mreži, operativnom sistemu gosta ili aplikaciji. Kada se VM ne pokreće, radi sporo, gubi mrežnu vezu ili prestane da odgovara, cilj administratora nije da što pre primeni nasumičnu promenu, već da utvrdi na kom sloju je problem nastao i prikupi dovoljno podataka pre intervencije.
+</p>
+
+<p>
+Najvažnije pravilo jeste da se prvo proverava trenutno stanje, zatim događaji i logovi, a tek potom primenjuju korektivne mere. Restart, reset ili prisilno gašenje mogu privremeno ukloniti simptom, ali istovremeno mogu izbrisati važne tragove iz memorije, prekinuti aplikacione transakcije ili otežati naknadnu analizu uzroka.
+</p>
+
+<h3>Granice lekcije i verzijski okvir</h3>
+
+<p>
+Ova lekcija uvodi prvu trijažu pojedinačne virtuelne mašine u okruženju kojim upravljaju vCenter Server i ESXi 7.x ili 8.x. Nazivi pojedinih kartica u vSphere Client-u mogu se neznatno razlikovati između izdanja i build-ova, ali dijagnostički model ostaje isti. Funkcije kao što su vMotion, vSphere HA, distribuirani switch, napredni alarmi i istorijske performanse zavise od arhitekture, konfiguracije i licence; one nisu preduslov za osnovno prikupljanje dokaza. Dublja mrežna, storage i klasterska dijagnostika obrađuju se u kasnijim lekcijama 25, 30, 34, 37 i 38.
+</p>
+
+<p>
+Komande u ESXi Shell-u podrazumevaju privremeno omogućen SSH ili lokalni ESXi Shell i nalog sa odgovarajućim administratorskim privilegijama. U produkciji pristup treba otvoriti samo za odobrenu intervenciju, evidentirati ga i po završetku vratiti u stanje propisano bezbednosnom politikom. PowerCLI primere izvršava administrator sa radne stanice na kojoj je instaliran aktuelni VMware PowerCLI, odnosno paket koji Broadcom dokumentacija i repozitorijum distribuiraju pod tim nazivom. Za čitanje inventara, događaja i metrika koristi se nalog sa read-only privilegijama kad god je dovoljan; state-changing komande zahtevaju posebno odobrenje.
+</p>
+
+<h3>Operativni model: simptom, dokaz, uzrok i korekcija</h3>
+
+<table>
+  <thead>
+    <tr><th>Pojam</th><th>Pitanje administratora</th><th>Primer</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Simptom</td><td>Šta je opaženo i od kada?</td><td>VM je uključena, ali HTTPS servis nije dostupan od 10:14.</td></tr>
+    <tr><td>Obim</td><td>Ko je još pogođen?</td><td>Jedna VM, sve VM na hostu, jedna port grupa ili ceo datastore.</td></tr>
+    <tr><td>Posledica</td><td>Koji je poslovni uticaj?</td><td>Interna aplikacija je nedostupna; baza i ostali servisi rade.</td></tr>
+    <tr><td>Neposredni uzrok</td><td>Koji tehnički događaj direktno proizvodi simptom?</td><td>Web servis nije pokrenut jer je filesystem popunjen.</td></tr>
+    <tr><td>Osnovni uzrok</td><td>Zašto je neposredni uzrok nastao?</td><td>Log rotation nije bila aktivna posle promene konfiguracije.</td></tr>
+    <tr><td>Zaobilazno rešenje</td><td>Kako bezbedno vraćamo uslugu dok traje analiza?</td><td>Kontrolisano oslobađanje prostora i pokretanje servisa.</td></tr>
+    <tr><td>Trajna mera</td><td>Kako sprečavamo ponavljanje?</td><td>Ispravka rotacije logova, alarm za kapacitet i vlasnik kontrole.</td></tr>
+  </tbody>
+</table>
+
+<p>
+Dobar incident zapis ne meša ove pojmove. „Restart VM-a” nije uzrok niti dokaz, već intervencija; „posle restarta radi” potvrđuje samo privremeni oporavak. Administrator zato formira proverljivu hipotezu, na primer: „VM ne odgovara zato što storage latencija blokira I/O”, a zatim traži istovremene dokaze u konzoli, metrikama, <code>vmware.log</code>, <code>vmkernel.log</code> i ponašanju drugih workload-a na istom datastore-u.
+</p>
+
+<h3>Razdvajanje simptoma od uzroka</h3>
+
+<p>
+Korisnik obično prijavljuje simptom:
+</p>
+
+<ul>
+  <li>server nije dostupan</li>
+  <li>aplikacija radi sporo</li>
+  <li>VM se ne uključuje</li>
+  <li>operativni sistem se ne podiže</li>
+  <li>mreža povremeno nestaje</li>
+  <li>VM je uključena, ali ne odgovara</li>
+</ul>
+
+<p>
+Isti simptom može imati više različitih uzroka. Na primer, nedostupan server može biti posledica ugašene VM, neispravne mrežne konfiguracije, zaustavljenog servisa, problema sa DNS-om, punog diska unutar gosta ili gubitka veze između ESXi hosta i datastore-a. Zato se dijagnostika izvodi po slojevima.
+</p>
+
+<h3>Osnovni redosled dijagnostike</h3>
+
+<ol>
+  <li>Zabeležiti tačan simptom, vreme nastanka i poslednju poznatu promenu.</li>
+  <li>Proveriti stanje VM-a, ESXi hosta i vCenter zadataka.</li>
+  <li>Proveriti alarme, događaje i poruke o grešci.</li>
+  <li>Proveriti dostupnost i slobodan prostor na datastore-u.</li>
+  <li>Proveriti virtuelne diskove, snapshot-e i priključene uređaje.</li>
+  <li>Proveriti port grupu, mrežni adapter, VLAN i IP konfiguraciju.</li>
+  <li>Proveriti CPU, memoriju, storage latenciju i mrežne performanse.</li>
+  <li>Proveriti VMware Tools i stanje operativnog sistema gosta.</li>
+  <li>Proveriti aplikacione servise i logove unutar gosta.</li>
+  <li>Tek nakon prikupljanja podataka primeniti odgovarajuću korektivnu meru.</li>
+</ol>
+
+<h3>Prikupljanje osnovnih informacija</h3>
+
+<p>
+Pre promene konfiguracije treba zabeležiti:
+</p>
+
+<ul>
+  <li>ime virtuelne mašine</li>
+  <li>ESXi host na kojem trenutno radi</li>
+  <li>datastore na kojem se nalaze njeni fajlovi</li>
+  <li>port grupu i mrežu na koju je povezana</li>
+  <li>trenutno power stanje</li>
+  <li>broj vCPU i količinu RAM memorije</li>
+  <li>postojanje snapshot-a</li>
+  <li>status VMware Toolsa</li>
+  <li>tačno vreme pojave problema</li>
+  <li>poslednje izmene, nadogradnje ili migracije</li>
+</ul>
+
+<p>
+Tačno vreme problema posebno je važno jer omogućava povezivanje prijavljenog simptoma sa zapisima u vCenter događajima, ESXi logovima i logovima operativnog sistema.
+</p>
+
+<h3>Provera kroz vSphere Client</h3>
+
+<p>
+Pre otvaranja ESXi Shell-a treba proveriti osnovne podatke u vSphere Client-u:
+</p>
+
+<ul>
+  <li><strong>Summary</strong> – power stanje, host, datastore, IP adresa i VMware Tools</li>
+  <li><strong>Monitor &gt; Tasks and Events</strong> – neuspešni zadaci i promene konfiguracije</li>
+  <li><strong>Monitor &gt; Issues and Alarms</strong> – aktivni alarmi</li>
+  <li><strong>Monitor &gt; Performance</strong> – CPU, memorija, disk i mreža</li>
+  <li><strong>Snapshots</strong> – broj i starost snapshot-a</li>
+  <li><strong>Edit Settings</strong> – stanje diskova, mrežnih adaptera i priključenih uređaja</li>
+</ul>
+
+<p>
+Poruku o grešci treba sačuvati u celosti. Kratak deo poruke često nije dovoljan za razlikovanje problema sa resursima, zaključanim fajlovima, storage-om ili konfiguracijom VM-a.
+</p>
+
+<h3>Provera VM inventara na ESXi hostu</h3>
+
+<p>
+Nakon SSH prijave na ESXi host, sve registrovane virtuelne mašine mogu se prikazati komandom:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Vmid   Name          File                              Guest OS
+12     WebServer01   [Datastore01] WebServer01/WebServer01.vmx   ubuntu64Guest
+18     DBServer01    [Datastore02] DBServer01/DBServer01.vmx     rhel9_64Guest
+</code></pre>
+
+<p>
+Vrednost u koloni <strong>Vmid</strong> koristi se u drugim <code>vim-cmd</code> komandama. Ona nije isto što i World ID procesa koji se koristi za prinudno zaustavljanje VM-a.
+</p>
+
+<p>
+Detaljna konfiguracija određene VM može se prikazati komandom:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/get.config 12
+</code></pre>
+
+<p>
+Osnovne informacije o gostujućem sistemu:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/get.guest 12
+</code></pre>
+
+<p>
+Operativno stanje i informacije o izvršavanju:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/get.runtime 12
+</code></pre>
+
+<p>
+Ove komande pomažu da se potvrdi putanja do VMX fajla, trenutno stanje, host na kojem je VM registrovana i informacije koje ESXi dobija preko VMware Toolsa.
+</p>
+
+<h3>Provera power stanja</h3>
+
+<p>
+Stanje određene virtuelne mašine proverava se komandom:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.getstate 12
+</code></pre>
+
+<p>
+Mogući odgovori uključuju:
+</p>
+
+<pre><code class="language-none">Powered on
+Powered off
+Suspended
+</code></pre>
+
+<p>
+Ako vSphere Client prikazuje drugačije stanje od ESXi hosta, moguće je da postoji problem u komunikaciji između hosta i vCenter Servera. U tom slučaju treba proveriti <code>hostd.log</code> i <code>vpxa.log</code>.
+</p>
+
+<h3>Provera da li VM čeka odgovor administratora</h3>
+
+<p>
+Virtuelna mašina ponekad ne nastavlja pokretanje zato što čeka odgovor na pitanje, na primer nakon promene lokacije njenih fajlova, kopiranja VM-a ili problema sa virtuelnim diskom.
+</p>
+
+<p>
+Provera pitanja:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/message 12
+</code></pre>
+
+<p>
+Ako postoji aktivno pitanje, komanda prikazuje ID pitanja i ponuđene odgovore. Odgovor se šalje navođenjem VMID-a, ID-a pitanja i ID-a izabranog odgovora:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/message 12 &lt;question_id&gt; &lt;answer_id&gt;
+</code></pre>
+
+<p>
+Odgovor ne treba birati napamet. Na primer, pogrešan odgovor na pitanje da li je VM kopirana ili premeštena može uticati na generisanje novih identifikatora i MAC adresa.
+</p>
+
+<h3>VM se ne može uključiti</h3>
+
+<p>
+Ako Power On operacija ne uspe, najčešći uzroci su:
+</p>
+
+<ul>
+  <li>nedovoljno raspoložive memorije na hostu</li>
+  <li>neispunjena memorijska ili CPU rezervacija</li>
+  <li>popunjen ili nedostupan datastore</li>
+  <li>zaključani VMX ili VMDK fajlovi</li>
+  <li>neispravan snapshot lanac</li>
+  <li>nedostajući virtuelni disk</li>
+  <li>neispravna putanja do ISO fajla</li>
+  <li>nepodržana ili nekompatibilna konfiguracija uređaja</li>
+  <li>neodgovoreno pitanje virtuelne mašine</li>
+  <li>oštećen ili neispravno izmenjen VMX fajl</li>
+</ul>
+
+<p>
+Pokušaj pokretanja iz komandne linije:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.on 12
+</code></pre>
+
+<p>
+Odmah nakon neuspeha treba pregledati poslednje zapise u logu virtuelne mašine:
+</p>
+
+<pre><code class="language-bash">tail -n 100 /vmfs/volumes/Datastore01/WebServer01/vmware.log
+</code></pre>
+
+<p>
+Za filtriranje relevantnih poruka:
+</p>
+
+<pre><code class="language-bash">grep -Ei "error|failed|cannot|lock|disk|snapshot" \
+/vmfs/volumes/Datastore01/WebServer01/vmware.log | tail -n 50
+</code></pre>
+
+<p>
+Pretraga služi za brzo izdvajanje važnih redova, ali konačan zaključak treba doneti tek nakon pregleda konteksta oko pronađene poruke.
+</p>
+
+<h3>VM je uključena, ali ne odgovara</h3>
+
+<p>
+Najpre treba utvrditi da li je problem ograničen na mrežu ili je zamrznut ceo gostujući sistem:
+</p>
+
+<ul>
+  <li>otvoriti Remote Console</li>
+  <li>proveriti da li konzola reaguje na tastaturu</li>
+  <li>proveriti status VMware Toolsa</li>
+  <li>proveriti da li VM odgovara na ping</li>
+  <li>proveriti da li je dostupan SSH ili RDP</li>
+  <li>proveriti CPU i storage latenciju</li>
+</ul>
+
+<p>
+Ako konzola radi, ali mrežni pristup ne radi, verovatniji uzrok je u virtuelnoj mreži, IP konfiguraciji, firewall-u ili mrežnom servisu unutar gosta. Ako ne reaguju ni konzola ni VMware Tools, treba proveriti potrošnju resursa i stanje VM procesa.
+</p>
+
+<h3>Redosled bezbednog restartovanja</h3>
+
+<p>
+Prvo treba pokušati uredno restartovanje gostujućeg operativnog sistema:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.reboot 12
+</code></pre>
+
+<p>
+Ova komanda zavisi od ispravnog rada VMware Toolsa. Ako gost ne odgovara, komanda može ostati bez efekta.
+</p>
+
+<p>
+Sledeća mogućnost je virtuelni reset:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.reset 12
+</code></pre>
+
+<p>
+Reset odgovara pritisku fizičkog reset dugmeta. Operativni sistem ne dobija priliku da uredno zatvori servise i filesystem, pa se koristi samo kada uredan restart nije moguć.
+</p>
+
+<p>
+Prinudno isključivanje:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.off 12
+</code></pre>
+
+<p>
+Power Off odgovara prekidu napajanja fizičkog servera i predstavlja poslednju standardnu opciju. Pre njegove primene treba proceniti rizik za baze podataka, aplikacione transakcije i filesystem.
+</p>
+
+<h3>Pronalaženje VM procesa</h3>
+
+<p>
+Ako standardne power komande ne rade, aktivni VM procesi mogu se prikazati komandom:
+</p>
+
+<pre><code class="language-bash">esxcli vm process list
+</code></pre>
+
+<p>
+Primer skraćenog izlaza:
+</p>
+
+<pre><code class="language-none">WebServer01
+   World ID: 345678
+   Process ID: 0
+   VMX Cartel ID: 345677
+   UUID: 56 4d ...
+   Display Name: WebServer01
+   Config File: /vmfs/volumes/Datastore01/WebServer01/WebServer01.vmx
+</code></pre>
+
+<p>
+Za prinudno zaustavljanje koristi se <strong>World ID</strong>, a ne VMID iz komande <code>vim-cmd vmsvc/getallvms</code>.
+</p>
+
+<p>
+Postoje tri nivoa zaustavljanja:
+</p>
+
+<pre><code class="language-bash">esxcli vm process kill --type=soft --world-id=345678
+esxcli vm process kill --type=hard --world-id=345678
+esxcli vm process kill --type=force --world-id=345678
+</code></pre>
+
+<ul>
+  <li><strong>soft</strong> – prvo pokušava kontrolisano zaustavljanje procesa</li>
+  <li><strong>hard</strong> – prinudno prekida VMX proces kada soft ne uspe</li>
+  <li><strong>force</strong> – najagresivniji nivo i koristi se samo kao poslednja mogućnost</li>
+</ul>
+
+<p>
+Nakon svakog koraka treba ponovo pokrenuti:
+</p>
+
+<pre><code class="language-bash">esxcli vm process list
+</code></pre>
+
+<p>
+i proveriti da li je proces nestao. Ne treba odmah prelaziti na <code>force</code> ako blaža metoda još nije proverena.
+</p>
+
+<h3>Provera slobodnog prostora na datastore-u</h3>
+
+<p>
+Datastore koji je ostao bez slobodnog prostora može sprečiti pokretanje VM-a, rast snapshot-a, kreiranje swap fajla ili normalan rad gostujućeg sistema.
+</p>
+
+<p>
+Pregled montiranih filesystem-a:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+</code></pre>
+
+<p>
+Jednostavniji pregled zauzeća:
+</p>
+
+<pre><code class="language-bash">df -h
+</code></pre>
+
+<p>
+Potrebno je proveriti:
+</p>
+
+<ul>
+  <li>ukupan kapacitet</li>
+  <li>raspoloživ prostor</li>
+  <li>da li je datastore montiran</li>
+  <li>da li VMFS volumen ima očekivanu putanju</li>
+</ul>
+
+<p>
+Pregled sadržaja direktorijuma VM-a:
+</p>
+
+<pre><code class="language-bash">ls -lah /vmfs/volumes/Datastore01/WebServer01/
+</code></pre>
+
+<p>
+Veliki fajlovi mogu se izdvojiti komandom:
+</p>
+
+<pre><code class="language-bash">du -h /vmfs/volumes/Datastore01/WebServer01/* | sort -h
+</code></pre>
+
+<p>
+Posebnu pažnju treba obratiti na:
+</p>
+
+<ul>
+  <li><code>*-delta.vmdk</code> i <code>*-sesparse.vmdk</code> – snapshot podatke</li>
+  <li><code>*.vswp</code> – VM swap fajlove</li>
+  <li><code>vmware.log</code> i rotirane logove</li>
+  <li>stare ISO slike</li>
+  <li>privremene ili napuštene VMDK fajlove</li>
+</ul>
+
+<p>
+Fajlove virtuelne mašine ne treba ručno brisati samo na osnovu njihovog imena. Pre brisanja mora se utvrditi da li pripadaju aktivnoj konfiguraciji ili snapshot lancu.
+</p>
+
+<h3>Provera snapshot-a</h3>
+
+<p>
+Prikaz snapshot stabla određene VM:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/snapshot.get 12
+</code></pre>
+
+<p>
+Ako komanda prijavi da snapshot ne postoji, ali u direktorijumu postoje delta ili sesparse fajlovi, moguće je da postoji neusaglašenost snapshot metapodataka ili potreba za konsolidacijom.
+</p>
+
+<p>
+PowerCLI pregled:
+</p>
+
+<pre><code class="language-powershell">Get-Snapshot -VM "WebServer01" |
+Select-Object VM, Name, Created, SizeGB
+</code></pre>
+
+<p>
+Pregled starijih snapshot-a, na primer starijih od sedam dana:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-Snapshot |
+Where-Object {$_.Created -lt (Get-Date).AddDays(-7)} |
+Select-Object VM, Name, Created, SizeGB
+</code></pre>
+
+<p>
+Postojanje snapshot-a samo po sebi ne dokazuje da je on uzrok problema. Potrebno je proveriti njegovu veličinu, starost, storage latenciju i raspoloživi prostor pre konsolidacije.
+</p>
+
+<h3>Provera zaključanih VM fajlova</h3>
+
+<p>
+Kada VM ne može da se uključi zbog poruke da je fajl zaključan, prvo treba utvrditi koji ESXi host poseduje zaključavanje. Zaključavanje je normalno dok VM radi, ali postaje problem ako je ostalo nakon pada hosta, prekida storage veze ili neuspele migracije.
+</p>
+
+<p>
+Provera zaključavanja VMDK descriptor fajla:
+</p>
+
+<pre><code class="language-bash">vmkfstools -D /vmfs/volumes/Datastore01/WebServer01/WebServer01.vmdk
+</code></pre>
+
+<p>
+Za VMFS6 može biti korisna i komanda:
+</p>
+
+<pre><code class="language-bash">vmfsfilelockinfo -p \
+/vmfs/volumes/Datastore01/WebServer01/WebServer01.vmdk
+</code></pre>
+
+<p>
+Proveriti treba i VMX fajl:
+</p>
+
+<pre><code class="language-bash">vmfsfilelockinfo -p \
+/vmfs/volumes/Datastore01/WebServer01/WebServer01.vmx
+</code></pre>
+
+<p>
+Ako zaključavanje pripada hostu na kojem VM zaista radi, ono je očekivano. Ako pripada drugom hostu, treba proveriti da li je VM tamo ostala registrovana ili postoji zaostali VMX proces. Ne treba ručno uklanjati lock fajlove bez utvrđivanja vlasnika.
+</p>
+
+<h3>Provera virtuelnih diskova</h3>
+
+<p>
+Prikaz diskova vezanih za VM:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/device.getdevices 12
+</code></pre>
+
+<p>
+U VMX konfiguraciji putanje do diskova mogu se pregledati komandom:
+</p>
+
+<pre><code class="language-bash">grep -i "fileName" \
+/vmfs/volumes/Datastore01/WebServer01/WebServer01.vmx
+</code></pre>
+
+<p>
+VMDK descriptor može se bez izmene podataka proveriti komandom:
+</p>
+
+<pre><code class="language-bash">vmkfstools -e \
+/vmfs/volumes/Datastore01/WebServer01/WebServer01.vmdk
+</code></pre>
+
+<p>
+Komanda proverava konzistentnost lanca virtuelnog diska. Ako prijavi problem u lancu, ne treba nasumično preimenovati ili menjati VMDK descriptor fajlove, već prvo napraviti kopiju relevantnih metapodataka i analizirati tačan nedostajući parent disk ili CID neusaglašenost.
+</p>
+
+<h3>Provera da li je VM pravilno registrovana</h3>
+
+<p>
+Ako se VM fajlovi nalaze na datastore-u, ali VM nije vidljiva u inventaru, može se ponovo registrovati pomoću VMX fajla:
+</p>
+
+<pre><code class="language-bash">vim-cmd solo/registervm \
+/vmfs/volumes/Datastore01/WebServer01/WebServer01.vmx
+</code></pre>
+
+<p>
+Komanda vraća novi VMID. Pre registracije treba proveriti da ista VM već nije registrovana pod drugim imenom ili na drugom hostu.
+</p>
+
+<p>
+Uklanjanje VM-a iz inventara, bez brisanja fajlova:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/unregister 12
+</code></pre>
+
+<p>
+Ovu komandu ne treba mešati sa brisanjem VM-a sa diska. Unregister uklanja objekat iz inventara, dok VM fajlovi ostaju na datastore-u.
+</p>
+
+<h3>VM se veoma sporo podiže</h3>
+
+<p>
+Sporo podizanje može nastati zbog:
+</p>
+
+<ul>
+  <li>velikog broja ili velikih snapshot-a</li>
+  <li>visoke storage latencije</li>
+  <li>CPU contention-a i visokog CPU Ready vremena</li>
+  <li>memory ballooning-a ili host swapping-a</li>
+  <li>sporog DNS odgovora</li>
+  <li>nedostupnih mrežnih mount tačaka</li>
+  <li>servisa koji čekaju timeout</li>
+  <li>provere filesystem-a nakon nepravilnog gašenja</li>
+  <li>problema sa drajverima ili VMware Tools servisom</li>
+</ul>
+
+<p>
+Na Linux gostu vreme pokretanja prikazuje:
+</p>
+
+<pre><code class="language-bash">systemd-analyze
+</code></pre>
+
+<p>
+Servisi poređani prema vremenu pokretanja:
+</p>
+
+<pre><code class="language-bash">systemd-analyze blame
+</code></pre>
+
+<p>
+Kritični lanac servisa:
+</p>
+
+<pre><code class="language-bash">systemd-analyze critical-chain
+</code></pre>
+
+<p>
+Greške iz tekućeg boot procesa:
+</p>
+
+<pre><code class="language-bash">journalctl -b -p err
+</code></pre>
+
+<p>
+Greške iz prethodnog boot procesa:
+</p>
+
+<pre><code class="language-bash">journalctl -b -1 -p err
+</code></pre>
+
+<p>
+Na Windows gostu korisno je pregledati:
+</p>
+
+<pre><code class="language-none">Event Viewer
+  Windows Logs
+    System
+    Application
+
+Applications and Services Logs
+  Microsoft
+    Windows
+      Diagnostics-Performance
+        Operational
+</code></pre>
+
+<p>
+PowerShell prikaz novijih sistemskih grešaka:
+</p>
+
+<pre><code class="language-powershell">Get-WinEvent -FilterHashtable @{
+    LogName='System'
+    Level=2
+    StartTime=(Get-Date).AddHours(-2)
+} | Select-Object TimeCreated, Id, ProviderName, Message
+</code></pre>
+
+<h3>Provera CPU performansi pomoću esxtop-a</h3>
+
+<p>
+Interaktivni alat za praćenje performansi ESXi hosta pokreće se komandom:
+</p>
+
+<pre><code class="language-bash">esxtop
+</code></pre>
+
+<p>
+Pritiskom na slovo <code>c</code> otvara se CPU prikaz. Najvažniji pokazatelji za VM su:
+</p>
+
+<ul>
+  <li><strong>%USED</strong> – procenat fizičkog CPU vremena koje VM koristi</li>
+  <li><strong>%RUN</strong> – vreme tokom kojeg je VM izvršavana</li>
+  <li><strong>%RDY</strong> – vreme tokom kojeg je vCPU čekao da dobije fizički CPU</li>
+  <li><strong>%CSTP</strong> – vreme tokom kojeg su vCPU niti čekale međusobnu sinhronizaciju</li>
+  <li><strong>%MLMTD</strong> – vreme tokom kojeg je VM bila ograničena CPU limitom</li>
+</ul>
+
+<p>
+Povišen <code>%RDY</code> ukazuje da vCPU čeka fizički procesor. Uzrok može biti preopterećen host, prevelik broj vCPU dodeljen VM-u, CPU limit ili velika konsolidacija radnih opterećenja.
+</p>
+
+<p>
+Povišen <code>%CSTP</code> može se javiti kod VM-a sa većim brojem vCPU kada hipervizor teže obezbeđuje potrebno vreme izvršavanja za sve virtuelne procesore. Dodavanje vCPU nije automatski rešenje za spor rad i može dodatno povećati čekanje.
+</p>
+
+<h3>Provera memorije pomoću esxtop-a</h3>
+
+<p>
+U alatu <code>esxtop</code> pritisnuti slovo:
+</p>
+
+<pre><code class="language-none">m
+</code></pre>
+
+<p>
+Važni pokazatelji uključuju:
+</p>
+
+<ul>
+  <li><strong>MEMSZ</strong> – konfigurisana memorija VM-a</li>
+  <li><strong>GRANT</strong> – memorija koju je ESXi dodelio VM-u</li>
+  <li><strong>ACTV</strong> – procena aktivno korišćene memorije</li>
+  <li><strong>MCTLSZ</strong> – memorija povraćena ballooning mehanizmom</li>
+  <li><strong>SWCUR</strong> – trenutna količina host swap memorije</li>
+  <li><strong>SWR/s i SWW/s</strong> – čitanje i pisanje host swap podataka</li>
+</ul>
+
+<p>
+Ballooning nije nužno kvar; to je mehanizam kojim ESXi pokušava da povrati memoriju preko VMware Tools drajvera. Međutim, trajno visok ballooning, kompresija memorije ili host swapping ukazuju na memorijski pritisak. Aktivno swap pisanje i čitanje često uzrokuju primetno usporenje VM-a.
+</p>
+
+<h3>Provera storage performansi pomoću esxtop-a</h3>
+
+<p>
+U <code>esxtop</code> alatu koriste se sledeći prikazi:
+</p>
+
+<pre><code class="language-none">d   # storage adapter
+u   # storage device
+v   # virtual disk
+</code></pre>
+
+<p>
+Najvažnije vrednosti su:
+</p>
+
+<ul>
+  <li><strong>DAVG/cmd</strong> – prosečno vreme obrade komande na storage uređaju</li>
+  <li><strong>KAVG/cmd</strong> – vreme zadržavanja komande u ESXi kernelu</li>
+  <li><strong>GAVG/cmd</strong> – ukupna latencija koju vidi gost</li>
+  <li><strong>QAVG/cmd</strong> – vreme čekanja u redu</li>
+  <li><strong>CMDS/s</strong> – broj I/O komandi u sekundi</li>
+  <li><strong>READS/s</strong> i <strong>WRITES/s</strong> – broj čitanja i pisanja</li>
+</ul>
+
+<p>
+Odnos između vrednosti može pomoći u lociranju problema:
+</p>
+
+<ul>
+  <li>visok <strong>DAVG</strong> obično usmerava pažnju na storage uređaj, SAN, NAS ili putanju do storage-a</li>
+  <li>visok <strong>KAVG</strong> ukazuje na čekanje unutar ESXi storage sloja</li>
+  <li>visok <strong>GAVG</strong> potvrđuje da gostujući sistem oseća veliku ukupnu latenciju</li>
+</ul>
+
+<p>
+Vrednosti treba posmatrati tokom dovoljno dugog intervala i uporediti ih sa uobičajenim stanjem konkretnog storage sistema. Jedan kratkotrajan skok ne mora predstavljati trajni problem.
+</p>
+
+<h3>Provera mreže pomoću esxtop-a</h3>
+
+<p>
+U alatu <code>esxtop</code> pritisnuti:
+</p>
+
+<pre><code class="language-none">n
+</code></pre>
+
+<p>
+Važni pokazatelji uključuju:
+</p>
+
+<ul>
+  <li><strong>MbTX/s</strong> – odlazni saobraćaj</li>
+  <li><strong>MbRX/s</strong> – dolazni saobraćaj</li>
+  <li><strong>%DRPTX</strong> – procenat odbačenih odlaznih paketa</li>
+  <li><strong>%DRPRX</strong> – procenat odbačenih dolaznih paketa</li>
+</ul>
+
+<p>
+Kontinuirano odbacivanje paketa može ukazivati na zagušenje, problem sa fizičkim adapterom, nepravilno podešene queue vrednosti ili preopterećenu mrežnu putanju. Analizu treba povezati sa brojačima fizičkog switcha i statistikama unutar gosta.
+</p>
+
+<h3>Batch prikupljanje esxtop podataka</h3>
+
+<p>
+Za naknadnu analizu može se koristiti batch režim:
+</p>
+
+<pre><code class="language-bash">esxtop -b -d 5 -n 60 &gt; /tmp/esxtop.csv
+</code></pre>
+
+<p>
+Opcije znače:
+</p>
+
+<ul>
+  <li><code>-b</code> – batch režim bez interaktivnog prikaza</li>
+  <li><code>-d 5</code> – interval od pet sekundi</li>
+  <li><code>-n 60</code> – šezdeset uzoraka</li>
+</ul>
+
+<p>
+U ovom primeru podaci se prikupljaju približno pet minuta. Treba voditi računa o raspoloživom prostoru u direktorijumu u koji se izlaz upisuje.
+</p>
+
+<h3>Provera virtuelne mrežne kartice</h3>
+
+<p>
+Na nivou VM-a treba proveriti:
+</p>
+
+<ul>
+  <li>da li je adapter označen kao <strong>Connected</strong></li>
+  <li>da li je uključena opcija <strong>Connect at power on</strong></li>
+  <li>da li je izabrana odgovarajuća port grupa</li>
+  <li>da li port grupa koristi očekivani VLAN ID</li>
+  <li>da li port grupa postoji na ciljnom ESXi hostu</li>
+  <li>da li je MAC adresa očekivana</li>
+  <li>da li gostujući sistem vidi mrežni adapter</li>
+</ul>
+
+<p>
+PowerCLI pregled mrežnih adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name, Type, NetworkName, MacAddress, ConnectionState
+</code></pre>
+
+<p>
+Pregled VMkernel adaptera na hostu:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+</code></pre>
+
+<p>
+Pregled fizičkih mrežnih adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic list
+</code></pre>
+
+<p>
+Detalji određenog fizičkog adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic0
+</code></pre>
+
+<p>
+Statistika adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic stats get -n vmnic0
+</code></pre>
+
+<p>
+Potrebno je proveriti link stanje, brzinu, duplex i brojače odbačenih ili pogrešnih paketa.
+</p>
+
+<h3>Testiranje VMkernel mreže</h3>
+
+<p>
+Običan <code>ping</code> sa ESXi hosta koristi podrazumevanu mrežnu putanju. Za testiranje određene VMkernel mreže koristi se <code>vmkping</code>.
+</p>
+
+<p>
+Osnovni test:
+</p>
+
+<pre><code class="language-bash">vmkping 192.168.10.20
+</code></pre>
+
+<p>
+Test korišćenjem određenog TCP/IP stacka, na primer vMotion stacka:
+</p>
+
+<pre><code class="language-bash">vmkping ++netstack=vmotion 192.168.20.12
+</code></pre>
+
+<p>
+Test jumbo frame konfiguracije:
+</p>
+
+<pre><code class="language-bash">vmkping -I vmk1 -d -s 8972 192.168.20.12
+</code></pre>
+
+<p>
+Opcija <code>-d</code> zabranjuje fragmentaciju, a veličina paketa mora odgovarati MTU konfiguraciji cele putanje. Jumbo frame test ima smisla samo ako su VMkernel adapter, vSwitch, fizički adapteri i fizički switch dosledno podešeni.
+</p>
+
+<h3>Mrežna dijagnostika unutar Linux gosta</h3>
+
+<p>
+Pregled interfejsa i IP adresa:
+</p>
+
+<pre><code class="language-bash">ip -br address
+</code></pre>
+
+<p>
+Pregled ruta:
+</p>
+
+<pre><code class="language-bash">ip route
+</code></pre>
+
+<p>
+Provera link stanja:
+</p>
+
+<pre><code class="language-bash">ip link show
+</code></pre>
+
+<p>
+Provera očekivane putanje do odredišta:
+</p>
+
+<pre><code class="language-bash">ip route get 8.8.8.8
+</code></pre>
+
+<p>
+Test lokalnog gateway-a:
+</p>
+
+<pre><code class="language-powershell">ping -c 4 192.168.10.1
+</code></pre>
+
+<p>
+Test IP konekcije van lokalne mreže:
+</p>
+
+<pre><code class="language-powershell">ping -c 4 8.8.8.8
+</code></pre>
+
+<p>
+Test DNS rezolucije:
+</p>
+
+<pre><code class="language-bash">getent hosts example.com
+</code></pre>
+
+<p>
+Ako je dostupna komanda <code>dig</code>:
+</p>
+
+<pre><code class="language-bash">dig example.com
+dig @192.168.10.10 example.com
+</code></pre>
+
+<p>
+Praćenje putanje:
+</p>
+
+<pre><code class="language-bash">tracepath 8.8.8.8
+</code></pre>
+
+<p>
+Pregled otvorenih portova:
+</p>
+
+<pre><code class="language-bash">ss -tulpn
+</code></pre>
+
+<p>
+Test određenog TCP porta:
+</p>
+
+<pre><code class="language-bash">nc -vz 192.168.10.50 443
+</code></pre>
+
+<p>
+Ako ping prema IP adresi radi, ali pristup po imenu ne radi, pažnju treba usmeriti na DNS. Ako ni gateway nije dostupan, proveravaju se lokalna IP konfiguracija, maska, VLAN, port grupa i firewall.
+</p>
+
+<h3>Mrežna dijagnostika unutar Windows gosta</h3>
+
+<p>
+Pregled konfiguracije:
+</p>
+
+<pre><code class="language-powershell">ipconfig /all
+</code></pre>
+
+<p>
+Pregled ruta:
+</p>
+
+<pre><code class="language-powershell">route print
+</code></pre>
+
+<p>
+Test gateway-a:
+</p>
+
+<pre><code class="language-powershell">ping 192.168.10.1
+</code></pre>
+
+<p>
+Test DNS rezolucije:
+</p>
+
+<pre><code class="language-powershell">nslookup example.com
+</code></pre>
+
+<p>
+Praćenje putanje:
+</p>
+
+<pre><code class="language-powershell">tracert 8.8.8.8
+</code></pre>
+
+<p>
+PowerShell test određenog porta:
+</p>
+
+<pre><code class="language-powershell">Test-NetConnection 192.168.10.50 -Port 443
+</code></pre>
+
+<p>
+Detaljan prikaz mrežnih adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-NetAdapter |
+Format-Table Name, Status, LinkSpeed, MacAddress
+</code></pre>
+
+<p>
+Pregled IP konfiguracije:
+</p>
+
+<pre><code class="language-powershell">Get-NetIPConfiguration
+</code></pre>
+
+<h3>Provera VMware Toolsa</h3>
+
+<p>
+VMware Tools omogućavaju vCenter Serveru da dobije informacije o gostu, izvrši uredan shutdown, prati IP adresu i koristi dodatne integracione funkcije.
+</p>
+
+<p>
+PowerCLI pregled:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Select-Object Name,
+    PowerState,
+    @{N='ToolsStatus';E={$_.ExtensionData.Guest.ToolsStatus}},
+    @{N='ToolsVersionStatus';E={$_.ExtensionData.Guest.ToolsVersionStatus2}},
+    @{N='GuestState';E={$_.ExtensionData.Guest.GuestState}}
+</code></pre>
+
+<p>
+Na Linux sistemima sa <code>open-vm-tools</code>:
+</p>
+
+<pre><code class="language-bash">systemctl status vmtoolsd
+</code></pre>
+
+<p>
+Provera procesa:
+</p>
+
+<pre><code class="language-bash">ps -ef | grep [v]mtoolsd
+</code></pre>
+
+<p>
+Verzija alata:
+</p>
+
+<pre><code class="language-bash">vmware-toolbox-cmd -v
+</code></pre>
+
+<p>
+Na Windows sistemima:
+</p>
+
+<pre><code class="language-powershell">Get-Service VMTools
+</code></pre>
+
+<p>
+Ako servis postoji, ali nije pokrenut:
+</p>
+
+<pre><code class="language-powershell">Start-Service VMTools
+</code></pre>
+
+<p>
+Neaktivan VMware Tools servis ne znači automatski da je cela VM neispravna, ali ograničava vidljivost stanja gosta i onemogućava određene guest operacije.
+</p>
+
+<h3>Provera CPU opterećenja unutar gosta</h3>
+
+<p>
+Na Linux sistemu:
+</p>
+
+<pre><code class="language-bash">uptime
+top
+ps -eo pid,ppid,comm,%cpu,%mem --sort=-%cpu | head
+</code></pre>
+
+<p>
+Broj logičkih procesora:
+</p>
+
+<pre><code class="language-bash">nproc
+lscpu
+</code></pre>
+
+<p>
+Na Windows sistemu:
+</p>
+
+<pre><code class="language-powershell">Get-Process |
+Sort-Object CPU -Descending |
+Select-Object -First 10 Name, Id, CPU
+</code></pre>
+
+<p>
+Visoka potrošnja CPU-a unutar gosta razlikuje se od visokog CPU Ready vremena na ESXi hostu. U prvom slučaju aplikacija aktivno koristi procesor; u drugom VM želi da radi, ali čeka fizički CPU.
+</p>
+
+<h3>Provera memorije unutar gosta</h3>
+
+<p>
+Na Linux sistemu:
+</p>
+
+<pre><code class="language-bash">free -h
+vmstat 1 10
+ps -eo pid,comm,%mem,rss --sort=-rss | head
+</code></pre>
+
+<p>
+Kod komande <code>vmstat</code> posebno se posmatraju:
+</p>
+
+<ul>
+  <li><code>si</code> – podaci učitani iz swap prostora</li>
+  <li><code>so</code> – podaci upisani u swap prostor</li>
+  <li><code>r</code> – procesi koji čekaju CPU</li>
+  <li><code>wa</code> – CPU vreme provedeno čekajući I/O</li>
+</ul>
+
+<p>
+Na Windows sistemu:
+</p>
+
+<pre><code class="language-powershell">Get-CimInstance Win32_OperatingSystem |
+Select-Object TotalVisibleMemorySize, FreePhysicalMemory
+</code></pre>
+
+<p>
+Najveći potrošači radne memorije:
+</p>
+
+<pre><code class="language-powershell">Get-Process |
+Sort-Object WorkingSet64 -Descending |
+Select-Object -First 10 Name, Id,
+    @{N='WorkingSetMB';E={[math]::Round($_.WorkingSet64 / 1MB, 2)}}
+</code></pre>
+
+<h3>Provera diskova unutar Linux gosta</h3>
+
+<p>
+Pregled zauzeća filesystem-a:
+</p>
+
+<pre><code class="language-bash">df -hT
+</code></pre>
+
+<p>
+Pregled inode zauzeća:
+</p>
+
+<pre><code class="language-bash">df -ih
+</code></pre>
+
+<p>
+Filesystem može imati slobodne gigabajte, ali ipak ne može kreirati nove fajlove ako su svi inode zapisi potrošeni.
+</p>
+
+<p>
+Pregled blok uređaja:
+</p>
+
+<pre><code class="language-bash">lsblk -f
+</code></pre>
+
+<p>
+Najveći direktorijumi:
+</p>
+
+<pre><code class="language-bash">du -xhd1 / 2&gt;/dev/null | sort -h
+</code></pre>
+
+<p>
+Greške diska i filesystem-a:
+</p>
+
+<pre><code class="language-bash">dmesg -T | grep -Ei "error|fail|I/O|filesystem|ext4|xfs"
+</code></pre>
+
+<p>
+Ako je instaliran <code>iostat</code>:
+</p>
+
+<pre><code class="language-bash">iostat -xz 1 10
+</code></pre>
+
+<p>
+Visok <code>await</code> i stalna iskorišćenost uređaja mogu ukazivati na storage problem ili veliko aplikaciono I/O opterećenje. Nalaz treba uporediti sa ESXi storage metrikama.
+</p>
+
+<h3>Provera diskova unutar Windows gosta</h3>
+
+<p>
+Pregled volumena:
+</p>
+
+<pre><code class="language-powershell">Get-Volume |
+Select-Object DriveLetter, FileSystemLabel,
+    Size, SizeRemaining, HealthStatus
+</code></pre>
+
+<p>
+Pregled fizičkih i virtuelnih diskova:
+</p>
+
+<pre><code class="language-powershell">Get-Disk |
+Select-Object Number, FriendlyName,
+    OperationalStatus, HealthStatus, Size
+</code></pre>
+
+<p>
+Provera filesystem-a bez automatske popravke:
+</p>
+
+<pre><code class="language-bash">chkdsk C: /scan
+</code></pre>
+
+<p>
+Popravka filesystem-a može zahtevati prekid rada i ne treba je pokretati bez procene uticaja i validnog backup-a.
+</p>
+
+<h3>Provera Linux servisa i logova</h3>
+
+<p>
+Neuspešni servisi:
+</p>
+
+<pre><code class="language-bash">systemctl --failed
+</code></pre>
+
+<p>
+Status konkretnog servisa:
+</p>
+
+<pre><code class="language-bash">systemctl status nginx
+</code></pre>
+
+<p>
+Log konkretnog servisa:
+</p>
+
+<pre><code class="language-bash">journalctl -u nginx --since "30 minutes ago"
+</code></pre>
+
+<p>
+Nove sistemske greške:
+</p>
+
+<pre><code class="language-bash">journalctl -p err --since "1 hour ago"
+</code></pre>
+
+<p>
+Kernel poruke:
+</p>
+
+<pre><code class="language-bash">journalctl -k --since "1 hour ago"
+</code></pre>
+
+<p>
+Ako je server dostupan, ali aplikacija nije, treba proveriti da li servis sluša na očekivanom portu:
+</p>
+
+<pre><code class="language-bash">ss -lntp
+</code></pre>
+
+<h3>Provera Windows servisa i događaja</h3>
+
+<p>
+Zaustavljeni servisi podešeni na automatsko pokretanje:
+</p>
+
+<pre><code class="language-powershell">Get-CimInstance Win32_Service |
+Where-Object {
+    $_.StartMode -eq 'Auto' -and
+    $_.State -ne 'Running'
+} |
+Select-Object Name, DisplayName, State, StartMode
+</code></pre>
+
+<p>
+Sistemske greške u poslednjih sat vremena:
+</p>
+
+<pre><code class="language-powershell">Get-WinEvent -FilterHashtable @{
+    LogName='System'
+    Level=2
+    StartTime=(Get-Date).AddHours(-1)
+} |
+Select-Object TimeCreated, Id, ProviderName, Message
+</code></pre>
+
+<p>
+Aplikacione greške:
+</p>
+
+<pre><code class="language-powershell">Get-WinEvent -FilterHashtable @{
+    LogName='Application'
+    Level=2
+    StartTime=(Get-Date).AddHours(-1)
+} |
+Select-Object TimeCreated, Id, ProviderName, Message
+</code></pre>
+
+<h3>Najvažniji log virtuelne mašine</h3>
+
+<p>
+Svaka VM poseduje <code>vmware.log</code> u svom direktorijumu na datastore-u. On beleži rad VMX procesa, promene virtuelnih uređaja, power operacije, diskove, snapshot-e i mnoge greške specifične za VM.
+</p>
+
+<p>
+Pronalaženje direktorijuma na osnovu VMID-a:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+</code></pre>
+
+<p>
+Ulazak u direktorijum:
+</p>
+
+<pre><code class="language-bash">cd /vmfs/volumes/Datastore01/WebServer01/
+</code></pre>
+
+<p>
+Pregled najnovijih redova:
+</p>
+
+<pre><code class="language-bash">tail -n 100 vmware.log
+</code></pre>
+
+<p>
+Praćenje loga u realnom vremenu:
+</p>
+
+<pre><code class="language-bash">tail -f vmware.log
+</code></pre>
+
+<p>
+Pretraga po vremenu ili ključnoj reči:
+</p>
+
+<pre><code class="language-bash">grep -i "error" vmware.log
+grep -i "snapshot" vmware.log
+grep -i "lock" vmware.log
+grep -i "scsi" vmware.log
+</code></pre>
+
+<p>
+Rotirani logovi imaju nazive kao što su:
+</p>
+
+<pre><code class="language-bash">vmware-1.log
+vmware-2.log
+vmware-3.log
+</code></pre>
+
+<p>
+Ako je problem nastao pre poslednjeg pokretanja VM-a, relevantna poruka može se nalaziti u rotiranom logu.
+</p>
+
+<h3>Najvažniji ESXi logovi</h3>
+
+<ul>
+  <li><strong>/var/log/vmkernel.log</strong> – VMkernel, storage, mreža, uređaji i drajveri</li>
+  <li><strong>/var/log/vmkwarning.log</strong> – izdvojena VMkernel upozorenja</li>
+  <li><strong>/var/log/hostd.log</strong> – Host Management servis i lokalne administratorske operacije</li>
+  <li><strong>/var/log/vpxa.log</strong> – komunikacija ESXi hosta sa vCenter Serverom</li>
+  <li><strong>/var/log/fdm.log</strong> – vSphere HA agent</li>
+  <li><strong>/var/log/vobd.log</strong> – sistemski događaji i VOB poruke</li>
+  <li><strong>/var/log/syslog.log</strong> – opšti sistemski zapisi</li>
+</ul>
+
+<p>
+Praćenje VMkernel loga:
+</p>
+
+<pre><code class="language-bash">tail -f /var/log/vmkernel.log
+</code></pre>
+
+<p>
+Izdvajanje storage grešaka:
+</p>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|NMP|SCSI|I/O|timeout" \
+/var/log/vmkernel.log | tail -n 100
+</code></pre>
+
+<p>
+Izdvajanje grešaka u upravljanju hostom:
+</p>
+
+<pre><code class="language-bash">grep -Ei "error|failed|exception" \
+/var/log/hostd.log | tail -n 100
+</code></pre>
+
+<p>
+Problemi sa vezom prema vCenter Serveru:
+</p>
+
+<pre><code class="language-bash">grep -Ei "error|failed|disconnect|connection" \
+/var/log/vpxa.log | tail -n 100
+</code></pre>
+
+<p>
+Komanda <code>less</code> je korisna za pregled većeg loga:
+</p>
+
+<pre><code class="language-bash">less /var/log/vmkernel.log
+</code></pre>
+
+<p>
+Unutar <code>less</code> alata koristi se <code>/tekst</code> za pretragu, <code>n</code> za sledeći rezultat i <code>q</code> za izlazak.
+</p>
+
+<h3>Provera stanja ESXi servisa</h3>
+
+<p>
+Pregled servisa:
+</p>
+
+<pre><code class="language-bash">esxcli system service list
+</code></pre>
+
+<p>
+Stanje management agenata može se proveriti i komandama:
+</p>
+
+<pre><code class="language-bash">/etc/init.d/hostd status
+/etc/init.d/vpxa status
+</code></pre>
+
+<p>
+Restart pojedinačnog management servisa:
+</p>
+
+<pre><code class="language-bash">/etc/init.d/hostd restart
+/etc/init.d/vpxa restart
+</code></pre>
+
+<p>
+Restart management agenata može privremeno prekinuti upravljačku vezu sa hostom. Aktivne virtuelne mašine obično nastavljaju rad, ali ovu intervenciju treba planirati pažljivo i ne koristiti kao prvu reakciju na svaki problem.
+</p>
+
+<h3>Provera vremena na hostu i gostu</h3>
+
+<p>
+Neusaglašeno vreme može uzrokovati probleme sa domenom, Kerberos autentikacijom, sertifikatima, log korelacijom i distribuiranim aplikacijama.
+</p>
+
+<p>
+ESXi vreme:
+</p>
+
+<pre><code class="language-bash">esxcli system time get
+</code></pre>
+
+<p>
+NTP konfiguracija:
+</p>
+
+<pre><code class="language-bash">esxcli system ntp get
+</code></pre>
+
+<p>
+Na Linux gostu:
+</p>
+
+<pre><code class="language-bash">timedatectl
+</code></pre>
+
+<p>
+Na Windows gostu:
+</p>
+
+<pre><code class="language-bash">w32tm /query /status
+w32tm /query /source
+</code></pre>
+
+<h3>PowerCLI osnovna dijagnostika</h3>
+
+<p>
+Povezivanje na vCenter Server:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+</code></pre>
+
+<p>
+Osnovni pregled VM-a:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Select-Object Name, PowerState, VMHost,
+    NumCpu, MemoryGB,
+    @{N='GuestIP';E={$_.Guest.IPAddress -join ', '}}
+</code></pre>
+
+<p>
+Detalji određene VM:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Format-List Name, PowerState, VMHost,
+    NumCpu, MemoryGB, Version, Notes
+</code></pre>
+
+<p>
+Pregled hostova:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost |
+Select-Object Name, ConnectionState, PowerState,
+    CpuUsageMhz, CpuTotalMhz,
+    MemoryUsageGB, MemoryTotalGB
+</code></pre>
+
+<p>
+Pregled datastore-a:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name, Type,
+    @{N='CapacityGB';E={[math]::Round($_.CapacityGB, 2)}},
+    @{N='FreeGB';E={[math]::Round($_.FreeSpaceGB, 2)}},
+    @{N='FreePercent';E={
+        [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+    }}
+</code></pre>
+
+<p>
+Datastore-i sa manje od 15 procenata slobodnog prostora:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Where-Object {
+    ($_.FreeSpaceGB / $_.CapacityGB) -lt 0.15
+} |
+Select-Object Name, CapacityGB, FreeSpaceGB
+</code></pre>
+
+<h3>PowerCLI pregled događaja i zadataka</h3>
+
+<p>
+Noviji događaji određene VM:
+</p>
+
+<pre><code class="language-powershell">Get-VIEvent -Entity (Get-VM "WebServer01") `
+    -Start (Get-Date).AddHours(-2) |
+Sort-Object CreatedTime -Descending |
+Select-Object CreatedTime, UserName, FullFormattedMessage
+</code></pre>
+
+<p>
+Neuspešni zadaci:
+</p>
+
+<pre><code class="language-powershell">Get-Task -Status Error |
+Select-Object Name, State, StartTime, FinishTime,
+    @{N='Error';E={$_.ExtensionData.Info.Error.LocalizedMessage}}
+</code></pre>
+
+<p>
+Aktivni zadaci:
+</p>
+
+<pre><code class="language-powershell">Get-Task -Status Running
+</code></pre>
+
+<p>
+Ako VM čeka odgovor na pitanje:
+</p>
+
+<pre><code class="language-powershell">Get-VMQuestion -VM "WebServer01"
+</code></pre>
+
+<p>
+Odgovor treba slati tek nakon razumevanja pitanja i ponuđenih opcija.
+</p>
+
+<h3>PowerCLI pregled performansi</h3>
+
+<p>
+Prosečna CPU potrošnja VM-a u poslednjih sat vremena:
+</p>
+
+<pre><code class="language-powershell">Get-Stat -Entity (Get-VM "WebServer01") `
+    -Stat "cpu.usage.average" `
+    -Start (Get-Date).AddHours(-1) |
+Measure-Object Value -Average -Maximum
+</code></pre>
+
+<p>
+CPU Ready u poslednjih sat vremena:
+</p>
+
+<pre><code class="language-powershell">Get-Stat -Entity (Get-VM "WebServer01") `
+    -Stat "cpu.ready.summation" `
+    -Start (Get-Date).AddHours(-1) |
+Select-Object Timestamp, Value
+</code></pre>
+
+<p>
+Aktivna memorija:
+</p>
+
+<pre><code class="language-powershell">Get-Stat -Entity (Get-VM "WebServer01") `
+    -Stat "mem.active.average" `
+    -Start (Get-Date).AddHours(-1) |
+Select-Object Timestamp, Value
+</code></pre>
+
+<p>
+Ballooning:
+</p>
+
+<pre><code class="language-powershell">Get-Stat -Entity (Get-VM "WebServer01") `
+    -Stat "mem.vmmemctl.average" `
+    -Start (Get-Date).AddHours(-1) |
+Select-Object Timestamp, Value
+</code></pre>
+
+<p>
+Host swap:
+</p>
+
+<pre><code class="language-powershell">Get-Stat -Entity (Get-VM "WebServer01") `
+    -Stat "mem.swapped.average" `
+    -Start (Get-Date).AddHours(-1) |
+Select-Object Timestamp, Value
+</code></pre>
+
+<p>
+Dostupnost i nazivi metrika mogu zavisiti od vSphere verzije, nivoa statistike i istorijskog intervala. Dostupne metrike za objekat mogu se proveriti komandom:
+</p>
+
+<pre><code class="language-powershell">Get-StatType -Entity (Get-VM "WebServer01")
+</code></pre>
+
+<h3>PowerCLI pregled logova</h3>
+
+<p>
+Dostupni tipovi logova na ESXi hostu:
+</p>
+
+<pre><code class="language-powershell">Get-LogType -VMHost "esxi01.lab.local"
+</code></pre>
+
+<p>
+Preuzimanje određenog loga:
+</p>
+
+<pre><code class="language-powershell">Get-Log -VMHost "esxi01.lab.local" -Key hostd
+</code></pre>
+
+<p>
+Kreiranje dijagnostičkog log bundle-a:
+</p>
+
+<pre><code class="language-powershell">Get-Log -VMHost "esxi01.lab.local" `
+    -Bundle `
+    -DestinationPath "C:\VMware-Support"
+</code></pre>
+
+<h3>Prikupljanje ESXi support bundle-a</h3>
+
+<p>
+Pre većih intervencija ili otvaranja zahteva prema podršci korisno je prikupiti support bundle:
+</p>
+
+<pre><code class="language-bash">vm-support
+</code></pre>
+
+<p>
+Komanda prikuplja konfiguraciju, sistemske logove i dijagnostičke podatke i kreira arhivu. Na ekranu će biti prikazana putanja generisanog fajla.
+</p>
+
+<p>
+Pošto prikupljanje može koristiti CPU, memoriju i prostor, treba proveriti stanje hosta i odabrati odgovarajući trenutak, posebno na veoma opterećenom sistemu.
+</p>
+
+<h3>Provera problema koji se javljaju samo na jednom hostu</h3>
+
+<p>
+Ako ista VM nakon migracije na drugi host radi normalno, treba uporediti:
+</p>
+
+<ul>
+  <li>CPU i memorijsko opterećenje hostova</li>
+  <li>verziju ESXi-a i nivo zakrpa</li>
+  <li>firmware i drajvere fizičkih adaptera</li>
+  <li>port grupe i VLAN konfiguraciju</li>
+  <li>storage putanje i multipathing</li>
+  <li>fizičke NIC brojače</li>
+  <li>aktivne alarme i hardware senzore</li>
+</ul>
+
+<p>
+Pregled storage uređaja:
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list
+</code></pre>
+
+<p>
+Pregled storage putanja:
+</p>
+
+<pre><code class="language-bash">esxcli storage core path list
+</code></pre>
+
+<p>
+Pregled multipathing stanja:
+</p>
+
+<pre><code class="language-bash">esxcli storage nmp device list
+</code></pre>
+
+<p>
+Broj mrtvih ili neaktivnih putanja i ponavljane timeout poruke u <code>vmkernel.log</code> mogu ukazivati na problem između hosta i storage sistema.
+</p>
+
+<h3>Kernel panic i Windows BSOD</h3>
+
+<p>
+Ako Linux gost prikazuje kernel panic ili Windows gost BSOD, sama VMware platforma ne mora biti uzrok. Treba zabeležiti:
+</p>
+
+<ul>
+  <li>tačan tekst poruke</li>
+  <li>stop code ili kernel panic poruku</li>
+  <li>vreme događaja</li>
+  <li>poslednje izmene kernela, drajvera ili aplikacija</li>
+  <li>da li se problem ponavlja nakon restartovanja</li>
+</ul>
+
+<p>
+Kod Linux sistema prethodni boot log može se pregledati komandom:
+</p>
+
+<pre><code class="language-bash">journalctl -b -1
+</code></pre>
+
+<p>
+Kod Windows sistema treba pregledati:
+</p>
+
+<pre><code class="language-none">C:\Windows\Minidump\
+</code></pre>
+
+<p>
+Pre ponovnog restartovanja korisno je sačuvati snimak konzole i relevantne logove. Snapshot se ne koristi kao zamena za backup niti kao automatsko rešenje za svaki pad sistema.
+</p>
+
+<h3>Šta ne treba raditi tokom dijagnostike</h3>
+
+<ul>
+  <li>ne restartovati VM pre pregleda logova ako situacija nije hitna</li>
+  <li>ne povećavati nasumično broj vCPU ili RAM memoriju</li>
+  <li>ne brisati VMDK, delta, sesparse ili lock fajlove ručno</li>
+  <li>ne konsolidovati velike snapshot-e bez provere slobodnog prostora</li>
+  <li>ne restartovati sve management agente bez utvrđenog razloga</li>
+  <li>ne koristiti prisilno gašenje kao prvu meru</li>
+  <li>ne menjati istovremeno više parametara</li>
+  <li>ne zaključivati da je problem rešen samo zato što je nestao posle restartovanja</li>
+</ul>
+
+<h3>Praktikum – kontrolisana trijaža VM-a</h3>
+
+<p>
+<strong>Cilj i kontekst.</strong> Administrator preuzima prijavu da laboratorijska VM <code>WebServer01</code> nije dostupna i mora da utvrdi pogođeni sloj bez nasumičnog restartovanja. Topologiju čine vCenter Server <code>vcsa.lab.local</code>, ESXi host <code>esxi01.lab.local</code>, datastore <code>Datastore01</code>, port grupa <code>LAB-SERVER</code> i Linux gost. Za Windows gost koriste se ekvivalentne provere već prikazane u lekciji.
+</p>
+
+<p>
+<strong>Preduslovi i rizik.</strong> Potrebni su vSphere Client, PowerCLI radna stanica, read-only nalog za početnu trijažu, konzolni pristup gostu i, samo za deo sa hostom, odobren privremeni ESXi Shell/SSH pristup. VM mora biti laboratorijska ili mora postojati odobren prozor promene, poznat vlasnik aplikacije i potvrđen backup. Vežba se prvo izvodi samo read-only. Simulacija punog datastore-a, prekid fizičkog uplink-a, brisanje fajlova i <code>force</code> prekid VM procesa nisu dozvoljeni načini demonstracije.
+</p>
+
+<h3>Vežba 1 – bazna linija i paket prvih dokaza</h3>
+
+<ol>
+  <li>Zabeleži incident ID, UTC i lokalno vreme, prijavljeni simptom, poslovni uticaj, početak problema i poslednju poznatu dobru tačku.</li>
+  <li>U vSphere Client-u otvori <strong>Summary</strong>, <strong>Tasks and Events</strong>, <strong>Issues and Alarms</strong> i <strong>Performance</strong>. Sačuvaj celu poruku greške i vremenski opseg najmanje 15 minuta pre i posle simptoma.</li>
+  <li>Proveri host, datastore, mrežu, power stanje, VMware Tools, snapshot-e i pending question. Ne odgovaraj na pitanje dok ne razumeš posledicu ponuđenog odgovora.</li>
+  <li>Sa PowerCLI stanice prikupi inventar, neuspele zadatke, događaje i dostupne tipove metrika koristeći read-only komande iz prethodnih odeljaka. Obeleži svaki dokaz vremenom i izvorom.</li>
+  <li>Ako je host pristup opravdan, potvrdi VMID, putanju do <code>.vmx</code> fajla i power stanje. Pregledaj, ali ne menjaj, <code>vmware.log</code>.</li>
+</ol>
+
+<p>
+<strong>Očekivani rezultat i validacija.</strong> Paket dokaza mora omogućiti da se simptom svrsta najmanje u jedan domen: VM power/configuration, guest OS/aplikacija, host resursi, mreža ili storage. Vežba je završena tek kada drugi administrator iz zapisa može da pronađe isti objekat, vremenski prozor i izvor svakog nalaza.
+</p>
+
+<h3>Vežba 2 – bezbedna simulacija mrežnog incidenta</h3>
+
+<p>
+U laboratoriji zaustavi samo aplikacioni servis unutar gosta, na primer testni web servis, umesto da odvajaš vNIC ili menjaš VLAN. Ovo stvara realističan simptom „server ne radi”, ali čuva upravljačku povezanost i VMware infrastrukturu. Promena se izvršava uz lokalni ili konzolni administratorski pristup gostu:
+</p>
+
+<pre><code class="language-bash">sudo systemctl stop nginx</code></pre>
+
+<ol>
+  <li>Sa klijenta testiraj IP povezivost, DNS i TCP port; zatim proveri Remote Console i VMware Tools.</li>
+  <li>Na gostu proveri adresu, rutu, socket i status servisa. Dokaži da su vNIC, port grupa i IP putanja funkcionalni, a da aplikacioni port ne sluša.</li>
+  <li>U logu servisa utvrdi vreme zaustavljanja. Razdvoji neposredni uzrok (servis je zaustavljen) od razloga zbog kojeg je zaustavljen; u ovoj vežbi razlog je odobrena laboratorijska promena.</li>
+  <li>Vrati servis i potvrdi proces, listening socket, lokalni zahtev i udaljeni zahtev.</li>
+</ol>
+
+<pre><code class="language-bash">sudo systemctl start nginx
+systemctl is-active nginx
+ss -lntp | grep ':80'
+curl -I http://127.0.0.1/</code></pre>
+
+<p>
+<strong>Rollback i kriterijum završetka.</strong> Rollback je ponovno pokretanje servisa, ne restart VM-a. Vežba je završena kada je servis <code>active</code>, port sluša, klijentski test uspeva i zapis pokazuje zašto infrastrukturna mreža nije bila osnovni uzrok.
+</p>
+
+<h3>Vežba 3 – VM se ne uključuje: dijagnostičko stablo</h3>
+
+<ol>
+  <li>Pročitaj kompletnu grešku u Recent Tasks i proveri pending question, power stanje i neuspele zadatke.</li>
+  <li>Potvrdi dostupnost datastore-a i slobodan prostor. Ne pokušavaj „čišćenje” brisanjem nepoznatih fajlova.</li>
+  <li>Pregledaj <code>vmware.log</code> u trenutku neuspeha. Ako poruka ukazuje na lock, identifikuj vlasnika lock-a pomoću <code>vmfsfilelockinfo</code>; ne briši <code>.lck</code>, VMDK, delta ili sesparse fajlove.</li>
+  <li>Ako poruka ukazuje na disk ili snapshot lanac, zaustavi vežbu na prikupljenim dokazima i primeni proceduru za snapshot/storage uz backup i slobodan kapacitet. Ne improvizuj ručnu izmenu descriptor fajla.</li>
+  <li>Ako je uzrok bezopasan laboratorijski ISO sa nedostupnog datastore-a, odspoji ISO kroz <strong>Edit Settings</strong> samo uz zabeleženu promenu, zatim pokušaj Power On.</li>
+</ol>
+
+<p>
+<strong>Očekivani rezultat.</strong> VM se pokreće samo nakon potvrđene korekcije. Validacija obuhvata stabilno power stanje, konzolu, VMware Tools, gostujući servis, odsustvo nove greške i proveru da korekcija nije narušila disk, mrežu ili boot redosled. Rollback za izmenu ISO uređaja jeste vraćanje prethodne, provereno dostupne putanje; ako uzrok nije potvrđen, nema state-changing koraka.
+</p>
+
+<h3>Vežba 4 – spora ili prividno zamrznuta VM</h3>
+
+<ol>
+  <li>Utvrdi da li je spora aplikacija, ceo gost, sve VM na hostu ili workload-i na istom datastore-u.</li>
+  <li>Uporedi guest CPU, memoriju i I/O sa vSphere metrikama i <code>esxtop</code> pokazateljima. Jedan uzorak nije bazna linija; posmatraj reprezentativan period.</li>
+  <li>Koreliraj CPU Ready i Co-Stop, ballooning/swap, DAVG/KAVG/GAVG i mrežne drop brojače sa vremenom simptoma. Ne povećavaj vCPU ili RAM dok dokaz ne pokaže manjak odgovarajućeg resursa.</li>
+  <li>Proveri snapshot starost, datastore kapacitet, logove gosta, <code>vmware.log</code> i <code>vmkernel.log</code>. Ako samo jedna aplikacija pati, uključi njenog vlasnika pre promene platforme.</li>
+  <li>Ako je VM potpuno neodgovorna, sačuvaj konzolni prikaz i logove, pokušaj uredan guest shutdown/restart, zatim proceni reset ili power off. <code>esxcli vm process kill</code koristi se samo uz odobrenje, redom <code>soft</code>, <code>hard</code>, <code>force</code>, sa proverom posle svakog pokušaja.</li>
+</ol>
+
+<p>
+<strong>Recovery i rollback.</strong> Posle prinudnog prekida proveravaju se filesystem, baze, aplikacione transakcije i konzistentnost servisa. Ako ni <code>force</code> ne ukloni proces, ne ponavljaj komandu nasumično: eskaliraj, evakuiši ostale workload-e kada arhitektura to dozvoljava i planiraj restart hosta prema odobrenoj proceduri. Kriterijum završetka nije samo „VM radi”, već normalizovane metrike, uspešan poslovni test i sačuvan nalaz za RCA.
+</p>
+
+<h3>Incident response zapis i matrica eskalacije</h3>
+
+<table>
+  <thead><tr><th>Nalaz</th><th>Bezbedna prva mera</th><th>Eskalacija</th></tr></thead>
+  <tbody>
+    <tr><td>Jedan guest servis ne radi; platforma je zdrava</td><td>Logovi i kontrolisani restart servisa</td><td>Vlasnik aplikacije/OS tim</td></tr>
+    <tr><td>Više VM na istom datastore-u ima I/O problem</td><td>Sačuvati metrike i storage događaje; ograničiti promene</td><td>Storage i VMware tim</td></tr>
+    <tr><td>Stale lock ili neuklonjiv VM proces</td><td>Identifikovati vlasnika i prikupiti support bundle</td><td>VMware tim i Broadcom Support</td></tr>
+    <tr><td>Više VM na hostu ima CPU/memory pritisak</td><td>Potvrditi contention i HA/DRS stanje</td><td>Kapacitet/klaster tim</td></tr>
+    <tr><td>Sumnja na gubitak ili korupciju podataka</td><td>Zaustaviti improvizovane popravke i zaštititi dokaze</td><td>Incident commander, backup/storage i vendor support</td></tr>
+  </tbody>
+</table>
+
+<h3>Dokumentovanje incidenta</h3>
+
+<p>
+Kvalitetan zapis o incidentu treba da sadrži:
+</p>
+
+<ul>
+  <li>datum i vreme početka problema</li>
+  <li>prijavljeni simptom i poslovni uticaj</li>
+  <li>pogođenu VM, host, datastore i mrežu</li>
+  <li>prikupljene poruke o grešci i relevantne logove</li>
+  <li>izmerene CPU, memorijske, disk i mrežne pokazatelje</li>
+  <li>poslednju promenu pre incidenta</li>
+  <li>primenjene korake i njihov rezultat</li>
+  <li>utvrđeni osnovni uzrok</li>
+  <li>korektivne i preventivne mere</li>
+</ul>
+
+<p>
+Dokumentovanje omogućava da se isti problem sledeći put reši brže i pomaže u razlikovanju pojedinačnog incidenta od ponavljajućeg infrastrukturnog problema.
+</p>
+
+<h3>Dobre administratorske prakse</h3>
+
+<ul>
+  <li>uvek zabeležiti tačno vreme i kompletnu poruku o grešci</li>
+  <li>prvo prikupljati podatke, a zatim menjati konfiguraciju</li>
+  <li>proveravati stanje i na nivou hipervizora i unutar gosta</li>
+  <li>koristiti <code>esxtop</code> za trenutnu analizu performansi</li>
+  <li>koristiti PowerCLI za pregled većeg broja VM-ova i istorijskih metrika</li>
+  <li>redovno pratiti kapacitet datastore-a i starost snapshot-a</li>
+  <li>održavati VMware Tools i gostujući operativni sistem</li>
+  <li>koristiti alarme za prostor, memoriju, CPU i dostupnost hostova</li>
+  <li>čuvati logove na centralnom syslog sistemu kada je to moguće</li>
+  <li>pre rizičnih intervencija obezbediti validan backup</li>
+  <li>snapshot koristiti samo kao privremenu tačku povratka, ne kao backup</li>
+  <li>nakon oporavka sprovesti analizu osnovnog uzroka</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je uspešno savladana kada administrator može da: zabeleži simptom, obim, posledicu i tačan vremenski prozor; prikupi read-only dokaze iz vSphere Client-a, PowerCLI-ja, ESXi-ja i gosta; razlikuje VMID od World ID-a; pronađe relevantan <code>vmware.log</code> i koreliše ga sa <code>hostd.log</code>, <code>vpxa.log</code> ili <code>vmkernel.log</code>; protumači osnovne CPU, memorijske, storage i mrežne pokazatelje bez zaključivanja iz jednog uzorka; prepozna kada je restart samo workaround; sprovede odobrenu korekciju sa validacijom i rollback-om; i sastavi incident zapis iz kojeg drugi administrator može da ponovi zaključivanje.
+</p>
+
+<h3>Zaključak</h3>
+
+<p>
+Osnovni troubleshooting virtuelne mašine zahteva disciplinovan rad kroz sve slojeve VMware okruženja. Administrator prvo potvrđuje stanje VM-a i ESXi hosta, zatim proverava zadatke, događaje, datastore, virtuelne diskove, mrežu i raspoložive resurse, a nakon toga prelazi na operativni sistem i aplikacije unutar gosta. Alati kao što su vSphere Client, <code>vim-cmd</code>, <code>esxcli</code>, <code>esxtop</code>, <code>vmkfstools</code>, PowerCLI i sistemske komande gosta omogućavaju da se simptom poveže sa stvarnim uzrokom.
+</p>
+
+<p>
+Najbolji rezultat ne predstavlja samo ponovno pokretanje VM-a, već jasno utvrđen razlog problema i mera koja sprečava njegovo ponavljanje. Takav pristup skraćuje vreme zastoja, štiti podatke i omogućava pouzdan operativni rad VMware infrastrukture.
+</p>
+
+    <footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere 8.0 Monitoring and Performance i ESXi administrativna dokumentacija; zvanični VMware Knowledge Base članci za neodazivne VM-ove, power-on greške, file lock i support bundle; ESXCLI, ESXi Shell i VMware PowerCLI reference; dokumentacija Linux systemd/journal i Microsoft Windows dijagnostičkih alata
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-19-migracija-vm.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-21-virtual-switch.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

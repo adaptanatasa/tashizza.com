@@ -1,0 +1,884 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-41-logovi-dogadjaji-audit.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Monitoring i logovi – osnovno praćenje rada aplikacija u klasteru | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako se u Kubernetes-u prate stanje aplikacija, događaji i logovi pomoću kubectl alata, kao i osnove monitoringa i dijagnostike rada klastera.">
+
+  <meta name="keywords"
+        content="Kubernetes monitoring, Kubernetes logovi, kubectl logs, kubectl top, monitoring Pod-ova, events, observability, troubleshooting, metrics-server, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-41-logovi-dogadjaji-audit.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Monitoring i logovi – osnovno praćenje rada aplikacija u klasteru">
+
+  <meta property="og:description"
+        content="Upoznajte osnovne alate i postupke za praćenje rada Kubernetes aplikacija, prikupljanje logova, događaja i metrika radi lakše administracije i dijagnostike problema.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-41-logovi-dogadjaji-audit.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-37-monitoring-i-logovi.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Monitoring i logovi – osnovno praćenje rada aplikacija u klasteru">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-37-monitoring-i-logovi.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-37-monitoring-i-logovi.png"
+           alt="Monitoring i logovi – osnovno praćenje rada aplikacija u klasteru">
+
+    </a>
+
+  <div class="page-subtitle">
+  IX. Dostupnost, skaliranje i observability
+</div>
+<div class="page-subtitle">
+  41. Logovi, događaji i korelacija – aplikacija, čvor, kontrolna ravan i audit trag
+</div>
+
+<p>
+  Kada korisnik prijavi da je aplikacija „pala”, stanje <code>Running</code>, jedan crveni alarm ili poslednjih deset redova jednog loga nisu dovoljni za pouzdan zaključak. Incident se u Kubernetes-u prostire kroz više slojeva: zahtev ulazi kroz mrežni put, dolazi do Service endpoint-a i poda, aplikacioni proces poziva zavisnosti, kubelet i container runtime održavaju kontejner, kontroleri usklađuju željeno i stvarno stanje, a <code>kube-apiserver</code> obrađuje administrativne i automatizovane promene. Svaki sloj proizvodi drugačiji dokaz i odgovara na drugačije pitanje.
+</p>
+<p>
+  Ova lekcija se nadovezuje na monitoring, metrike i alarme iz prethodne lekcije. Metrika i alarm najčešće pokazuju <em>da</em> postoji odstupanje i koliko ono traje; log objašnjava šta je komponenta zabeležila; Kubernetes Event pokazuje šta je kontroler, scheduler ili kubelet pokušao da uradi nad objektom; audit zapis pokazuje ko je, kada i kojim API zahtevom čitao ili menjao stanje. Korelacija tih izvora pretvara skup poruka u proverljivu vremensku osu incidenta.
+</p>
+<p>
+  Cilj nije da administrator „traži grešku” nasumičnim pretraživanjem, već da sačuva dokaze, ograniči vremenski prozor i obim, postavi hipotezu, pronađe zajedničke identifikatore, potvrdi neposredni i osnovni uzrok, primeni najmanje rizičnu korekciju i dokaže oporavak. Posebno je važno razlikovati dijagnostičke logove od bezbednosnog audit traga: oni se dopunjuju, ali jedan ne može pouzdano da zameni drugi.
+</p>
+
+<h3>Četiri ravni dokaza i pitanja na koja odgovaraju</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Izvor</th>
+      <th>Šta beleži</th>
+      <th>Tipično pitanje</th>
+      <th>Važno ograničenje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Aplikacioni i kontejnerski log</td>
+      <td>Poruke procesa sa <code>stdout</code>/<code>stderr</code>, uključujući status zahteva, grešku, zavisnost i identifikator korelacije.</td>
+      <td>Šta je aplikacija uradila sa konkretnim zahtevom i zašto nije uspela?</td>
+      <td>Ne dokazuje ko je promenio Kubernetes objekat; lokalna kopija nestaje sa životnim ciklusom čvora ili poda.</td>
+    </tr>
+    <tr>
+      <td>Kubernetes Event</td>
+      <td>Zapažanje komponente o objektu: scheduling, image pull, mount, probe, eviction ili druga promena stanja.</td>
+      <td>Zašto pod nije raspoređen, pokrenut ili spreman?</td>
+      <td>Retencija je ograničena, ponavljanja se agregiraju, Event nije garantovano trajan ni potpun audit zapis.</td>
+    </tr>
+    <tr>
+      <td>Log čvora i kontrolne ravni</td>
+      <td>Rad kubelet-a, runtime-a, kernela, CNI/CSI komponente, API servera, scheduler-a, controller manager-a i etcd-a.</td>
+      <td>Da li je kvar lokalizovan na pod, čvor, runtime, mrežu, storage ili samu kontrolnu ravan?</td>
+      <td>Lokacija i pristup zavise od distribucije; upravljani servis često ne izlaže host ni kontrolnu ravan korisniku.</td>
+    </tr>
+    <tr>
+      <td>Kubernetes audit zapis</td>
+      <td>Hronološki zapis API zahteva kroz faze obrade, sa identitetom, glagolom, resursom, URI-jem, odgovorom i drugim metapodacima prema audit policy-ju.</td>
+      <td>Ko je poslao zahtev, šta je pokušao ili promenio, kada, odakle i sa kojim rezultatom?</td>
+      <td>Postoji samo ako je audit konfigurisan; sadržaj zavisi od nivoa politike, a backend i retencija su odgovornost operatora.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Događaj <code>BackOff</code> može objasniti da kubelet odlaže novo pokretanje kontejnera, aplikacioni log prethodne instance može pokazati nevažeću konfiguraciju, audit zapis može povezati problem sa promenom ConfigMap-a, a metrika može odrediti trenutak kada je stopa grešaka porasla. Tek zajedno ti dokazi grade uzročni lanac. Korelacija ne znači da zapisi imaju isti format ili isti sat; znači da administrator normalizuje vreme, identitete i kontekst dovoljno precizno da podrže isti zaključak.
+</p>
+
+<h3>Vreme, identiteti i kontekst – osnova pouzdane korelacije</h3>
+<p>
+  Prvi tehnički preduslov jeste sinhronizovano vreme. Čvorovi, kontrolna ravan, aplikacije i centralni sistemi treba da koriste pouzdan NTP izvor. Pretraga se vodi u jednom dogovorenom vremenskom standardu, po mogućstvu UTC, dok se lokalna vremenska zona prikazuje samo korisniku. Razlika od nekoliko minuta može pogrešno povezati rollout i grešku ili sakriti činjenicu da je zahtev otkazao pre nego što je konfiguracija promenjena.
+</p>
+<p>
+  Drugi preduslov su stabilni identifikatori. Naziv poda nije dovoljan jer rollout stvara nove podove. Za korelaciju se čuvaju najmanje namespace, naziv workload-a, Pod UID, naziv i ID kontejnera, čvor, image digest, revizija Deployment-a, identitet API korisnika ili ServiceAccount-a i, kada aplikacija podržava, <code>request_id</code>, <code>trace_id</code> ili poslovni identifikator koji nije osetljiv podatak. Pod UID razlikuje dve instance koje mogu imati slična imena, dok image digest dokazuje stvarno izvršeni artefakt bolje od promenljive oznake image-a.
+</p>
+<pre><code class="language-bash">INCIDENT_START='2026-07-18T09:12:00Z'
+INCIDENT_END='2026-07-18T09:27:00Z'
+NAMESPACE='prod-app'
+POD='web-api-7c9f6c8d7b-x4k2m'
+
+kubectl get pod "$POD" -n "$NAMESPACE" \
+  -o jsonpath='{.metadata.uid}{"\n"}{.spec.nodeName}{"\n"}{range .status.containerStatuses[*]}{.name}{" imageID="}{.imageID}{" containerID="}{.containerID}{"\n"}{end}'</code></pre>
+<p>
+  Komande u ovom prvom koraku samo čitaju stanje. Vremenski prozor treba proširiti nekoliko minuta pre alarma i nakon oporavka, jer uzrok obično prethodi simptomu. Administrator beleži aktivni kontekst i sopstveni identitet kako prikupljanje dokaza ne bi bilo izvedeno nad pogrešnim klasterom ili nalogom:
+</p>
+<pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl version
+date --utc --iso-8601=seconds</code></pre>
+
+<h3>Kubernetes objekti i Events: operativno zapažanje, ne audit istorija</h3>
+<p>
+  <code>kubectl get</code> i <code>kubectl describe</code> daju sadašnje stanje objekta, uslove, razloge čekanja ili prekida i povezane događaje. Kod poda se proveravaju <code>PodScheduled</code>, <code>Initialized</code>, <code>ContainersReady</code> i <code>Ready</code>, broj restartovanja, <code>state</code> i <code>lastState</code> svakog kontejnera, čvor i vreme kreiranja. Kod Deployment-a se porede željene, ažurirane, spremne i dostupne replike, uslovi i aktivna revizija.
+</p>
+<pre><code class="language-bash">kubectl get deployment,replicaset,pod,service,endpointslice \
+  -n prod-app -o wide
+kubectl describe deployment web-api -n prod-app
+kubectl describe pod web-api-7c9f6c8d7b-x4k2m -n prod-app</code></pre>
+<p>
+  Kubernetes Event je namespaced API objekat, osim događaja vezanih za cluster-scoped objekte. Produkuju ga komponente koje posmatraju resurs. Polja <code>type</code>, <code>reason</code>, <code>note</code> ili poruka, <code>regarding</code>/<code>involvedObject</code>, <code>reportingController</code>, vreme i broj ponavljanja treba tumačiti zajedno. <code>Warning</code> ne mora automatski značiti prekid usluge, a <code>Normal</code> može biti važan za vremensku osu, na primer <code>Scheduled</code>, <code>Pulled</code>, <code>Created</code> i <code>Started</code>.
+</p>
+<pre><code class="language-bash">kubectl events -n prod-app --for pod/web-api-7c9f6c8d7b-x4k2m
+kubectl events -n prod-app --types=Warning
+kubectl get events -n prod-app \
+  --sort-by=.metadata.creationTimestamp
+kubectl get events -A \
+  --field-selector=reason=FailedScheduling \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+<p>
+  <code>kubectl events</code> je noviji, čitljiv interfejs koji podržava filtriranje po objektu i tipu; <code>kubectl get events</code> ostaje važan kada je potreban strukturisan izlaz, JSONPath ili kompatibilnost sa starijim klijentom. Dostupne opcije uvek se proveravaju komandom <code>kubectl events --help</code> za konkretnu verziju klijenta. Sortiranje po <code>.metadata.creationTimestamp</code> nije savršena hronologija ponovljenih događaja: agregirani Event može imati starije vreme nastanka i novije poslednje pojavljivanje. Za precizniju analizu čuva se YAML ili JSON objekta, a ne samo tabelarni prikaz.
+</p>
+<pre><code class="language-bash">kubectl get events -n prod-app -o yaml \
+  &gt; incident-events-prod-app.yaml
+kubectl get pod web-api-7c9f6c8d7b-x4k2m -n prod-app -o yaml \
+  &gt; incident-pod.yaml</code></pre>
+<p>
+  Preusmeravanje u fajl ne menja klaster, ali lokalni fajl može sadržati IP adrese, identitete, nazive interne infrastrukture i poruke aplikacije. Čuva se u kontrolisanom incidentnom direktorijumu sa ograničenim pravima, poznatim rokom retencije i hash vrednošću ako se zahteva dokaz integriteta. Events se ne koriste kao zamena za audit: oni obično opisuju posledicu nad objektom, a ne pouzdano identitet i kompletan API zahtev koji je izazvao promenu.
+</p>
+
+<h3>Aplikacioni i kontejnerski logovi</h3>
+<p>
+  Preporučeni obrazac za kontejnersku aplikaciju jeste da operativne logove piše na standardni izlaz i standardni izlaz za greške. Container runtime ih čuva u CRI formatu na čvoru, kubelet upravlja rotacijom, a API server i kubelet omogućavaju pristup komandom <code>kubectl logs</code>. Kubernetes ne obezbeđuje ugrađenu trajnu centralnu arhivu; za pretragu posle rescheduling-a, brisanja poda ili gubitka čvora potreban je cluster-level logging pipeline.
+</p>
+<p>
+  Dobar aplikacioni zapis sadrži vremensku oznaku sa vremenskom zonom, nivo, servis i verziju, okruženje, request ili trace ID, vrstu operacije, rezultat, trajanje i klasifikovanu grešku. Strukturisani JSON olakšava indeksiranje, ali samo ako su tipovi i nazivi polja dosledni. Višelinijski stack trace mora biti obrađen pravilima agenta kako ne bi postao stotine nepovezanih zapisa. Lozinke, bearer tokeni, privatni ključevi, session kolačići, kompletna tela zahteva i osetljivi lični podaci ne smeju postati dijagnostički materijal.
+</p>
+<pre><code class="language-json">{
+  "timestamp": "2026-07-18T09:16:42.381Z",
+  "level": "ERROR",
+  "service": "web-api",
+  "version": "2.4.1",
+  "request_id": "req-7f3a9c",
+  "operation": "GET /orders/{id}",
+  "duration_ms": 2031,
+  "error_type": "dependency_timeout",
+  "dependency": "orders-db",
+  "message": "upstream request exceeded deadline"
+}</code></pre>
+<p>
+  Primer namerno ne sadrži korisnički token, puni URL sa parametrima niti sadržaj narudžbine. Redakcija i maskiranje treba da se izvrše što bliže izvoru, pre slanja u centralni backend; naknadno brisanje iz indeksiranih kopija, replika i backup-a može biti teško ili nemoguće.
+</p>
+
+<h3>Precizna upotreba komande kubectl logs</h3>
+<p>
+  <code>kubectl logs</code> je read-only prema workload-u, ali rezultat može sadržati poverljive podatke i poziv se može pojaviti u audit tragu. Kod više kontejnera naziv se navodi eksplicitno. Vremenski i količinski filter smanjuju opterećenje API servera i količinu izloženih podataka. Opcija <code>--timestamps</code> je važna za korelaciju, a <code>--prefix</code> razlikuje pod i kontejner kada se čita više izvora.
+</p>
+<pre><code class="language-bash">kubectl logs -n prod-app pod/web-api-7c9f6c8d7b-x4k2m \
+  -c web --since-time='2026-07-18T09:12:00Z' \
+  --timestamps --tail=500
+
+kubectl logs -n prod-app deployment/web-api \
+  --all-pods=true --all-containers=true \
+  --since=15m --timestamps --prefix \
+  --max-log-requests=5</code></pre>
+<p>
+  Podrška za selektor resursa i pojedine opcije zavisi od verzije <code>kubectl</code>; referenca klijenta mora odgovarati klasteru i instaliranom alatu. Kod velikog broja replika paralelni zahtev može opteretiti API i kubelet-e, pa se broj istovremenih zahteva ograničava. <code>-f</code> prati novi izlaz, ali nije arhiva i ne treba ga ostavljati bez vremenskog ograničenja tokom incidenta.
+</p>
+<p>
+  Kod <code>CrashLoopBackOff</code> najvredniji je često log završene instance:
+</p>
+<pre><code class="language-bash">kubectl get pod web-api-7c9f6c8d7b-x4k2m -n prod-app \
+  -o jsonpath='{range .status.containerStatuses[*]}{.name}{" current="}{.state}{" previous="}{.lastState}{" restarts="}{.restartCount}{"\n"}{end}'
+
+kubectl logs -n prod-app web-api-7c9f6c8d7b-x4k2m \
+  -c web --previous --timestamps --tail=500</code></pre>
+<p>
+  Kubelet uobičajeno čuva log samo jedne prethodne, završene instance kontejnera. <code>--previous</code> ne može vratiti log starog poda koji je Deployment zamenio niti proizvoljnu stariju instancu iz niza restartovanja. Ako je pod obrisan, čvor izgubljen ili lokalni log rotiran, pouzdano preostaje samo centralni backend koji je zapis ranije preuzeo. Zato incidentna procedura nalaže prikupljanje loga pre brisanja ili ponovnog kreiranja poda, osim kada hitno ograničavanje bezbednosnog ili dostupnosnog rizika ima prednost.
+</p>
+<p>
+  Aplikacija koja piše u fajl unutar kontejnera zaobilazi standardni tok ako agent taj fajl izričito ne prikuplja. Sidecar za transformaciju ili prosleđivanje može biti opravdan, ali povećava potrošnju resursa i broj tačaka otkaza. Direktno slanje iz svake aplikacije u udaljeni backend vezuje aplikaciju za mrežu i dobavljača log sistema; node-level agent je uobičajeniji produkcioni obrazac jer odvaja aplikaciju od transporta i dodaje Kubernetes metapodatke.
+</p>
+
+<h3>Čvor: kubelet, container runtime, kernel, CNI i CSI</h3>
+<p>
+  Na Linux čvoru kubelet i runtime pod systemd-om tipično pišu u journald. Kontejnerski logovi se prema CRI konvenciji nalaze ispod <code>/var/log/pods</code>, a <code>/var/log/containers</code> obično sadrži simboličke veze. Tačna lokacija i servisna jedinica zavise od operativnog sistema, runtime-a i distribucije. Direktan host pristup koristi se tek kada namespace-level dokazi ukažu na problem čvora ili kada API nije dostupan.
+</p>
+<pre><code class="language-bash">sudo journalctl -u kubelet \
+  --since '2026-07-18 09:12:00 UTC' \
+  --until '2026-07-18 09:27:00 UTC' \
+  --output=short-iso-precise
+
+sudo journalctl -u containerd \
+  --since '2026-07-18 09:12:00 UTC' \
+  --until '2026-07-18 09:27:00 UTC' \
+  --output=short-iso-precise
+
+sudo journalctl -k \
+  --since '2026-07-18 09:12:00 UTC' \
+  --until '2026-07-18 09:27:00 UTC'</code></pre>
+<p>
+  Ove komande samo čitaju dnevnik, ali zahtevaju host privilegije. U kubelet logu se traže Pod UID, container ID, probe greške, volume mount, image i runtime RPC problemi; u runtime logu sandbox, image unpack i shim greške; u kernel logu OOM, filesystem, mrežni interfejs i hardverski događaji. Ista poruka ponovljena na više podova istog čvora sugeriše node-level obim; ista aplikaciona greška na više čvorova pre upućuje na zajedničku konfiguraciju ili zavisnost.
+</p>
+<p>
+  <code>crictl</code> je administratorski CLI za CRI runtime i koristi se na čvoru kada kubelet/API pogled nije dovoljan. Endpoint treba unapred bezbedno konfigurisati u <code>/etc/crictl.yaml</code>; automatsko isprobavanje poznatih endpoint-a je sporije i može dati nejasne rezultate.
+</p>
+<pre><code class="language-bash">sudo crictl ps -a --name web-api
+sudo crictl pods --name web-api
+sudo crictl inspect &lt;CONTAINER_ID&gt;
+sudo crictl logs --timestamps &lt;CONTAINER_ID&gt;</code></pre>
+<p>
+  Komande su read-only, ali <code>inspect</code> može prikazati konfiguracione vrednosti i mount informacije. Komande <code>crictl stop</code>, <code>rm</code>, <code>stopp</code> i <code>rmp</code> menjaju runtime stanje, zaobilaze uobičajeni Kubernetes tok i nisu dijagnostički korak za produkciju bez izričite procedure. Kubelet može odmah ponovo kreirati uklonjeno stanje, čime se dokaz gubi bez trajne korekcije uzroka.
+</p>
+<p>
+  Ako SSH nije dostupan, ovlašćeni cluster administrator može koristiti <code>kubectl debug node/&lt;NODE&gt;</code>. Debug pod dobija pristup host filesystem-u pod <code>/host</code>, što je veoma privilegovan pristup i mora biti ograničen RBAC-om, auditovan i uklonjen posle rada.
+</p>
+<pre><code class="language-bash">kubectl debug node/worker-02 -it \
+  --image=ubuntu:24.04 \
+  --profile=sysadmin
+
+# U debug kontejneru, host fajlovi su tipično ispod /host.
+ls -la /host/var/log
+exit
+
+kubectl get pods -A \
+  --field-selector=spec.nodeName=worker-02</code></pre>
+<p>
+  Profil, dostupnost i bezbednosne posledice <code>kubectl debug</code> zavise od verzije i admission politike. Image mora poticati iz odobrenog registra. Ne instaliraju se paketi niti menjaju host fajlovi samo radi pogodnosti; pre rada se proverava da li platforma nudi podržani support bundle ili node diagnostics postupak.
+</p>
+<p>
+  Kubernetes Node Log Query omogućava upit sistemskih logova preko kubelet API-ja. Funkcija je u Kubernetes-u 1.36 stabilna, ali <code>enableSystemLogHandler</code> je podrazumevano <code>false</code> i zvanična preporuka je da ostane isključen osim tokom aktivne dijagnostike. Omogućavanje širi osetljivu površinu kubelet API-ja i zahteva eksplicitnu procenu RBAC-a, mrežnog pristupa, auditovanja i povratka na početno stanje. U starijim verzijama status feature gate-a i mogućnosti upita se razlikuju; zato se ova funkcija ne pretpostavlja kao univerzalno dostupna.
+</p>
+
+<h3>Kontrolna ravan i razlike modela implementacije</h3>
+<p>
+  U kubeadm klasteru komponente kontrolne ravni najčešće rade kao static podovi čiji su manifesti na control-plane čvoru, a mirror Pod objekti vidljivi u namespace-u <code>kube-system</code>. Ako API server i kubelet rade dovoljno dobro i RBAC dozvoljava, njihovi kontejnerski logovi mogu se čitati preko <code>kubectl logs</code>. Ako je API nedostupan, pregled se izvodi lokalno preko <code>crictl</code> i sistemskih logova na control-plane čvoru.
+</p>
+<pre><code class="language-bash">kubectl get pods -n kube-system -o wide \
+  | grep -E 'kube-apiserver|kube-scheduler|kube-controller-manager|etcd'
+
+kubectl logs -n kube-system kube-apiserver-cp-01 \
+  --since=15m --timestamps --tail=500
+kubectl logs -n kube-system kube-scheduler-cp-01 \
+  --since=15m --timestamps --tail=300</code></pre>
+<p>
+  <code>kube-apiserver</code> log pomaže kod autentikacije, autorizacije, admission-a, timeout-a i komunikacije sa etcd-om; scheduler log kod odluka o raspoređivanju; controller manager kod reconcile petlji; etcd log kod latencije, quorum-a, disk I/O-a i alarma. Osetljive vrednosti iz ovih izvora ne kopiraju se nekontrolisano u tiket ili čet. Povećanje verbosity nivoa komponenti menja stanje, može proizvesti veliki volumen i izložiti dodatne detalje, pa zahteva odobrenu, vremenski ograničenu promenu i rollback.
+</p>
+<p>
+  Kod systemd ili drugačije instaliranih komponenti koriste se odgovarajući servisni logovi. U upravljanom Kubernetes servisu korisnik često nema host pristup niti direktne logove kontrolne ravni; koriste se provider audit/diagnostic logovi, servis za podršku i dokumentovan postupak eskalacije. Ne treba primenjivati kubeadm putanje i komande na upravljani servis niti pretpostaviti da provider čuva svaki izvor podrazumevano. Retencija, cena, region, enkripcija i uključivanje control-plane log kategorija proveravaju se u dokumentaciji konkretnog servisa.
+</p>
+
+<h3>Kubernetes audit: ko je pozvao API i sa kojim ishodom</h3>
+<p>
+  Kubernetes auditing daje bezbednosno relevantan hronološki skup zapisa o zahtevima korisnika, ServiceAccount-a, kontrolne ravni i drugih klijenata prema API serveru. Audit može zabeležiti faze <code>RequestReceived</code>, <code>ResponseStarted</code>, <code>ResponseComplete</code> i <code>Panic</code>. Jedan događaj može sadržati audit ID, stage, request URI, verb, user i grupe, source IP, user agent, referencu objekta, status odgovora i anotacije admission ili authorization sloja.
+</p>
+<p>
+  Audit nije automatski centralni SIEM niti istorija svih promena. Operator mora proslediti <code>kube-apiserver</code>-u audit policy i konfigurisati log ili webhook backend. Bez politike nema smislenog audit zapisa. Politika bira nivo po pravilima odozgo nadole:
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Nivo</th>
+      <th>Sadržaj</th>
+      <th>Primena i rizik</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>None</code></td>
+      <td>Događaj se ne beleži.</td>
+      <td>Za veoma bučne, niskovredne zahteve samo kada je izostavljanje opravdano; može stvoriti slepu tačku.</td>
+    </tr>
+    <tr>
+      <td><code>Metadata</code></td>
+      <td>Metapodaci zahteva bez tela zahteva i odgovora.</td>
+      <td>Dobar podrazumevani balans za veliki broj operacija; često dovoljan za identitet, verb, resurs i rezultat.</td>
+    </tr>
+    <tr>
+      <td><code>Request</code></td>
+      <td>Metapodaci i telo zahteva, bez tela odgovora.</td>
+      <td>Korisno za promene konfiguracije, ali može zabeležiti osetljive podatke i povećati volumen.</td>
+    </tr>
+    <tr>
+      <td><code>RequestResponse</code></td>
+      <td>Metapodaci, telo zahteva i telo odgovora.</td>
+      <td>Najskuplji i najosetljiviji nivo; koristi se selektivno, nikada kao nepromišljeni globalni podrazumevani nivo.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Sledeći laboratorijski primer ilustruje princip najmanjeg potrebnog sadržaja. Ne predstavlja univerzalnu produkcionu politiku: zahtevi usklađenosti, verzija, agregirani API-ji, admission webhooks, očekivani volumen i model pretnji moraju se analizirati pre primene.
+</p>
+<pre><code class="language-yaml">apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  - level: None
+    resources:
+      - group: ""
+        resources:
+          - events
+
+  - level: Metadata
+    resources:
+      - group: ""
+        resources:
+          - secrets
+
+  - level: Request
+    verbs:
+      - create
+      - update
+      - patch
+      - delete
+    resources:
+      - group: apps
+        resources:
+          - deployments
+
+  - level: Metadata</code></pre>
+<p>
+  Redosled je presudan: primenjuje se prvo pravilo koje odgovara zahtevu. Za Secrets je u primeru izabran <code>Metadata</code> da telo objekta ne bi ušlo u audit log. Izostavljanje <code>RequestReceived</code> smanjuje duplikaciju i volumen, ali zapis tada ne dokazuje prijem zahteva koji nikada nije stigao do kasnije faze. Odluka mora biti dokumentovana. Izostavljanje Events resursa smanjuje buku, ali organizacija treba da proceni da li je ta slepa tačka prihvatljiva.
+</p>
+<p>
+  Za log backend API serveru se, između ostalog, zadaju putanja, maksimalna starost, broj backup fajlova, veličina rotacije i format. Za webhook backend zadaje se kubeconfig i način baferovanja. Promena flag-ova API servera restartuje ili ponovo kreira komponentu i može ugroziti dostupnost kontrolne ravni ako su putanja, mount, dozvole ili konfiguracija pogrešni. U HA klasteru politika mora biti dosledna na svim API serverima, backend mora podneti zbirni volumen, a rollout se izvodi po odobrenom postupku, jedan član u trenutku, uz proveru zdravlja između koraka.
+</p>
+<pre><code class="language-none">--audit-policy-file=/etc/kubernetes/audit-policy.yaml
+--audit-log-path=/var/log/kubernetes/audit/audit.log
+--audit-log-format=json
+--audit-log-maxage=30
+--audit-log-maxbackup=10
+--audit-log-maxsize=100</code></pre>
+<p>
+  Prikaz flag-ova je referenca, ne komanda za neposredno izvršavanje. Kod kubeadm static Pod-a policy fajl i direktorijum loga moraju biti dostupni kontejneru kroz odgovarajuće hostPath mount-ove, sa bezbednim vlasništvom i dozvolama. Pogrešan YAML, nepostojeći mount ili nemogućnost pisanja mogu sprečiti pokretanje API servera. Pre promene čuvaju se manifest i konfiguracija, validira politika u izolovanom okruženju i priprema tačan rollback. Kod managed servisa koristi se provider mehanizam; korisnik obično ne menja ove flag-ove.
+</p>
+
+<h3>Čitanje i tumačenje audit zapisa</h3>
+<p>
+  Audit log je JSON Lines: svaki red je zaseban JSON objekat, a ceo fajl nije jedan JSON niz. Za lokalnu, odobrenu analizu može se koristiti <code>jq</code>. Pretraga se ograničava vremenom, glagolom, namespace-om, resursom, korisnikom ili <code>auditID</code>-jem. Sledeći primer čita fajl; ne menja klaster.
+</p>
+<pre><code class="language-bash">sudo jq -c '
+  select(.stage == "ResponseComplete")
+  | select(.objectRef.namespace == "prod-app")
+  | select(.objectRef.resource == "deployments")
+  | select(.verb == "patch" or .verb == "update")
+  | {
+      time: .stageTimestamp,
+      auditID: .auditID,
+      user: .user.username,
+      groups: .user.groups,
+      sourceIPs: .sourceIPs,
+      userAgent: .userAgent,
+      verb: .verb,
+      object: .objectRef,
+      code: .responseStatus.code
+    }
+' /var/log/kubernetes/audit/audit.log</code></pre>
+<p>
+  Korisnik može biti čovek, <code>system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code>, kontroler ili impersonirani identitet. <code>userAgent</code> i source IP pomažu, ali sami nisu kriptografski dokaz osobe. Kod impersonacije audit događaj može sadržati originalnog i impersoniranog korisnika; kod reverse proxy-ja source IP zavisi od mrežne arhitekture i trusted proxy konfiguracije. HTTP status <code>200</code> ili <code>201</code> potvrđuje uspešan API odgovor, ali ne potvrđuje da je aplikacija kasnije postala zdrava. Za to se rezultat povezuje sa generation/observedGeneration, rollout stanjem, Events, logovima i funkcionalnim testom.
+</p>
+<p>
+  Audit ID povezuje faze istog API zahteva i često se vraća klijentu u response header-u. On nije isto što i aplikacioni request ili trace ID. Ako API zahtev pokreće novi rollout, vremenska osa može povezati audit zapis promene Deployment-a sa novom ReplicaSet revizijom, kreiranjem podova, kubelet događajima i aplikacionim logovima novih instanci.
+</p>
+
+<h3>Projektovanje centralnog log pipeline-a</h3>
+<p>
+  Produkcioni pipeline najčešće ima node-level agent kao DaemonSet, transportni ili bafer sloj, centralni storage/index backend, pretragu i vizuelizaciju, alarme i po potrebi SIEM integraciju. Agent čita CRI logove i sistemske izvore, dodaje Kubernetes metapodatke i prosleđuje zapise. Kontrolna ravan i audit mogu imati odvojene izvore i strožu kontrolu pristupa. Izbor Fluent Bit-a, Fluentd-a, Vector-a, OpenTelemetry Collector-a ili platformske komponente zavisi od podržane arhitekture; Kubernetes projekat ne propisuje jedan backend.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Projektna odluka</th>
+      <th>Posledica</th>
+      <th>Dokaz ispravnosti</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Node-level agent</td>
+      <td>Ne zahteva izmenu svake aplikacije, ali mora tolerisati restart, log rotaciju, taint-ove i pritisak na čvoru.</td>
+      <td>Zapisi sa svakog čvora stižu sa očekivanim kašnjenjem; agent restart ne proizvodi nekontrolisane duplikate ili gubitak.</td>
+    </tr>
+    <tr>
+      <td>Bafer i backpressure</td>
+      <td>Štiti od kratkog prekida backenda, ali zauzima disk/memoriju čvora; pun bafer može ugroziti workload.</td>
+      <td>Kontrolisan test prekida backenda potvrđuje oporavak i definisanu politiku odbacivanja.</td>
+    </tr>
+    <tr>
+      <td>Label/metadata indeksiranje</td>
+      <td>Olakšava pretragu, ali nekontrolisana cardinality povećava indeks, cenu i latenciju.</td>
+      <td>Dozvoljena polja su dokumentovana; dinamični request ID nije skupocena indeksna labela ako backend to ne podnosi.</td>
+    </tr>
+    <tr>
+      <td>Retencija i tiering</td>
+      <td>Duža retencija podržava istrage i usklađenost, ali povećava trošak i period izlaganja podataka.</td>
+      <td>Automatsko istecanje, legal hold i restore pretrage testirani su prema politici.</td>
+    </tr>
+    <tr>
+      <td>Razdvajanje audit i aplikacionih logova</td>
+      <td>Omogućava stroži RBAC, neizmenjivost i drugačiju retenciju za bezbednosni trag.</td>
+      <td>Aplikacioni operater ne može menjati audit zapise; bezbednosni tim može korelisati oba izvora po odobrenju.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Visoka dostupnost log sistema nije samo broj replika. Potrebni su redundantni agenti po čvorovima, dovoljno lokalnog bafera, HA ingest i query sloj, zaštićen storage, monitoring samog pipeline-a, kontrola kvota i dokumentovan oporavak. Prate se ingest latency, dropped records, parser errors, retry/backpressure, veličina bafera, zauzeće storage-a, query latency i neuspeh autentikacije. Log sistem koji tiho odbacuje zapise proizvodi lažan osećaj sigurnosti.
+</p>
+<p>
+  Transport treba da bude autentifikovan i šifrovan, pristup zasnovan na ulogama i tenant-u, a administrativne radnje nad log platformom auditovane. Za bezbednosno značajan trag razmatraju se write-once ili immutable storage kontrole, odvojeni administrativni domen i hash/integritet mehanizmi. Enkripcija sama ne sprečava ovlašćenog administratora da izbriše zapis; neizmenjivost i razdvajanje dužnosti rešavaju drugačiji rizik.
+</p>
+
+<h3>Sistematičan tok korelacije incidenta</h3>
+<ol>
+  <li><strong>Definiši simptom, obim i posledicu.</strong> Zapiši ko je pogođen, koji endpoint ili funkcija, od kada, da li je problem stalan i da li obuhvata jedan pod, čvor, namespace, region ili ceo klaster.</li>
+  <li><strong>Sačuvaj početno stanje.</strong> Zabeleži kontekst, identitet, UTC vreme, verziju, objekte, uslove, Events, log trenutne i prethodne instance, Pod UID, čvor, image digest i aktivnu reviziju. Ne restartuj prvi.</li>
+  <li><strong>Ograniči vremenski prozor.</strong> Počni nekoliko minuta pre prvog alarma i uključi period posle poslednjeg simptoma. Proveri sinhronizaciju satova i kašnjenje ingest-a.</li>
+  <li><strong>Postavi jednu proverljivu hipotezu.</strong> Na primer: „rollout revizije 12 uveo je pogrešan DB endpoint, pa nove replike vraćaju 503”. Odredi koji bi dokaz hipotezu potvrdio, a koji oborio.</li>
+  <li><strong>Poveži slojeve.</strong> Alarm određuje vreme; audit pokazuje promenu; ReplicaSet i Pod UID identifikuju novu instancu; Event pokazuje lifecycle; aplikacioni log i trace pokazuju grešku zavisnosti; node log potvrđuje ili isključuje infrastrukturni kvar.</li>
+  <li><strong>Razdvoji neposredni i osnovni uzrok.</strong> Neposredni uzrok može biti connection refused; osnovni uzrok pogrešna GitOps vrednost, nedostatak validacije i neadekvatan rollout gate.</li>
+  <li><strong>Primeni najmanje rizičnu korekciju.</strong> Rollback poznate revizije je često sigurniji od improvizovanog patch-a. Pre promene zabeleži odobrenje, očekivani efekat, rollback i kriterijum prekida.</li>
+  <li><strong>Dokaži oporavak.</strong> Proveri rollout, ready endpoint-e, funkcionalni zahtev, greške i latenciju, odsustvo novih Warning događaja, stabilnost tokom dogovorenog perioda i audit zapis korekcije.</li>
+  <li><strong>Dokumentuj i spreči ponavljanje.</strong> Sačuvaj vremensku osu, dokaze, uzrok, workaround, trajnu meru, vlasnika i rok; ažuriraj alert, runbook, policy ili pipeline test.</li>
+</ol>
+
+<h3>Integrisani praktikum: od lošeg rollout-a do auditovane vremenske ose</h3>
+<p>
+  <strong>Kontekst i cilj.</strong> Tim održava interni portal u namespace-u <code>log-lab</code>. Aplikacija ima dve replike i zapisuje strukturisane poruke. Administrator najpre uspostavlja baznu liniju, zatim laboratorijski uvodi pogrešan readiness path, prikuplja Events i logove, pronalazi API promenu u audit zapisu kada je audit dostupan, vraća prethodnu reviziju i dokazuje oporavak. Vežba namerno izaziva samo nedostupnost novih endpoint-a; ne zaustavlja čvor niti kontrolnu ravan.
+</p>
+<p>
+  <strong>Topologija.</strong> Radna stanica sa <code>kubectl</code> pristupa vanilla Kubernetes klasteru; Deployment <code>portal</code> pokreće dva nginx poda na jednom ili više worker čvorova; Service bira spremne podove. Audit deo se izvodi samo u laboratoriji u kojoj je audit već bezbedno konfigurisan ili uz nadzor administratora kontrolne ravni.
+</p>
+<p>
+  <strong>Preduslovi i prava.</strong> Potreban je schedulable worker, DNS i pristup odobrenom registru. Korisnik mora moći da upravlja objektima u laboratorijskom namespace-u i čita <code>pods</code>, <code>pods/log</code> i <code>events</code>. Čitanje node/control-plane/audit logova zahteva odvojena, viša prava i nije uslov da bi osnovni scenario bio završen. Aktivni audit se ne konfiguriše ad hoc tokom ove vežbe.
+</p>
+<p>
+  <strong>Rizik i rollback.</strong> Svi workload objekti su izolovani u novom namespace-u. Negativni test menja samo readiness path i vraća se komandom <code>kubectl rollout undo</code>. Brisanje namespace-a je dozvoljeno samo po završetku i nakon izvoza potrebnih dokaza.
+</p>
+
+<ol>
+  <li>
+    <strong>Provera konteksta, identiteta i ovlašćenja.</strong>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl auth can-i create deployments.apps -n log-lab
+kubectl auth can-i get pods/log -n log-lab
+kubectl auth can-i list events -n log-lab
+date --utc --iso-8601=seconds</code></pre>
+    <p><strong>Očekivani rezultat i odluka.</strong> Kontekst mora biti laboratorijski. Provere za namespace koji još ne postoji i dalje ispituju autorizaciju; ako su prava odbijena, vežba se ne nastavlja proširenjem sopstvenih privilegija, već se traži namenski nalog ili unapred pripremljen namespace.</p>
+  </li>
+  <li>
+    <strong>Kreiranje referentne aplikacije.</strong> Manifest je deklarativni dokaz početnog stanja. Image tag je radi prenosivosti primera eksplicitan; u kontrolisanom produkcionom okruženju koristi se odobren digest.
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: log-lab
+  labels:
+    purpose: logging-correlation-practice
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portal-content
+  namespace: log-lab
+data:
+  index.html: |
+    &lt;!doctype html&gt;
+    &lt;html lang="sr"&gt;
+    &lt;head&gt;&lt;meta charset="utf-8"&gt;&lt;title&gt;Log lab&lt;/title&gt;&lt;/head&gt;
+    &lt;body&gt;&lt;h1&gt;Portal je dostupan&lt;/h1&gt;&lt;/body&gt;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  namespace: log-lab
+  labels:
+    app: portal
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: portal
+  template:
+    metadata:
+      labels:
+        app: portal
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+              readOnly: true
+        - name: activity-log
+          image: busybox:1.36.1
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              while true; do
+                printf '{"timestamp":"%s","level":"INFO","service":"portal","pod":"%s","message":"heartbeat"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HOSTNAME"
+                sleep 10
+              done
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      volumes:
+        - name: content
+          configMap:
+            name: portal-content
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+  namespace: log-lab
+spec:
+  selector:
+    app: portal
+  ports:
+    - name: http
+      port: 80
+      targetPort: http</code></pre>
+    <pre><code class="language-bash">kubectl apply -f 01-log-lab.yaml
+kubectl rollout status deployment/portal -n log-lab --timeout=120s
+kubectl get deployment,pod,service,endpointslice -n log-lab -o wide</code></pre>
+    <p><strong>Validacija.</strong> Deployment ima dve dostupne replike, svaki pod <code>2/2</code> spremna kontejnera, a EndpointSlice spremne adrese. Ako image nije dostupan, proveravaju se Events i koristi organizaciono odobren mirror; ne isključuje se bezbednost registra.</p>
+  </li>
+  <li>
+    <strong>Bazna linija i funkcionalni dokaz.</strong>
+    <pre><code class="language-bash">PORTAL_POD="$(kubectl get pod -n log-lab -l app=portal \
+  -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl get pod "$PORTAL_POD" -n log-lab \
+  -o jsonpath='{.metadata.uid}{"\n"}{.spec.nodeName}{"\n"}{range .status.containerStatuses[*]}{.name}{" imageID="}{.imageID}{" restarts="}{.restartCount}{"\n"}{end}'
+
+kubectl run portal-client -n log-lab --rm -i --restart=Never \
+  --image=curlimages/curl:8.10.1 -- \
+  curl -fsS http://portal.log-lab.svc.cluster.local/
+
+kubectl logs -n log-lab "$PORTAL_POD" -c web \
+  --since=5m --timestamps --tail=50
+kubectl logs -n log-lab "$PORTAL_POD" -c activity-log \
+  --since=2m --timestamps --tail=20</code></pre>
+    <p><strong>Validacija.</strong> Klijent vraća <code>Portal je dostupan</code>; nginx access log beleži uspešan zahtev, a pomoćni kontejner JSON heartbeat. Beleže se UTC vreme, Pod UID, čvor i imageID.</p>
+  </li>
+  <li>
+    <strong>Kontrolisana promena i negativni test.</strong> Pre patch-a beleži se vreme. Promena je state-changing i dozvoljena samo u ovoj laboratoriji.
+    <pre><code class="language-bash">CHANGE_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'change_time=%s\n' "$CHANGE_TIME"
+
+kubectl annotate deployment portal -n log-lab \
+  kubernetes.io/change-cause='lab: invalid readiness path for correlation practice' \
+  --overwrite
+
+kubectl patch deployment portal -n log-lab --type='json' -p='[
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path",
+    "value": "/not-ready"
+  }
+]'
+
+kubectl rollout status deployment/portal -n log-lab --timeout=45s</code></pre>
+    <p><strong>Očekivani rezultat.</strong> Status rollout-a treba da istekne jer novi podovi dobijaju HTTP 404 na readiness proveri. Timeout je očekivani dokaz testa, ne razlog za ponavljanje patch-a.</p>
+  </li>
+  <li>
+    <strong>Trijaža od najmanje invazivnog dokaza.</strong>
+    <pre><code class="language-bash">kubectl get deployment,replicaset,pod,endpointslice \
+  -n log-lab -l app=portal -o wide
+
+NOT_READY_POD="$(kubectl get pod -n log-lab -l app=portal \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' \
+  | awk '$2=="False"{print $1; exit}')"
+
+kubectl describe pod "$NOT_READY_POD" -n log-lab
+kubectl events -n log-lab --for pod/"$NOT_READY_POD"
+kubectl get pod "$NOT_READY_POD" -n log-lab \
+  -o jsonpath='{.metadata.uid}{"\n"}{.spec.nodeName}{"\n"}{.spec.containers[?(@.name=="web")].readinessProbe}{"\n"}'
+
+kubectl logs -n log-lab "$NOT_READY_POD" -c web \
+  --since-time="$CHANGE_TIME" --timestamps --tail=100</code></pre>
+    <p><strong>Tumačenje.</strong> Simptom je nedovršen rollout; obim su nove replike; posledica je da one ne ulaze u Service endpoint-e. Event <code>Unhealthy</code> i HTTP 404 potvrđuju neposredni uzrok. Nginx access log pokazuje probe zahteve prema <code>/not-ready</code>. Osnovni uzrok je namerna pogrešna promena pod template-a, a ne pad procesa ili čvora.</p>
+  </li>
+  <li>
+    <strong>Korelacija sa audit tragom, ako ga laboratorija izlaže.</strong> Operator audit sistema filtrira isti vremenski period, namespace, Deployment i glagole <code>patch</code>/<code>update</code>. Namespace korisnik ne treba da dobije host pristup samo radi vežbe.
+    <pre><code class="language-bash">sudo jq -c \
+  --arg ns 'log-lab' \
+  --arg name 'portal' '
+    select(.stage == "ResponseComplete")
+    | select(.objectRef.namespace == $ns)
+    | select(.objectRef.resource == "deployments")
+    | select(.objectRef.name == $name)
+    | select(.verb == "patch" or .verb == "update")
+    | {
+        time: .stageTimestamp,
+        auditID: .auditID,
+        user: .user.username,
+        sourceIPs: .sourceIPs,
+        userAgent: .userAgent,
+        verb: .verb,
+        code: .responseStatus.code
+      }
+  ' /var/log/kubernetes/audit/audit.log</code></pre>
+    <p><strong>Validacija.</strong> Očekuju se uspešni zahtevi za anotaciju i patch sa odgovarajućim identitetom i vremenom. Ako audit nije konfigurisan ili policy izostavlja ove zahteve, nalaz se beleži kao observability gap; ne tvrdi se da promene nije bilo.</p>
+  </li>
+  <li>
+    <strong>Rollback i potvrda oporavka.</strong> Pre rollback-a čuvaju se dokazi; zatim se vraća prethodna revizija.
+    <pre><code class="language-bash">mkdir -p evidence
+kubectl get deployment,replicaset,pod,endpointslice -n log-lab -o yaml \
+  &gt; evidence/pre-rollback-objects.yaml
+kubectl get events -n log-lab -o yaml \
+  &gt; evidence/pre-rollback-events.yaml
+kubectl logs -n log-lab "$NOT_READY_POD" -c web \
+  --timestamps --tail=500 \
+  &gt; evidence/not-ready-web.log
+
+kubectl rollout history deployment/portal -n log-lab
+kubectl rollout undo deployment/portal -n log-lab
+kubectl rollout status deployment/portal -n log-lab --timeout=120s
+
+kubectl get deployment,pod,endpointslice -n log-lab -o wide
+kubectl run portal-client-final -n log-lab --rm -i --restart=Never \
+  --image=curlimages/curl:8.10.1 -- \
+  curl -fsS http://portal.log-lab.svc.cluster.local/</code></pre>
+    <p><strong>Kriterijum završetka.</strong> Deployment ponovo ima dve dostupne replike; svi aktuelni podovi su spremni; EndpointSlice označava očekivane adrese kao ready; funkcionalni zahtev uspeva; nema novih ponavljajućih <code>Unhealthy</code> događaja nakon stabilizacije. Audit, ako je dostupan, beleži rollback promenu.</p>
+  </li>
+  <li>
+    <strong>Integritet dokaza i cleanup.</strong>
+    <pre><code class="language-bash">find evidence -type f -maxdepth 1 -print0 \
+  | sort -z \
+  | xargs -0 sha256sum \
+  &gt; evidence/SHA256SUMS
+
+kubectl get all,configmap,endpointslice -n log-lab
+kubectl delete namespace log-lab
+kubectl get namespace log-lab</code></pre>
+    <p><strong>Upozorenje.</strong> Brisanje namespace-a je destruktivna laboratorijska cleanup radnja i uklanja objekte i API-dostupne lokalne logove. Izvršava se tek nakon provere da je cilj tačno <code>log-lab</code> i da su dokazi sačuvani. U produkciji se namespace ne briše kao troubleshooting postupak.</p>
+  </li>
+</ol>
+
+<p>
+  <strong>Merljivi kriterijumi prihvatanja praktikuma.</strong> Polaznik može da izdvoji Pod UID, čvor i image digest; prikaže log konkretnog kontejnera u ograničenom UTC periodu; objasni zašto Event nije audit; koreliše patch sa novom revizijom i <code>Unhealthy</code> događajem; razlikuje neposredni od osnovnog uzroka; sačuva dokaze pre rollback-a; vrati dve dostupne replike; izvrši funkcionalni test i dokumentuje audit gap kada audit nije omogućen.
+</p>
+
+<h3>Tipični simptomi i troubleshooting grane</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prva read-only provera</th>
+      <th>Karakterističan nalaz</th>
+      <th>Bezbedna korektivna smernica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>kubectl logs</code> je prazan</td>
+      <td>Proveri pravi pod, kontejner, trenutnu/prethodnu instancu, vreme i da li aplikacija piše na stdout/stderr.</td>
+      <td>Proces piše u interni fajl, pod je nov ili filter isključuje period.</td>
+      <td>Ispravi logging obrazac ili agent konfiguraciju; ne uključuj trajni debug bez procene volumena i podataka.</td>
+    </tr>
+    <tr>
+      <td><code>--previous</code> nema zapis</td>
+      <td>Pregledaj <code>restartCount</code>, <code>lastState</code>, UID i vreme kreiranja poda.</td>
+      <td>Pod je zamenjen ili nema prethodne instance koju kubelet čuva.</td>
+      <td>Pretraži centralni backend po starom Pod UID-u; uvedi pouzdanu centralnu retenciju.</td>
+    </tr>
+    <tr>
+      <td>Event postoji, audit ne postoji</td>
+      <td>Proveri da li je audit omogućen, policy pravilo, backend zdravlje i retencija.</td>
+      <td>Zahtev nije obuhvaćen politikom, zapis je istekao ili backend nije radio.</td>
+      <td>Evidentiraj slepu tačku; testiraj i koriguj policy/pipeline kroz kontrolisanu promenu.</td>
+    </tr>
+    <tr>
+      <td>Svi podovi na jednom čvoru imaju problem</td>
+      <td><code>kubectl get pods -A -o wide</code>, Node conditions/Events, kubelet, runtime i kernel log.</td>
+      <td>DiskPressure, OOM, CNI/CSI ili runtime greške u istom periodu.</td>
+      <td>Cordon/drain samo po proceduri i uz PDB/kapacitet proveru; prvo sačuvaj node dokaze.</td>
+    </tr>
+    <tr>
+      <td>Logovi kasne ili nedostaju samo centralno</td>
+      <td>Uporedi <code>kubectl logs</code> sa agentom, ingest latency, retries, dropped records i baferom.</td>
+      <td>Aplikacija radi, ali pipeline ima backpressure, parser grešku ili kvotu.</td>
+      <td>Oslobodi kapacitet ili vrati poznatu agent konfiguraciju; potvrdi nadoknadu bafera bez duplikata.</td>
+    </tr>
+    <tr>
+      <td>Audit volumen naglo raste</td>
+      <td>Grupiši po verb-u, resursu, korisniku, stage-u i user agent-u.</td>
+      <td>Watch/list buka, controller petlja ili preširok <code>RequestResponse</code>.</td>
+      <td>Preciziraj policy tek nakon procene bezbednosne vrednosti; ne utišavaj sumnjiv izvor pre istrage.</td>
+    </tr>
+    <tr>
+      <td>Vremena se ne podudaraju</td>
+      <td>Proveri UTC offset, NTP stanje, format aplikacije i ingest timestamp naspram event timestamp-a.</td>
+      <td>Lokalna zona, drift ili backend koristi vreme prijema.</td>
+      <td>Ispravi sinhronizaciju i normalizaciju; dokumentuj nesigurnost stare vremenske ose.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Prvo dokazi, zatim promena.</strong> Za svaki incident čuvaju se UTC prozor, kontekst, identitet, stanje objekata, Events, Pod UID, čvor, image digest, trenutni i prethodni log i revizija pre restartovanja, skaliranja, rollback-a ili brisanja. Izuzetak je neposredan bezbednosni rizik, ali se i tada beleži razlog hitne izolacije.</li>
+  <li><strong>Strukturisani log ugovor.</strong> Timovi usaglašavaju obavezna polja, tipove, vremensku zonu, nivoe, request/trace ID i pravila redakcije. Promena šeme prolazi test parsera i kompatibilnosti pre rollout-a.</li>
+  <li><strong>Kontrola osetljivih podataka.</strong> Periodično se skeniraju uzorci logova i audit backenda za tokene, tajne i lične podatke. Incident curenja uključuje opoziv tajne, ograničavanje pristupa, procenu kopija/backup-a i formalni privacy/security postupak; samo maskiranje dashboarda nije sanacija.</li>
+  <li><strong>Audit policy kao bezbednosni kod.</strong> Politika se verzioniše, recenzira, testira na volumenu i očekivanim scenarijima i uvodi kroz HA change proceduru. Secrets i drugi osetljivi resursi ne dobijaju telo zahteva/odgovora bez izričitog opravdanja.</li>
+  <li><strong>Monitoring samog pipeline-a.</strong> Alarmiraju se dropped records, ingest latency, parser failures, zasićenje bafera i storage-a, neuspeh autentikacije i odsustvo heartbeat zapisa sa čvora. Testni kanarski zapis periodično dokazuje ceo put od izvora do pretrage.</li>
+  <li><strong>Retencija prema vrednosti i riziku.</strong> Aplikacioni, platformski i audit logovi mogu imati različite rokove, pristup i neizmenjivost. Rok nije proizvoljan: usklađuje forenziku, privatnost, pravne obaveze, kapacitet i trošak.</li>
+  <li><strong>Najmanje privilegije i razdvajanje dužnosti.</strong> Namespace operater dobija <code>pods/log</code> samo gde je potrebno; host, control-plane i audit pristup ostaju odvojeni. Pristup centralnom audit tragu se i sam auditira.</li>
+  <li><strong>Kontrolisan debug nivo.</strong> Povećano logovanje ima vlasnika, početak, kraj, procenu performansi i storage-a, proveru curenja podataka i automatski ili dokumentovan rollback. Posle incidenta potvrđuje se da je nivo vraćen.</li>
+  <li><strong>Game day i restore provera.</strong> Periodično se simuliraju gubitak agenta, prekid backenda i loš rollout. Uspeh znači da tim pronalazi zapise u ciljnom vremenu, backend nadoknađuje bafer, audit ostaje dostupan i vremenska osa se rekonstruiše bez oslanjanja na jednu osobu.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Učenik razlikuje aplikacioni log, Kubernetes Event, sistemski log, control-plane log i audit događaj i navodi pitanje na koje svaki odgovara.</li>
+  <li>Može da ograniči <code>kubectl logs</code> na pravi namespace, pod, kontejner i UTC period i bezbedno koristi <code>--previous</code>, <code>--timestamps</code>, <code>--prefix</code> i <code>--tail</code>.</li>
+  <li>Može da izdvoji Pod UID, node, container ID, image digest, workload reviziju, request/trace ID i audit ID i objasni njihove granice.</li>
+  <li>Ne tretira Events kao trajni audit i pre promene izvozi relevantne objekte, događaje i logove.</li>
+  <li>Može da pronađe kubelet, runtime i kernel zapise u systemd okruženju i zna kada treba eskalirati umesto tražiti host privilegije.</li>
+  <li>Razume razliku između kubeadm static Pod kontrolne ravni, systemd instalacije i provider-managed kontrolne ravni.</li>
+  <li>Može da objasni audit nivoe <code>None</code>, <code>Metadata</code>, <code>Request</code> i <code>RequestResponse</code>, first-match redosled i rizik beleženja Secrets tela.</li>
+  <li>Može da filtrira JSON Lines audit zapis po namespace-u, resursu, glagolu, korisniku, stage-u i vremenu bez menjanja klastera.</li>
+  <li>Razdvaja simptom, obim i posledicu, neposredni uzrok, osnovni uzrok, privremeni workaround i trajnu korektivnu meru.</li>
+  <li>Posle rollback-a dokazuje spremnost replika, endpoint-e, funkcionalni odziv, stabilnost logova i odsustvo novih relevantnih događaja.</li>
+  <li>Projektuje retenciju, RBAC, redakciju, enkripciju, neizmenjivost, bafer i monitoring pipeline-a prema poslovnom i bezbednosnom zahtevu.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Logovi nisu jedna datoteka niti jedan proizvod. U Kubernetes-u oni čine skup dokaza raspoređenih između aplikacije, runtime-a, kubelet-a, čvora, kontrolne ravni, audit backenda i centralnog sistema. Events prikazuju operativna zapažanja o objektima, audit prikazuje API aktivnosti, a aplikacioni i sistemski logovi objašnjavaju ponašanje procesa i infrastrukture. Pouzdana dijagnoza nastaje tek kada se njihova vremena, identiteti i kontekst ukrste sa stanjem objekata, metrikama, alarmima i funkcionalnim rezultatom.
+</p>
+<p>
+  Najveći operativni rizici nisu samo odsustvo loga, već i pogrešno poverenje u nepotpun zapis, gubitak dokaza usled brisanja poda, nesinhronizovani satovi, tiho odbacivanje u pipeline-u, preširok audit koji izlaže tajne, nedovoljna retencija i privilegije koje omogućavaju istoj osobi da proizvede i ukloni trag. Zbog toga se logging projektuje kao usluga sa SLO-om, kapacitetom, bezbednošću, kontrolom integriteta, testiranim oporavkom i jasnim vlasništvom.
+</p>
+<p>
+  Odgovoran administrator ne menja stanje da bi „video da li će proraditi”. On najpre očuva početni snimak, postavlja proverljivu hipotezu, bira najmanje invazivnu proveru, potvrđuje uzrok iz više nezavisnih izvora i tek tada izvodi kontrolisanu korekciju. Incident je završen kada je usluga stabilna, dokaz oporavka dokumentovan, auditovana promena razumljiva i trajna mera smanjuje verovatnoću ponavljanja.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za arhitekturu logovanja i observability, sistemske i node logove, Kubernetes Events i kubectl CLI, dijagnostiku čvorova pomoću crictl i kubectl debug, komponente kontrolne ravni, Kubernetes audit policy, audit faze i log/webhook backend konfiguraciju, kao i zvanične bezbednosne, RBAC i troubleshooting reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>  
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-40-monitoring-metrike-alarmi.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-42-sistematican-troubleshooting.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

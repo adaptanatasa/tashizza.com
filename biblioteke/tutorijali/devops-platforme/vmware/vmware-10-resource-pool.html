@@ -1,0 +1,483 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-10-resource-pool.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Resource Pool – grupisanje i kontrola CPU i memorijskih resursa | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte Resource Pool u VMware okruženju i saznajte kako se CPU i memorijski resursi grupišu, raspodeljuju i kontrolišu između virtuelnih mašina i različitih radnih opterećenja.">
+
+  <meta name="keywords"
+        content="Resource Pool, VMware Resource Pool, VMware, CPU resursi, memorijski resursi, raspodela resursa, rezervacije, ograničenja, shares, vCenter, vSphere, klaster, virtuelne mašine, enterprise infrastruktura, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-10-resource-pool.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Resource Pool – grupisanje i kontrola CPU i memorijskih resursa">
+
+  <meta property="og:description"
+        content="Upoznajte VMware Resource Pool i način na koji omogućava grupisanje, raspodelu i kontrolu procesorskih i memorijskih resursa za virtuelne mašine.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-10-resource-pool.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-10-resource-pool.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Resource Pool – grupisanje i kontrola CPU i memorijskih resursa">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji virtuelizacije i pouzdan rad sa virtuelnim mašinama
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-10-resource-pool.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-10-resource-pool.png"
+           alt="Resource Pool – grupisanje i kontrola CPU i memorijskih resursa">
+
+    </a>
+
+    <div class="page-subtitle">
+  II. Arhitektura i organizacija VMware okruženja
+</div>
+
+<div class="page-subtitle">
+  10. Resource Pool – dodela, prioriteti i kontrola CPU i memorijskih resursa
+</div>
+
+<p>
+  U prethodnoj lekciji datacenter, cluster i host posmatrani su kao objekti inventara i granice unutar kojih se organizuju fizički resursi. <strong>Resource Pool</strong> je sledeći sloj te hijerarhije: logička apstrakcija kojom se procesorski i memorijski kapacitet jednog ESXi hosta ili DRS klastera dodeljuje grupama virtuelnih mašina prema poslovnom značaju. Resource Pool ne dodaje hardver i ne izoluje fizička jezgra ili RAM module; on definiše pravila po kojima ESXi scheduler i, u klasteru, vSphere Distributed Resource Scheduler raspodeljuju postojeći kapacitet.
+</p>
+
+<p>
+  U malom laboratorijskom okruženju nekoliko virtuelnih mašina često može raditi sa podrazumevanim vrednostima. U zajedničkom enterprise klasteru situacija je drugačija: produkcija, razvoj, test, baze podataka i različiti zakupci mogu istovremeno zahtevati iste resurse. Administrator tada mora da razlikuje <em>garanciju</em>, <em>gornju granicu</em> i <em>relativni prioritet</em>. VMware ih predstavlja parametrima <strong>Reservation</strong>, <strong>Limit</strong> i <strong>Shares</strong>. Njihova pogrešna primena može prouzrokovati slabije performanse ili neuspešno uključivanje VM-a čak i kada na prvi pogled postoji slobodan kapacitet.
+</p>
+
+<h3>Zašto i kada koristiti Resource Pool</h3>
+
+<p>
+  Resource Pool ima smisla kada se zajednički compute kapacitet deli između grupa sa različitim servisnim ciljevima. Tipični primeri su odvajanje produkcije od razvoja, raspodela kapaciteta organizacionim jedinicama, zaštita kritičnog aplikativnog sloja pri zagušenju i delegiranje administracije nad jasno definisanim delom inventara. Grupisanje VM-ova samo radi preglednosti nije dovoljan razlog: za to su pogodniji VM folders, oznake (<em>tags</em>) i prilagođeni atributi, jer ne menjaju način raspodele resursa.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Potreba</th><th>Odgovarajući objekat ili mehanizam</th><th>Zašto</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Vizuelno grupisanje i RBAC</td><td>VM folder i vCenter privilegije</td><td>Organizuje inventar bez uticaja na scheduling.</td></tr>
+    <tr><td>Pretraga po aplikaciji, vlasniku ili okruženju</td><td>Tag i kategorija</td><td>Metapodaci mogu pratiti VM kroz inventar.</td></tr>
+    <tr><td>Relativna prednost pri zagušenju</td><td>Resource Pool shares</td><td>Raspodeljuje sporni CPU ili memoriju između sibling objekata.</td></tr>
+    <tr><td>Garantovani minimum</td><td>Reservation</td><td>Rezervisani kapacitet učestvuje u admission control proveri.</td></tr>
+    <tr><td>Čvrsta gornja granica</td><td>Limit</td><td>Zaustavlja potrošnju iznad granice čak i kada kapacitet postoji.</td></tr>
+    <tr><td>Razdvajanje fault ili security domena</td><td>Poseban cluster ili hostovi, prema zahtevu</td><td>Resource Pool nije bezbednosna ni HA granica i ne obezbeđuje fizičku izolaciju.</td></tr>
+  </tbody>
+</table>
+
+<h3>Položaj u hijerarhiji i koreni resursa</h3>
+
+<p>
+  Svaki standalone ESXi host i svaki DRS cluster imaju skriveni root resource pool koji predstavlja ukupne raspoložive CPU i memorijske resurse tog compute objekta. Administrator ispod njega kreira child pool-ove, a oni mogu sadržati VM-ove i dodatne child pool-ove. Resource Pool kreiran neposredno na standalone hostu vezan je za kapacitet tog hosta; pool pod klasterom obuhvata agregirani kapacitet klastera i praktično se koristi uz uključen DRS, koji donosi odluke o početnom placement-u i migracijama.
+</p>
+
+<pre><code class="language-none">Datacenter
+└── Production-Cluster (root resource pool)
+    ├── RP-Production
+    │   ├── RP-Database
+    │   └── RP-Application
+    └── RP-NonProduction
+        ├── RP-Development
+        └── RP-Test</code></pre>
+
+<p>
+  Hijerarhija nije samo dekorativna. Child objekti najpre dele resurse roditelja, a zatim se dobijeni kapacitet deli unutar svakog child pool-a. Zbog toga isti broj shares na različitim nivoima nema isto značenje. Duboka, nedokumentovana stabla otežavaju računanje efektivnog prioriteta i troubleshooting; u produkciji je bolje koristiti plitku hijerarhiju koja direktno prati poslovne klase usluge.
+</p>
+
+<h3>Reservation – garantovani minimum i admission control</h3>
+
+<p>
+  <strong>Reservation</strong> je minimalna količina resursa koju sistem garantuje pool-u: CPU se izražava u MHz, a memorija u MB, GB ili odgovarajućoj jedinici prikazanoj u klijentu. Garancija nije unapred potrošena količina niti znači da će workload stalno koristiti taj kapacitet. Kada nema konkurencije, pool može koristiti više od rezervacije sve do svog limita i granica roditelja. Međutim, rezervacija se uračunava u dostupni nerezervisani kapacitet i može odlučiti da li će nova rezervacija ili power-on operacija proći admission control.
+</p>
+
+<p>
+  Rezervacija na Resource Pool-u nije automatska zasebna rezervacija za svaki VM. Ona predstavlja garantovani fond iz kog se, prema potražnji i pravilima raspodele, opslužuju potomci. Za VM sa sopstvenom rezervacijom mora postojati dovoljan efektivno dostupan rezervisani kapacitet kroz celu roditeljsku hijerarhiju. Prevelike rezervacije vezuju kapacitet, umanjuju operativnu fleksibilnost, mogu otežati placement i vMotion i mogu dovesti do poruke da u parent resource pool-u nema dovoljno resursa.
+</p>
+
+<p>
+  Opcija <strong>Expandable Reservation</strong> dozvoljava child pool-u da, kada njegova sopstvena rezervacija nije dovoljna za rezervacije potomaka, pozajmi raspoloživ nerezervisan kapacitet od roditelja. To nije beskonačna garancija i ne zaobilazi kapacitet roditelja: zahtev i dalje pada ako se potreban kapacitet ne može pronaći uz hijerarhiju. Isključivanje ove opcije pravi čvršću administrativnu granicu, ali zahteva preciznije planiranje.
+</p>
+
+<pre><code class="language-none">Memory reservation: 16 GB
+Memory limit:       Unlimited
+Expandable:         Enabled
+
+Tumačenje: pool ima garantovanih 16 GB; može koristiti više kada je dostupno,
+a za rezervacije potomaka može zatražiti nerezervisani kapacitet roditelja.</code></pre>
+
+<h3>Limit – čvrsta gornja granica</h3>
+
+<p>
+  <strong>Limit</strong> je maksimalan CPU ili memorijski kapacitet koji pool može dobiti. Vrednost <strong>Unlimited</strong> znači da posebna gornja granica nije nametnuta, ali pool i dalje zavisi od roditelja, konfiguracije VM-ova i fizičkog kapaciteta. Limit se primenjuje i kada postoje neiskorišćeni resursi izvan pool-a. Zbog toga je limit najčešći izvor „nevidljivog plafona”: aplikacija je spora, host deluje rasterećeno, ali je VM ograničen pravilom na svom pool-u ili nekom pretku.
+</p>
+
+<p>
+  CPU limit može povećati CPU ready i ograničiti efektivno izvršavanje vCPU-a. Memory limit ispod zbirno potrebne memorije potomaka može pokrenuti ballooning, compression, swapping ili druge mehanizme reclamation-a, uz veliko kašnjenje aplikacije. Limit je opravdan kada postoji stvarna poslovna kvota, kontrolisan laboratorijski scenario ili jasno ugovoren tenant cap. Kao podrazumevana produkciona praksa obično se ostavlja Unlimited, a prioritet se reguliše shares vrednostima i razumno dimenzionisanim rezervacijama.
+</p>
+
+<h3>Shares – relativni prioritet pri konkurenciji</h3>
+
+<p>
+  <strong>Shares</strong> određuju relativni udeo samo kada sibling objekti istovremeno traže više resursa nego što roditelj može da obezbedi. Dok nema contention-a, High pool ne dobija „brži procesor”, a Low pool nije namerno usporen. Ako dva sibling pool-a imaju 4.000 i 2.000 CPU shares i oba potpuno zahtevaju sporni kapacitet, prvi dobija približno dve trećine, a drugi jednu trećinu kapaciteta koji ostane nakon zadovoljavanja relevantnih rezervacija i limita. Ako prvi ne traži svoj deo, drugi može koristiti slobodan kapacitet.
+</p>
+
+<table>
+  <thead><tr><th>Parametar</th><th>Odgovara na pitanje</th><th>Deluje kada</th><th>Glavni rizik</th></tr></thead>
+  <tbody>
+    <tr><td>Reservation</td><td>Koliki minimum je garantovan?</td><td>Admission control i contention</td><td>Prekomerno vezivanje kapaciteta i neuspešan placement/power-on</td></tr>
+    <tr><td>Limit</td><td>Koliki maksimum sme da se koristi?</td><td>Uvek kada potražnja pređe limit</td><td>Veštačko usko grlo iako postoji slobodan hardver</td></tr>
+    <tr><td>Shares</td><td>Ko ima relativnu prednost?</td><td>Samo između konkurentnih sibling objekata</td><td>Pogrešno poređenje shares iz različitih roditelja ili nivoa</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Nivoi Low, Normal i High predstavljaju unapred definisane relativne težine; Custom omogućava ručni broj shares. CPU i memory shares su nezavisni. Kod tradicionalnih shares vrednosti ukupan prioritet pool-a ostaje isti bez obzira na broj VM-ova, pa dodavanje VM-ova smanjuje prosečan udeo po VM-u. <strong>Scalable Shares</strong>, dostupne u novijim vSphere izdanjima za DRS resource pool-ove, dinamički prilagođavaju efektivne shares prema broju VM-ova u pool-u i korisne su kada se membership često menja. Pre uključivanja treba proveriti tačnu verziju vCenter/ESXi sistema i posledice po postojeći model prioriteta; promena može promeniti raspodelu pri sledećem contention-u.
+</p>
+
+<h3>Primer projektovanja raspodele</h3>
+
+<p>
+  Pretpostavimo da zajednički DRS cluster pruža 64 fizička CPU jezgra i 512 GB RAM-a. Poslovni zahtev glasi: produkcija mora imati prednost pri zagušenju, baza mora dobiti dokazano potreban minimum, razvoj može koristiti sav slobodan kapacitet, a test okruženje ne sme ugroziti produkciju. To se ne prevodi automatski u mnoštvo limita.
+</p>
+
+<pre><code class="language-none">RP-Production
+  CPU shares:    High
+  Memory shares: High
+  Limit:         Unlimited
+  Reservation:   samo izmeren i odobren minimum
+
+RP-Development
+  CPU shares:    Normal
+  Memory shares: Normal
+  Limit:         Unlimited, osim ako postoji stvarna kvota
+
+RP-Test
+  CPU shares:    Low
+  Memory shares: Low
+  Limit:         samo ako poslovna politika zahteva čvrst plafon</code></pre>
+
+<p>
+  Ovaj model omogućava neprodukcijskim VM-ovima da koriste slobodan kapacitet van perioda opterećenja, a produkciji daje relativnu prednost kada svi traže resurse. Rezervacija se određuje iz merenja stabilne potražnje i servisnog cilja, ne iz zbira konfigurisanog vRAM-a ili pretpostavke „što više, to sigurnije”. Čvrsti test limit uvodi se tek kada je važnija kvota od efikasnog iskorišćenja klastera.
+</p>
+
+<h3>Resource Pool, DRS, HA i ostali mehanizmi</h3>
+
+<p>
+  DRS procenjuje potražnju VM-ova, bira host pri uključivanju i, u zavisnosti od automation level-a, preporučuje ili izvršava vMotion radi boljeg balansa. Resource Pool daje DRS-u prioritete i granice, ali ne garantuje da će VM biti na određenom hostu. Za placement ograničenja koriste se VM-Host affinity/anti-affinity pravila i druge odgovarajuće politike. Nejednak broj VM-ova po hostu nije sam po sebi kvar: cilj DRS-a je zadovoljenje workload-a i resursna efikasnost, ne estetski jednak raspored.
+</p>
+
+<p>
+  vSphere HA restartuje VM-ove nakon otkaza hosta i ima sopstveni admission control za failover kapacitet. Resource Pool nije HA mehanizam, ne kopira podatke i ne obezbeđuje rezervni host. Posle HA događaja manji preostali kapacitet može stvoriti contention, kada shares i rezervacije postaju naročito značajni. Takođe, Resource Pool ne kontroliše datastore I/O ili mrežni bandwidth; za te oblasti postoje posebne storage, network i policy funkcije.
+</p>
+
+<h3>Kreiranje i izmena u vSphere Client-u</h3>
+
+<ol>
+  <li>Izaberite odgovarajući DRS cluster, standalone host ili postojeći parent Resource Pool.</li>
+  <li>Pokrenite <strong>New Resource Pool</strong> i unesite naziv koji prati dokumentovani standard, na primer <code>RP-Development</code>.</li>
+  <li>Za CPU i Memory podesite Shares, Reservation, Expandable Reservation i Limit prema odobrenom dizajnu. Ne unosite probni produkcioni limit bez baseline merenja.</li>
+  <li>Ako izdanje i kontekst nude Scalable Shares, uključite ih samo kada je dinamičko prilagođavanje shares namerna dizajnerska odluka.</li>
+  <li>Pregledajte sažetak i završite kreiranje. Zatim premestite odabrane VM-ove u pool; ova inventarska operacija ne migrira njihove diskove niti nužno menja host.</li>
+  <li>Na karticama <strong>Monitor</strong>, <strong>Performance</strong>, <strong>Tasks and Events</strong> proverite rezultat i zabeležite početne metrike.</li>
+</ol>
+
+<p>
+  Potrebne privilegije zavise od tačne verzije i delegiranog modela, ali nalog mora imati prava za kreiranje/izmenu Resource Pool-a i, za preseljenje VM-a, odgovarajuća prava nad izvornim VM-om i odredišnim pool-om. Produkcioni rad treba obaviti kroz change proceduru sa snimljenim starim vrednostima; screenshot nije zamena za mašinski čitljiv inventar.
+</p>
+
+<h3>PowerCLI administracija i dokaz stanja</h3>
+
+<p>
+  Sledeće komande izvršavaju se u PowerShell-u sa instaliranim VMware/VCF PowerCLI modulima i nalogom koji ima odgovarajuće vCenter privilegije. Prva grupa je read-only i bezbedna je za prikupljanje inventara. Izlaz čuvajte uz change zapis.
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server 'vcsa.lab.local'
+
+$cluster = Get-Cluster -Name 'Lab-Cluster'
+Get-ResourcePool -Location $cluster |
+  Select-Object Name, Parent, CpuSharesLevel, NumCpuShares,
+    CpuReservationMhz, CpuLimitMhz, MemSharesLevel, NumMemShares,
+    MemReservationGB, MemLimitGB |
+  Format-Table -AutoSize
+
+Get-ResourcePool -Name 'RP-Development' |
+  Get-VM |
+  Select-Object Name, PowerState, NumCpu, MemoryGB</code></pre>
+
+<p>
+  Parametri cmdlet-a mogu se razlikovati između verzija modula. Pre state-changing operacije proverite lokalnu sintaksu pomoću <code>Get-Help New-ResourcePool -Full</code> i <code>Get-Help Set-ResourcePool -Full</code>. Sledeći laboratorijski primer kreira pool sa relativnim prioritetom, bez čvrstog limita; vrednosti i dostupni parametri moraju se potvrditi u korišćenoj PowerCLI verziji.
+</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name 'Lab-Cluster'
+
+$pool = New-ResourcePool `
+  -Location $cluster `
+  -Name 'RP-Development' `
+  -CpuSharesLevel Normal `
+  -MemSharesLevel Normal
+
+Get-ResourcePool -Id $pool.Id |
+  Format-List Name, Parent, CpuSharesLevel, CpuReservationMhz,
+    CpuLimitMhz, MemSharesLevel, MemReservationGB, MemLimitGB</code></pre>
+
+<p>
+  Premeštanje VM-a menja njegovo mesto u resursnoj hijerarhiji i time efektivna pravila scheduling-a. Komanda je state-changing; prvo proverite jedinstvenost imena i odredište, zatim koristite <code>-WhatIf</code> ako ga instalirana verzija cmdlet-a podržava.
+</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name 'Test01'
+$destination = Get-ResourcePool -Name 'RP-Development' -Location $cluster
+
+Move-VM -VM $vm -Destination $destination -WhatIf
+Move-VM -VM $vm -Destination $destination
+
+Get-VM -Name 'Test01' | Select-Object Name, ResourcePool</code></pre>
+
+<h3>ESXi alati, metrike i logovi</h3>
+
+<p>
+  Resource Pool dizajn se primarno administrira iz vCenter-a, PowerCLI-ja ili API-ja; <code>esxcli</code> nije glavni alat za upravljanje ovom hijerarhijom. Na ESXi Shell-u, uz privremeno i kontrolisano omogućen pristup, <code>esxtop</code> služi za korelaciju scheduler simptoma. Shell pristup nosi bezbednosni rizik, pa ga posle dijagnostike treba isključiti prema politici organizacije.
+</p>
+
+<pre><code class="language-bash"># Read-only inventar fizičkog CPU-a i memorije na konkretnom ESXi hostu
+esxcli hardware cpu list
+esxcli hardware memory get
+
+# Interaktivno praćenje; pritisnite c za CPU ili m za memorijski prikaz
+esxtop</code></pre>
+
+<table>
+  <thead><tr><th>Dokaz</th><th>Šta tražiti</th><th>Tumačenje</th></tr></thead>
+  <tbody>
+    <tr><td>CPU ready, usage i demand</td><td>Trajno povišen ready uz aktivan workload</td><td>Contention, prevelik vCPU sizing ili CPU limit; korelisati sa hostom i precima pool-a.</td></tr>
+    <tr><td>Memory consumed, active, balloon, compressed, swapped</td><td>Rast reclamation metrika i latencije</td><td>Pritisak memorije ili limit; sama guest prijava memorije nije dovoljan dokaz.</td></tr>
+    <tr><td>Resource Pool entitlement/demand</td><td>Demand iznad entitlement-a ili limit blizu potrošnje</td><td>Pool ne dobija traženi kapacitet zbog konkurencije ili konfiguracione granice.</td></tr>
+    <tr><td>Tasks and Events</td><td>Ko je, kada i na kom objektu menjao postavke</td><td>Audit trag i korelacija sa početkom incidenta.</td></tr>
+    <tr><td><code>/var/log/vmkernel.log</code> i <code>/var/log/hostd.log</code></td><td>Scheduler, VM reconfiguration i host-side greške u relevantnom vremenu</td><td>Koristiti uz vCenter događaje; ne donositi zaključak iz izdvojene linije.</td></tr>
+    <tr><td>vCenter <code>vpxd.log</code></td><td>DRS, task i konfiguracione poruke</td><td>Pristupa se kontrolisano na VCSA; vreme uskladiti sa host logovima.</td></tr>
+  </tbody>
+</table>
+
+<h3>Praktikum – projektovanje, primena i validacija Resource Pool-a</h3>
+
+<p>
+  <strong>Cilj:</strong> u izolovanom DRS laboratorijskom klasteru kreirati produkcioni i razvojni pool, potvrditi da shares menjaju raspodelu tek pod konkurencijom, simulirati pogrešan limit, prikupiti dokaze i vratiti laboratoriju u početno stanje. Vežbu ne izvoditi na produkciji bez odobrenog change-a i baseline-a.
+</p>
+
+<p>
+  <strong>Topologija i preduslovi:</strong> vCenter, cluster <code>Lab-Cluster</code> sa najmanje dva kompatibilna ESXi hosta, uključen DRS, test VM-ovi <code>Prod-Load01</code> i <code>Dev-Load01</code>, bez poslovnih podataka, instaliran VMware Tools i PowerCLI radna stanica. Nalog mora imati potrebne Resource Pool i VM privilegije. Zabeležite DRS automation level, postojeće reservations/limits/shares, aktivne alarme i slobodan kapacitet. Za generisanje opterećenja koristite odobren alat unutar gostujućeg OS-a; ova lekcija namerno ne pokreće destruktivne stress komande.
+</p>
+
+<h3>Vežba 1 – baseline i bezbedno kreiranje</h3>
+
+<ol>
+  <li>U vSphere Client-u proverite da oba test VM-a rade bez CPU ili memory limita i da cluster nema aktivan resursni alarm.</li>
+  <li>Izvezite postojeći Resource Pool inventar PowerCLI read-only upitom iz prethodne celine.</li>
+  <li>Kreirajte <code>RP-Production-Lab</code> sa High CPU/Memory shares, reservation 0 i limit Unlimited.</li>
+  <li>Kreirajte <code>RP-Development-Lab</code> sa Low CPU/Memory shares, reservation 0 i limit Unlimited.</li>
+  <li>Premestite odgovarajući test VM u svaki pool. Potvrdite membership iz Client-a i PowerCLI-ja.</li>
+  <li>Na Performance grafikonima snimite CPU usage, demand i ready, kao i memory active, consumed, ballooned i swapped tokom najmanje jednog reprezentativnog intervala bez contention-a.</li>
+</ol>
+
+<p>
+  <strong>Očekivani rezultat:</strong> oba VM-a rade normalno; High shares ne proizvode merljivo ubrzanje dok resurs nije sporan. Kriterijum završetka je dokumentovan baseline, dva ispravno kreirana pool-a i dokaz da svaki sadrži samo planirani test VM.
+</p>
+
+<h3>Vežba 2 – dokaz relativnog prioriteta</h3>
+
+<ol>
+  <li>Pokrenite isto, kontrolisano CPU opterećenje u oba test VM-a. Povećavajte ga samo do nivoa na kom laboratorijski cluster ili zajednički roditelj zaista postane CPU constrained.</li>
+  <li>Posmatrajte VM i Resource Pool performance metrike. Uporedite demand, usage, entitlement i ready; proverite da li su VM-ovi na istom ili različitim hostovima i zabeležite DRS migracije.</li>
+  <li>Potvrdite da produkcioni pool pod contention-om dobija relativnu prednost. Ne očekujte fiksni procenat ako se potražnja, placement ili druge rezervacije menjaju.</li>
+  <li>Zaustavite generator opterećenja i potvrdite da se metrike vraćaju ka baseline-u.</li>
+</ol>
+
+<p>
+  Ako nema razlike, prvo proverite da li je contention uopšte postojao, zatim sibling odnos pool-ova, efektivne shares, DRS placement i limite na VM-u i svim precima. Nasumično povećavanje rezervacije nije validna dijagnostika.
+</p>
+
+<h3>Vežba 3 – incident sa pogrešnim limitom</h3>
+
+<p>
+  <strong>Rizik:</strong> limit namerno degradira test workload. Vežba je dozvoljena samo u laboratoriji. Pre izmene zapišite tačnu staru vrednost; rollback je vraćanje limita na Unlimited.
+</p>
+
+<ol>
+  <li>Na <code>RP-Development-Lab</code> postavite privremeni CPU limit dovoljno nizak da se posledica vidi, ali da vCenter i infrastrukturne VM-ove ne ugrozi.</li>
+  <li>Pokrenite samo razvojno test opterećenje. Zabeležite simptom u guest-u, CPU demand/usage/ready, host iskorišćenje, pool limit i događaj promene.</li>
+  <li>Formulišite hipotezu: „razvojni VM je usporen jer efektivni limit pool-a ograničava CPU, a ne zato što host nema kapacitet”. Potvrdite je poređenjem visokog demand-a, dostignutog limita i slobodnog kapaciteta izvan pool-a.</li>
+  <li>Vratite limit na Unlimited, zaustavite opterećenje i proverite oporavak istim metrikama.</li>
+</ol>
+
+<p>
+  <strong>Incident zapis:</strong> simptom je povećana latencija; obim je razvojni pool i njegovi potomci; neposredni uzrok je CPU throttling; osnovni uzrok je neodobrena ili pogrešno dimenzionisana kvota; privremeno rešenje je kontrolisano povećanje/uklanjanje limita; trajna mera je change kontrola, baseline i alarm za približavanje limitu. Kriterijum završetka je dokaz uzroka pre korekcije i dokaz oporavka posle rollback-a.
+</p>
+
+<h3>Vežba 4 – admission control i bezbedan rollback</h3>
+
+<ol>
+  <li>Bez menjanja stanja izračunajte zbir postojećih VM i pool rezervacija i uporedite ga sa dostupnim nerezervisanim kapacitetom roditelja.</li>
+  <li>U Client-u pregledajte Expandable Reservation. Diskutujte da li child treba da pozajmljuje rezervaciju od roditelja ili poslovna kvota zahteva čvrstu granicu.</li>
+  <li>Ne izazivajte produkcioni power-on failure. U laboratoriji se neuspeh može bezbedno demonstrirati samo malim, privremenim zahtevom čiji je rollback unapred određen.</li>
+  <li>Po završetku vratite sve promenjene reservations, limits i shares na početne vrednosti, premestite VM-ove u njihov početni parent i uklonite samo laboratorijske pool-ove kada su prazni.</li>
+  <li>Potvrdite da nema novih alarma, da su VM-ovi u očekivanom stanju i da se konačni PowerCLI inventar podudara sa početnim.</li>
+</ol>
+
+<h3>Sistematičan troubleshooting</h3>
+
+<ol>
+  <li><strong>Definišite simptom i obim:</strong> jedan VM, svi VM-ovi u pool-u, jedan host ili ceo cluster; CPU, memory ili power-on problem.</li>
+  <li><strong>Sačuvajte dokaze:</strong> poslednje promene, Tasks and Events, alarme, performance grafikone, DRS preporuke i relevantne logove u istom vremenskom prozoru.</li>
+  <li><strong>Pratite hijerarhiju:</strong> proverite VM postavke, neposredni pool i svaki parent do root-a. Efektivna granica može biti nasleđena.</li>
+  <li><strong>Razdvojite demand od konfiguracije:</strong> proverite da li stvarno postoji contention, da li je dostignut limit i da li rezervacija blokira admission control.</li>
+  <li><strong>Proverite placement zavisnosti:</strong> DRS stanje, automation level, affinity pravila, maintenance mode, kompatibilnost i dostupnost hostova.</li>
+  <li><strong>Menjajte jednu stvar:</strong> primenite najmanju reverzibilnu korekciju, validirajte istim metrikama i dokumentujte uzrok, posledicu i trajnu meru.</li>
+</ol>
+
+<h3>Najčešće greške</h3>
+
+<ul>
+  <li>korišćenje Resource Pool-a kao foldera i stvaranje duboke hijerarhije bez resursnog razloga;</li>
+  <li>tumačenje High shares kao trajne garancije performansi, čak i bez contention-a;</li>
+  <li>poređenje apsolutnog broja shares između objekata koji nemaju istog parent-a;</li>
+  <li>postavljanje CPU ili memory limita „za svaki slučaj”, pa nastanak throttling-a i reclamation-a uz slobodan kapacitet;</li>
+  <li>rezervisanje celog konfigurisanog kapaciteta bez merenja i razumevanja admission control posledica;</li>
+  <li>promena pool-a bez provere pojedinačnih VM limits/reservations i bez pregleda svih predaka;</li>
+  <li>zaključak da DRS ne radi samo zato što broj VM-ova po hostovima nije jednak;</li>
+  <li>brisanje pool-a ili masovno premeštanje VM-ova bez provere novih efektivnih pravila.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Resource Pool vezati za merljivu poslovnu klasu usluge, vlasnika i odobrenu politiku, a organizaciju inventara rešavati folderima i tagovima.</li>
+  <li>Shares koristiti kao osnovni mehanizam relativnog prioriteta; reservation zasnivati na merenju, a limit uvoditi samo uz opravdanu kvotu.</li>
+  <li>Održavati plitku hijerarhiju i dokumentovati parent-child odnose, efektivne vrednosti, Expandable Reservation i Scalable Shares odluke.</li>
+  <li>Pre svake izmene sačuvati konfiguraciju i baseline, proveriti VM i sve parent objekte, zatim primeniti jednu reverzibilnu promenu.</li>
+  <li>Alarmima i kapacitivnim izveštajima pratiti demand, entitlement, ready, reclamation, rezervisani i nerezervisani kapacitet, ne samo prosečan usage.</li>
+  <li>Redovno proveravati da li se membership i poslovni prioriteti još podudaraju; napušten pool sa starim limitom može godinama ostati skriven uzrok incidenta.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je savladana kada administrator može da razlikuje Resource Pool od foldera i granice dostupnosti, nacrta njegov položaj u compute hijerarhiji, objasni Reservation, Limit, Shares, Expandable Reservation i Scalable Shares, predvidi njihovu interakciju sa DRS-om i admission control-om, kreira i validira pool u vSphere Client-u i PowerCLI-ju, dokaže contention odgovarajućim metrikama, pronađe efektivni limit kroz sve parent objekte i bezbedno vrati konfiguraciju u početno stanje. Završetak nije uspešan samo zato što je objekat kreiran; potreban je dokaz da poslovni prioritet proizvodi očekivano ponašanje bez neželjenog uticaja na druge workload-e.
+</p>
+
+<h3>Zaključak</h3>
+
+<p>
+  Resource Pool pretvara zajednički CPU i memorijski kapacitet u upravljivu hijerarhiju garancija, granica i relativnih prioriteta. Njegova najveća vrednost nije u broju kreiranih pool-ova, već u preciznom prevođenju poslovnih potreba u pravila koja scheduler može dosledno sprovesti. Reservation štiti dokazani minimum, Limit postavlja čvrst plafon, a Shares pravedno raspoređuju sporni resurs; nijedan od tih parametara ne zamenjuje kapacitivno planiranje, HA, bezbednosnu izolaciju ili dobro dimenzionisanje VM-ova.
+</p>
+
+<p>
+  Odgovoran administrator zato počinje merenjem i jasnim servisnim ciljem, čuva početno stanje, proverava celu hijerarhiju i svaku izmenu potvrđuje metrikama, događajima i ponašanjem aplikacije. Tako Resource Pool ostaje instrument predvidivosti i efikasnog deljenja infrastrukture, umesto skrivenog izvora ograničenja koji se otkriva tek tokom incidenta.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Broadcom VMware vSphere Resource Management i vSphere DRS dokumentacija; zvanične reference za upravljanje Resource Pool-ovima, reservations, limits, shares, scalable shares i admission control; Broadcom Knowledge Base članci o resource contention-u, memory reclamation-u i neuspešnom uključivanju VM-ova; zvanične VMware PowerCLI cmdlet reference; ESXi esxtop, performance monitoring i log reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-09-datacenter-cluster-host.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-11-virtuelna-masina.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

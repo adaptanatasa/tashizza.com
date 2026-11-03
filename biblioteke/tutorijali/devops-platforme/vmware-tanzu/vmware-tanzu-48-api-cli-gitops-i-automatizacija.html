@@ -1,0 +1,694 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-48-api-cli-gitops-i-automatizacija.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>GitOps – upravljanje konfiguracijom i promenama kroz Git repozitorijum | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="GitOps predstavlja pristup upravljanju Kubernetes konfiguracijom kroz Git repozitorijum kao jedini izvor istine uz automatsku sinhronizaciju promena u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, GitOps, Argo CD, Flux, Git, Continuous Delivery, DevOps, cloud native, TKG, konfiguracija, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-48-api-cli-gitops-i-automatizacija.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="GitOps – upravljanje konfiguracijom i promenama kroz Git repozitorijum">
+
+  <meta property="og:description"
+        content="Trideset peta lekcija VMware & Tanzu tutorijala – upravljanje Kubernetes konfiguracijom i isporukom aplikacija korišćenjem GitOps principa i Git repozitorijuma.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-48-api-cli-gitops-i-automatizacija.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-48-gitops.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="GitOps – upravljanje konfiguracijom i promenama kroz Git repozitorijum">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-48-gitops.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-48-gitops.png"
+           alt="GitOps – upravljanje konfiguracijom i promenama kroz Git repozitorijum">
+
+    </a>
+
+    <div class="page-subtitle">
+ XII. Lifecycle, automatizacija, recovery i interoperabilnost
+</div>
+  <div class="page-subtitle">
+48. API, CLI, GitOps i automatizacija – ponovljive, idempotentne i proverljive operacije
+</div>
+
+<h3>Od ručne operacije do kontrolisanog sistema automatizacije</h3>
+<p>Prethodna lekcija uspostavila je redosled i kontrolne tačke životnog ciklusa cele platforme. Ova lekcija taj operativni plan pretvara u ponovljiv izvršni tok. Cilj nije da se svaka radnja po svaku cenu automatizuje, već da se operacije koje se često ponavljaju ili nose veliki rizik izvode na isti način, sa jasno određenim ulazima, ovlašćenjima, preduslovima, proverama, dokazima i putem povratka.</p>
+<p>U vSphere Supervisor i VKS okruženju automatizacija prelazi više upravljačkih ravni. vCenter i drugi VCF servisi izlažu svoje API-je; PowerCLI i drugi CLI alati te API-je predstavljaju kao administratorske komande; Kubernetes i Tanzu resursi koriste deklarativni API; GitOps kontroler kontinuirano usklađuje resurse čiji je autoritativni izvor Git. Nijedan alat sam po sebi ne obezbeđuje idempotenciju, bezbednost ili dokazivost. Te osobine nastaju tek kada su način promene, vlasništvo nad stanjem i kriterijumi prihvatanja pravilno projektovani.</p>
+<table>
+<thead><tr><th>Sloj</th><th>Najpogodnija upotreba</th><th>Glavni rizik</th><th>Obavezni dokaz</th></tr></thead>
+<tbody>
+<tr><td>GUI</td><td>Istraživanje, jednokratna odobrena intervencija i vizuelna korelacija</td><td>Teško ponavljanje i nepotpun audit postupka</td><td>Task/Event zapis, snimljeni ulazi i post-check</td></tr>
+<tr><td>CLI ili PowerCLI</td><td>Interaktivna dijagnostika, inventar i kontrolisani runbook</td><td>Pogrešan kontekst, parcijalno izvršenje ili oslanjanje na format izlaza</td><td>Verzija alata, kontekst, transcript, izlazni kod i stanje posle operacije</td></tr>
+<tr><td>REST/API ili SDK</td><td>Integracija sistema, velike serije i asinhroni poslovi</td><td>Pogrešna verzija ugovora, retry bez zaštite i curenje tokena</td><td>Request ID, HTTP status, task ID, sanitizovan odgovor i konačno stanje</td></tr>
+<tr><td>Deklarativni manifest</td><td>Željeno stanje Kubernetes resursa i politika</td><td>Konflikt vlasništva nad poljima ili destruktivni prune</td><td>Render, schema/admission provera, diff, managed fields i health status</td></tr>
+<tr><td>GitOps</td><td>Kontinuirano usklađivanje i promocija između okruženja</td><td>Kompromitovan izvor istine ili preširoka prava kontrolera</td><td>Odobren commit, primenjena revizija, condition, audit i funkcionalni test</td></tr>
+</tbody>
+</table>
+
+<h3>Ponovljivost, idempotencija i proverljivost</h3>
+<p><strong>Ponovljiva</strong> operacija sa istim kontrolisanim ulazima daje predvidiv rezultat. <strong>Idempotentna</strong> operacija može se ponovo izvršiti bez neželjenog umnožavanja ili nove promene kada je cilj već ostvaren. <strong>Proverljiva</strong> operacija ostavlja dovoljno dokaza da nezavisna osoba može utvrditi ko je odobrio promenu, koja verzija koda i koji parametri su korišćeni, šta je sistem prihvatio i da li je poslovna funkcija ostala zdrava.</p>
+<p>Idempotencija nije isto što i „skripta se može pokrenuti dva puta”. Komanda za kreiranje često drugi put vraća grešku; skripta koja tu grešku bezuslovno ignoriše može sakriti pogrešno postojeće stanje. Ispravan obrazac je <em>observe–compare–act–verify</em>: pročitaj stanje, normalizuj ga, uporedi sa namerom, promeni samo razliku i ponovo pročitaj autoritativni sistem. Kod asinhronih API operacija mora se sačekati završetak task-a, jer prihvaćen zahtev nije dokaz uspešno završene promene.</p>
+<ul>
+<li><strong>Precondition:</strong> verzija platforme, identitet cilja, slobodan kapacitet, zavisnosti i prava odgovaraju planu.</li>
+<li><strong>Plan ili diff:</strong> pre state-changing poziva postoji pregled očekivane razlike i zone posledica.</li>
+<li><strong>Jedan vlasnik polja:</strong> unapred je određeno da li poljem upravlja GitOps, operator, autoscaler, PowerCLI skripta ili čovek.</li>
+<li><strong>Ograničena promena:</strong> batch ima kontrolisanu veličinu, timeout, retry politiku i mogućnost zaustavljanja.</li>
+<li><strong>Postcondition:</strong> stanje se čita iz sistema, a ne zaključuje iz činjenice da komanda nije prijavila grešku.</li>
+<li><strong>Dokaz:</strong> beleže se korelacioni ID, task, Git SHA, verzija image-a ili modula, vreme, rezultat i odobrenje, ali ne i tajne.</li>
+</ul>
+
+<h3>API ugovor, verzije i asinhroni poslovi</h3>
+<p>vSphere Automation API, vSphere Web Services API, Kubernetes API i API-ji dodatnih VCF/Tanzu komponenti nisu jedan zajednički interfejs. Pokrivenost funkcija, autentikacija, putanje, oblik greške i model zadatka razlikuju se po proizvodu i izdanju. Pre razvoja automatizacije treba otvoriti referencu koja odgovara stvarnoj ciljnoj verziji, proveriti dostupnost endpoint-a i privilegije, a zatim zabeležiti minimalnu i maksimalnu testiranu verziju. Poziv koji postoji u vSphere 9.x ne sme se pretpostaviti za vSphere 8.x.</p>
+<p>Aktuelni Broadcom portal i dalje objavljuje vSphere Automation API i Web Services API reference. Raniji zaseban vSphere Automation SDK for REST označen je kao obustavljen od vSphere 7.0; to ne znači da je REST API ukinut. REST se poziva standardnim HTTP klijentom ili podržanim jezičkim SDK-om. VMware PowerCLI je u novijoj dokumentaciji preimenovan i distribuira se kao VMware Cloud Foundation PowerCLI; naziv konkretnih modula i cmdlet-a ipak mora biti proveravan prema instaliranoj verziji i matrici kompatibilnosti.</p>
+<p>HTTP status <code>200</code> ili <code>201</code> obično označava neposredan rezultat, <code>202 Accepted</code> prihvatanje asinhronog rada, <code>401</code> neuspelu autentikaciju, <code>403</code> nedovoljnu autorizaciju, <code>404</code> pogrešan ili nedostupan resurs, <code>409</code> konflikt stanja, a <code>429</code> ograničenje učestalosti. Automatizacija mora obraditi dokumentovani model konkretnog endpoint-a; generičko pravilo ne sme zameniti njegovu API referencu.</p>
+<p>Retry je bezbedan samo kada je operacija idempotentna ili zaštićena idempotency ključem koji taj API zaista podržava. Mrežni timeout nakon slanja <code>POST</code> zahteva ostavlja neizvesnost: server je možda kreirao objekat iako klijent nije primio odgovor. Pre ponavljanja najpre se traži objekat po stabilnom poslovnom ključu ili se proverava vraćeni task/correlation ID. Exponential backoff sa jitter-om koristi se za dokumentovane prolazne greške, dok se <code>400</code>, <code>401</code> i većina <code>403</code> odgovora ne „leče” beskonačnim retry-jem.</p>
+
+<h3>CLI i PowerCLI kao bezbedan izvršni sloj</h3>
+<p>CLI komanda je samo klijent API-ja. Njena prednost je brzina, shell kompozicija i čitljiv runbook; slabost je što se format teksta, podrazumevani kontekst i interaktivno ponašanje mogu menjati. Automatizacija treba da koristi strukturisani JSON/YAML izlaz kada postoji, eksplicitne identifikatore i parametre, proveru izlaznog koda i zaključane verzije alata. Parsiranje kolona namenjenih čoveku pomoću <code>grep</code> ili <code>awk</code> nije stabilan ugovor.</p>
+<p>PowerCLI tok treba da uspostavi eksplicitnu sesiju, proveri identitet servera i sertifikat, koristi <code>-WhatIf</code> kada ga cmdlet podržava i zaustavi se na grešci. Globalno isključivanje provere sertifikata nije prihvatljiva produkciona praksa; interni CA lanac treba uvesti u trust store. Lozinka se ne upisuje u skriptu, command history ili transcript.</p>
+<pre><code class="language-powershell">$ErrorActionPreference = 'Stop'
+$server = 'vcsa01.example.internal'
+$credential = Get-Credential -Message "vCenter nalog sa najmanjim potrebnim pravima"
+
+$session = Connect-VIServer -Server $server -Credential $credential
+try {
+    $cluster = Get-Cluster -Name 'compute-prod-01' -Server $session
+    if ($null -eq $cluster) {
+        throw 'Ciljni klaster nije pronađen.'
+    }
+
+    Get-VM -Location $cluster |
+        Select-Object Name, PowerState, NumCpu, MemoryGB |
+        Sort-Object Name
+}
+finally {
+    Disconnect-VIServer -Server $session -Confirm:$false
+}</code></pre>
+<p>Primer je <strong>read-only</strong>: pravi inventar VM-ova i demonstrira eksplicitno povezivanje i sigurno zatvaranje sesije. Za state-changing cmdlet pre izvršenja se proveravaju <code>Get-Help CMDLET -Full</code>, podrška za <code>-WhatIf</code>, scope objekta i rollback. Uspeh se potvrđuje novim <code>Get-*</code> pozivom i odgovarajućim vCenter Task/Event zapisom, a ne samo odsustvom PowerShell exception-a.</p>
+
+<h3>Kubernetes API: dry-run, diff, apply i vlasništvo nad poljima</h3>
+<p><code>kubectl</code> komunicira sa Kubernetes API serverom. <code>--dry-run=client</code> proverava i renderuje zahtev lokalno, ali ne prolazi serversko defaultovanje, aktuelnu OpenAPI šemu ni admission lance. <code>--dry-run=server</code> šalje neperzistentan zahtev API serveru i zato daje relevantniju proveru. <code>kubectl diff</code> koristi server-side dry-run i zahteva prava potrebna za simuliranu create/update/patch operaciju; nije samo read-only <code>get</code>.</p>
+<pre><code class="language-bash">kubectl --context=tkg-prod-01-admin@tkg-prod-01 \
+  apply --server-side --dry-run=server \
+  --field-manager=tashizza-platform \
+  -f rendered.yaml
+
+kubectl --context=tkg-prod-01-admin@tkg-prod-01 \
+  diff --server-side \
+  --field-manager=tashizza-platform \
+  -f rendered.yaml</code></pre>
+<p>Prva komanda ne perzistira promenu; druga prikazuje očekivanu razliku i uobičajeno koristi izlazni kod <code>0</code> kada razlike nema, <code>1</code> kada razlika postoji i vrednost veću od <code>1</code> za grešku. CI zato ne sme svaki nenulti kod automatski označiti kao kvar. Server-Side Apply upisuje vlasništvo u <code>metadata.managedFields</code> i prijavljuje konflikt kada drugi field manager upravlja istim poljem. Opcija <code>--force-conflicts</code> preuzima vlasništvo i nije rutinska popravka; koristi se samo kada je promena vlasnika polja namerna, pregledana i dokumentovana.</p>
+<p>Deklarativno ne znači automatski bezopasno. Brisanje resursa iz izvora uz pruning, promena immutable polja, usvajanje postojećeg objekta ili promena selector-a mogu izazvati zamenu ili prekid rada. Pre apply-a se proveravaju renderovani resursi, namespace, CRD zavisnosti, admission rezultat, diff i politika vlasništva; posle apply-a conditions, events, rollout i funkcionalni signal.</p>
+
+<h3>Projektovanje automatizovanog toka i njegovih zaštitnih ograda</h3>
+<p>Pouzdan pipeline ne treba da bude jedna duga skripta sa administratorskim nalogom. Razdvaja se na faze sa različitim pravima: validacija izvornog koda bez pristupa klasteru; render i statičke provere; server-side dry-run sa ograničenim pravom; ručno odobrenje za produkciju; primena preko GitOps kontrolera; zatim health i funkcionalna validacija. Time kompromitovanje build faze ne daje automatski pravo izmene produkcije.</p>
+<ol>
+<li><strong>Identifikuj artefakte:</strong> zabeleži Git SHA, digest container image-a, verziju Helm chart-a, verzije modula i alata.</li>
+<li><strong>Validiraj bez promene:</strong> lint, schema provera, Kustomize/Helm render, policy test, secret scanning i unit test.</li>
+<li><strong>Simuliraj prema ciljnom API-ju:</strong> server-side dry-run i diff u odgovarajućem kontekstu, uz zapis rezultata i admission odluke.</li>
+<li><strong>Odobri granicu:</strong> reviewer vidi stvarni renderovani diff, procenu uticaja, maintenance window i rollback uslov.</li>
+<li><strong>Primeni kontrolisano:</strong> ograničen identitet, maksimalan broj paralelnih promena, timeout i zaustavljanje na prvom neuspešnom zaštitnom kriterijumu.</li>
+<li><strong>Potvrdi:</strong> task/condition, događaji, rollout, SLO signal i smoke test moraju biti povezani sa istom revizijom.</li>
+<li><strong>Zatvori ili vrati:</strong> promena se zatvara dokazima; ako kriterijum nije ispunjen, aktivira se unapred odobren rollback ili eskalacija.</li>
+</ol>
+<p>Konfiguracija pipeline-a i runbook skripte moraju biti verzionisane i pregledane kao produkcioni kod. Zavisnosti se pin-uju na podržane verzije ili digest-e, a runner image se periodično obnavlja zbog bezbednosnih ispravki. Generisani plan, log i diff mogu sadržati interne nazive, IP adrese ili deo Secret objekta; pre arhiviranja moraju se klasifikovati i sanitizovati. Opcije poput <code>set -x</code>, PowerShell transcript-a i previše detaljnog HTTP debug izlaza ne koriste se oko kredencijala i authorization header-a.</p>
+
+<h3>Interoperabilnost i granice automatizacije</h3>
+<p>Automatizacija vSphere sloja i GitOps automatizacija workload-a ne smeju istovremeno posedovati iste odluke. PowerCLI može pripremiti namespace zavisnosti, storage politiku ili inventarske oznake kada je za to podržan odgovarajući interfejs, dok GitOps zatim upravlja namespaced Kubernetes resursima. Prenos između faza vrši se preko stabilnih identifikatora i eksplicitnog ugovora, ne parsiranjem naziva prikazanog u GUI-ju.</p>
+<p>Redosled zavisnosti je deo dizajna: CRD pre custom resource-a, namespace i RBAC pre ograničenog reconciliation-a, registry poverenje pre workload-a, storage klasa pre PVC-a i mrežna politika uz proveru potrebnih tokova. GitOps <code>dependsOn</code> može izraziti deo ovog redosleda unutar kontrolera, ali ne dokazuje spremnost spoljnog DNS-a, load balancer-a, baze ili storage sistema. Za njih se definišu zasebni, vremenski ograničeni pre-check i funkcionalni kriterijumi.</p>
+<p>Automatizacija se zaustavlja i eskalira kada je trenutno stanje nepoznato, kada diff prelazi odobrenu zonu promene, kada postoji nedokumentovan vlasnik polja, kada backup ili rollback nisu dokazani, kada se traži zaobilaženje admission politike ili kada API vraća konflikt koji skripta ne ume jednoznačno da razreši. „Force” opcija nije zamena za odluku vlasnika sistema.</p>
+
+<h3>GitOps kao operativni model upravljanja</h3>
+<p>GitOps je operativni model u kome se željeno stanje Kubernetes okruženja opisuje deklarativnim konfiguracionim fajlovima, čuva u kontrolisanom Git repozitorijumu i automatski usklađuje sa stvarnim stanjem klastera. Git nije samo mesto za čuvanje YAML fajlova, već evidencija odobrenih promena, tačka kontrole pristupa, izvor revizijske istorije i osnova za povratak na prethodno poznato ispravno stanje.</p>
+<p>U klasičnom postupku administrator ili CI sistem izvršava <code>kubectl apply</code> neposredno prema klasteru. Kod GitOps modela promena se prvo unosi u Git, prolazi proveru i odobravanje, a zatim kontroler unutar klastera preuzima odobrenu reviziju i primenjuje je. Time se razdvaja pravo da se predloži promena od prava da se neposredno menja produkcioni Kubernetes API.</p>
+<p>GitOps nije zamena za Git, CI, registry, RBAC, politike prijema objekata, upravljanje tajnama ili monitoring. On ih povezuje u kontrolisan tok. CI i dalje gradi i testira aplikaciju, registry čuva image, sigurnosni sistemi proveravaju artefakte, dok GitOps kontroler obavlja kontinuiranu isporuku deklarisanog stanja u klaster.</p>
+<p>U Tanzu okruženju GitOps se može primeniti na workload klastere nezavisno od toga da li se koriste vSphere with Tanzu, VMware Tanzu Kubernetes Grid, VMware Tanzu Platform ili drugo podržano Kubernetes okruženje. Konkretan način instalacije, podržane verzije komponenti i odgovornost za njihov životni ciklus zavise od Tanzu izdanja i ugovorenog modela podrške. Administrator zato pre implementacije mora proveriti matricu kompatibilnosti klastera, Kubernetes verzije i izabranog GitOps kontrolera.</p>
+<h3>Deklarativno željeno stanje i petlja usklađivanja</h3>
+<p>Kubernetes je zasnovan na kontrolnim petljama: kontroleri posmatraju trenutno stanje resursa, porede ga sa željenim stanjem i pokušavaju da uklone razliku. GitOps proširuje isti princip izvan pojedinačnog Kubernetes objekta. Git repozitorijum postaje spoljašnji izvor željenog stanja, a GitOps kontroler periodično ili na osnovu događaja proverava novu reviziju, priprema manifestacije, primenjuje ih i evidentira rezultat.</p>
+<p>Tipična petlja usklađivanja obuhvata sledeći tok:</p>
+<ol>
+<li>Promena konfiguracije se izrađuje u posebnoj Git grani.</li>
+<li>Automatske provere validiraju sintaksu, strukturu, sigurnosne politike i dozvoljene image reference.</li>
+<li>Ovlašćeni reviewer pregleda razliku i odobrava pull ili merge request.</li>
+<li>Promena se spaja u zaštićenu granu koja predstavlja željeno stanje određenog okruženja.</li>
+<li>GitOps source kontroler preuzima novu Git reviziju i formira artefakt.</li>
+<li>Kontroler za primenu obrađuje Kustomize, Helm ili direktne YAML resurse.</li>
+<li>Kubernetes API validira autentikaciju, RBAC i admission politike, a zatim prihvata ili odbija objekte.</li>
+<li>GitOps kontroler proverava zdravlje resursa i status usklađivanja izlaže kroz Kubernetes conditions, događaje, metrike i logove.</li>
+</ol>
+<p>Periodično usklađivanje nije samo mehanizam za deploy. Ono otkriva i ispravlja drift, odnosno ručne promene u klasteru koje nisu zabeležene u Git-u. Ako administrator ručno promeni image ili konfiguraciju objekta kojim upravlja GitOps, kontroler će pri narednom usklađivanju najčešće vratiti vrednost iz Git-a. To je očekivano ponašanje, a ne kvar kontrolera.</p>
+<p>GitOps kontroler ne može da zaključi da je svaka tehnički validna konfiguracija poslovno ispravna. Manifest može uspešno proći Kubernetes validaciju, a ipak izazvati pogrešno ponašanje aplikacije. Zato su automatski testovi, pregled promene, zdravstvene provere, observability i jasno definisan rollback i dalje neophodni.</p>
+<h3>Pull model, bezbednost i granice poverenja</h3>
+<p>U pull modelu kontroler radi u klasteru i sam preuzima konfiguraciju iz autorizovanog izvora. Spoljni CI sistem ne mora da poseduje produkcioni kubeconfig niti široka prava nad Kubernetes API-jem. Time se smanjuje broj sistema koji mogu neposredno menjati klaster i ograničava posledica kompromitovanja CI okruženja.</p>
+<p>Međutim, bezbednost se ne dobija automatski. Kompromitovan Git nalog, pogrešno podešena zaštita grane ili preširoka prava GitOps service account-a mogu napadaču omogućiti da kroz legitimnu petlju usklađivanja primeni štetnu konfiguraciju. Git repozitorijum zato treba tretirati kao administratorski interfejs produkcionog sistema.</p>
+<p>Granice poverenja moraju biti jasno određene:</p>
+<ul>
+<li><strong>Git platforma</strong> autentikuje korisnike, primenjuje višefaktorsku autentikaciju, štiti grane, zahteva review i čuva audit događaje.</li>
+<li><strong>CI kontrole</strong> proveravaju YAML, Kustomize ili Helm izlaz, sigurnosne politike, zabranjene privilegije, dozvoljene registry-je i eventualno potpise.</li>
+<li><strong>GitOps source kontroler</strong> ima samo pravo čitanja odgovarajućeg repozitorijuma ili putanje.</li>
+<li><strong>GitOps apply kontroler</strong> dobija Kubernetes prava potrebna za resurse kojima zaista upravlja.</li>
+<li><strong>Admission kontrola</strong> predstavlja poslednju preventivnu granicu pre upisa objekta u Kubernetes API.</li>
+<li><strong>Monitoring i audit</strong> otkrivaju neuspešno usklađivanje, neočekivanu reviziju, promenu privilegija i odstupanje od odobrenog procesa.</li>
+</ul>
+<p>Jedna centralna GitOps instalacija sa neograničenim <code>cluster-admin</code> pravom jeste jednostavna za početak, ali stvara veliku zonu posledica. U višekorisničkom enterprise okruženju treba razdvojiti platformsku konfiguraciju od aplikacionih konfiguracija, koristiti zasebne repozitorijume ili strogo kontrolisane putanje i, gde alat podržava takvu izolaciju, usklađivanje izvršavati preko service account-a ograničenog na odgovarajući namespace.</p>
+<h3>Organizacija repozitorijuma i okruženja</h3>
+<p>Struktura repozitorijuma mora omogućiti da administrator lako odgovori na pitanja: koja revizija je primenjena, kome pripada resurs, za koje okruženje važi, šta je zajedničko, a šta specifično i kojim redosledom se zavisnosti primenjuju. Ne postoji jedna obavezna struktura, ali ona mora biti dosledna i dovoljno jasna za review i incidentnu analizu.</p>
+<p>Uobičajeni pristup je razdvajanje osnovne konfiguracije i overlay-a za pojedinačna okruženja. Osnova sadrži zajedničke resurse, dok overlay menja broj replika, limite, hostove, klase skladišta ili druge vrednosti specifične za razvojno, testno i produkciono okruženje. Kustomize to omogućava bez kopiranja celih manifestacija.</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Prednost</th><th>Operativni rizik</th></tr>
+</thead>
+<tbody>
+<tr><td>Jedan repozitorijum za više klastera</td><td>Jedinstven pregled i lakše deljenje zajedničke osnove</td><td>Greška u pravima ili putanji može uticati na više okruženja</td></tr>
+<tr><td>Repozitorijum po okruženju</td><td>Jasna izolacija i jednostavnija kontrola pristupa</td><td>Veće dupliranje i složenije usklađivanje zajedničkih promena</td></tr>
+<tr><td>Repozitorijum po timu ili aplikaciji</td><td>Jasno vlasništvo i delegiranje</td><td>Veliki broj izvora, kredencijala i kontrolera za praćenje</td></tr>
+<tr><td>Monorepo sa kontrolisanim putanjama</td><td>Centralni review i atomske promene više komponenti</td><td>Zahteva stroga CODEOWNERS pravila i pažljivo ograničavanje zone promene</td></tr>
+</tbody>
+</table>
+<p>Produkciona i neprodukcijska okruženja ne treba da prate istu nekontrolisanu granu ako promena treba da prolazi promociju. Pouzdaniji model je da svako okruženje prati eksplicitno kontrolisanu putanju, granu, tag ili commit. Praćenje grane olakšava kontinuirane promene, dok pinovanje na tag ili commit daje strožu reproduktivnost, ali zahteva proces za ažuriranje reference.</p>
+<p>GitOps repozitorijum treba da sadrži željeno stanje, a ne generisane kubeconfig fajlove, privatne ključeve, pristupne tokene ili tajne u čitljivom obliku. Kubernetes Secret kodiran Base64 formatom nije šifrovan i ne sme se smatrati bezbednim za javni ili privatni Git. Tajne se rešavaju integracijom sa spoljnim secrets sistemom, šifrovanim GitOps formatom ili kontrolisanim procesom koji tajnu dostavlja izvan repozitorijuma.</p>
+<h3>Flux arhitektura u Kubernetes i Tanzu okruženju</h3>
+<p>Flux je CNCF GitOps skup kontrolera koji se često koristi u Kubernetes i Tanzu okruženjima. Flux v2 nije jedan monolitni proces, već skup specijalizovanih kontrolera i prilagođenih Kubernetes resursa. Tačna instalirana kombinacija može da se razlikuje, ali tipično obuhvata source-controller, kustomize-controller, helm-controller i notification-controller. Kontroleri za image refleksiju i automatizaciju su opcioni.</p>
+<ul>
+<li><strong>source-controller</strong> pristupa Git, Helm, OCI ili drugim podržanim izvorima, proverava reviziju i proizvodi artefakt koji koriste ostali kontroleri.</li>
+<li><strong>kustomize-controller</strong> obrađuje manifestacije, Kustomize konfiguraciju, zavisnosti, pruning i zdravstvene provere.</li>
+<li><strong>helm-controller</strong> upravlja deklarativnim životnim ciklusom Helm izdanja.</li>
+<li><strong>notification-controller</strong> prima događaje, šalje obaveštenja i može omogućiti webhook podsticaj za brže usklađivanje.</li>
+</ul>
+<p>Resurs <code>GitRepository</code> opisuje gde se nalazi izvor, koju granu, tag, commit ili semantičku verziju treba pratiti, koliko često se proverava i koji Secret sadrži kredencijale. Resurs Flux <code>Kustomization</code>, koji nije isto što i fajl <code>kustomization.yaml</code>, određuje putanju unutar artefakta, interval usklađivanja, pruning, čekanje na spremnost, timeout, zavisnosti i druge parametre primene.</p>
+<p>Status <code>Ready=True</code> na izvoru potvrđuje da je određena revizija uspešno preuzeta i da postoji upotrebljiv artefakt. Status <code>Ready=True</code> na Kustomization resursu znači da je navedena revizija uspešno obrađena prema podešenim proverama. To još ne dokazuje da poslovna funkcija aplikacije radi; funkcionalni test mora biti zaseban kriterijum.</p>
+<h3>Promena, promocija i rollback</h3>
+<p>GitOps promena treba da počne tiketom ili drugim zapisom razloga promene. Rad se obavlja u kratkotrajnoj grani, a merge request mora prikazati tačnu razliku, rezultat automatskih provera, procenu uticaja i rollback postupak. Direktan push u produkcionu granu treba onemogućiti osim kroz strogo kontrolisan emergency proces.</p>
+<p>Promocija između okruženja ne znači ponovno ručno pisanje iste konfiguracije. Verifikovana image verzija ili digest najpre se uvodi u razvojno okruženje, zatim u testno, a nakon odgovarajućih dokaza u produkcioni overlay. Promocija mora zadržati identitet testiranog artefakta; ponovno građenje image-a za produkciju može proizvesti drugačiji sadržaj pod prividno istom verzijom.</p>
+<p>Za rollback u deljenoj istoriji koristi se novi commit koji poništava problematičnu promenu, najčešće komandom <code>git revert</code>. Time istorija ostaje linearno objašnjiva: vidi se koja promena je uvedena, ko ju je poništio i zašto. <code>git reset</code> i force push menjaju objavljenu istoriju i nisu standardni produkcioni rollback, jer mogu ukloniti audit trag i napraviti razliku između lokalnih kopija repozitorijuma.</p>
+<p>Rollback nije završen kada Flux prijavi uspešno usklađivanje. Potrebno je potvrditi da su podovi spremni, da je vraćen očekivani image ili konfiguracija, da servis odgovara i da ključne metrike ne pokazuju degradaciju. Kod promena šeme baze, persistent podataka ili eksternih sistema Git rollback manifestacije možda nije dovoljan, pa procedura mora obuhvatiti kompatibilnost podataka i poseban plan oporavka.</p>
+<h3>Drift, ručne intervencije i troubleshooting</h3>
+<p>Drift je razlika između stanja deklarisanog u Git-u i stvarnog stanja objekta. Može nastati ručnim komandama, drugim operatorom, autoscalerom, mutirajućom admission politikom ili procesom koji deli vlasništvo nad istim poljem. Nije svaka razlika incident: HorizontalPodAutoscaler legitimno menja broj replika, pa GitOps konfiguracija ne treba istovremeno da nameće vrednost koja se sa njim stalno sukobljava.</p>
+<p>Ručna promena objekta kojim upravlja GitOps može biti korisna za kratku dijagnostiku, ali nije trajno rešenje. Administrator mora pretpostaviti da će kontroler vratiti deklarisano stanje. Ako je hitna intervencija neophodna, bezbedniji redosled je evidentiranje incidenta, privremeno suspendovanje precizno određenog usklađivanja, izvođenje minimalne promene, validacija, prenošenje ispravke u Git i ponovno uključivanje petlje. Suspendovanje celog sistema bez definisanog vremena i vlasnika stvara nekontrolisani drift.</p>
+<p>Kod neuspeha se najpre utvrđuje sloj problema:</p>
+<ul>
+<li>Ako <code>GitRepository</code> nije spreman, proveravaju se DNS, mreža, TLS poverenje, SSH host key, kredencijali, URL i postojanje reference.</li>
+<li>Ako je izvor spreman, a <code>Kustomization</code> nije, proveravaju se YAML, Kustomize build, nedostajući CRD, RBAC, admission odbijanje, zavisnosti i zdravstvene provere.</li>
+<li>Ako je Kustomization spreman, a aplikacija ne radi, proveravaju se Deployment, ReplicaSet, podovi, događaji, probe, Service endpoints i aplikacioni logovi.</li>
+<li>Ako se vrednost stalno vraća, proverava se koji kontroler upravlja poljem i da li postoji konflikt između GitOps-a, HPA, operatora ili ručne automatizacije.</li>
+</ul>
+<p>Komanda <code>kubectl describe</code> prikazuje conditions i događaje povezane sa resursom, dok logovi kontrolera daju detaljniji uzrok. Logovi source-controller-a služe za probleme sa preuzimanjem izvora, a logovi kustomize-controller-a za build, apply, prune i health-check probleme. Aplikacioni kvar ne treba tražiti samo u Flux logovima ako je Flux uspešno završio svoj deo posla.</p>
+<h3>Integrisani praktikum – GitOps isporuka aplikacije u produkcioni Tanzu klaster</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Tim za porudžbine održava aplikaciju <code>orders-api</code>. Produkcioni Tanzu workload klaster <code>tkg-prod-01</code> već ima podržanu Flux instalaciju u namespace-u <code>flux-system</code>. Cilj je da se konfiguracija namespace-a <code>team-orders-prod</code> primenjuje isključivo iz privatnog Git repozitorijuma, da se ručni drift automatski ispravlja i da se problematična promena može vratiti auditabilnim Git commit-om.</p>
+<p><strong>Referentno okruženje.</strong> Administratorska radna stanica ima alate <code>git</code>, <code>kubectl</code>, <code>kustomize</code> i <code>flux</code>, važeći kubeconfig za klaster <code>tkg-prod-01</code> i pristup repozitorijumu <code>ssh://git@git.example.internal/platform/tanzu-gitops.git</code>. Produkcioni overlay nalaziće se u putanji <code>clusters/tkg-prod-01/orders-api</code>.</p>
+<p><strong>Potrebna prava.</strong> Git korisnik može da kreira granu i merge request, ali ne može direktno da menja zaštićenu granu <code>main</code>. Reviewer iz platformskog tima odobrava produkcione promene. Kubernetes administrator ima pravo da napravi Flux source, Kustomization i Git kredencijal u <code>flux-system</code>. Kontroler mora imati samo prava potrebna za objekte u <code>team-orders-prod</code>; dodela <code>cluster-admin</code> prava nije cilj praktikuma.</p>
+<p><strong>Preduslovi.</strong> Na radnoj stanici postoje odobreni read-only SSH deploy ključ <code>$HOME/.ssh/tanzu-gitops-ro</code> i odgovarajući javni ključ registrovan na Git serveru. Privatni ključ se ne kopira u repozitorijum. Image <code>registry.example.internal/orders/orders-api:1.4.2</code> postoji, prošao je propisane sigurnosne provere i dostupan je klasteru. Registry autentikacija, ako je potrebna, obezbeđena je odvojenim odobrenim mehanizmom.</p>
+<ol>
+<li><strong>Provera konteksta i stanja Flux instalacije.</strong> Pogrešan kubeconfig je jedna od najopasnijih administratorskih grešaka. Pre bilo kakve promene potvrđuju se kontekst, identitet klastera, čvorovi i stanje Flux kontrolera.
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+flux check
+kubectl -n flux-system get deployments
+kubectl -n flux-system get pods</code></pre>
+<strong>Validacija:</strong> aktivni kontekst mora biti <code>tkg-prod-01-admin@tkg-prod-01</code>, svi očekivani čvorovi moraju biti u stanju <code>Ready</code>, a <code>flux check</code> mora potvrditi dostupne API-je i zdrave kontrolere. Podovi u <code>flux-system</code> moraju biti <code>Running</code> i spremni.</li>
+<li><strong>Provera ovlašćenja pre promene.</strong> Administrator ne treba da pretpostavlja da kubeconfig ima odgovarajuća prava. Proveravaju se samo operacije potrebne za scenario.
+<pre><code class="language-bash">kubectl auth can-i create secrets -n flux-system
+kubectl auth can-i create gitrepositories.source.toolkit.fluxcd.io -n flux-system
+kubectl auth can-i create kustomizations.kustomize.toolkit.fluxcd.io -n flux-system
+kubectl auth can-i get deployments -n team-orders-prod</code></pre>
+<strong>Validacija:</strong> prve tri provere moraju vratiti <code>yes</code>. Poslednja može vratiti <code>no</code> ako namespace još ne postoji; to samo po sebi nije greška. Ako bilo koja potrebna privilegija nedostaje, postupak se prekida i traži se ciljano odobrenje, bez zaobilaženja RBAC-a.</li>
+<li><strong>Kloniranje repozitorijuma i kreiranje radne grane.</strong> Sve promene se rade iz ažurne kopije zaštićene glavne grane.
+<pre><code class="language-bash">mkdir -p "$HOME/gitops-lab"
+cd "$HOME/gitops-lab"
+git clone ssh://git@git.example.internal/platform/tanzu-gitops.git
+cd tanzu-gitops
+git switch main
+git pull --ff-only
+git switch -c change/CHG-2026-0735-orders-api</code></pre>
+<strong>Validacija:</strong> komanda <code>git status</code> mora pokazati novu granu i čist radni direktorijum.
+<pre><code class="language-bash">git status
+git log -1 --oneline</code></pre>
+Opcija <code>--ff-only</code> sprečava nenamerno pravljenje merge commit-a tokom ažuriranja lokalne kopije.</li>
+<li><strong>Kreiranje zajedničke osnove aplikacije.</strong> Direktorijumi se prvo eksplicitno kreiraju, a zatim se dodaju namespace, ConfigMap, Deployment i Service. Primer ne sadrži tajne.
+<pre><code class="language-bash">mkdir -p apps/orders-api/base
+mkdir -p clusters/tkg-prod-01/orders-api
+
+cat &gt; apps/orders-api/base/configmap.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-config
+  namespace: team-orders-prod
+data:
+  LOG_LEVEL: "info"
+  FEATURE_INVOICE_V2: "false"
+EOF
+
+cat &gt; apps/orders-api/base/deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: team-orders-prod
+  labels:
+    app.kubernetes.io/name: orders-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orders-api
+    spec:
+      containers:
+      - name: orders-api
+        image: registry.example.internal/orders/orders-api:1.4.2
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: orders-api-config
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+EOF
+
+cat &gt; apps/orders-api/base/service.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: team-orders-prod
+spec:
+  selector:
+    app.kubernetes.io/name: orders-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+EOF
+
+cat &gt; apps/orders-api/base/kustomization.yaml &lt;&lt;'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- configmap.yaml
+- deployment.yaml
+- service.yaml
+EOF</code></pre>
+<strong>Validacija:</strong> lokalni build mora proizvesti tri namespaced resursa bez greške. Namespace se u ovom praktikumu zasebno bootstrap-uje zato što ograničeni Flux service account ne dobija klastersko pravo da kreira namespace objekte.
+
+<pre><code class="language-bash">kustomize build apps/orders-api/base &gt; /tmp/orders-api-base.yaml
+kubectl apply --dry-run=client -f /tmp/orders-api-base.yaml
+grep '^kind:' /tmp/orders-api-base.yaml</code></pre>
+
+Očekuju se vrste <code>ConfigMap</code>, <code>Deployment</code> i <code>Service</code>. Client dry-run proverava lokalnu strukturu, ali ne proverava sve serverske admission politike.</li>
+
+<li><strong>Kreiranje produkcionog overlay-a.</strong> Overlay koristi osnovu i dodaje produkcione oznake. U realnom sistemu ovde se nalaze samo razlike koje zaista pripadaju konkretnom klasteru.
+<pre><code class="language-bash">cat &gt; clusters/tkg-prod-01/orders-api/kustomization.yaml &lt;&lt;'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../../apps/orders-api/base
+commonLabels:
+  platform.example.internal/cluster: tkg-prod-01
+EOF
+
+kustomize build clusters/tkg-prod-01/orders-api \
+  &gt; /tmp/orders-api-prod.yaml
+kubectl apply --dry-run=server -f /tmp/orders-api-prod.yaml</code></pre> <strong>Validacija:</strong> server-side dry-run mora završiti bez greške. Ako namespace još ne postoji, pojedine politike mogu zahtevati da se provera obavi kroz testno okruženje ili nakon odobrenog kreiranja namespace-a. Greške admission politike ne smeju se zaobilaziti uklanjanjem obaveznih kontrola.</li>
+
+<li><strong>Pregled razlike i slanje promene na review.</strong> Pre commit-a proverava se da li su slučajno dodate tajne ili nepotrebni fajlovi.
+<pre><code class="language-bash">git status --short
+git diff --check
+git diff
+grep -RniE 'password|token|private.key|BEGIN.*PRIVATE' \
+  apps/orders-api clusters/tkg-prod-01 || true
+git add apps/orders-api clusters/tkg-prod-01
+git commit -S -m "CHG-2026-0735 add orders-api GitOps deployment"
+git push -u origin change/CHG-2026-0735-orders-api</code></pre>
+<strong>Validacija:</strong> <code>git diff --check</code> ne sme prijaviti formatne greške. Pretraga ne sme pronaći tajne; sama pretraga nije zamena za namenski secret scanner. Potpisani commit se proverava komandom:
+<pre><code class="language-bash">git log --show-signature -1</code></pre>
+Na Git platformi se zatim kreira merge request ka grani <code>main</code>, povezuje sa promenom <code>CHG-2026-0735</code> i zahteva odobrenje vlasnika produkcionog okruženja.</li>
+<li><strong>Kreiranje read-only Git kredencijala u klasteru.</strong> Ovaj korak se izvršava tek nakon odobrenja promene i registracije javnog deploy ključa na Git serveru. Privatni ključ se čita sa radne stanice i smešta u Kubernetes Secret, ali se nikada ne prikazuje u izlazu niti čuva u Git-u.
+<pre><code class="language-bash">flux create secret git tanzu-gitops-readonly \
+  --namespace=flux-system \
+  --url=ssh://git@git.example.internal/platform/tanzu-gitops.git \
+  --private-key-file="$HOME/.ssh/tanzu-gitops-ro"</code></pre>
+<strong>Validacija:</strong> proveravaju se postojanje, tip i metapodaci, bez prikazivanja <code>data</code> sadržaja.
+<pre><code class="language-bash">kubectl -n flux-system get secret tanzu-gitops-readonly
+kubectl -n flux-system describe secret tanzu-gitops-readonly</code></pre>
+Ako Git server menja SSH host ključ, promena mora biti potvrđena kroz službeni kanal. Slepo prihvatanje novog host ključa može omogućiti napad posrednika.</li>
+<li><strong>Bootstrap namespace-a i ograničenog identiteta za usklađivanje.</strong> Ovaj korak izvodi platformski administrator. Namespace je platformska granica i kreira se izvan aplikacionog inventara, a Flux Kustomization će se izvršavati predstavljajući poseban service account. Primer koristi ugrađenu ClusterRole <code>edit</code> samo unutar jednog namespace-a; u strožem okruženju zamenjuje se namenskom Role koja nabraja tačno dozvoljene vrste i glagole.
+<pre><code class="language-bash">kubectl create namespace team-orders-prod \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl label namespace team-orders-prod \
+  app.kubernetes.io/part-of=orders-platform \
+  environment=production --overwrite
+
+kubectl -n flux-system create serviceaccount orders-api-reconciler \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n team-orders-prod create rolebinding orders-api-reconciler-edit \
+  --clusterrole=edit \
+  --serviceaccount=flux-system:orders-api-reconciler \
+  --dry-run=client -o yaml | kubectl apply -f -</code></pre>
+<strong>Validacija:</strong> impersonation provera mora potvrditi potrebne namespaced operacije, ali odbiti upravljanje drugim namespace-om i klasterskim RBAC objektima.
+<pre><code class="language-bash">kubectl auth can-i create deployments.apps \
+  -n team-orders-prod \
+  --as=system:serviceaccount:flux-system:orders-api-reconciler
+
+kubectl auth can-i create deployments.apps \
+  -n default \
+  --as=system:serviceaccount:flux-system:orders-api-reconciler
+
+kubectl auth can-i create clusterroles.rbac.authorization.k8s.io \
+  --as=system:serviceaccount:flux-system:orders-api-reconciler</code></pre>
+Očekuju se redom <code>yes</code>, <code>no</code> i <code>no</code>. Pravo administratora da koristi impersonation takođe je kontrolisana privilegija; ako je nema, proveru obavlja ovlašćeni platform administrator.</li>
+<li><strong>Registracija Git izvora.</strong> Nakon spajanja merge request-a u <code>main</code> kreira se deklarativni GitRepository. Interval od jednog minuta koristi se za praktikum; u produkciji se bira prema potrebnoj brzini, opterećenju i webhook modelu.
+<pre><code class="language-bash">cat &gt; /tmp/tanzu-gitops-source.yaml &lt;&lt;'EOF'
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: tanzu-gitops
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@git.example.internal/platform/tanzu-gitops.git
+  ref:
+    branch: main
+  secretRef:
+    name: tanzu-gitops-readonly
+EOF
+
+kubectl apply -f /tmp/tanzu-gitops-source.yaml
+flux reconcile source git tanzu-gitops \
+  --namespace=flux-system</code></pre>
+<strong>Validacija:</strong> izvor mora biti spreman i mora prikazati reviziju glavne grane.
+
+<pre><code class="language-bash">flux get sources git -n flux-system
+kubectl -n flux-system get gitrepository tanzu-gitops \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}{.status.artifact.revision}{"\n"}'</code></pre>
+
+Očekivani status je <code>True</code>, uz reviziju koja odgovara odobrenom commit-u. Ako izvor nije spreman, proveravaju se njegovi događaji i source-controller logovi:
+
+<pre><code class="language-bash">kubectl -n flux-system describe gitrepository tanzu-gitops
+kubectl -n flux-system logs deployment/source-controller \
+  --since=15m</code></pre>
+
+</li>
+<li><strong>Kreiranje Flux Kustomization resursa.</strong> Uključeni su pruning, čekanje i eksplicitna zdravstvena provera Deployment-a. Pruning znači da Flux može izbrisati resurse uklonjene iz deklarisanog skupa.</li>
+</ol>
+<p><strong>Upozorenje:</strong> Pogrešna putanja ili pogrešno vlasništvo nad resursima uz <code>prune: true</code> može izazvati brisanje produkcionih objekata. Pre uključivanja pruning-a administrator mora potvrditi sadržaj putanje, granice odgovornosti i rezultat lokalnog build-a.</p>
+<pre><code class="language-bash">cat &gt; /tmp/orders-api-flux-kustomization.yaml &lt;&lt;'EOF'
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: orders-api-prod
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 3m
+  path: ./clusters/tkg-prod-01/orders-api
+  prune: true
+  wait: true
+  serviceAccountName: orders-api-reconciler
+  sourceRef:
+    kind: GitRepository
+    name: tanzu-gitops
+  healthChecks:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: orders-api
+    namespace: team-orders-prod
+EOF
+
+kubectl apply -f /tmp/orders-api-flux-kustomization.yaml
+flux reconcile kustomization orders-api-prod \
+  --namespace=flux-system \
+  --with-source</code></pre>
+
+<p><strong>Validacija:</strong> Kustomization mora biti spreman i mora prikazati istu ili noviju odobrenu reviziju izvora.</p>
+<pre><code class="language-bash">flux get kustomizations -n flux-system
+kubectl -n flux-system describe kustomization orders-api-prod
+kubectl get namespace team-orders-prod
+kubectl -n team-orders-prod get deployment,pods,service,configmap</code></pre>
+<p>Deployment mora imati dve dostupne replike, oba poda moraju biti <code>Running</code> i <code>Ready</code>, a Service mora imati endpoints.</p>
+<pre><code class="language-bash">kubectl -n team-orders-prod rollout status \
+  deployment/orders-api --timeout=180s
+kubectl -n team-orders-prod get endpoints orders-api
+kubectl -n team-orders-prod get deployment orders-api \
+  -o jsonpath='{.status.availableReplicas}{" available of "}{.spec.replicas}{" desired\n"}'</code></pre>
+<ol start="9">
+<li><strong>Završna funkcionalna provera.</strong> Privremeni testni pod poziva servis unutar klastera. Koristi se image koji je prethodno odobren za dijagnostiku u organizaciji.
+<pre><code class="language-bash">kubectl -n team-orders-prod run orders-api-smoke \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never \
+  --rm -i \
+  -- curl --fail --silent --show-error \
+  http://orders-api/health</code></pre>
+<strong>Očekivani rezultat:</strong> komanda završava izlaznim kodom nula i vraća odgovor aplikacije koji organizacioni test definiše kao zdrav, na primer <code>OK</code>. Neuspeh zahteva proveru podova, proba, endpoints-a, NetworkPolicy pravila i aplikacionih logova.
+<pre><code class="language-bash">kubectl -n team-orders-prod get events \
+  --sort-by=.metadata.creationTimestamp
+kubectl -n team-orders-prod logs deployment/orders-api \
+  --all-containers=true --since=15m</code></pre>
+</li>
+<li><strong>Negativni test – ručni drift.</strong> Test potvrđuje da Git ostaje autoritativni izvor. Ručno se menja bezopasna vrednost ConfigMap-a, a zatim se pokreće usklađivanje.
+<pre><code class="language-bash">kubectl -n team-orders-prod patch configmap orders-api-config \
+  --type=merge \
+  -p '{"data":{"LOG_LEVEL":"debug"}}'
+
+kubectl -n team-orders-prod get configmap orders-api-config \
+  -o jsonpath='{.data.LOG_LEVEL}{"\n"}'
+
+flux reconcile kustomization orders-api-prod \
+  --namespace=flux-system
+
+kubectl -n team-orders-prod get configmap orders-api-config \
+  -o jsonpath='{.data.LOG_LEVEL}{"\n"}'</code></pre>
+<strong>Očekivani rezultat:</strong> prva provera prikazuje <code>debug</code>, a nakon usklađivanja vrednost se vraća na <code>info</code>. Time je potvrđeno da ručna promena nije trajna. Test se ne izvodi nad rizičnim poljima kao što su image, sigurnosni kontekst ili mrežna pravila bez posebnog odobrenja.</li>
+
+<li><strong>Kontrolisani test promene i rollback.</strong> U novoj grani menja se feature flag na <code>true</code>, prolaze iste provere i promena se spaja kroz review. Nakon što Flux primeni novu reviziju, simulira se poslovna odluka da funkcija mora biti vraćena. Prvo se identifikuje tačan commit.
+<pre><code class="language-bash">git switch main
+git pull --ff-only
+git log --oneline --decorate -5
+git switch -c rollback/CHG-2026-0735-orders-api
+git revert --no-edit COMMIT_ID_PROMENE
+git push -u origin rollback/CHG-2026-0735-orders-api</code></pre>
+<strong>Validacija:</strong> <code>git revert</code> pravi novi commit i ne prepisuje istoriju. Nakon review-a i spajanja rollback merge request-a pokreće se ili čeka Flux usklađivanje:
+<pre><code class="language-bash">flux reconcile kustomization orders-api-prod \
+  --namespace=flux-system \
+  --with-source
+
+flux get kustomizations -n flux-system
+kubectl -n team-orders-prod get configmap orders-api-config \
+  -o jsonpath='{.data.FEATURE_INVOICE_V2}{"\n"}'
+kubectl -n team-orders-prod rollout status \
+  deployment/orders-api --timeout=180s</code></pre>
+Očekivana vrednost je <code>false</code>, Flux status je <code>Ready=True</code>, a aplikacija ponovo prolazi smoke test.</li>
+
+<li><strong>Provera logova i audit traga.</strong> Git istorija dokazuje redosled odobrenih promena, Kubernetes događaji pokazuju operativni tok, a Flux logovi objašnjavaju usklađivanje.
+<pre><code class="language-bash">git log --show-signature --oneline -10
+kubectl -n flux-system logs deployment/source-controller \
+  --since=30m
+kubectl -n flux-system logs deployment/kustomize-controller \
+  --since=30m
+kubectl -n team-orders-prod get events \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+<strong>Tumačenje:</strong> source-controller treba da prijavi uspešno preuzimanje očekivane revizije, kustomize-controller uspešnu primenu i proveru zdravlja, a aplikacioni namespace ne sme pokazivati ponavljane probe failure, image pull ili scheduling greške.</li>
+</ol>
+<p><strong>Merljivi kriterijumi prihvatanja.</strong></p>
+<ul>
+<li><code>GitRepository/tanzu-gitops</code> i <code>Kustomization/orders-api-prod</code> imaju condition <code>Ready=True</code>.</li>
+<li>Prijavljena Flux revizija odgovara odobrenom commit-u u zaštićenoj grani <code>main</code>.</li>
+<li>Deployment ima <code>2/2</code> dostupne replike i rollout se završava u roku od 180 sekundi.</li>
+<li>Service ima najmanje dva spremna endpoint-a.</li>
+<li>Interni smoke test završava izlaznim kodom nula.</li>
+<li>Ručna promena <code>LOG_LEVEL=debug</code> vraća se na <code>info</code> nakon usklađivanja.</li>
+<li>Rollback vraća <code>FEATURE_INVOICE_V2=false</code> bez prepisivanja Git istorije.</li>
+<li>U Git repozitorijumu nema privatnog SSH ključa, tokena ni nešifrovane aplikacione tajne.</li>
+</ul>
+<p><strong>Cleanup i trajno uklanjanje.</strong> U produkciji se resursi ne uklanjaju samo radi završetka vežbe. Ako je scenario izveden u namenskom laboratorijskom klasteru, uklanjanje mora biti posebna odobrena Git promena. Brisanje direktorijuma aplikacije uz aktivan <code>prune: true</code> ukloniće objekte kojima Kustomization upravlja, uključujući namespace ako je deo inventara.</p>
+<p><strong>Upozorenje:</strong> Pre takvog merge-a proveravaju se persistent podaci, zavisni servisi, retention zahtevi i backup. Bezbednija alternativa za privremeno zaustavljanje jeste skaliranje deklarisano kroz Git ili suspendovanje precizno određenog procesa uz tiket i rok, a ne nekontrolisano brisanje.</p>
+<p>Nakon potvrđenog uklanjanja aplikacije Flux objekti i kredencijal mogu se ukloniti sledećim redosledom:</p>
+<pre><code class="language-bash">kubectl -n flux-system delete kustomization orders-api-prod
+kubectl -n flux-system delete gitrepository tanzu-gitops
+kubectl -n flux-system delete secret tanzu-gitops-readonly
+rm -f /tmp/orders-api-base.yaml
+rm -f /tmp/orders-api-prod.yaml
+rm -f /tmp/tanzu-gitops-source.yaml
+rm -f /tmp/orders-api-flux-kustomization.yaml</code></pre>
+<p>Brisanje GitRepository resursa samo prekida pristup izvoru; ne briše Git repozitorijum. Brisanje Flux Kustomization resursa ne treba koristiti kao zamenu za plansko uklanjanje workload-a, jer ponašanje prema ranije primenjenim objektima zavisi od načina brisanja i finalizacije. Administrator mora prethodno pregledati manifest i dokumentaciju instalirane Flux verzije.</p>
+<h3>Administratorske prakse</h3>
+<table>
+<thead>
+<tr><th>Praksa</th><th>Provera i učestalost</th><th>Reakcija, dokumentovanje i mera uspeha</th></tr>
+</thead>
+<tbody>
+<tr><td>Praćenje usklađivanja</td><td><code>flux get all -A</code>, Kubernetes conditions i Flux metrike kontinuirano; ručna provera posle svakog produkcionog merge-a</td><td>Na <code>Ready=False</code> duže od dva intervala proveriti događaje i odgovarajući kontroler. U incident zapis uneti reviziju, vreme, razlog i oporavak. Uspeh je najmanje 99% planiranih usklađivanja bez greške u definisanom periodu.</td></tr>
+<tr><td>Kontrola revizije</td><td>Posle deploy-a uporediti <code>.status.artifact.revision</code> i <code>.status.lastAppliedRevision</code> sa odobrenim Git commit-om</td><td>Neočekivana revizija zahteva zaustavljanje promocije, proveru grane, webhook-a i Git audita. Dokaz se čuva uz change tiket. Uspeh je potpuna podudarnost odobrenih i primenjenih revizija.</td></tr>
+<tr><td>Otkrivanje drift-a</td><td>Kontinuirano kroz reconciliation; dodatno posle incidentne ručne intervencije</td><td>Ponavljani drift zahteva utvrđivanje vlasnika polja pomoću opisa objekta, managed fields i kontrolerskih logova. Dokumentuje se uzrok i dogovoreni autoritet. Uspeh je odsustvo ponavljanih konflikata za isti resurs.</td></tr>
+<tr><td>Zaštita Git promena</td><td>Najmanje kvartalno i posle promene Git platforme proveriti zaštitu grana, required review, CODEOWNERS, MFA i zabranu force push-a</td><td>Svako odstupanje na produkcionoj grani tretira se kao sigurnosni rizik. Nalaz se beleži u security ili platformskom registru. Uspeh je da nijedan produkcioni commit ne zaobiđe definisana odobrenja.</td></tr>
+<tr><td>Rotacija deploy kredencijala</td><td>Pre isteka, posle promene vlasnika, sumnje na kompromitovanje i prema organizacionom standardu</td><td>Kreira se novi read-only ključ, potvrđuje pristup, zatim opoziva stari. Evidentiraju se fingerprint, vlasnik, datum i povezani repozitorijum, bez privatnog ključa. Uspeh je neprekidno usklađivanje i neuspešan pristup starim ključem.</td></tr>
+<tr><td>Pregled kontrolerskih prava</td><td>Kvartalno i posle dodavanja nove vrste resursa koristiti <code>kubectl auth can-i</code>, pregled Role, ClusterRole i binding objekata</td><td>Neočekivano pravo na secrets, RBAC, CRD ili klasterske resurse zahteva smanjenje privilegija i procenu uticaja. Nalaz se čuva u RBAC evidenciji. Uspeh je da su prava ograničena na dokumentovani skup.</td></tr>
+<tr><td>Praćenje logova i upozorenja</td><td>Kontinuirano slati Flux metrike i događaje u centralni monitoring; logove u centralni log sistem</td><td>Upozorenje se aktivira kod ponovljenih fetch, build, apply ili health-check grešaka. Prva reakcija je klasifikacija sloja kvara. Uspeh se meri vremenom detekcije i vremenom oporavka.</td></tr>
+<tr><td>Proba rollback-a</td><td>Najmanje kvartalno u neprodukcijskom okruženju i pre kritičnih migracija</td><td>Vraća se poznata promena pomoću <code>git revert</code>, proveravaju Flux status, rollout i funkcionalni test. Rezultat se čuva u zapisu vežbe. Uspeh je povratak u definisanom RTO bez gubitka audit istorije.</td></tr>
+</tbody>
+</table>
+<p><strong>Backup i oporavak.</strong> Git server mora imati backup repozitorijuma, grana, tagova, konfiguracije zaštite, korisničkih prava i audit podataka prema politici organizacije. Sam lokalni clone nije dovoljan backup Git platforme. GitOps prilagođeni resursi, RBAC, secrets integracije i konfiguracija kontrolera treba da budu obuhvaćeni podržanim Kubernetes backup rešenjem ili reproduktivnom platformskom konfiguracijom.</p>
+<p>Privatni deploy ključevi i tokeni čuvaju se u odobrenom secrets sistemu sa kontrolom pristupa i rotacijom, a ne u običnom backup arhivu. Integritet Git backup-a proverava se proverom objekata i probnim vraćanjem u izolovanu Git instancu. Kubernetes restore test mora potvrditi da se GitRepository ponovo povezuje, da Kustomization dostiže <code>Ready=True</code> i da se testni workload reprodukuje iz poznate revizije. Backup je upotrebljiv tek kada je restore praktično dokazan.</p>
+<h3>Završna kontrolna tačka</h3>
+<p>Lekcija je završena kada administrator može da demonstrira sledeće sposobnosti i za svaku priloži proverljiv dokaz:</p>
+<ul>
+<li>Razlikuje GUI, CLI, PowerCLI, direktni API, deklarativni apply i GitOps reconciliation i bira ih prema vlasništvu nad stanjem i riziku.</li>
+<li>Objašnjava zašto ponovljivost nije isto što i idempotencija i projektuje tok <em>observe–compare–act–verify</em>.</li>
+<li>Pre API automatizacije proverava verziju ugovora, privilegije, asinhroni task model, timeout, retry uslove i način korelacije.</li>
+<li>PowerCLI ili CLI sesiju vezuje za eksplicitan cilj, koristi najmanja prava, zaustavlja je na grešci i potvrđuje stanje ponovnim čitanjem i Task/Event zapisom.</li>
+<li>Aktivni kubeconfig kontekst potvrđen je komandom <code>kubectl config current-context</code> i odgovara ciljnom klasteru.</li>
+<li><code>flux check</code> potvrđuje zdrave kontrolere i podržane API resurse.</li>
+<li>Git produkciona grana je zaštićena, force push je zabranjen i zahteva se odobrenje vlasnika.</li>
+<li>Lokalni <code>kustomize build</code> i server-side dry-run završavaju bez greške.</li>
+<li><code>kubectl diff</code> rezultat i izlazni kod tumače se pravilno, a field manager i potencijalni Server-Side Apply konflikt poznati su pre primene.</li>
+<li>Repozitorijum je pregledan namenskim secret scanner-om i ne sadrži privatne ključeve, tokene ili nešifrovane tajne.</li>
+<li>GitRepository koristi read-only kredencijal i ima condition <code>Ready=True</code>.</li>
+<li>Flux Kustomization prati tačnu putanju i odobrenu granu, a poslednja primenjena revizija odgovara Git commit-u.</li>
+<li>Uticaj opcije <code>prune: true</code> pregledan je pre aktiviranja.</li>
+<li>Deployment rollout, spremnost podova, Service endpoints i funkcionalni smoke test uspešno su provereni.</li>
+<li>Negativni drift test potvrđuje da se neodobrena ručna promena vraća na Git stanje.</li>
+<li>Rollback koristi novi <code>git revert</code> commit i potvrđen je funkcionalnim testom.</li>
+<li>Flux logovi, Kubernetes događaji, Git audit i change tiket sadrže dovoljno podataka za rekonstrukciju promene.</li>
+<li>Vlasnik sistema, eskalaciona putanja, RTO i postupak incidentnog suspendovanja dokumentovani su u operativnom runbook-u.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razume da GitOps nije samo automatsko izvršavanje YAML fajlova, već model upravljanja u kome su željeno stanje, odobrenje, primena, detekcija odstupanja i rollback povezani u proverljiv tok. Git predstavlja autoritativnu evidenciju namere, dok GitOps kontroler kontinuirano pokušava da Kubernetes stanje uskladi sa odobrenom revizijom.</p>
+<p>Praktična administratorska veština obuhvata pravilnu organizaciju repozitorijuma, proveru izlaza pre merge-a, zaštitu grana, ograničavanje kredencijala i Kubernetes prava, tumačenje Flux conditions, razlikovanje source, apply i aplikacionog problema, validaciju poslovne funkcije i auditabilan rollback. Posebno je važno razumeti da uspešan reconciliation ne garantuje ispravnost aplikacije i da Git rollback ne vraća automatski podatke, eksterne zavisnosti ili nekompatibilnu šemu baze.</p>
+<p>Najveći produkcioni rizici nastaju kada Git kontrola pristupa postane slabija od kontrole Kubernetes API-ja, kada GitOps kontroler dobije nepotrebni <code>cluster-admin</code>, kada se tajne čuvaju u čitljivom obliku, kada više kontrolera menja ista polja ili kada se pruning uključi bez jasnog vlasništva nad resursima. Ručne hitne promene moraju ostati izuzetak sa tiketom, vremenom važenja, prenosom ispravke u Git i naknadnim pregledom.</p>
+<p>Granica administratorskog ovlašćenja završava se tamo gde promena utiče na vlasništvo aplikacije, bezbednosnu politiku, persistent podatke, regulatorne zahteve ili poslovno odobrenje koje administrator nema. Takva situacija zahteva eskalaciju vlasniku aplikacije, security timu, database administratoru, platformskom arhitekti ili change authority telu. Odgovoran GitOps administrator ne meri uspeh brojem automatskih deploy-a, već sposobnošću da dokaže šta je odobreno, šta je primenjeno, da li sistem radi, kako je odstupanje otkriveno i kako je stanje bezbedno vraćeno.</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Broadcom dokumentacija za VMware Tanzu, vSphere Automation API, vSphere Web Services API i VMware Cloud Foundation PowerCLI, njihove kompatibilnosne i administrativne reference; zvanična Kubernetes dokumentacija za API koncepte, kubectl, Server-Side Apply, dry-run, diff, RBAC, admission i deklarativno upravljanje; Flux GitOps Toolkit koncepti, API i CLI reference za source i Kustomize kontrolere, reconciliation, monitoring i bezbednost; kao i zvanične Git reference za revizije, potpisivanje i auditabilni rollback
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-47-lifecycle-i-nadogradnja-cele-platforme.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-49-backup-disaster-recovery-i-obnova-platforme.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

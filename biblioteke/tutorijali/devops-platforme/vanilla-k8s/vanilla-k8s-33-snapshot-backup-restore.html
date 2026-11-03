@@ -1,0 +1,661 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-33-snapshot-backup-restore.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>VolumeSnapshot, backup i restore aplikativnih podataka | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="VolumeSnapshot, backup i restore u Kubernetes-u: CSI arhitektura, konzistentnost aplikacije, RPO/RTO, zaštita kopija, validacija i dokazani oporavak podataka.">
+
+  <meta name="keywords"
+        content="Kubernetes VolumeSnapshot, VolumeSnapshotClass, VolumeSnapshotContent, CSI snapshot, Kubernetes backup, Kubernetes restore, disaster recovery, RPO, RTO, application-consistent backup, Velero, persistent volume, PVC, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-33-snapshot-backup-restore.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+  <meta property="og:locale"
+        content="sr_RS">
+  <meta property="og:type"
+        content="article">
+  <meta property="og:title"
+        content="VolumeSnapshot, backup i restore aplikativnih podataka – od kopije do dokazanog oporavka">
+  <meta property="og:description"
+        content="Kako projektovati, napraviti, zaštititi i proveriti Kubernetes kopije podataka i dokazati oporavak prema RPO i RTO ciljevima.">
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-33-snapshot-backup-restore.html">
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-33-snapshot-backup-restore.png">
+  <meta property="og:image:type"
+        content="image/png">
+  <meta property="og:image:width"
+        content="1200">
+  <meta property="og:image:height"
+        content="630">
+  <meta property="og:image:alt"
+        content="VolumeSnapshot, backup i restore aplikativnih podataka – od kopije do dokazanog oporavka">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-33-snapshot-backup-restore.png"
+       target="_blank"
+       rel="noopener">
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-33-snapshot-backup-restore.png"
+           alt="VolumeSnapshot, backup i restore aplikativnih podataka – od kopije do dokazanog oporavka">
+    </a>
+
+    <div class="page-subtitle">
+      VII. Storage i stateful aplikacije
+    </div>
+    <div class="page-subtitle">
+      33. VolumeSnapshot, backup i restore aplikativnih podataka – od kopije do dokazanog oporavka
+    </div>
+
+    <p>
+      Prethodne lekcije povezale su PersistentVolume, PersistentVolumeClaim, StorageClass, CSI i StatefulSet u sistem u kojem pod može biti zamenjen, a njegov trajni volumen sačuvan. To, međutim, još nije zaštita od pogrešnog brisanja, logičkog oštećenja podataka, ransomware-a, kvara storage sistema ili gubitka lokacije. Ova lekcija zato pomera fokus sa <em>trajnosti aktivnog volumena</em> na dokazivu mogućnost vraćanja aplikacije i njenih podataka u prihvatljivo stanje.
+    </p>
+    <p>
+      Kubernetes <strong>VolumeSnapshot</strong> API standardizuje zahtev za point-in-time snimkom CSI volumena i kreiranje novog PVC-a iz tog snimka. Snapshot je koristan mehanizam, ali nije automatski kompletan backup: može ostati u istom storage failure domenu, može zavisiti od istog administratorskog naloga, ne mora sadržati Kubernetes objekte, tajne ili spoljne zavisnosti i bez koordinacije sa aplikacijom može biti samo crash-consistent. Zaštita postoji tek kada su poznati obim, konzistentnost, mesto čuvanja, retention, pristup, RPO i RTO, a restore je periodično izvršen i potvrđen aplikativnim dokazima.
+    </p>
+
+    <h3>Od kopije do strategije oporavka</h3>
+    <p>
+      Kopija je tehnički artefakt; backup je kontrolisan proces, a disaster recovery je sposobnost organizacije da obnovi uslugu posle definisanog scenarija. Administrator zato prvo određuje šta se štiti: podatke u jednom PVC-u, skup međuzavisnih volumena, Kubernetes manifeste, Secrets, certifikate, operatorske custom resource objekte, image verzije, spoljne baze, DNS, identitete i konfiguraciju storage platforme. Backup samo jednog sloja može proizvesti podatke koje nije moguće bezbedno pokrenuti.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Mehanizam</th>
+          <th>Šta prvenstveno štiti</th>
+          <th>Glavno ograničenje</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CSI VolumeSnapshot</td>
+          <td>Stanje jednog podržanog volumena u određenom trenutku</td>
+          <td>Često zavisi od istog storage sistema i ne obuhvata aplikativne/Kubernetes objekte</td>
+        </tr>
+        <tr>
+          <td>Aplikativni backup</td>
+          <td>Logički konzistentne podatke, na primer dump baze i transakcione logove</td>
+          <td>Zahteva alat i postupak specifičan za aplikaciju; restore može trajati duže</td>
+        </tr>
+        <tr>
+          <td>File-system/data-mover backup</td>
+          <td>Fajlove prenete u nezavisno backup skladište</td>
+          <td>Performanse, promena metapodataka i konzistentnost zavise od alata i quiesce postupka</td>
+        </tr>
+        <tr>
+          <td>Backup Kubernetes resursa</td>
+          <td>Namespace objekte, konfiguraciju i deo deklarativnog stanja</td>
+          <td>Ne znači da su sadržaji PV-ova ili sve spoljne zavisnosti sačuvani</td>
+        </tr>
+        <tr>
+          <td>etcd snapshot</td>
+          <td>Stanje Kubernetes control plane-a za oporavak klastera</td>
+          <td>Nije zamena za aplikativni backup volumena; sadrži osetljive klasterske podatke</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Dobra strategija često kombinuje brzi lokalni snapshot za kratki operativni rollback, aplikativno konzistentnu kopiju i nezavisnu kopiju izvan primarnog storage sistema ili lokacije. Pravilo „3-2-1” može biti koristan početni model — tri kopije, dva tipa medijuma ili sistema i jedna izdvojena kopija — ali se arhitektura zasniva na analizi rizika, ne na sloganu. Za kritične podatke izdvojena kopija treba da ima zaseban trust domen, ograničeno brisanje, enkripciju i po mogućnosti immutable ili object-lock zaštitu.
+    </p>
+
+    <h3>RPO, RTO, retention i poslovni kriterijum uspeha</h3>
+    <p>
+      <strong>Recovery Point Objective (RPO)</strong> određuje najveći prihvatljiv gubitak podataka izražen vremenom. Ako je RPO 15 minuta, kopija jednom dnevno ne zadovoljava zahtev. <strong>Recovery Time Objective (RTO)</strong> određuje najveće prihvatljivo vreme do obnove usluge. RTO uključuje detekciju, odluku, pribavljanje kopije, provisioniranje, restore, aplikativnu proveru i povratak saobraćaja; nije jednak samo trajanju kopiranja bajtova.
+    </p>
+    <p>
+      Retention određuje koliko dugo i koje generacije kopija ostaju dostupne. Kratak retention otežava oporavak od kasno otkrivenog logičkog oštećenja, a beskonačno čuvanje povećava cenu, napadnu površinu i obaveze zaštite ličnih ili regulisanih podataka. Politika mora definisati dnevne, nedeljne i mesečne generacije, legal hold, bezbedno brisanje, vlasnika odobrenja i razliku između produkcionih i test kopija.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Cilj</th>
+          <th>Pitanje za administratora</th>
+          <th>Dokaz</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>RPO</td>
+          <td>Koliko promena sme biti izgubljeno?</td>
+          <td>Vreme poslednje upotrebljive kopije i aplikativni checkpoint/WAL položaj</td>
+        </tr>
+        <tr>
+          <td>RTO</td>
+          <td>Koliko traje povratak verifikovane usluge?</td>
+          <td>Vremenska linija probnog restore-a od odluke do kriterijuma prihvatanja</td>
+        </tr>
+        <tr>
+          <td>Integritet</td>
+          <td>Da li je kopija potpuna i neizmenjena?</td>
+          <td>Checksum, status backup posla, katalog i aplikativne provere</td>
+        </tr>
+        <tr>
+          <td>Izolacija</td>
+          <td>Može li isti kvar ili nalog obrisati original i kopiju?</td>
+          <td>Drugi failure/trust domen, odvojeni kredencijali i test kontrole brisanja</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>CSI snapshot arhitektura i tok zahteva</h3>
+    <p>
+      Stabilni snapshot API koristi grupu <code>snapshot.storage.k8s.io/v1</code> i tri osnovna objekta. <code>VolumeSnapshot</code> je namespaced zahtev korisnika; <code>VolumeSnapshotContent</code> je cluster-scoped reprezentacija stvarnog snapshot-a na storage sistemu; <code>VolumeSnapshotClass</code> je cluster-scoped administrativna klasa koja povezuje zahtev sa CSI drajverom i politikom brisanja. To su CustomResourceDefinition resursi, a ne deo osnovnog Kubernetes API-ja koji je prisutan u svakom klasteru.
+    </p>
+    <p>
+      Snapshot controller prati <code>VolumeSnapshot</code> i <code>VolumeSnapshotContent</code> objekte. CSI <code>external-snapshotter</code> sidecar prati sadržaj i poziva CSI RPC operacije konkretnog drajvera. Sam <code>kubectl</code> zahtev zato nije dokaz da storage podržava snapshot: potrebni su instalirani CRD-ovi, snapshot controller, kompatibilan external-snapshotter, CSI drajver koji oglašava snapshot mogućnost i odgovarajući backend.
+    </p>
+    <ol>
+      <li>Korisnik kreira <code>VolumeSnapshot</code> sa izvorom koji je postojeći PVC u istom namespace-u.</li>
+      <li>Snapshot controller bira odgovarajuću <code>VolumeSnapshotClass</code> i kreira/binduje <code>VolumeSnapshotContent</code>.</li>
+      <li>External-snapshotter poziva CSI drajver, a drajver traži snapshot na backend storage sistemu.</li>
+      <li>Status <code>readyToUse: true</code> označava da je snapshot spreman kao izvor za novi volumen; ne dokazuje aplikativnu konzistentnost.</li>
+      <li>Restore se obavlja kreiranjem novog PVC-a čiji <code>dataSource</code> referencira VolumeSnapshot; ne „premotava” postojeći PVC na mestu.</li>
+    </ol>
+    <p>
+      VolumeSnapshot i izvorni PVC moraju biti u istom namespace-u. Standardni restore preko <code>dataSource</code> takođe referencira snapshot iz istog namespace-a. Cross-namespace data source postoje kao posebno uslovljena funkcionalnost preko <code>dataSourceRef</code>, ReferenceGrant-a, odgovarajućih feature gate-ova i podrške provisioner-a; ne treba ih pretpostaviti kao prenosivu produkcionu mogućnost.
+    </p>
+
+    <h3>VolumeSnapshotClass, dinamičko i unapred provisionirano vezivanje</h3>
+    <p>
+      Kod dinamičkog snapshot-a korisnik navodi PVC, a sistem stvara backend snapshot i VolumeSnapshotContent. Kod unapred provisioniranog modela administrator već ima identifikator snapshot-a na storage sistemu i ručno kreira odgovarajući VolumeSnapshotContent koji se vezuje za VolumeSnapshot. Drugi model je koristan za uvoz postojeće kopije ili kontrolisanu migraciju, ali zahteva tačno poznavanje drajvera, snapshot handle-a i zaštite resursa.
+    </p>
+    <p>
+      <code>deletionPolicy</code> u VolumeSnapshotClass ili VolumeSnapshotContent određuje šta se dešava sa backend snapshot-om kada se pripadajući Kubernetes snapshot sadržaj obriše. <code>Delete</code> uklanja i storage snapshot; <code>Retain</code> zadržava backend artefakt, koji zatim mora imati vlasnika, katalog i postupak ručnog životnog ciklusa. Retain smanjuje rizik slučajnog brisanja kroz Kubernetes, ali može proizvesti napuštene i naplative kopije. Delete pojednostavljuje cleanup, ali je rizičan bez nezavisnog backup-a i zaštite privilegija.
+    </p>
+    <pre><code class="language-yaml">apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-snap-retain
+driver: csi.example.com
+deletionPolicy: Retain</code></pre>
+    <p>
+      Vrednost <code>driver</code> nije generička: mora se poklapati sa CSI drajverom izvornog volumena. Parametri klase, tajne, inkrementalno ponašanje, konsolidacija, performanse i geografska trajnost zavise od proizvođača storage sistema. U prenosivom materijalu ne treba izmišljati parametre; administrator ih preuzima iz zvanične dokumentacije implementacije i ograničava ko sme da kreira ili menja klasu.
+    </p>
+
+    <h3>Crash-consistent i application-consistent kopija</h3>
+    <p>
+      Snapshot aktivnog volumena je najčešće <strong>crash-consistent</strong>: približno predstavlja stanje diska kakvo bi ostalo posle iznenadnog gubitka napajanja. Fajl sistem i baza mogu se oporaviti journal-om ili transakcionim logom, ali poslednje neflushovane promene mogu nedostajati. <strong>Application-consistent</strong> kopija nastaje tek kada aplikacija završi ili zamrzne relevantne upise, isprazni bafer, zabeleži checkpoint i dobije snapshot koordinisan sa tim stanjem.
+    </p>
+    <p>
+      Generičko skaliranje StatefulSet-a na nulu može dati miran disk, ali prekida uslugu i nije automatski bezbedno za svaki klaster baze. <code>fsfreeze</code> zamrzava fajl sistem, ne razume transakcije aplikacije, a neuspešan post-hook može ostaviti workload zamrznut. Za baze se koriste zvanični mehanizmi kao što su backup API, dump, checkpoint, WAL/binlog arhiviranje ili operatorski backup custom resource. Pre/post hook mora imati timeout, proveru rezultata i garantovan thaw/unquiesce postupak čak i kada snapshot ne uspe.
+    </p>
+    <p>
+      Više PVC-ova uvodi dodatni problem: pojedinačni snapshot-i napravljeni jedan za drugim nisu nužno konzistentna grupa. CSI Volume Group Snapshot postoji u novijem snapshot ekosistemu, ali njegova dostupnost i stabilnost zavise od verzije Kubernetes-a, CRD/controller izdanja, feature gate-a i CSI/backend podrške. Bez potvrđene group-snapshot semantike primenjuje se aplikativna koordinacija ili se koristi aplikativni backup koji proizvodi jednu logičku recovery tačku.
+    </p>
+
+    <h3>Snapshot nije dovoljan backup</h3>
+    <p>
+      Storage snapshot može biti veoma brz zato što backend u početku čuva samo metapodatke i promenjene blokove. Upravo zato original i snapshot mogu deliti fizičke komponente, quota ograničenja, enkripcioni ključ, administratorski domen i sudbinu storage sistema. Ako kvar kontrolera, greška operatora ili kompromitovan nalog može ukloniti obe kopije, snapshot nije nezavisna zaštita.
+    </p>
+    <ul>
+      <li><strong>Failure domen:</strong> potvrditi da li kopija preživljava gubitak diska, storage klastera, zone, regiona i celog Kubernetes klastera.</li>
+      <li><strong>Data movement:</strong> po potrebi preneti podatke snapshot-a u objektno ili drugo backup skladište; metapodaci bez podataka nisu dovoljni.</li>
+      <li><strong>Metapodaci:</strong> sačuvati deklarativne manifeste, CRD/CR instance, StorageClass mapiranje, image digest-e i restore redosled, uz pažljivo postupanje sa Secrets.</li>
+      <li><strong>Bezbednost:</strong> enkripcija u transportu i mirovanju, rotacija ključeva, najmanje privilegije, audit i zaštita od brisanja moraju važiti i za kopije.</li>
+      <li><strong>Prenosivost:</strong> CSI snapshot handle često nije prenosiv između različitih drajvera, storage sistema, naloga ili regiona. Migracija se dokazuje testom, ne pretpostavlja.</li>
+    </ul>
+    <p>
+      Alati kao Velero mogu koordinisati backup Kubernetes resursa, CSI snapshot-e, hook-ove i data mover, ali mogućnosti zavise od verzije alata i provider plugina. Instalacija alata sama po sebi ne definiše konzistentnost, RPO, retention ili kompatibilnost restore-a. Produkcioni dizajn mora eksplicitno navesti koje objekte alat obuhvata, gde su stvarni podaci, kako se štite kredencijali i kako se obnavljaju CRD-ovi, operatori i aplikacije pravilnim redosledom.
+    </p>
+
+    <h3>Projektovanje bezbednog backup i restore procesa</h3>
+    <ol>
+      <li><strong>Katalog i klasifikacija:</strong> vlasnik aplikacije određuje podatke, tajnost, zavisnosti, RPO/RTO, retention i scenarije gubitka.</li>
+      <li><strong>Metod konzistentnosti:</strong> dokumentuje se aplikativni quiesce, dump, log arhiviranje ili operatorski postupak i dokaz njegovog uspeha.</li>
+      <li><strong>Mesto i zaštita:</strong> definišu se failure domen, kopiranje izvan primarnog sistema, enkripcija, ključevi, immutable period i odvojene privilegije.</li>
+      <li><strong>Orkestracija i nadzor:</strong> backup posao ima raspored, timeout, retry politiku, alert za propuštenu kopiju i proveru starosti poslednje uspešne recovery tačke.</li>
+      <li><strong>Restore runbook:</strong> navodi cilj, čisti namespace ili klaster, redosled CRD/operator/config/data/workload resursa, mapiranje StorageClass-a, DNS i validaciju.</li>
+      <li><strong>Dokaz i poboljšanje:</strong> izolovani restore test meri RTO, poredi podatke, beleži odstupanja i pretvara nalaze u korektivne mere.</li>
+    </ol>
+
+    <h3>Bezbednost, RBAC i zaštita osetljivih kopija</h3>
+    <p>
+      VolumeSnapshot je namespaced, ali VolumeSnapshotContent i VolumeSnapshotClass su cluster-scoped resursi. Pravo kreiranja snapshot-a može proizvesti novu čitljivu kopiju osetljivih podataka, a pravo kreiranja PVC-a iz snapshot-a može omogućiti njihovo montiranje u drugi pod. Zato se dozvole za <code>volumesnapshots</code>, <code>volumesnapshotcontents</code>, <code>volumesnapshotclasses</code>, PVC-ove, podove i backup lokacije razdvajaju po ulozi i proveravaju audit zapisom.
+    </p>
+    <p>
+      Secrets iz Kubernetes API-ja nisu sadržaj PVC snapshot-a osim ako ih je aplikacija sama zapisala na taj volumen. Obrnuto, backup Kubernetes resursa može sadržati Secret objekte u base64 obliku, što nije enkripcija. Kopije se šifruju sopstvenim ključevima i štite od neovlašćenog restore-a. Break-glass postupak mora biti kontrolisan, vremenski ograničen i auditovan; backup servisni nalog ne treba da ima neograničena prava brisanja produkcionih podataka.
+    </p>
+
+    <h3>Restore kao nova instanca, validacija i povratak saobraćaja</h3>
+    <p>
+      Standardni Kubernetes restore snapshot-a kreira <strong>novi</strong> PVC. To je bezbednije od pokušaja izmene postojećeg volumena jer omogućava poređenje, forenzičko očuvanje izvora i kontrolisan cutover. Zahtevani kapacitet novog PVC-a ne sme biti manji od <code>restoreSize</code> koji prijavljuje snapshot; StorageClass i access mode moraju biti podržani. Topologija može ograničiti nod na kojem obnovljeni volumen može biti priključen.
+    </p>
+    <p>
+      Obnovljeni workload najpre se pokreće izolovano, bez produkcionih writer klijenata, outbound integracija i automatskog slanja poruka. Proveravaju se mount, fajl sistem, aplikativni recovery log, šema, broj i sadržaj reprezentativnih zapisa, referencijalni integritet, vremenska oznaka recovery tačke i bezbednosna konfiguracija. Tek posle formalnog prihvatanja menja se Service selector, konfiguracija ili drugi kontrolisani mehanizam usmeravanja saobraćaja. Stari volumen ostaje zadržan tokom dogovorenog rollback prozora.
+    </p>
+
+    <h3>Integrisani praktikum: CSI snapshot, restore u izolaciji i dokaz podataka</h3>
+    <p><strong>Poslovni i tehnički kontekst.</strong></p>
+    <p>
+      Tim želi da pre promene aplikacije napravi snapshot njenog PVC-a, obnovi ga kao novi volumen i dokaže da se kontrolni podaci mogu pročitati bez menjanja izvornog workload-a. Laboratorija demonstrira mehaniku CSI snapshot-a i crash-consistent kopiju mirnog test volumena; ne predstavlja produkcioni backup baze niti zamenu za kopiju izvan storage sistema.
+    </p>
+    <p><strong>Topologija i preduslovi.</strong></p>
+    <ul>
+      <li>Kubernetes klaster sa funkcionalnim CSI drajverom koji podržava dinamičko provisioniranje, snapshot i restore.</li>
+      <li>Instalirani <code>snapshot.storage.k8s.io/v1</code> CRD-ovi, snapshot controller i kompatibilan external-snapshotter.</li>
+      <li>Najmanje jedna VolumeSnapshotClass za isti CSI drajver kao izabrani StorageClass.</li>
+      <li><code>kubectl</code> kontekst za laboratorijski klaster i pravo rada u namenskom namespace-u. Kreiranje ili menjanje VolumeSnapshotClass-a ostaje administratorska operacija.</li>
+      <li>Dovoljno kapaciteta za izvorni i obnovljeni volumen. Primer koristi jedan pod da bi izbegao istovremeni write pristup.</li>
+    </ul>
+    <p>
+      <strong>Rizik:</strong> manifesti kreiraju i brišu storage resurse. Klasa u promenljivoj <code>STORAGE_CLASS</code> i snapshot klasa u <code>SNAPSHOT_CLASS</code> moraju biti stvarne vrednosti iz laboratorije. Ne kopirati primer u produkciju bez potvrde drajvera, kvote, retention i aplikativne konzistentnosti.
+    </p>
+
+    <p><strong>1. Read-only discovery i provera ovlašćenja.</strong></p>
+    <pre><code class="language-bash">kubectl config current-context
+kubectl api-resources --api-group=snapshot.storage.k8s.io
+kubectl get storageclass
+kubectl get volumesnapshotclass
+kubectl get csidriver
+
+kubectl auth can-i create namespaces
+kubectl auth can-i create persistentvolumeclaims -n snapshot-lab
+kubectl auth can-i create volumesnapshots.snapshot.storage.k8s.io -n snapshot-lab
+kubectl auth can-i get volumesnapshotcontents.snapshot.storage.k8s.io</code></pre>
+    <p>
+      Ove komande ne menjaju stanje. Očekuju se resursi <code>volumesnapshots</code>, <code>volumesnapshotcontents</code> i <code>volumesnapshotclasses</code> sa API verzijom <code>v1</code>. Ako ne postoje, zaustaviti vežbu: CRD/controller instalacija zavisi od distribucije i CSI drajvera i ne izvodi se nasumičnim preuzimanjem „latest” manifesta. Ako poslednja provera vrati <code>no</code>, to može biti ispravno načelo najmanjih privilegija; detalje cluster-scoped sadržaja tada proverava storage administrator.
+    </p>
+    <pre><code class="language-bash">kubectl get volumesnapshotclass -o custom-columns=\
+'NAME:.metadata.name,DRIVER:.driver,DELETE_POLICY:.deletionPolicy'
+kubectl get storageclass -o custom-columns=\
+'NAME:.metadata.name,PROVISIONER:.provisioner,BINDING:.volumeBindingMode'</code></pre>
+    <p>
+      Izabrani StorageClass provisioner i VolumeSnapshotClass driver moraju označavati isti CSI drajver. Zabeležite vrednosti za sledeće korake; primer koristi shell promenljive samo radi čitljivosti sesije.
+    </p>
+    <pre><code class="language-bash">export STORAGE_CLASS='unesi-stvarni-storageclass'
+export SNAPSHOT_CLASS='unesi-stvarnu-volumesnapshotclass'
+
+kubectl get storageclass "$STORAGE_CLASS"
+kubectl get volumesnapshotclass "$SNAPSHOT_CLASS"</code></pre>
+
+    <p><strong>2. Kreiranje izvornog volumena i kontrolnog skupa podataka.</strong></p>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: snapshot-lab
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: source-data
+  namespace: snapshot-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: STORAGE_CLASS_PLACEHOLDER
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: source-writer
+  namespace: snapshot-lab
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+  containers:
+    - name: writer
+      image: busybox:1.36.1
+      command: ["sh", "-c", "sleep 86400"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        runAsNonRoot: true
+        runAsUser: 1000
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: source-data</code></pre>
+    <p>
+      Zamenite placeholder stvarnim StorageClass imenom i sačuvajte manifest kao <code>01-source.yaml</code>. Primena menja stanje i provisionira storage.
+    </p>
+    <pre><code class="language-bash">sed "s/STORAGE_CLASS_PLACEHOLDER/${STORAGE_CLASS}/" \
+  01-source.yaml | kubectl apply -f -
+
+kubectl wait -n snapshot-lab \
+  --for=jsonpath='{.status.phase}'=Bound pvc/source-data \
+  --timeout=3m
+kubectl wait -n snapshot-lab \
+  --for=condition=Ready pod/source-writer \
+  --timeout=3m
+
+kubectl exec -n snapshot-lab source-writer -- sh -c \
+  'printf "record=alpha\nrecord=beta\ncheckpoint=before-snapshot\n" &gt; /data/catalog.txt &amp;&amp; sync'
+
+kubectl exec -n snapshot-lab source-writer -- sha256sum /data/catalog.txt</code></pre>
+    <p>
+      Sačuvajte checksum kao dokaz izvornog sadržaja. <code>sync</code> smanjuje laboratorijski rizik neflushovanih upisa, ali nije aplikativni quiesce za bazu podataka.
+    </p>
+
+    <p><strong>3. Kreiranje snapshot-a i potvrda backend rezultata.</strong></p>
+    <pre><code class="language-yaml">apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: source-data-snap-001
+  namespace: snapshot-lab
+  labels:
+    tutorial.tashizza.com/purpose: pre-change
+spec:
+  volumeSnapshotClassName: SNAPSHOT_CLASS_PLACEHOLDER
+  source:
+    persistentVolumeClaimName: source-data</code></pre>
+    <p>
+      Zamenite placeholder i sačuvajte kao <code>02-snapshot.yaml</code>. Kreiranje snapshot-a menja stanje i može izazvati trošak na storage platformi.
+    </p>
+    <pre><code class="language-bash">sed "s/SNAPSHOT_CLASS_PLACEHOLDER/${SNAPSHOT_CLASS}/" \
+  02-snapshot.yaml | kubectl apply -f -
+
+kubectl wait -n snapshot-lab \
+  --for=jsonpath='{.status.readyToUse}'=true \
+  volumesnapshot/source-data-snap-001 \
+  --timeout=5m
+
+kubectl get volumesnapshot source-data-snap-001 -n snapshot-lab \
+  -o custom-columns=\
+'NAME:.metadata.name,READY:.status.readyToUse,CREATED:.status.creationTime,RESTORE_SIZE:.status.restoreSize,CONTENT:.status.boundVolumeSnapshotContentName'
+
+kubectl describe volumesnapshot source-data-snap-001 -n snapshot-lab</code></pre>
+    <p>
+      Kriterijum je <code>readyToUse=true</code>, postojeći bound content i razumna <code>restoreSize</code> vrednost. Samo postojanje objekta nije dovoljno. Ako korisnik ima odobreno cluster-scoped read pravo, može proveriti sadržaj bez prikazivanja tajnih backend detalja u tiketima:
+    </p>
+    <pre><code class="language-bash">CONTENT_NAME=$(kubectl get volumesnapshot source-data-snap-001 \
+  -n snapshot-lab \
+  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+kubectl get volumesnapshotcontent "$CONTENT_NAME" \
+  -o custom-columns=\
+'NAME:.metadata.name,DRIVER:.spec.driver,POLICY:.spec.deletionPolicy,READY:.status.readyToUse'</code></pre>
+
+    <p><strong>4. Promena izvora posle recovery tačke.</strong></p>
+    <pre><code class="language-bash">kubectl exec -n snapshot-lab source-writer -- sh -c \
+  'printf "record=after-snapshot\n" &gt;&gt; /data/catalog.txt &amp;&amp; sync'
+
+kubectl exec -n snapshot-lab source-writer -- cat /data/catalog.txt</code></pre>
+    <p>
+      Izvor sada mora sadržati i red <code>record=after-snapshot</code>. Restore treba da vrati prethodnu recovery tačku bez tog reda, što daje proverljiv funkcionalni dokaz.
+    </p>
+
+    <p><strong>5. Kreiranje novog PVC-a iz snapshot-a.</strong></p>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: restored-data
+  namespace: snapshot-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: STORAGE_CLASS_PLACEHOLDER
+  resources:
+    requests:
+      storage: 1Gi
+  dataSource:
+    name: source-data-snap-001
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: restore-validator
+  namespace: snapshot-lab
+  labels:
+    app: restore-validator
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+  containers:
+    - name: validator
+      image: busybox:1.36.1
+      command: ["sh", "-c", "sleep 86400"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        runAsNonRoot: true
+        runAsUser: 1000
+      volumeMounts:
+        - name: restored
+          mountPath: /restore
+          readOnly: true
+  volumes:
+    - name: restored
+      persistentVolumeClaim:
+        claimName: restored-data</code></pre>
+    <p>
+      Sačuvajte kao <code>03-restore.yaml</code>, zamenite StorageClass placeholder i primenite. Read-only mount na nivou poda smanjuje rizik izmene dokaza tokom validacije, mada backend volumen može biti provisioniran kao read-write prema access mode-u.
+    </p>
+    <pre><code class="language-bash">RESTORE_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+sed "s/STORAGE_CLASS_PLACEHOLDER/${STORAGE_CLASS}/" \
+  03-restore.yaml | kubectl apply -f -
+
+kubectl wait -n snapshot-lab \
+  --for=jsonpath='{.status.phase}'=Bound pvc/restored-data \
+  --timeout=5m
+kubectl wait -n snapshot-lab \
+  --for=condition=Ready pod/restore-validator \
+  --timeout=5m
+
+kubectl get pvc,pod -n snapshot-lab -o wide
+kubectl exec -n snapshot-lab restore-validator -- cat /restore/catalog.txt
+kubectl exec -n snapshot-lab restore-validator -- sha256sum /restore/catalog.txt
+
+printf 'restore_started=%s\nrestore_validated=%s\n' \
+  "$RESTORE_STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"</code></pre>
+    <p>
+      Obnovljeni fajl mora sadržati <code>alpha</code>, <code>beta</code> i <code>checkpoint=before-snapshot</code>, ne sme sadržati <code>record=after-snapshot</code>, a checksum mora odgovarati checksum-u pre snapshot-a. Vremenske oznake omogućavaju izračunavanje laboratorijskog restore vremena, ali produkcioni RTO uključuje i odluku, aplikativni start, testove i cutover.
+    </p>
+    <pre><code class="language-bash">kubectl exec -n snapshot-lab restore-validator -- \
+  grep -q '^checkpoint=before-snapshot$' /restore/catalog.txt
+
+if kubectl exec -n snapshot-lab restore-validator -- \
+  grep -q '^record=after-snapshot$' /restore/catalog.txt; then
+  echo 'FAIL: restore sadrži promenu nastalu posle snapshot-a'
+  exit 1
+else
+  echo 'PASS: potvrđena je očekivana recovery tačka'
+fi</code></pre>
+
+    <p><strong>6. Prikupljanje dokaza i troubleshooting bez preuranjenog brisanja.</strong></p>
+    <pre><code class="language-bash">kubectl get pvc,volumesnapshot -n snapshot-lab -o yaml \
+  &gt; snapshot-lab-observed.yaml
+kubectl get events -n snapshot-lab \
+  --sort-by='.metadata.creationTimestamp' \
+  &gt; snapshot-lab-events.txt
+kubectl describe pvc restored-data -n snapshot-lab \
+  &gt; restored-pvc-describe.txt
+kubectl describe volumesnapshot source-data-snap-001 -n snapshot-lab \
+  &gt; snapshot-describe.txt</code></pre>
+    <p>
+      Događaji su vremenski ograničeni i ne zamenjuju centralni log sistem. Za kontroler snapshot-a proveravaju se logovi deployment-a koji je instalirala distribucija, često u <code>kube-system</code> namespace-u; naziv se prvo otkriva, ne pretpostavlja. Za CSI problem korelišu se vreme događaja, external-snapshotter log, CSI controller log, storage audit/događaji i backend posao.
+    </p>
+    <pre><code class="language-bash">kubectl get deployments -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' | \
+  grep -Ei 'snapshot|csi'
+
+kubectl get pods -A -o wide | grep -Ei 'snapshot|csi'</code></pre>
+    <p>
+      Posle identifikacije stvarnog poda i kontejnera, ovlašćeni platform administrator koristi vremenski ograničen upit, na primer <code>kubectl logs -n kube-system POD -c CONTAINER --since=30m</code>. Traže se CSI RPC greške, timeout, permission denied, quota/capacity i nepostojeći snapshot handle; tajni parametri i kredencijali ne kopiraju se u nezaštićene tikete.
+    </p>
+
+    <p><strong>Tipične greške i dijagnostičke grane.</strong></p>
+    <ul>
+      <li><strong>Server ne poznaje VolumeSnapshot:</strong> CRD nije instaliran ili se koristi pogrešna API verzija. Potvrditi <code>kubectl api-resources</code>; ne primenjivati nasumičnu verziju CRD-a.</li>
+      <li><strong>Snapshot nema readyToUse:</strong> pregledati <code>status.error</code>, događaje, podudaranje klase i CSI drajvera, controller/sidecar logove, kvotu i backend stanje.</li>
+      <li><strong>Nema podrazumevane snapshot klase:</strong> eksplicitno navesti odobrenu klasu. Više default klasa za isti drajver može dovesti do greške; storage administrator ispravlja konfiguraciju.</li>
+      <li><strong>Restore PVC je Pending:</strong> proveriti snapshot spremnost, minimalni restoreSize, StorageClass, provisioner, access mode, zonu/topologiju i događaje PVC-a.</li>
+      <li><strong>PVC je Bound, pod ContainerCreating:</strong> problem je verovatnije attach/mount ili node CSI plugin; proveriti pod događaje, kubelet i CSI node logove.</li>
+      <li><strong>Fajl postoji, aplikacija se ne pokreće:</strong> storage restore je tehnički uspeo, ali aplikativna validacija nije. Proveriti verziju aplikacije, šemu, ključeve, certifikate, dozvole, transakcioni recovery i spoljne servise.</li>
+      <li><strong>Restore sadrži neočekivano vreme podataka:</strong> preispitati trenutak quiesce-a, asinhronost backend snapshot-a i aplikativni checkpoint; readyToUse nije dokaz recovery point-a.</li>
+    </ul>
+
+    <p><strong>Dijagnostički tok incidenta.</strong></p>
+    <ol>
+      <li><strong>Simptom, obim i posledica:</strong> utvrditi da li je problem neuspešan backup posao, jedan snapshot, čitava klasa/drajver, restore provisioniranje ili aplikativna upotrebljivost podataka.</li>
+      <li><strong>Dokazi pre promene:</strong> zabeležiti vreme, poslednje promene, YAML/status bez tajni, događaje, controller/CSI/backend logove, backup katalog i stanje izvornog workload-a.</li>
+      <li><strong>Neposredni uzrok:</strong> razlikovati API/CRD, RBAC, class-driver, CSI RPC, backend, quota, data movement, mount i aplikativnu konzistentnost.</li>
+      <li><strong>Osnovni uzrok:</strong> utvrditi zašto monitoring, kompatibilnost, kapacitet, retention ili restore test nisu ranije otkrili problem.</li>
+      <li><strong>Zaobilazno rešenje:</strong> koristiti poslednju dokazano dobru kopiju, drugi odobreni restore put ili aplikativni backup; ne brisati neuspešne artefakte pre forenzičkog prikupljanja.</li>
+      <li><strong>Trajna korekcija:</strong> uskladiti komponente, prava, kapacitet, hook, data mover, alert ili runbook i ponoviti ceo restore test.</li>
+      <li><strong>Potvrda:</strong> dokazati podatke, aplikativno zdravlje, RPO/RTO, bezbednost i poslovni kriterijum, pa dokumentovati nalaz i preventivnu meru.</li>
+    </ol>
+
+    <p><strong>Rollback, cleanup i zadržavanje dokaza.</strong></p>
+    <p>
+      U realnom incidentu povratak na stari volumen izvodi se samo ako nije promenjen posle cutover-a ili ako postoji odobren plan razrešavanja divergentnih upisa. U laboratoriji izvor nije menjan od strane restore poda, pa se rollback svodi na uklanjanje validatora i obnovljenog PVC-a. Najpre sačuvajte rezultate; zatim proverite deletionPolicy snapshot klase.
+    </p>
+    <pre><code class="language-bash">kubectl get volumesnapshotclass "$SNAPSHOT_CLASS" \
+  -o jsonpath='{.deletionPolicy}{"\n"}'
+
+kubectl delete pod restore-validator -n snapshot-lab
+kubectl delete pvc restored-data -n snapshot-lab
+kubectl get volumesnapshot,pvc -n snapshot-lab</code></pre>
+    <p>
+      <strong>Upozorenje:</strong> brisanje VolumeSnapshot-a pri politici <code>Delete</code> može ukloniti backend snapshot. Pri politici <code>Retain</code> backend artefakt ostaje i mora se evidentirati i kasnije bezbedno ukloniti prema proceduri. Sledeći cleanup izvršava se samo kada su dokazi sačuvani i kopija više nije potrebna.
+    </p>
+    <pre><code class="language-bash">kubectl delete volumesnapshot source-data-snap-001 -n snapshot-lab
+kubectl delete pod source-writer -n snapshot-lab
+kubectl delete pvc source-data -n snapshot-lab
+kubectl delete namespace snapshot-lab</code></pre>
+    <p>
+      Posle cleanup-a storage administrator proverava da li su backend volumen i snapshot zaista uklonjeni ili pravilno zadržani. Kubernetes objekat koji je nestao nije dokaz da nema orphaned storage resursa, a obrnuto, Retain artefakt bez kataloga nije upravljiva kopija.
+    </p>
+
+    <p><strong>Merljivi kriterijumi prihvatanja praktikuma.</strong></p>
+    <ul>
+      <li>Potvrđeno je postojanje stabilnog snapshot API-ja i podudaranje CSI drajvera StorageClass-a i VolumeSnapshotClass-a.</li>
+      <li>Izvorni PVC je Bound, pod Ready, a checksum početnog fajla sačuvan.</li>
+      <li>VolumeSnapshot ima <code>readyToUse=true</code>, bound content i očekivani restoreSize.</li>
+      <li>Novi PVC je uspešno provisioniran iz snapshot-a bez izmene izvornog PVC-a.</li>
+      <li>Obnovljeni checksum odgovara recovery tački, a promena posle snapshot-a nije prisutna.</li>
+      <li>Vreme restore-a je zabeleženo, događaji i statusi sačuvani, a deletionPolicy proverena pre cleanup-a.</li>
+      <li>Jasno je dokumentovano da laboratorija dokazuje CSI restore, ali ne nezavisnost kopije ni aplikativnu konzistentnost produkcione baze.</li>
+    </ul>
+
+    <h3>Administratorske prakse</h3>
+    <ul>
+      <li><strong>Kontrola starosti kopije:</strong> monitoring mora prikazati vreme poslednjeg uspešnog i poslednjeg dokazano upotrebljivog backup-a. Alarm se vezuje za RPO, ne samo za status poslednjeg posla.</li>
+      <li><strong>Periodični restore test:</strong> po kritičnosti aplikacije planira se automatski ili nadzirani restore u izolovan namespace/klaster. Beleže se početak, recovery point, RTO, checksum i aplikativni kriterijumi; neuspeh je incident backup sistema čak i kada svakodnevni poslovi imaju status Success.</li>
+      <li><strong>Separation of duties:</strong> tim koji koristi snapshot ne mora imati pravo izmene VolumeSnapshotClass-a ili brisanja backend kopija. Backup i produkcioni administrativni nalozi razdvajaju se i auditiraju.</li>
+      <li><strong>Kapacitet i performanse:</strong> prati se broj snapshot-a, promenjeni blokovi, latency izvornog volumena, trajanje snapshot/data-movement poslova, quota i restore throughput. Snapshot storm može opteretiti storage i aplikaciju.</li>
+      <li><strong>Lifecycle i katalog:</strong> svaka kopija ima vlasnika, aplikaciju, namespace, recovery point, klasifikaciju, retention, lokaciju, enkripcioni ključ i status poslednjeg testa. Napušteni Retain sadržaji se ne brišu bez korelacije sa katalogom.</li>
+      <li><strong>Promena verzija:</strong> upgrade Kubernetes-a, CSI drajvera, external-snapshotter-a, CRD-a, storage firmware-a ili backup alata zahteva proveru compatibility matrix-a i probni snapshot/restore pre i posle promene.</li>
+      <li><strong>DR vežba:</strong> povremeno se simulira gubitak klastera ili lokacije, uz read-only zaštitu backup lokacije tokom oporavka. Vežba mora dokazati dostupnost ključeva, image-a, manifesta, DNS-a i ljudi/runbook-a, ne samo podataka.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Umemo da razlikujemo trajni volumen, snapshot, backup, replikaciju i disaster recovery.</li>
+      <li>RPO, RTO, retention i failure domen definisani su za svaku zaštićenu aplikaciju.</li>
+      <li>Identifikovani su svi podaci, Kubernetes objekti, tajne, ključevi i spoljne zavisnosti potrebni za oporavak.</li>
+      <li>Potvrđene su verzije snapshot CRD/controller/sidecar komponenti i podrška konkretnog CSI drajvera i backenda.</li>
+      <li>VolumeSnapshotClass driver i deletionPolicy su eksplicitno provereni; nema oslanjanja na nepoznatu default klasu.</li>
+      <li>Metod aplikativne konzistentnosti je dokumentovan i testiran, uključujući bezbedan unquiesce posle greške.</li>
+      <li>Kopija potrebna za DR nalazi se izvan odgovarajućeg primarnog failure i trust domena.</li>
+      <li>Backup je šifrovan, pristup je najmanje privilegovan, brisanje zaštićeno i audit omogućen.</li>
+      <li>Restore se izvodi kao novi PVC i izolovani workload pre kontrolisanog cutover-a.</li>
+      <li>Validacija obuhvata checksum i aplikativne kriterijume, a ne samo <code>readyToUse</code>, Bound ili Running stanje.</li>
+      <li>Probni restore je izmeren i zadovoljava RPO/RTO; rezultat, odstupanja i korektivne mere su evidentirani.</li>
+      <li>Cleanup uzima u obzir deletionPolicy, PV reclaim policy, backend artefakte i obavezno zadržavanje dokaza.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      VolumeSnapshot daje standardizovan Kubernetes interfejs za point-in-time snimak CSI volumena i provisioniranje novog PVC-a iz tog snimka. Njegova prava vrednost zavisi od kompletne putanje: kompatibilnih CRD/controller/sidecar komponenti, mogućnosti CSI drajvera, storage backenda, pravilne klase, aplikativne konzistentnosti, zaštite kopije i bezbednog restore postupka. Status <code>readyToUse</code> potvrđuje tehničku spremnost snapshot-a, ali ne potvrđuje da aplikacija može da se oporavi niti da kopija preživljava kvar primarnog sistema.
+    </p>
+    <p>
+      Administrator mora da projektuje zaštitu prema scenarijima gubitka i merljivim RPO/RTO ciljevima, razdvoji snapshot od nezavisnog backup-a, ograniči privilegije, zaštiti ključeve i održava katalog kopija. Restore se tretira kao kontrolisana promena: najpre se čuvaju dokazi, zatim se novi volumen obnavlja u izolaciji, proveravaju se podaci i aplikativno ponašanje, a saobraćaj se vraća tek posle formalnog kriterijuma prihvatanja.
+    </p>
+    <p>
+      Najopasnija pretpostavka glasi „backup posao je uspeo, dakle podaci su bezbedni”. Profesionalni dokaz je uspešan, ponovljiv i izmeren oporavak. Kada kopija nije nezavisna, konzistentnost nije poznata, ključevi nisu dostupni, restore prelazi RTO ili postoji mogućnost divergentnih upisa i gubitka podataka, administrator zaustavlja rizičnu promenu i eskalira vlasniku aplikacije, storage/backup timu i incident ili disaster recovery rukovodstvu.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        zvanična Kubernetes dokumentacija za VolumeSnapshot, VolumeSnapshotClass, VolumeSnapshotContent, PersistentVolumeClaim data sources i etcd oporavak; zvanične Kubernetes CSI reference za snapshot controller, external-snapshotter, snapshot/restore API, tajne i cross-namespace data sources; zvanična Velero dokumentacija za CSI snapshot integraciju, backup i restore hook-ove, data movement i disaster recovery; administrativne i bezbednosne reference konkretnih CSI drajvera i storage sistema za konzistentnost, enkripciju, retention, monitoring i troubleshooting
+      </p>
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn"
+         href="vanilla-k8s-32-statefulset-headless-service.html">
+        ← Prethodna lekcija
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+      <a class="close-btn"
+         href="vanilla-k8s-34-autentikacija-identiteti.html">
+        Sledeća lekcija →
+      </a>
+    </div>
+
+  </main>
+
+  <script src="../../../../js/syntax/prism.js"></script>
+</body>
+
+</html>

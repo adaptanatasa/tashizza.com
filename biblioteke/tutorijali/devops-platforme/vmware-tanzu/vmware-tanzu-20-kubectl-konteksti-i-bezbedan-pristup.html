@@ -1,0 +1,704 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>kubectl, kubeconfig i konteksti – bezbedan pristup Supervisor-u i VKS klasterima | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="kubectl, kubeconfig i Kubernetes konteksti – bezbedan pristup vSphere Supervisor-u i VKS klasterima.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, kubectl, kubeconfig, Kubernetes konteksti, bezbedan pristup, vSphere Supervisor, VKS klaster, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="kubectl, kubeconfig i konteksti – bezbedan pristup Supervisor-u i VKS klasterima">
+
+  <meta property="og:description"
+        content="Dvadeseta lekcija VMware &amp; Tanzu tutorijala – kubectl, kubeconfig, konteksti i bezbedan pristup Supervisor-u i VKS klasterima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="kubectl, kubeconfig i konteksti – bezbedan pristup Supervisor-u i VKS klasterima">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.png"
+           alt="kubectl, kubeconfig i konteksti – bezbedan pristup Supervisor-u i VKS klasterima">
+
+    </a>
+
+   <div class="page-subtitle">
+  V. Namespace, identitet, politike i multi-tenancy
+</div>
+
+<div class="page-subtitle">
+  20. kubectl, kubeconfig i konteksti – bezbedan pristup Supervisor-u i VKS klasterima
+</div>
+
+<p>
+  Prethodne lekcije definisale su Supervisor Namespace kao granicu organizacije, identiteta, kvota i odgovornosti. Ova lekcija tu granicu pretvara u svakodnevni administratorski rad: kako operator ili developer sa svoje radne stanice bezbedno dolazi do Kubernetes API-ja, kako razlikuje Supervisor od VKS klastera, kako bira pravi namespace i kako pre svake promene dokazuje da komandu upućuje pravom odredištu. Cilj nije samo „uspešan login”. Cilj je kontrolisan lanac poverenja od korisničkog identiteta, preko vCenter Single Sign-On autentikacije i kubeconfig zapisa, do Kubernetes autorizacije nad konkretnim objektom.
+</p>
+
+<p>
+  Terminologija zavisi od izdanja. Dokumentacija za vSphere 7 i 8 često koristi nazive <em>Tanzu Kubernetes Grid Service</em>, <em>TKG Service cluster</em>, <em>Tanzu Kubernetes cluster</em> ili <em>guest cluster</em>. U VMware Cloud Foundation 9 dokumentaciji proizvodni naziv je <em>vSphere Kubernetes Service</em> (VKS). U ovoj lekciji izraz <strong>VKS klaster</strong> označava workload Kubernetes klaster kojim upravlja Supervisor, a stariji nazivi se navode samo kada pomažu pri radu sa postojećim okruženjem, komandnim izlazom ili Knowledge Base člankom. Tačni dostupni parametri uvek se potvrđuju komandom <code>kubectl vsphere login --help</code> na verziji dodatka preuzetoj iz konkretnog vSphere/VCF okruženja.
+</p>
+
+<h3>1. Operativni model pristupa: četiri odvojene odluke</h3>
+
+<p>
+  <code>kubectl</code> je generički Kubernetes klijent. On ne „zna” šta je vCenter niti sam pronalazi Supervisor. Za svaki zahtev čita kubeconfig, iz izabranog konteksta određuje API endpoint, identitet i podrazumevani namespace, uspostavlja TLS vezu, pribavlja ili prosleđuje akreditive, a zatim šalje zahtev Kubernetes API serveru. API server autentikuje identitet, autorizacioni sloj proverava RBAC i druge politike, a admission kontroleri po potrebi dodatno proveravaju ili menjaju objekat.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Pitanje koje rešava</th>
+      <th>Tipičan dokaz</th>
+      <th>Tipična greška</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Mreža i TLS</td>
+      <td>Da li radna stanica bezbedno doseže pravi API endpoint?</td>
+      <td>DNS/IP ruta, TCP veza i validan lanac CA poverenja</td>
+      <td><code>x509</code>, timeout, connection refused</td>
+    </tr>
+    <tr>
+      <td>Autentikacija</td>
+      <td>Ko je korisnik ili servis?</td>
+      <td>Uspešan <code>kubectl vsphere login</code> i svež token</td>
+      <td><code>Unauthorized</code>, istekao ili nevažeći token</td>
+    </tr>
+    <tr>
+      <td>Autorizacija</td>
+      <td>Šta identitet sme u datom klasteru i namespace-u?</td>
+      <td><code>kubectl auth can-i</code> i odgovarajući RBAC binding</td>
+      <td><code>Forbidden</code></td>
+    </tr>
+    <tr>
+      <td>Odredište</td>
+      <td>Koji klaster i namespace komanda zaista menja?</td>
+      <td>Eksplicitno potvrđeni current-context, server i namespace</td>
+      <td>Ispravna komanda izvršena nad pogrešnim klasterom</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Najopasnija greška često nije neuspešna autentikacija nego uspešna autentikacija prema pogrešnom klasteru. Zbog toga su kontekst i namespace deo bezbednosne kontrole, a ne samo pogodnost komandne linije.
+</p>
+
+<h3>2. kubectl, vSphere dodatak i kompatibilnost verzija</h3>
+
+<p>
+  vSphere Plugin for kubectl dodaje podkomandu <code>kubectl vsphere login</code>. Dodatak se preuzima sa stranice Kubernetes CLI alata koju izlaže okruženje, odnosno putem procedure propisane za instalirano izdanje. Koristite binarne datoteke iz istog pouzdanog izvora i čuvajte ih kao kontrolisani administratorski alat. Ne preuzimajte nasumičan <code>kubectl-vsphere</code> sa javnog repozitorijuma i ne pretpostavljajte da dodatak iz jednog vCenter/Supervisor okruženja odgovara drugom.
+</p>
+
+<p>
+  Verzija običnog <code>kubectl</code> treba da bude kompatibilna sa Kubernetes minor verzijom ciljnog klastera; upstream projekat uobičajeno podržava odstupanje najviše jedne minor verzije klijenta u odnosu na <code>kube-apiserver</code>. VKS lifecycle može dovesti do toga da Supervisor i pojedini VKS klasteri ne koriste istu Kubernetes verziju, pa se kompatibilnost proverava za svako odredište, a ne samo jednom na jump host-u.
+</p>
+
+<pre><code class="language-bash"># Read-only: verzije klijenta, dodatka i servera dostupnog kroz aktivni kontekst
+kubectl version --client
+kubectl vsphere version
+kubectl version
+
+# Read-only: stvarno podržani parametri instaliranog dodatka
+kubectl vsphere login --help</code></pre>
+
+<p>
+  Ako <code>kubectl vsphere version</code> nije podržan u konkretnoj generaciji dodatka, pomoć i metapodaci binarne datoteke proveravaju se prema dokumentaciji tog izdanja. Sama činjenica da plugin može da se pokrene ne dokazuje da je kompatibilan sa trenutnim Supervisor-om.
+</p>
+
+<h3>3. Kubeconfig nije samo spisak klastera</h3>
+
+<p>
+  Kubeconfig je YAML konfiguracija koja povezuje tri imenovana skupa: <code>clusters</code> sadrži API endpoint i podatke za proveru serverskog sertifikata; <code>users</code> sadrži ili poziva mehanizam pribavljanja korisničkih akreditiva; <code>contexts</code> povezuje jedan cluster, jednog user-a i opcioni podrazumevani namespace. Polje <code>current-context</code> bira aktivnu vezu. Naziv zapisa nije bezbednosni dokaz: kontekst nazvan <code>prod</code> može pokazivati na laboratorijski server ili obrnuto, zato se proverava sadržaj.
+</p>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Config
+clusters:
+  - name: supervisor-prod
+    cluster:
+      server: https://SUPERVISOR-CONTROL-PLANE-FQDN-ILI-IP:6443
+      certificate-authority-data: BASE64_CA_PODACI
+users:
+  - name: korisnik@example.local
+    user:
+      token: REDIGOVANO
+contexts:
+  - name: supervisor-prod-ns-platforma
+    context:
+      cluster: supervisor-prod
+      user: korisnik@example.local
+      namespace: platforma
+current-context: supervisor-prod-ns-platforma</code></pre>
+
+<p>
+  Primer prikazuje logiku, ne šablon za ručno pravljenje vSphere kubeconfig-a. Login dodatak generiše zapise potrebne konkretnom okruženju. Kubeconfig može sadržati bearer tokene, klijentske ključeve, sertifikate ili <code>exec</code> instrukcije koje pokreću spoljašnji program. Zbog toga je kubeconfig tajna i potencijalno izvršiva konfiguracija. Upstream Kubernetes izričito upozorava da posebno pripremljen nepoverljiv kubeconfig može izazvati izvršavanje koda ili izlaganje lokalnih datoteka. Ne spajajte niti otvarajte tuđ kubeconfig pre ručne inspekcije polja <code>exec</code>, <code>command</code>, <code>args</code>, putanja do sertifikata i endpoint-a.
+</p>
+
+<pre><code class="language-bash"># Read-only prikaz bez otkrivanja tajni u uobičajenom izlazu
+kubectl config view
+
+# Read-only: eksplicitno prikaži samo trenutno odredište
+kubectl config current-context
+kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}{"\n"}'
+kubectl config view --minify -o jsonpath='{..namespace}{"\n"}'
+
+# OPREZ: --raw može prikazati tokene, sertifikate i ključeve.
+# Koristiti samo lokalno, bez terminalskog snimanja i bez lepljenja u tiket.
+kubectl config view --raw</code></pre>
+
+<h3>4. Lokacija, dozvole i razdvajanje kubeconfig fajlova</h3>
+
+<p>
+  Podrazumevana lokacija je <code>$HOME/.kube/config</code>. Drugi fajl se bira parametrom <code>--kubeconfig</code> ili promenljivom <code>KUBECONFIG</code>. Kada <code>KUBECONFIG</code> sadrži više putanja, <code>kubectl</code> ih spaja prema pravilima učitavanja; kolizije imena mogu dati neočekivani rezultat. U produkciji je često bezbednije razdvojiti okruženja u zasebne fajlove i u administratorskim skriptama koristiti eksplicitni <code>--kubeconfig</code> nego trajno spajati sve klastere u jedan veliki fajl.
+</p>
+
+<pre><code class="language-bash"># State-changing samo nad lokalnim dozvolama; bezbedna preporuka za Linux/macOS
+install -d -m 700 "$HOME/.kube"
+chmod 600 "$HOME/.kube/config"
+
+# Privremeni, eksplicitni izbor za jednu shell sesiju
+export KUBECONFIG="$HOME/.kube/vsphere-lab.yaml"
+
+# Još jasnije za automatizaciju: bez oslanjanja na current-context drugog fajla
+kubectl --kubeconfig "$HOME/.kube/vsphere-prod.yaml" config current-context</code></pre>
+
+<p>
+  Ne postavljajte kubeconfig u Git, wiki, zajednički chat, nešifrovani backup ili artefakt CI posla. Na Windows radnoj stanici primenite NTFS ACL tako da fajl može čitati samo odgovarajući korisnički nalog i administratori. Na deljenom jump host-u svaki administrator mora imati svoj OS nalog, sopstveni kubeconfig i sledljiv identitet; zajednički nalog uništava audit trag.
+</p>
+
+<h3>5. Bezbedan SSO login na Supervisor</h3>
+
+<p>
+  Pre login-a moraju biti zadovoljeni mrežni preduslovi: klijentska stanica doseže Supervisor Kubernetes control plane adresu i vCenter/identity endpoint-e koje zahteva izabrani tok; DNS vraća očekivanu adresu; vreme klijenta, vCenter-a i control plane-a je sinhronizovano; CA lanac je pouzdan. Korisnik mora imati dodeljen pristup vSphere Namespace-u. Uspešna vCenter autentikacija bez namespace dozvole ne daje automatski Kubernetes ovlašćenja.
+</p>
+
+<pre><code class="language-bash"># State-changing: upisuje ili ažurira zapise u izabranom kubeconfig fajlu.
+# Lozinka se unosi interaktivno; ne stavljati je u istoriju shell-a.
+kubectl vsphere login \
+  --server="SUPERVISOR-CONTROL-PLANE-FQDN-ILI-IP" \
+  --vsphere-username="korisnik@example.local"
+
+# Read-only validacija nakon login-a
+kubectl config get-contexts
+kubectl config current-context
+kubectl cluster-info
+kubectl auth whoami</code></pre>
+
+<p>
+  Sintaksa može koristiti adresu ili URL, zavisno od verzije dodatka; merodavan je <code>--help</code> iz konkretnog paketa. <code>kubectl auth whoami</code> zahteva da server podržava odgovarajući SelfSubjectReview API. Ako nije dostupan, identitet i prava proveravaju se kroz <code>kubectl auth can-i</code>. Opciju za preskakanje TLS provere nemojte pretvarati u trajno rešenje. Ona može biti korisna samo kao kratka laboratorijska dijagnostika da se razdvoji problem poverenja od problema mreže, ali otvara prostor za man-in-the-middle napad. Produkcijska korekcija je instaliranje odgovarajućeg CA lanca i izdavanje sertifikata čiji SAN odgovara adresi kojom se klijent povezuje.
+</p>
+
+<h3>6. Login na VKS klaster i izbor konteksta</h3>
+
+<p>
+  VKS login se inicira preko Supervisor endpoint-a, uz ime workload klastera i njegov Supervisor Namespace. Plugin zatim pribavlja podatke potrebne za pristup ciljanom VKS API-ju i upisuje odgovarajući kontekst. Korisnik mora imati pravo pristupa i mrežnu putanju do VKS control plane endpoint-a. Generički oblik komande je sledeći; nazivi parametara i podrška razlikuju se između generacija, zato se pre izvršenja potvrđuju lokalnom pomoći.
+</p>
+
+<pre><code class="language-bash"># State-changing: ažurira lokalni kubeconfig; ne menja klaster.
+kubectl vsphere login \
+  --server="SUPERVISOR-CONTROL-PLANE-FQDN-ILI-IP" \
+  --vsphere-username="korisnik@example.local" \
+  --tanzu-kubernetes-cluster-name="vks-dev-01" \
+  --tanzu-kubernetes-cluster-namespace="tim-dev"
+
+# Odmah pregledati i eksplicitno izabrati kontekst koji je dodatak kreirao.
+kubectl config get-contexts
+kubectl config use-context "IME-KONTEKSTA-IZ-PRETHODNOG-IZLAZA"
+kubectl cluster-info
+kubectl get nodes</code></pre>
+
+<p>
+  Parametri sa prefiksom <code>tanzu-kubernetes-cluster-*</code> istorijski su zadržani u mnogim vSphere 7/8 okruženjima i mogu se pojaviti i kada se poslovno koristi naziv VKS. Nemojte preimenovanje proizvoda pretvoriti u nagađanje CLI sintakse. Takođe ne pretpostavljajte da je kontekst automatski promenjen na željeni cilj: pročitajte izlaz dodatka i proverite ga dokazima.
+</p>
+
+<h3>7. Upravljanje kontekstima bez operativnih iznenađenja</h3>
+
+<pre><code class="language-bash"># Sve komande u prvom bloku čitaju lokalnu konfiguraciju
+kubectl config get-contexts
+kubectl config get-contexts -o name
+kubectl config current-context
+
+# State-changing: menja samo lokalni current-context
+kubectl config use-context "vks-dev-01"
+
+# State-changing: pravi novo lokalno ime, bez promene klastera
+kubectl config rename-context "staro-ime" "prod-supervisor-ns-platforma"
+
+# State-changing: postavlja podrazumevani namespace u lokalnom kontekstu
+kubectl config set-context --current --namespace="platforma"
+
+# Read-only pre-flight kontrola neposredno pre izmene resursa
+kubectl config view --minify
+kubectl auth can-i create deployments.apps --namespace="platforma"</code></pre>
+
+<p>
+  Dobra konvencija imena sadrži najmanje okruženje, tip klastera i, kada je korisno, namespace: na primer <code>prod-supervisor-platforma</code> ili <code>dev-vks-aplikacije</code>. Ime olakšava prepoznavanje, ali ne zamenjuje proveru serverskog URL-a. Za rizične promene koristite eksplicitne parametre <code>--context</code> i <code>--namespace</code>; time komanda postaje čitljivija u change zapisu i manje zavisi od nevidljivog lokalnog stanja.
+</p>
+
+<pre><code class="language-bash"># Read-only primer sa eksplicitnim odredištem
+kubectl --context="prod-vks-01" --namespace="aplikacije" get deployments
+
+# Server-side simulacija zahteva; ne kreira objekat, ali prolazi autorizaciju/admission.
+kubectl --context="prod-vks-01" --namespace="aplikacije" \
+  apply --server-side --dry-run=server -f deployment.yaml
+
+# Tek posle pregleda diff-a i odobrenja promene: MENJA stanje klastera
+kubectl --context="prod-vks-01" --namespace="aplikacije" diff -f deployment.yaml
+kubectl --context="prod-vks-01" --namespace="aplikacije" apply -f deployment.yaml</code></pre>
+
+<p>
+  <code>kubectl diff</code> je read-oriented kontrola, ali može kontaktirati admission komponente i u zavisnosti od servera zahtevati prava slična promeni; ne tretira se kao potpuno „offline” pregled. Za kritične produkcione promene kontekst i namespace treba da budu parametri automatizacije, a ne ručni implicitni izbor.
+</p>
+
+<h3>8. Autentikacija nije autorizacija: dokazivanje efektivnih prava</h3>
+
+<pre><code class="language-bash"># Read-only SelfSubjectAccessReview provere
+kubectl auth can-i get pods --namespace="tim-dev"
+kubectl auth can-i create deployments.apps --namespace="tim-dev"
+kubectl auth can-i delete namespaces
+kubectl auth can-i --list --namespace="tim-dev"
+
+# Administrator može proveriti drugog subjekta samo ako ima pravo impersonacije.
+kubectl auth can-i create pods \
+  --namespace="tim-dev" \
+  --as="korisnik@example.local"</code></pre>
+
+<p>
+  <code>yes</code> dokazuje da autorizacioni sloj trenutno dozvoljava navedenu radnju; ne dokazuje da će admission politika prihvatiti konkretan manifest. <code>no</code> uz uspešan login obično znači problem dodele prava, pogrešan namespace ili pogrešan klaster, a ne problem lozinke. Opcija <code>--as</code> nije način da korisnik sam sebi proširi prava: API server mora mu izričito dozvoliti impersonaciju, a korišćenje treba da bude auditovano.
+</p>
+
+<h3>9. SSO pristup naspram kubernetes-admin kubeconfig-a</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Namena</th>
+      <th>Prednost</th>
+      <th>Rizik i kontrola</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter SSO korisnik/grupa</td>
+      <td>Redovan rad administratora, operatora i developera</td>
+      <td>Lični identitet, RBAC, opoziv kroz identitetni sistem i bolji audit</td>
+      <td>Traži ispravnu integraciju identiteta, vremena, sertifikata i namespace dozvola</td>
+    </tr>
+    <tr>
+      <td><code>kubernetes-admin</code> secret/kubeconfig</td>
+      <td>Break-glass, duboki troubleshooting i oporavak VKS control plane-a</td>
+      <td>Nezavisan hitni administratorski pristup</td>
+      <td>Vrlo visoke privilegije; strogo čuvanje, vremenski ograničena upotreba, evidencija i rotacija</td>
+    </tr>
+    <tr>
+      <td>ServiceAccount/OIDC ili podržan workload identitet</td>
+      <td>Automatizacija bez interaktivnog ljudskog login-a</td>
+      <td>Najmanje privilegije i namenski identitet</td>
+      <td>Ne praviti „večan admin token”; kontrolisati rok, audience, skladištenje i opoziv</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  VKS administrativni kubeconfig može se dobiti iz odgovarajućeg secreta prema proceduri i imenovanju koje važi za instalirano izdanje. To nije zamena za svakodnevni SSO. Ne kopira se na developerske računare, ne deli između administratora i ne ugrađuje u CI. Ako je izvučen zbog incidenta, evidentirajte ko ga je koristio, gde je privremeno sačuvan, kada je uklonjen i da li je potrebna rotacija. Direktan SSH pristup Supervisor control plane VM-u i korišćenje <code>/etc/kubernetes/admin.conf</code> pripada samo vendor-dokumentovanom troubleshooting/recovery toku, jer pogrešna promena može ugroziti upravljanu platformu i podršku.
+</p>
+
+<h3>10. Sertifikati, tokeni i vreme</h3>
+
+<p>
+  TLS sertifikat dokazuje identitet endpoint-a i štiti saobraćaj; autentikacioni token dokazuje sesiju korisnika. To su različiti kvarovi. Greška <code>x509: certificate signed by unknown authority</code> upućuje na CA lanac, dok <code>certificate is valid for ... not ...</code> ukazuje na pogrešno ime/adresu ili SAN. <code>Unauthorized</code> posle ranije uspešnog rada često ukazuje na istekao token, nesinhronizovano vreme ili promenu javnih ključeva/sertifikata u vCenter/Supervisor/VKS lancu. Ponovni login je razuman prvi bezbedan korak, ali ponavljano privremeno rešavanje nije analiza osnovnog uzroka.
+</p>
+
+<pre><code class="language-bash"># Read-only: proverava sertifikat koji endpoint stvarno prezentuje.
+# -servername mora odgovarati DNS imenu kojim se klijent povezuje.
+openssl s_client \
+  -connect SUPERVISOR-FQDN:6443 \
+  -servername SUPERVISOR-FQDN \
+  -showcerts &lt;/dev/null
+
+# Read-only: vreme i DNS na Linux administratorskoj stanici
+date --iso-8601=seconds
+getent hosts SUPERVISOR-FQDN</code></pre>
+
+<p>
+  Izlaz <code>openssl</code> proverava se za subject/SAN, issuer, rok važenja i završni <code>Verify return code</code>. Ne kopirajte privatne ključeve sa platforme radi „popravke” klijentskog poverenja. CA sertifikat distribuirajte kroz odobreni enterprise trust store ili podržanu konfiguraciju plugin-a. Sertifikati Supervisor-a obuhvataju više trust domena i komponenti; obnova se sprovodi Broadcom procedurom za tačnu verziju, a ne improvizovanim brisanjem secreta iz slučajnog KB članka namenjenog drugom izdanju.
+</p>
+
+<h3>11. Troubleshooting matrica: od simptoma do osnovnog uzroka</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prve neinvazivne provere</th>
+      <th>Verovatni sloj</th>
+      <th>Trajna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Timeout ili nema rute</td>
+      <td>Endpoint iz konteksta, DNS, ruta, firewall, load balancer/VIP</td>
+      <td>Mreža</td>
+      <td>Ispraviti DNS/rutiranje/ACL prema dokumentovanim portovima; ne zaobilaziti pristupom na control plane VM</td>
+    </tr>
+    <tr>
+      <td><code>x509</code> greška</td>
+      <td>FQDN, SAN, issuer, CA u kubeconfig-u, rok važenja</td>
+      <td>TLS poverenje</td>
+      <td>Ispravan sertifikat i CA distribucija; ukloniti trajni insecure režim</td>
+    </tr>
+    <tr>
+      <td><code>Unauthorized</code></td>
+      <td>Ponovni login, vreme, izabrani user/context, nedavne obnove vCenter sertifikata</td>
+      <td>Autentikacija/token</td>
+      <td>Obnoviti poverenje ili sinhronizaciju ključeva prema KB-u za tačnu verziju</td>
+    </tr>
+    <tr>
+      <td><code>Forbidden</code></td>
+      <td><code>auth can-i</code>, namespace, SSO grupa i RBAC binding</td>
+      <td>Autorizacija</td>
+      <td>Dodeliti najmanji potreban nivo prava kroz grupu i dokumentovan proces</td>
+    </tr>
+    <tr>
+      <td>Login uspe, VKS API nije dostupan</td>
+      <td>VKS endpoint u kontekstu, mrežna dostupnost, stanje control plane-a</td>
+      <td>VKS mreža ili zdravlje</td>
+      <td>Ispraviti putanju/load balancer ili oporaviti klaster po podržanom toku</td>
+    </tr>
+    <tr>
+      <td>Komanda radi nad pogrešnim objektima</td>
+      <td>current-context, server, namespace i eksplicitni parametri</td>
+      <td>Lokalna konfiguracija</td>
+      <td>Razdvojiti fajlove, standardizovati imena i uvesti pre-flight kontrolu</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Dijagnostika se vodi redom: zabeležite simptom, vreme i obim; sačuvajte redigovani izlaz verzija, konteksta i endpoint-a; proverite poslednje promene u sertifikatima, identitetu, DNS-u, firewall-u i lifecycle-u klastera; formirajte hipotezu; zatim tek menjajte stanje. Klijentski detalji mogu se dobiti povećanjem verbosity nivoa, ali izlaz može sadržati osetljive zaglavlja i podatke, pa se pre prilaganja tiketu rediguje.
+</p>
+
+<pre><code class="language-bash"># Read-only, ali izlaz tretirati kao poverljiv i redigovati pre deljenja
+kubectl --v=6 get namespaces
+
+# Read-only snapshot bez prikazivanja raw tajni
+kubectl version
+kubectl config current-context
+kubectl config view --minify
+kubectl auth can-i --list --namespace="tim-dev"
+kubectl get events --namespace="tim-dev" --sort-by='.metadata.creationTimestamp'</code></pre>
+
+<p>
+  Za korelaciju koristite vCenter događaje i zadatke, Supervisor status i alarme, Kubernetes događaje, API audit zapise ako su dostupni kroz podržani model, kao i Broadcom support bundle. Log lokacije i način prikupljanja razlikuju se po verziji; ne uključujte SSH na upravljane control plane VM-ove kao rutinski prvi korak. Support bundle se prikuplja tek nakon očuvanja klijentskih dokaza i prema proceduri za konkretan vSphere/VCF release.
+</p>
+
+<h3>12. Praktikum – kontrolisan pristup od Supervisor-a do VKS klastera</h3>
+
+<p>
+  <strong>Cilj i kontekst.</strong> Platform tim priprema Linux jump host za operatora koji sme da čita objekte u Supervisor Namespace-u <code>tim-dev</code> i da upravlja aplikacijama u VKS klasteru <code>vks-dev-01</code>, ali ne sme da administrira druge namespace-e. Vežba uspostavlja SSO pristup, proverava efektivna prava, simulira tri realne greške i završava kontrolisanim čišćenjem lokalnih akreditiva.
+</p>
+
+<p>
+  <strong>Topologija i preduslovi.</strong> Potrebni su Supervisor sa zdravim control plane endpoint-om, postojeći namespace <code>tim-dev</code>, postojeći VKS klaster <code>vks-dev-01</code>, vCenter SSO korisnik dodeljen odgovarajućoj grupi i pravilima, DNS/NTP i mrežna dostupnost oba API endpoint-a. Na jump host-u moraju biti odobrene kompatibilne verzije <code>kubectl</code> i <code>kubectl-vsphere</code>. Korisnik ne dobija cluster-admin niti pristup control plane VM-ovima.
+</p>
+
+<p>
+  <strong>Rizik.</strong> Login menja lokalni kubeconfig, a kasnije testiranje može promeniti objekte ako se izostavi <code>--dry-run=server</code>. Pre rada pravi se zaštićena kopija lokalne konfiguracije. Lozinka i sirovi kubeconfig ne snimaju se u zapis sesije. Sve klasterske provere do posebno označenog koraka su read-only.
+</p>
+
+<h3>Vežba 1 – priprema i inventar alata</h3>
+
+<pre><code class="language-bash">set -o errexit -o nounset -o pipefail
+
+LAB_KUBECONFIG="$HOME/.kube/vsphere-lesson20.yaml"
+install -d -m 700 "$HOME/.kube"
+
+# Ako fajl postoji, pravi se vremenski označena kopija; ne prepisuje se naslepo.
+if [ -f "$LAB_KUBECONFIG" ]; then
+  cp -p "$LAB_KUBECONFIG" "${LAB_KUBECONFIG}.backup.$(date +%Y%m%d%H%M%S)"
+fi
+touch "$LAB_KUBECONFIG"
+chmod 600 "$LAB_KUBECONFIG"
+export KUBECONFIG="$LAB_KUBECONFIG"
+
+kubectl version --client
+kubectl vsphere login --help
+kubectl config get-contexts</code></pre>
+
+<p>
+  <strong>Očekivani rezultat i validacija.</strong> Obe binarne datoteke se izvršavaju, pomoć prikazuje login parametre, a laboratorijski kubeconfig ima dozvole <code>600</code>. Ako shell prijavi da <code>kubectl-vsphere</code> nije pronađen, proverite da li je dodatak izvršiv, u direktorijumu navedenom u <code>PATH</code> i preuzet iz pravog okruženja. Ne rešavajte problem pokretanjem nepoznate binarne datoteke kao <code>root</code>.
+</p>
+
+<h3>Vežba 2 – Supervisor login, identitet i najmanje privilegije</h3>
+
+<pre><code class="language-bash">kubectl vsphere login \
+  --server="SUPERVISOR-CONTROL-PLANE-FQDN-ILI-IP" \
+  --vsphere-username="operator@example.local"
+
+kubectl config get-contexts
+kubectl config current-context
+kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}{"\n"}'
+kubectl cluster-info
+kubectl auth can-i get namespaces
+kubectl auth can-i get pods --namespace="tim-dev"
+kubectl auth can-i delete namespaces</code></pre>
+
+<p>
+  <strong>Kriterijum uspeha.</strong> Server odgovara očekivanom Supervisor endpoint-u, operator može da obavlja tačno odobrene read operacije u <code>tim-dev</code>, a privilegovana provera vraća <code>no</code>. Ako login uspe, ali <code>get pods</code> vrati <code>Forbidden</code>, ne ponavljajte lozinku: proverite namespace, članstvo korisnika u SSO grupi i mapiranje prava iz prethodnih lekcija. Promenu prava izvodi ovlašćeni platform administrator i ponovo dokazuje sa <code>auth can-i</code>.
+</p>
+
+<h3>Vežba 3 – VKS login i pre-flight kontrola</h3>
+
+<pre><code class="language-bash">kubectl vsphere login \
+  --server="SUPERVISOR-CONTROL-PLANE-FQDN-ILI-IP" \
+  --vsphere-username="operator@example.local" \
+  --tanzu-kubernetes-cluster-name="vks-dev-01" \
+  --tanzu-kubernetes-cluster-namespace="tim-dev"
+
+kubectl config get-contexts
+
+# Zameniti stvarnim imenom koje je plugin prikazao.
+VKS_CONTEXT="STVARNO-IME-VKS-KONTEKSTA"
+kubectl config use-context "$VKS_CONTEXT"
+kubectl config set-context --current --namespace="aplikacije"
+
+kubectl config current-context
+kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}{"\n"}'
+kubectl config view --minify -o jsonpath='{..namespace}{"\n"}'
+kubectl get nodes
+kubectl auth can-i create deployments.apps --namespace="aplikacije"</code></pre>
+
+<p>
+  <strong>Očekivani rezultat.</strong> Endpoint pripada VKS klasteru, čvorovi su vidljivi u skladu sa RBAC pravilima, a podrazumevani namespace je <code>aplikacije</code>. Ako autentikacija uspe, ali je VKS endpoint nedostupan, uporedite server iz kubeconfig-a sa DNS-om i mrežnom putanjom jump host-a. Nemojte menjati endpoint ručno dok ne utvrdite da je zapis pogrešan; ručna zamena može zaobići podržani tok i izazvati SAN grešku.
+</p>
+
+<h3>Vežba 4 – bezbedna simulacija promene</h3>
+
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lesson20-check
+  namespace: aplikacije
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lesson20-check
+  template:
+    metadata:
+      labels:
+        app: lesson20-check
+    spec:
+      containers:
+        - name: web
+          image: nginx:stable
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi</code></pre>
+
+<pre><code class="language-bash"># Sačuvati manifest kao lesson20-check.yaml, pa prvo izvršiti server-side simulaciju.
+kubectl --context="$VKS_CONTEXT" --namespace="aplikacije" \
+  apply --server-side --dry-run=server -f lesson20-check.yaml
+
+# Read-oriented pregled razlike; ne primenjivati objekat bez odobrenja instruktora.
+kubectl --context="$VKS_CONTEXT" --namespace="aplikacije" \
+  diff -f lesson20-check.yaml</code></pre>
+
+<p>
+  <strong>Kriterijum uspeha.</strong> Server potvrđuje manifest bez kreiranja Deployment-a; <code>kubectl get deployment lesson20-check</code> vraća <code>NotFound</code>. Time su provereni endpoint, autentikacija, autorizacija, admission i schema bez trajne promene. Ako dry-run vrati <code>Forbidden</code>, koriguje se RBAC. Ako admission odbije image, resurse ili politiku, manifest se usklađuje sa politikom; bezbednosna kontrola se ne isključuje radi prolaska vežbe.
+</p>
+
+<h3>Vežba 5 – incident drill: pogrešan kontekst, TLS i istekao token</h3>
+
+<ol>
+  <li><strong>Pogrešan kontekst:</strong> bez slanja state-changing komande izaberite drugi laboratorijski kontekst, pokrenite pre-flight proveru i utvrdite razliku u serveru/namespace-u. Korekcija je <code>use-context</code> ili eksplicitni <code>--context</code>; trajna mera je standard imena i obavezna kontrola u change proceduri.</li>
+  <li><strong>TLS simptom:</strong> ne uključujte trajni insecure režim. Prikupite <code>openssl s_client</code> izlaz, proverite FQDN/SAN/issuer/rok i uporedite CA iz odobrenog izvora. Privremeni workaround nije prihvatljiv završetak vežbe.</li>
+  <li><strong>Unauthorized:</strong> zabeležite vreme, current-context i nedavne promene sertifikata; ponovite SSO login. Ako se problem vraća, eskalirajte sa redigovanim dokazima i korelacijom vCenter/Supervisor/VKS događaja. Trajna mera rešava sinhronizaciju ključeva, sertifikat ili vreme prema verzijski odgovarajućoj Broadcom proceduri.</li>
+</ol>
+
+<p>
+  Za svaki incident zapis mora razlikovati simptom i obim, neposredni uzrok, osnovni uzrok, privremeno zaobilazno rešenje i trajnu korekciju. Vežba je završena tek kada ponovljene read-only provere potvrde očekivani identitet, endpoint, namespace i prava.
+</p>
+
+<h3>Vežba 6 – rollback i čišćenje laboratorije</h3>
+
+<pre><code class="language-bash"># Prvo dokazati da Deployment nije nastao tokom dry-run vežbe.
+kubectl --context="$VKS_CONTEXT" --namespace="aplikacije" \
+  get deployment lesson20-check
+
+# Uklanja lokalne zapise samo iz laboratorijskog fajla; ne menja klaster.
+kubectl config get-contexts
+kubectl config delete-context "$VKS_CONTEXT"
+
+# Pre uklanjanja user/cluster zapisa proveriti da ih ne koristi drugi kontekst.
+kubectl config get-contexts
+chmod 600 "$LAB_KUBECONFIG"</code></pre>
+
+<p>
+  Ako je manifest greškom stvarno primenjen, brisanje je state-changing i dozvoljeno je samo u laboratoriji posle potvrde tačnog konteksta i namespace-a: <code>kubectl --context="$VKS_CONTEXT" --namespace="aplikacije" delete -f lesson20-check.yaml</code>. Oporavak se validira proverom da objekat više ne postoji i pregledom događaja. Brisanje celog kubeconfig fajla nije automatski najbolji rollback ako sadrži druge potrebne kontekste; tada se vraća prethodna zaštićena kopija ili se ciljano uklanjaju samo zapisi nastali u vežbi.
+</p>
+
+<h3>13. Administratorske prakse</h3>
+
+<ul>
+  <li>Koristite lične SSO identitete i grupno upravljan RBAC; zajednički administratorski nalozi nisu prihvatljiva redovna praksa.</li>
+  <li>Razdvojite produkcijske i laboratorijske kubeconfig fajlove i u automatizaciji eksplicitno navedite <code>--kubeconfig</code>, <code>--context</code> i <code>--namespace</code>.</li>
+  <li>Pre svake promene proverite current-context, stvarni API server, namespace, identitet i <code>auth can-i</code>; za manifest koristite server-side dry-run i diff.</li>
+  <li>Kubeconfig klasifikujte kao tajnu: najmanje OS dozvole, enkripcija uređaja i backup-a, bez Git-a, tiketa i chat-a; sirovi prikaz redigujte.</li>
+  <li>Ne prihvatajte nepoverljiv kubeconfig bez inspekcije <code>exec</code> i putanja. Potpis i poreklo plugin binarnih datoteka moraju biti kontrolisani.</li>
+  <li>Ne koristite <code>--insecure-skip-tls-verify</code> kao trajnu konfiguraciju. Ispravite CA lanac, SAN i distribuciju poverenja.</li>
+  <li><code>kubernetes-admin</code> čuvajte kao break-glass mehanizam sa kontrolom pristupa, evidencijom, privremenim preuzimanjem i procedurom rotacije.</li>
+  <li>Posle lifecycle ili certificate promene testirajte login i read-only pristup i Supervisor-u i reprezentativnim VKS klasterima, jer uspeh na jednom endpoint-u ne dokazuje drugi.</li>
+  <li>Za automatizaciju koristite namenski podržan identitet sa najmanjim privilegijama i vremenski ograničenim akreditivima; ne automatizujte interaktivni SSO tako što ćete lozinku staviti u skriptu.</li>
+  <li>U incidentu prvo čuvajte dokaze i korelišite vreme, vCenter događaje, Supervisor/VKS stanje i klijentski verbose izlaz; tek zatim menjajte sertifikate, RBAC ili kubeconfig.</li>
+</ul>
+
+<h3>14. Završna kontrolna tačka</h3>
+
+<p>Administrator je spreman za narednu lekciju kada može dokazivo da:</p>
+
+<ul>
+  <li>objasni put zahteva od kubeconfig konteksta do TLS-a, autentikacije, RBAC autorizacije i admission kontrole;</li>
+  <li>instalira i verzijski proveri <code>kubectl</code> i vSphere plugin iz pouzdanog izvora;</li>
+  <li>izvede SSO login na Supervisor i VKS klaster bez izlaganja lozinke ili trajnog preskakanja TLS provere;</li>
+  <li>pročita i bezbedno organizuje cluster, user i context zapise, uz eksplicitni namespace i zaštićene dozvole fajla;</li>
+  <li>pre state-changing komande potvrdi tačan kontekst, endpoint, namespace, identitet i efektivno pravo;</li>
+  <li>razlikuje <code>Unauthorized</code> od <code>Forbidden</code>, kao i mrežni kvar od TLS kvara;</li>
+  <li>sprovede dijagnostiku od najmanje invazivne provere do verzijski odgovarajućeg support/recovery toka;</li>
+  <li>objasni zašto je SSO standardni pristup, a <code>kubernetes-admin</code> kontrolisani break-glass mehanizam;</li>
+  <li>bezbedno simulira manifest pomoću server-side dry-run-a, validira rezultat i očisti samo laboratorijske zapise.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Bezbedan rad sa Supervisor-om i VKS klasterima počinje pre prve Kubernetes komande. Administrator mora da zna koju binarnu datoteku koristi, kome veruje, koji identitet predstavlja, kom API serveru se obraća, u kom namespace-u radi i šta mu je zaista dozvoljeno. Kubeconfig i kontekst povezuju sve te odluke, pa njihova pogrešna upotreba može biti jednako opasna kao pogrešan manifest. Lični SSO identitet, validan TLS lanac, najmanje privilegije, eksplicitno odredište, pre-flight provera i dokaziva dijagnostika čine osnovu odgovornog rada. Sa tim kontrolama čitalac je spreman da u narednoj lekciji kreira prvi VKS klaster bez mešanja pristupnog modela sa lifecycle i workload konfiguracijom samog klastera.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware Cloud Foundation, vSphere Supervisor i vSphere Kubernetes Service administrativna dokumentacija; zvanične reference za vSphere Plugin for kubectl, SSO pristup i VKS cluster secrets; Broadcom Knowledge Base smernice za login, sertifikate, autorizaciju i prikupljanje support logova; Kubernetes dokumentacija za kubectl, kubeconfig, kontekste, TLS i RBAC provere
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-21-kreiranje-prvog-vks-klastera.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
+

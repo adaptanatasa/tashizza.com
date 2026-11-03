@@ -1,0 +1,982 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-39-skaliranje-i-dostupnost.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Skaliranje aplikacija – ručno i automatsko povećanje broja instanci | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite kako funkcioniše ručno i automatsko skaliranje aplikacija u Kubernetes-u korišćenjem Deployment objekata, ReplicaSet-a i Horizontal Pod Autoscaler mehanizma.">
+
+  <meta name="keywords"
+        content="Kubernetes skaliranje, scaling, Horizontal Pod Autoscaler, HPA, ReplicaSet, Deployment, autoscaling, kubectl scale, workload scaling, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-39-skaliranje-i-dostupnost.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Skaliranje aplikacija – ručno i automatsko povećanje broja instanci">
+
+  <meta property="og:description"
+        content="Saznajte kako Kubernetes omogućava ručno i automatsko skaliranje aplikacija radi boljih performansi, dostupnosti i efikasnog korišćenja resursa.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-39-skaliranje-i-dostupnost.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-36-skaliranje.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Skaliranje aplikacija – ručno i automatsko povećanje broja instanci">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-36-skaliranje.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-36-skaliranje.png"
+           alt="Skaliranje aplikacija – ručno i automatsko povećanje broja instanci">
+
+    </a>
+     <div class="page-subtitle">
+  IX. Dostupnost, skaliranje i observability
+</div>
+  <div class="page-subtitle">
+39. Skaliranje i dostupnost workload-a – HPA, PDB, raspodela replika i granice automatizacije
+</div>
+
+<p>
+  Skaliranje aplikacije u Kubernetes-u predstavlja kontrolisano prilagođavanje raspoloživog kapaciteta stvarnom ili očekivanom opterećenju. Najčešći oblik je horizontalno skaliranje, pri kojem se povećava ili smanjuje broj podova koji izvršavaju istu verziju aplikacije. Administrator može broj replika promeniti ručno ili može definisati HorizontalPodAutoscaler, skraćeno HPA, koji periodično procenjuje metrike i menja željeni broj replika unutar zadatih granica.
+</p>
+<p>
+  Skaliranje nije samo komanda kojom se broj podova menja sa dva na pet. Ono zavisi od arhitekture aplikacije, kapaciteta worker čvorova, ispravnih resource requests vrednosti, dostupnosti metrika, načina raspodele saobraćaja, vremena potrebnog za pokretanje poda, readiness provere i ponašanja zavisnih sistema. Nepravilno skalirana aplikacija može imati mnogo podova, a da i dalje ne pruža zadovoljavajuću uslugu zbog zagušene baze podataka, nedovoljnog broja konekcija, sporog spoljnog servisa ili zato što novi podovi nisu spremni da prime saobraćaj.
+</p>
+
+<h3>Šta se u Kubernetes-u zaista skalira</h3>
+<p>
+  Deployment, StatefulSet i drugi kontroleri koji podržavaju Kubernetes <code>scale</code> podresurs imaju željeni broj replika u svom stanju. Kod Deployment objekta taj broj je predstavljen poljem <code>spec.replicas</code>. Deployment controller zatim upravlja ReplicaSet objektom, a ReplicaSet kreira ili uklanja podove kako bi stvarno stanje približio deklarisanom.
+</p>
+<p>
+  Kada administrator izvrši <code>kubectl scale</code>, komanda ne klonira ručno postojeći pod. Ona preko Kubernetes API servera menja željeni broj replika odgovarajućeg kontrolera. Kontrolna petlja zatim obavlja ostatak posla. Na isti način radi i HPA: on izračunava preporučeni broj replika i preko <code>scale</code> interfejsa ažurira ciljano opterećenje.
+</p>
+<p>
+  Horizontalno skaliranje treba razlikovati od vertikalnog skaliranja. Horizontalno skaliranje menja broj instanci, dok vertikalno skaliranje menja količinu CPU i memorijskih resursa dodeljenih jednoj instanci. Povećanje broja podova neće pomoći aplikaciji koja može da radi samo kao jedna aktivna instanca, niti procesu čiji se posao ne može podeliti. S druge strane, povećavanje resursa jednog poda ima granicu određenu kapacitetom čvora i često zahteva ponovno kreiranje poda.
+</p>
+
+<h3>Preduslovi za uspešno horizontalno skaliranje</h3>
+<p>
+  Aplikacija je dobar kandidat za horizontalno skaliranje kada više njenih instanci može paralelno da obrađuje zahteve bez konflikta. Web i API servisi su tipični kandidati ukoliko ne čuvaju korisničku sesiju samo u lokalnoj memoriji ili lokalnom fajl sistemu. Stanje koje mora biti zajedničko instancama treba čuvati u odgovarajućem spoljašnjem sistemu, kao što su baza podataka, distribuirani keš ili objektno skladište.
+</p>
+<ul>
+  <li><strong>Jednake i zamenljive instance:</strong> svaki spreman pod treba da može da obradi bilo koji odgovarajući zahtev koji mu Service prosledi.</li>
+  <li><strong>Readiness provera:</strong> novi pod ne sme da dobija produkcioni saobraćaj pre nego što je aplikacija zaista spremna.</li>
+  <li><strong>Resource requests:</strong> scheduler i HPA moraju imati realne podatke o traženom CPU i memorijskom kapacitetu.</li>
+  <li><strong>Dovoljan kapacitet klastera:</strong> HPA može zatražiti nove replike, ali ne može sam obezbediti worker čvor ako node autoscaling nije implementiran.</li>
+  <li><strong>Raspodela saobraćaja:</strong> Service, Ingress ili drugi posrednik mora uključivati sve spremne podove u skup odredišta.</li>
+  <li><strong>Kapacitet zavisnosti:</strong> baza podataka, message broker, eksterni API i storage moraju podneti veći broj paralelnih konekcija i operacija.</li>
+</ul>
+<p>
+  Posebno treba proveriti ponašanje aplikacije pri smanjivanju broja replika. Uklanjanje poda koji obrađuje dugotrajan zahtev, poruku ili transakciju može prekinuti posao. Za takve aplikacije potrebni su pravilan <code>terminationGracePeriodSeconds</code>, obrada signala SIGTERM, prestanak prihvatanja novih zahteva i dovoljno vremena da se tekući poslovi završe.
+</p>
+
+<h3>Dostupnost je lanac, a ne samo broj replika</h3>
+<p>
+  Više replika povećava potencijalni kapacitet i otpornost samo ako nisu izložene istom domenu kvara. Tri poda na istom worker čvoru ne štite aplikaciju od gubitka tog čvora; tri poda u istoj zoni ne štite je od prekida zone; tri spremna frontend poda ne obezbeđuju uslugu ako svi zavise od jedne nedostupne baze. Zbog toga se broj replika, njihov raspored, budžet prekida, kapacitet zavisnosti i ponašanje pri gašenju projektuju kao jedna celina.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Mehanizam</th>
+      <th>Šta kontroliše</th>
+      <th>Šta ne garantuje</th>
+      <th>Tipičan dokaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Deployment ili StatefulSet replike</td>
+      <td>Željeni broj podova</td>
+      <td>Da su podovi spremni, ravnomerno raspoređeni ili da zavisnosti imaju kapacitet</td>
+      <td>Status kontrolera, spremni podovi i EndpointSlice</td>
+    </tr>
+    <tr>
+      <td>HPA</td>
+      <td>Željeni broj replika prema metrikama</td>
+      <td>Čvorni kapacitet, poslovni SLO ili uklanjanje uskog grla</td>
+      <td>HPA conditions, događaji, metrika i broj spremnih replika</td>
+    </tr>
+    <tr>
+      <td>Topology spread</td>
+      <td>Raspored novih podova između topoloških domena</td>
+      <td>Evakuaciju postojećih podova posle promene pravila niti opstanak čvora</td>
+      <td>Mapiranje pod–čvor–zona i scheduler događaji</td>
+    </tr>
+    <tr>
+      <td>PodDisruptionBudget</td>
+      <td>Broj istovremenih dobrovoljnih evikcija koje koriste Eviction API</td>
+      <td>Zaštitu od pada čvora, direktnog brisanja poda ili pogrešnog rollout-a</td>
+      <td><code>disruptionsAllowed</code>, kontrolisani drain ili eviction test</td>
+    </tr>
+    <tr>
+      <td>Node autoscaling</td>
+      <td>Dodavanje i uklanjanje čvornog kapaciteta</td>
+      <td>Da aplikacija može bezbedno da se umnoži ili da će novi čvor stići pre isteka SLO-a</td>
+      <td>Pending razlog, odluka autoskalera i spremnost novog čvora</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Ručno skaliranje</h3>
+<p>
+  Ručno skaliranje je opravdano kada administrator poznaje vreme i očekivani intenzitet opterećenja, kada automatske metrike nisu dostupne ili kada je tokom incidenta potrebno brzo i kontrolisano povećati kapacitet. Primeri uključuju planirani poslovni događaj, početak obračunskog perioda, promotivnu kampanju ili privremeno povećanje kapaciteta pre održavanja dela infrastrukture.
+</p>
+<p>
+  Osnovna komanda ima sledeći oblik:
+</p>
+<pre><code class="language-bash">kubectl scale deployment/web-api \
+  --namespace=skaliranje-lab \
+  --replicas=5</code></pre>
+<p>
+  Komanda menja željeni broj replika, ali njen uspešan završetak ne potvrđuje da je pet podova postalo spremno. Administrator mora odvojeno proveriti Deployment, podove, događaje i raspoloživi kapacitet čvorova.
+</p>
+<pre><code class="language-bash">kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab \
+  --timeout=180s
+
+kubectl get deployment,pods \
+  --namespace=skaliranje-lab 
+--selector=app=web-api 
+--output=wide</code></pre>
+
+<p>
+  Za promenu u okruženju u kojem više administratora ili automatizacionih sistema može istovremeno menjati isti objekat korisne su preconditions opcije. Parametar <code>--current-replicas</code> sprečava skaliranje ako trenutni broj replika nije očekivan:
+</p>
+<pre><code class="language-bash">kubectl scale deployment/web-api \
+  --namespace=skaliranje-lab \
+  --current-replicas=2 \
+  --replicas=5</code></pre>
+<p>
+  Ako je u međuvremenu drugi proces promenio broj replika, komanda neće neprimetno pregaziti novo stanje. To ne zamenjuje proces upravljanja promenama, ali smanjuje rizik od konkurentnih izmena.
+</p>
+<p>
+  Ručno skaliranje je jednostavno, ali nema povratnu spregu. Pet replika ostaje pet bez obzira na to da li su preopterećene ili gotovo neaktivne. Administrator mora pratiti metrike i sam odlučiti kada da izvrši novu promenu. Kada opterećenje brzo osciluje ili traje van radnog vremena, ručni postupak postaje spor, skup i sklon greškama.
+</p>
+
+<h3>Horizontal Pod Autoscaler</h3>
+<p>
+  HorizontalPodAutoscaler je Kubernetes API objekat i kontroler koji periodično poredi posmatrane metrike sa zadatim ciljem. HPA ne obrađuje saobraćaj i ne kreira podove direktno. On menja željeni broj replika ciljnog Deployment ili drugog skalabilnog resursa, a njegov kontroler zatim usklađuje broj podova.
+</p>
+<p>
+  Za metriku prosečne iskorišćenosti CPU-a pojednostavljena logika može se predstaviti odnosom:
+</p>
+<pre><code class="language-none">željene_replike =
+ceil(trenutne_replike × trenutna_metrika / ciljna_metrika)</code></pre>
+<p>
+  Ako dve replike prosečno koriste 80% svojih CPU requests vrednosti, a cilj je 50%, rezultat je približno četiri replike. Kontroler primenjuje toleranciju i dodatna pravila kako male promene metrike ne bi izazivale stalno skaliranje.
+</p>
+<p>
+  U stabilnom <code>autoscaling/v2</code> API-ju HPA može koristiti resource metrike, pod metrike, object metrike i external metrike, u zavisnosti od instaliranih metrics adaptera. Osnovni Metrics Server obezbeđuje kratkoročne CPU i memorijske metrike preko Resource Metrics API-ja. On nije dugoročna monitoring baza, sistem za alerting niti zamena za Prometheus ili drugi observability sistem.
+</p>
+<p>
+  CPU utilization cilj predstavlja procenat u odnosu na CPU request, a ne procenat fizičkog procesora čvora niti CPU limit. Ako kontejner troši <code>100m</code>, a njegov request je <code>200m</code>, iskorišćenost za HPA iznosi približno 50%. Zbog toga loše postavljen request neposredno menja ponašanje autoskalera. Previsok request prikazuje nisku iskorišćenost i može sprečiti pravovremeno skaliranje. Prenizak request može izazvati rano i prečesto povećavanje broja replika.
+</p>
+
+<h3>Izvor metrika i zavisnosti HPA kontrolne petlje</h3>
+<p>
+  U tipičnom vanilla Kubernetes klasteru Metrics Server prikuplja resource metrike od kubelet servisa na čvorovima i izlaže ih kroz agregirani Kubernetes API. Dostupnost se proverava komandom <code>kubectl top</code> i pregledom APIService objekta.
+</p>
+<pre><code class="language-bash">kubectl top nodes
+kubectl top pods --all-namespaces
+kubectl get apiservice v1beta1.metrics.k8s.io</code></pre>
+<p>
+  APIService treba da ima stanje <code>Available=True</code>. Ako komanda <code>kubectl top</code> prijavi da Metrics API nije dostupan, HPA zasnovan na CPU ili memoriji neće imati potrebne podatke. Administrator tada proverava Metrics Server podove, servis, APIService, događaje i logove:
+</p>
+<pre><code class="language-bash">kubectl get deployment,pods,service \
+  --namespace=kube-system \
+  --selector=k8s-app=metrics-server
+
+kubectl describe apiservice v1beta1.metrics.k8s.io
+
+kubectl logs \
+  --namespace=kube-system 
+deployment/metrics-server 
+--tail=200</code></pre>
+
+<p>
+  Česti uzroci su nedostupnost kubelet porta, DNS ili mrežni problem, neispravno poverenje u kubelet sertifikate, pogrešno izabrana adresa čvora ili problem agregacionog sloja API servera. Isključivanje TLS provere prema kubelet servisima opcijom za nesiguran TLS nije odgovarajuće produkciono rešenje. Ispravna reakcija je uspostavljanje validnog lanca poverenja i potrebne mrežne komunikacije.
+</p>
+
+<h3>Granice, stabilizacija i ponašanje skaliranja</h3>
+<p>
+  HPA mora imati definisane granice <code>minReplicas</code> i <code>maxReplicas</code>. Minimum predstavlja najmanji dozvoljeni kapacitet, ali i nivo raspoloživosti koji aplikacija treba da zadrži pri slabom opterećenju. Maksimum štiti klaster i zavisne sisteme od nekontrolisanog rasta, ali ne treba da bude proizvoljan. On mora biti usklađen sa kapacitetom namespace kvota, worker čvorova, baze podataka i licencnih ili poslovnih ograničenja.
+</p>
+<p>
+  Povećavanje i smanjivanje nisu simetrične operacije. Brzo povećavanje kapaciteta često je poželjno jer smanjuje trajanje preopterećenja. Prebrzo smanjivanje može ukloniti kapacitet posle kratkog pada saobraćaja i izazvati novo povećavanje čim se opterećenje vrati. Polje <code>behavior</code> u <code>autoscaling/v2</code> omogućava definisanje stabilizacionih prozora i ograničenja brzine.
+</p>
+<pre><code class="language-yaml">behavior:
+  scaleUp:
+    stabilizationWindowSeconds: 0
+    policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+    selectPolicy: Max
+  scaleDown:
+    stabilizationWindowSeconds: 300
+    policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60</code></pre>
+<p>
+  Prikazana politika dozvoljava relativno brzo povećavanje, dok pri smanjivanju koristi petominutni stabilizacioni prozor i ograničava uklanjanje na 25% replika tokom jednog perioda. Vrednosti se ne preuzimaju mehanički između aplikacija. Administrator ih određuje na osnovu vremena pokretanja poda, profila saobraćaja, SLO zahteva i rezultata testova opterećenja.
+</p>
+<p>
+  Kada je definisano više metrika, HPA izračunava preporuku za svaku i bira najveći preporučeni broj replika. Ako jedna metrika ne može da se pribavi, a preostale predlažu smanjivanje, smanjivanje se preskače; povećavanje i dalje može biti izvršeno kada važeća metrika to zahteva. Ovakvo konzervativno ponašanje štiti dostupnost, ali kvar metrics adaptera može dugo zadržati višak kapaciteta i zato mora imati alarm i operativnog vlasnika.
+</p>
+<p>
+  Podovi koji se brišu i podovi u stanju <code>Failed</code> ne ulaze u proračun. Nedostajuće metrike i još nespremni podovi tretiraju se konzervativno, čime se ublažava odluka skaliranja. Kratak CPU skok pri pokretanju može dati pogrešan signal; <code>startupProbe</code> i readiness proba treba da odraze stvarnu fazu zagrevanja aplikacije. Kontroler ima klasterske parametre za početni readiness period i CPU inicijalizaciju, ali njih menja vlasnik control plane-a tek nakon merenja uticaja na sve HPA objekte.
+</p>
+
+<h3>Raspodela replika između čvorova i zona</h3>
+<p>
+  Scheduler ne podrazumeva da replike iste aplikacije moraju završiti na različitim čvorovima. <code>topologySpreadConstraints</code> u Pod template-u određuje koliko ravnomerno novi podovi treba da budu raspoređeni među domenima definisanim labelom čvora, najčešće <code>kubernetes.io/hostname</code> za čvor i <code>topology.kubernetes.io/zone</code> za zonu. Polje <code>labelSelector</code> mora precizno izabrati replike koje se broje; pogrešan selector stvara lažnu sliku raspodele.
+</p>
+<pre><code class="language-yaml">topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app: web-api</code></pre>
+<p>
+  <code>maxSkew: 1</code> ograničava dozvoljenu neravnotežu broja odgovarajućih podova između prihvatljivih domena. Sa <code>DoNotSchedule</code> pravilo je čvrsto: pod ostaje <code>Pending</code> ako raspored ne može da ga zadovolji. Sa <code>ScheduleAnyway</code> scheduler raspodelu tretira kao prioritet, ali pod ipak može biti smešten u već opterećen domen. Prvi izbor je prikladan kada je izolacija domena kvara važnija od trenutnog kapaciteta; drugi kada je bolje imati dodatnu repliku na istom čvoru nego nedovoljno replika ukupno.
+</p>
+<p>
+  <code>minDomains</code> ima smisla samo uz <code>DoNotSchedule</code> i određuje najmanji očekivani broj prihvatljivih domena za računanje globalnog minimuma. Polje je u savremenim izdanjima stabilno, ali u klasterima pre Kubernetes 1.30 njegova raspoloživost zavisi od verzije i feature gate istorije, pa se pre upotrebe proverava sa <code>kubectl explain pod.spec.topologySpreadConstraints</code> i server-side dry-run postupkom. Pravilo ne premešta već pokrenute podove: promena Pod template-a izaziva rollout, a balans se zatim dokazuje nad novim podovima.
+</p>
+<p>
+  Pod anti-affinity može izraziti sličnu nameru, ali topology spread daje direktnu kontrolu nad dozvoljenim odstupanjem i radom sa više domena. Ni jedan mehanizam ne stvara zonu ili čvor koji ne postoji. Node affinity, taints, tolerations, zahtevi za volumenom i nedostatak resursa mogu suziti skup prihvatljivih domena i učiniti strogu raspodelu nemogućom. Zato se <code>Pending</code> pod ne rešava uklanjanjem zaštite pre nego što se pročita scheduler događaj i utvrdi koje je ograničenje stvarno blokiralo raspored.
+</p>
+
+<h3>PodDisruptionBudget i kontrolisano održavanje</h3>
+<p>
+  PodDisruptionBudget, skraćeno PDB, ograničava koliko podova iz izabranog skupa sme istovremeno postati nedostupno usled dobrovoljne evikcije. Tipični primeri su <code>kubectl drain</code>, plansko uklanjanje čvora i druge operacije koje koriste Eviction API. PDB ne sprečava nedobrovoljan prekid kao što je kvar čvora i ne štiti od direktnog <code>kubectl delete pod</code>, brisanja workload kontrolera ili rollout strategije. On nije zamena za replike, raspodelu i zdravu aplikaciju.
+</p>
+<p>
+  U jednom PDB objektu navodi se ili <code>minAvailable</code> ili <code>maxUnavailable</code>, nikada oba. Za skalabilni kontroler čiji se broj replika menja, <code>maxUnavailable</code> se prirodnije prilagođava promeni veličine. Procenti se za PDB zaokružuju naviše; zbog toga <code>maxUnavailable: "30%"</code> kod jedne replike može dozvoliti prekid te jedine replike. Za male skupove administrator računa konkretan rezultat, a ne oslanja se na intuitivno tumačenje procenta.
+</p>
+<pre><code class="language-yaml">apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-api-pdb
+  namespace: skaliranje-lab
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+  selector:
+    matchLabels:
+      app: web-api</code></pre>
+<p>
+  Stabilni <code>policy/v1</code> koristi se od Kubernetes 1.21. Važna migraciona razlika jeste da prazan selector u <code>policy/v1</code> bira sve podove u namespace-u, dok je u zastarelom <code>policy/v1beta1</code> birao nijedan; zato se selector nikada ne ostavlja prazan. Polje <code>unhealthyPodEvictionPolicy</code> je stabilno od Kubernetes 1.31. Podrazumevani <code>IfHealthyBudget</code> štiti mogućnost oporavka nezdravog poda, ali može blokirati drain. <code>AlwaysAllow</code> olakšava uklanjanje podova koji su <code>Running</code>, ali nisu <code>Ready</code>; bira se samo kada kontroler može da ih ponovo kreira drugde i kada je rizik po aplikaciju prihvaćen.
+</p>
+<p>
+  PDB status sadrži <code>currentHealthy</code>, <code>desiredHealthy</code>, <code>expectedPods</code> i <code>disruptionsAllowed</code>. Nulta vrednost <code>disruptionsAllowed</code> može biti ispravna zaštita, ali znači da će drain čekati dok se ne pojavi dovoljan broj spremnih replika ili dok vlasnik aplikacije odobreno ne promeni budžet. PDB sa <code>maxUnavailable: 0</code> ili <code>minAvailable: 100%</code> može potpuno onemogućiti dobrovoljnu evikciju; takva politika ne sme biti iznenađenje timu koji održava čvorove.
+</p>
+
+<h3>Međusobno dejstvo HPA, PDB-a, rollout-a i node autoscaling-a</h3>
+<p>
+  HPA menja željeni broj replika; PDB iz tog stanja i broja zdravih podova izvodi koliko je evikcija dozvoljeno; scheduler raspoređuje nove podove prema resursima i topološkim pravilima; node autoscaler, ako je instaliran i pravilno konfigurisan, može reagovati na određene nepodesive <code>Pending</code> podove. Ove petlje rade asinhrono. Nema jedne atomske operacije koja istovremeno garantuje metriku, novi čvor, spreman pod, bezbednu evikciju i očuvan SLO.
+</p>
+<p>
+  Deployment rolling update koristi <code>maxUnavailable</code> i <code>maxSurge</code> iz sopstvene strategije, a ne PDB kao osnovno ograničenje rollout-a. Zato rollout može smanjiti broj spremnih podova drugačije nego što administrator očekuje samo na osnovu PDB-a. Sa druge strane, HPA tokom rollout-a vidi podove različite starosti i spremnosti. Requests vrednosti, probe i ponašanje nove verzije moraju ostati uporedivi, a promene HPA cilja i aplikativne verzije ne uvode se istovremeno bez jasnog eksperimentalnog plana.
+</p>
+
+<h3>Kada HPA nije dovoljno ili nije odgovarajuće rešenje</h3>
+<p>
+  HPA nije sistem koji rešava svaki problem performansi. Ako su novi podovi u stanju <code>Pending</code> zbog nedostatka resursa, potrebno je osloboditi kapacitet, dodati worker čvorove ili koristiti posebno implementiran node autoscaler. HPA i node autoscaling rešavaju različite nivoe problema: prvi traži više replika, a drugi obezbeđuje infrastrukturu na kojoj se te replike mogu rasporediti.
+</p>
+<p>
+  CPU nije uvek dobra poslovna metrika. Worker koji obrađuje red poruka može imati nizak CPU, dok backlog brzo raste. API može čekati bazu podataka i imati visoku latenciju uz nizak CPU. Za takve sisteme potrebne su odgovarajuće pod, object ili external metrike, na primer dužina reda, broj aktivnih poslova ili broj zahteva u jedinici vremena. Njihovo korišćenje zahteva pouzdan izvor metrika i kompatibilan Kubernetes metrics adapter.
+</p>
+<p>
+  Automatsko horizontalno skaliranje nije prikladno ni kada se instanca ne može bezbedno umnožavati, kada aplikacija zahteva ekskluzivan pristup resursu, kada se pod veoma dugo pokreće ili kada dodatne replike stvaraju veće opterećenje na već zagušenoj zavisnosti. U takvoj situaciji HPA može ubrzati kvar stvaranjem novih konekcija i zahteva prema bazi podataka.
+</p>
+
+<h3>Odnos deklarativne konfiguracije, ručnih promena i HPA objekta</h3>
+<p>
+  Kada HPA upravlja Deployment objektom, administrator ne treba da koristi ručno menjanje polja <code>spec.replicas</code> kao redovan način upravljanja kapacitetom. HPA će pri sledećem usklađivanju ponovo postaviti vrednost koju je izračunao. Isto važi za GitOps: ako manifest Deployment objekta stalno nameće broj replika, a HPA ga istovremeno menja, nastaje konflikt između dva kontrolna sistema.
+</p>
+<p>
+  U produkcionoj konfiguraciji treba jasno odrediti vlasnika svakog polja. Deployment manifest definiše pod template, resurse, probe i strategiju ažuriranja, dok HPA definiše opseg i kriterijume skaliranja. Ako GitOps alat podržava ignorisanje razlika za polje kojim upravlja HPA, ono se konfiguriše u skladu sa pravilima organizacije. Ručna promena tokom incidenta mora biti zabeležena, vremenski ograničena i usklađena sa postojećim autoskalerom.
+</p>
+
+<h3>Integrisani praktikum – ručno skaliranje i HPA za web API</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Interni web API prima promenljivo opterećenje tokom radnog dana. Osnovni kapacitet od dve replike obezbeđuje raspoloživost, ali se tokom perioda intenzivne upotrebe CPU opterećenje povećava. Cilj je potvrditi ručno skaliranje, a zatim implementirati HPA koji održava prosečnu CPU iskorišćenost oko 50%, sa najmanje dve i najviše deset replika.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koristi se vanilla Kubernetes klaster sa najmanje dva worker čvora, funkcionalnim CNI dodatkom, CoreDNS servisom i instaliranim Metrics Server komponentama. Svi objekti aplikacije nalaze se u namespace-u <code>skaliranje-lab</code>. Deployment i kontejner imaju naziv <code>web-api</code>, Service se zove <code>web-api</code>, HPA <code>web-api-hpa</code>, a PDB <code>web-api-pdb</code>. Administrativni fajlovi čuvaju se u direktorijumu <code>~/vanilla-k8s/39-skaliranje-dostupnost</code>.
+</p>
+<p>
+  <strong>Potrebna prava i rizik.</strong> Operatoru su potrebna prava <code>get</code>, <code>list</code> i <code>watch</code> nad podovima, događajima, Deployment, ReplicaSet, HPA i PDB objektima, pravo <code>get</code> nad logovima podova, kao i odobrena prava <code>create</code>, <code>patch</code>, <code>update</code> i <code>delete</code> nad laboratorijskim objektima. Pravo menjanja Deployment <code>scale</code> podresursa mora biti izričito dozvoljeno. Eviction ili drain test zahteva dodatno pravo i koordinaciju sa vlasnikom čvora; u deljenom klasteru zamenjuje se API dry-run proverom. Instalacija ili popravka Metrics Server komponente zahteva odvojena klasterska ovlašćenja. Opterećenje, namerno kvarenje requests vrednosti i evikcija ograničeni su na laboratorijski namespace.
+</p>
+
+<ol>
+  <li>
+    <strong>Priprema radnog direktorijuma i provera identiteta.</strong>
+    Administrator prvo potvrđuje klaster, aktivni kontekst i sopstvena prava kako manifest ne bi bio primenjen na pogrešno okruženje.
+    <pre><code class="language-bash">mkdir -p ~/vanilla-k8s/39-skaliranje-dostupnost
+cd ~/vanilla-k8s/39-skaliranje-dostupnost
+
+kubectl config current-context
+kubectl cluster-info
+
+kubectl auth can-i create deployments.apps --namespace=skaliranje-lab
+kubectl auth can-i update deployments.apps/scale --namespace=skaliranje-lab
+kubectl auth can-i create horizontalpodautoscalers.autoscaling --namespace=skaliranje-lab
+kubectl auth can-i create poddisruptionbudgets.policy --namespace=skaliranje-lab
+kubectl auth can-i create pods/eviction --namespace=skaliranje-lab</code></pre> <strong>Validacija:</strong> kontekst mora odgovarati odobrenom laboratorijskom klasteru, a prava potrebna za planirane korake treba da vrate <code>yes</code>. Rezultat <code>no</code> nije razlog za korišćenje privilegovanijeg naloga bez odobrenja, već za zahtev vlasniku RBAC politike ili preskakanje opcionog eviction testa.
+
+  </li>
+  <li>
+    <strong>Provera Metrics API-ja i kapaciteta čvorova.</strong>
+    Pre kreiranja HPA objekta proverava se da li klaster može da isporuči metrike i da li postoje resursi za dodatne podove.
+    <pre><code class="language-bash">kubectl get nodes
+kubectl top nodes
+kubectl get apiservice v1beta1.metrics.k8s.io</code></pre>
+    <strong>Validacija:</strong> svi planirani worker čvorovi treba da budu <code>Ready</code>, <code>kubectl top nodes</code> treba da prikaže CPU i memorijske vrednosti, a APIService <code>v1beta1.metrics.k8s.io</code> stanje <code>Available=True</code>. Ako metrike nisu dostupne, praktikum se ne nastavlja do HPA faze dok klasterski administrator ne otkloni uzrok.
+  </li>
+  <li>
+    <strong>Kreiranje namespace-a i aplikativnog manifesta.</strong>
+    Sledeći manifest definiše namespace, Deployment sa dve replike, CPU i memorijske requests i limits vrednosti, readiness i liveness provere i ClusterIP Service.
+    <pre><code class="language-bash">cat &gt; web-api.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skaliranje-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-api
+  namespace: skaliranje-lab
+  labels:
+    app: web-api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: web-api
+  template:
+    metadata:
+      labels:
+        app: web-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: web-api
+      containers:
+        - name: web-api
+          image: registry.k8s.io/hpa-example:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-api
+  namespace: skaliranje-lab
+spec:
+  selector:
+    app: web-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-api-pdb
+  namespace: skaliranje-lab
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+  selector:
+    matchLabels:
+      app: web-api
+EOF
+
+kubectl apply --filename=web-api.yaml</code></pre> <strong>Validacija:</strong> namespace, Deployment i Service treba da budu kreirani ili neizmenjeni bez greške. <pre><code class="language-bash">kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab 
+--timeout=180s
+
+kubectl get deployment,replicaset,pods,service,poddisruptionbudget \
+  --namespace=skaliranje-lab 
+--output=wide
+
+kubectl get endpointslices \
+  --namespace=skaliranje-lab 
+--selector=kubernetes.io/service-name=web-api</code></pre>
+Deployment treba da prikaže dve dostupne replike, oba poda treba da budu <code>Running</code> i <code>Ready</code>, a EndpointSlice treba da sadrži njihove adrese.
+
+  </li>
+  <li>
+    <strong>Dokaz raspodele replika i stanja PDB-a.</strong>
+    Pre testa skaliranja proverava se da li su dve početne replike raspoređene na različite čvorove i da li disruption controller vidi oba zdrava poda.
+    <pre><code class="language-bash">kubectl get pods \
+  --namespace=skaliranje-lab \
+  --selector=app=web-api \
+  --output=custom-columns='POD:.metadata.name,NODE:.spec.nodeName,READY:.status.conditions[?(@.type=="Ready")].status'
+
+kubectl get poddisruptionbudget/web-api-pdb \
+  --namespace=skaliranje-lab
+
+kubectl get poddisruptionbudget/web-api-pdb \
+  --namespace=skaliranje-lab \
+  --output=jsonpath='{.status.currentHealthy}{"/"}{.status.expectedPods}{" healthy; evictions="}{.status.disruptionsAllowed}{"\n"}'</code></pre>
+    <strong>Očekivani rezultat:</strong> uz najmanje dva prihvatljiva worker čvora i dovoljan kapacitet, podovi treba da budu na različitim čvorovima. PDB treba da prijavi dva zdrava od dva očekivana poda i jednu dozvoljenu evikciju. Ako su oba poda na istom čvoru, proveravaju se node labele, prihvatljivi čvorovi i stvarno sačuvani Pod template. Ako je drugi pod <code>Pending</code>, <code>DoNotSchedule</code> je možda ispravno odbio narušavanje raspodele; ne prelazi se automatski na <code>ScheduleAnyway</code> bez procene dostupnosti.
+  </li>
+  <li>
+    <strong>Početna funkcionalna provera servisa.</strong>
+    Privremeni testni pod proverava DNS rezoluciju i HTTP odgovor unutar klastera.
+    <pre><code class="language-bash">kubectl run service-test \
+  --namespace=skaliranje-lab \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --rm \
+  --attach \
+  --command -- \
+  wget -qO- http://web-api</code></pre>
+    <strong>Validacija:</strong> komanda treba da vrati odgovor aplikacije i završi se statusom nula. DNS greška ukazuje na problem rezolucije ili Service imena, <code>Connection refused</code> na port ili aplikaciju, a timeout na mrežnu politiku, CNI ili nedostupne endpoint adrese.
+  </li>
+  <li>
+    <strong>Kontrolisano ručno povećavanje broja replika.</strong>
+    Pre promene se potvrđuje početno stanje od dve replike, a precondition sprečava primenu ako je stanje u međuvremenu promenjeno.
+    <pre><code class="language-bash">kubectl get deployment/web-api \
+  --namespace=skaliranje-lab
+
+kubectl scale deployment/web-api \
+  --namespace=skaliranje-lab 
+--current-replicas=2 
+--replicas=4
+
+kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab 
+--timeout=180s</code></pre> <strong>Validacija:</strong> Deployment treba da ima četiri željene, ažurirane, dostupne i spremne replike. <pre><code class="language-bash">kubectl get deployment/web-api 
+--namespace=skaliranje-lab
+
+kubectl get pods \
+  --namespace=skaliranje-lab 
+--selector=app=web-api 
+--output=wide
+
+kubectl get endpointslices \
+  --namespace=skaliranje-lab 
+--selector=kubernetes.io/service-name=web-api</code></pre>
+Ako su novi podovi <code>Pending</code>, koristi se <code>kubectl describe pod</code> i pregled događaja. Poruka <code>Insufficient cpu</code> znači da je željeno stanje prihvaćeno, ali scheduler nema dovoljan raspoloživi kapacitet.
+
+  </li>
+  <li>
+    <strong>Kontrolisana dobrovoljna evikcija jedne replike.</strong>
+    Ovaj state-changing korak simulira plansko održavanje bez kordoniranja celog čvora. Izvodi se tek kada su četiri replike spremne i PDB prijavljuje najmanje jednu dozvoljenu evikciju. Ime jednog poda upisuje se u promenljivu, zatim se Eviction API poziva eksplicitno.
+    <pre><code class="language-bash">kubectl get poddisruptionbudget/web-api-pdb \
+  --namespace=skaliranje-lab
+
+LAB_POD=$(kubectl get pods \
+  --namespace=skaliranje-lab \
+  --selector=app=web-api \
+  --output=jsonpath='{.items[0].metadata.name}')
+
+kubectl create \
+  --raw "/api/v1/namespaces/skaliranje-lab/pods/${LAB_POD}/eviction" \
+  --filename=- &lt;&lt;EOF
+apiVersion: policy/v1
+kind: Eviction
+metadata:
+  name: ${LAB_POD}
+  namespace: skaliranje-lab
+EOF</code></pre>
+    <strong>Očekivani rezultat:</strong> API prihvata jednu evikciju, Deployment kreira zamenski pod, a PDB privremeno smanjuje <code>disruptionsAllowed</code> dok zamena ne postane spremna. Ako API vrati HTTP 429 odnosno poruku da bi evikcija narušila disruption budget, to je zaštitno ponašanje: ne koristiti <code>kubectl delete pod</code> kao zaobilazni put. Sačekati zdravu zamenu ili otkloniti razlog nezdravlja.
+    <pre><code class="language-bash">kubectl get pods \
+  --namespace=skaliranje-lab \
+  --selector=app=web-api \
+  --watch
+
+kubectl get poddisruptionbudget/web-api-pdb \
+  --namespace=skaliranje-lab
+
+kubectl get events \
+  --namespace=skaliranje-lab \
+  --sort-by=.metadata.creationTimestamp</code></pre>
+    <strong>Validacija i rollback:</strong> korak je završen kada ponovo postoje četiri spremne replike, raspodela po čvorovima zadovoljava <code>maxSkew: 1</code>, Service ima četiri spremna endpoint-a i PDB ponovo dozvoljava planirani broj prekida. Evikcija nema povratak istog poda; bezbedan oporavak obezbeđuje kontroler stvaranjem zamene. Ako zamena ne postane spremna, zaustavljaju se dalji prekidi i dijagnostikuju scheduler, image pull, probe i aplikativni logovi.
+  </li>
+  <li>
+    <strong>Povratak na osnovni broj replika pre uvođenja HPA.</strong>
+    Ručni test je završen, pa se aplikacija vraća na dve replike.
+    <pre><code class="language-bash">kubectl scale deployment/web-api \
+  --namespace=skaliranje-lab \
+  --current-replicas=4 \
+  --replicas=2
+
+kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab 
+--timeout=180s</code></pre> <strong>Validacija:</strong> tačno dva poda treba da budu <code>Running</code> i <code>Ready</code>. Proverava se i da nisu ostali neočekivani terminišući podovi.
+
+  </li>
+  <li>
+    <strong>Kreiranje HPA objekta sa kontrolisanim ponašanjem.</strong>
+    HPA održava prosečnu CPU iskorišćenost oko 50%, dozvoljava od dve do deset replika, brzo povećava kapacitet i opreznije ga smanjuje.
+    <pre><code class="language-bash">cat &gt; web-api-hpa.yaml &lt;&lt;'EOF'
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-api-hpa
+  namespace: skaliranje-lab
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-api
+  minReplicas: 2
+  maxReplicas: 10
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+      selectPolicy: Max
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+EOF
+
+kubectl apply --filename=web-api-hpa.yaml</code></pre> <strong>Validacija:</strong> HPA treba da pronađe Deployment i posle dostupnosti početnih uzoraka prikaže CPU metriku umesto <code>&lt;unknown&gt;</code>. <pre><code class="language-bash">kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab
+
+kubectl describe hpa/web-api-hpa \
+  --namespace=skaliranje-lab</code></pre>
+U uslovima se očekuje <code>AbleToScale=True</code> i <code>ScalingActive=True</code>. Kratkotrajna nepoznata metrika neposredno nakon pokretanja poda može biti normalna, ali trajno stanje zahteva dijagnostiku.
+
+  </li>
+  <li>
+    <strong>Generisanje kontrolisanog opterećenja.</strong>
+    Poseban pod neprekidno šalje HTTP zahteve servisu. Test se sprovodi samo u laboratorijskom namespace-u i ne sme se usmeravati na produkcioni endpoint bez odobrenog plana testa.
+    <pre><code class="language-bash">kubectl run load-generator \
+  --namespace=skaliranje-lab \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --command -- \
+  /bin/sh -c 'while true; do wget -q -O- http://web-api &gt;/dev/null; done'</code></pre>
+    <strong>Validacija:</strong> pod <code>load-generator</code> treba da bude <code>Running</code>, dok metrike aplikativnih podova i HPA stanje treba pratiti u ponovljenim intervalima.
+    <pre><code class="language-bash">kubectl get pod/load-generator \
+  --namespace=skaliranje-lab
+
+kubectl top pods \
+  --namespace=skaliranje-lab 
+--selector=app=web-api
+
+kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab 
+--watch</code></pre>
+Kada prosečna CPU iskorišćenost pređe cilj, željeni broj replika treba da poraste. Brzina zavisi od prikupljanja metrika, HPA intervala, vremena povlačenja slike, zakazivanja i readiness provere.
+
+  </li>
+  <li>
+    <strong>Provera događaja i razloga odluke autoskalera.</strong>
+    Sama promena broja replika nije dovoljna za audit. Administrator proverava uslove i događaje koji objašnjavaju odluku.
+    <pre><code class="language-bash">kubectl describe hpa/web-api-hpa \
+  --namespace=skaliranje-lab
+
+kubectl get events \
+  --namespace=skaliranje-lab 
+--sort-by=.metadata.creationTimestamp
+
+kubectl get deployment/web-api \
+  --namespace=skaliranje-lab
+
+kubectl get pods \
+  --namespace=skaliranje-lab 
+--selector=app=web-api 
+--output=wide</code></pre> <strong>Validacija:</strong> očekuju se događaji poput uspešnog izračunavanja i promene veličine cilja. Povećan broj replika mora rezultirati podovima koji postaju <code>Ready</code>; samo povećanje vrednosti <code>DESIRED</code> nije kriterijum uspeha.
+
+  </li>
+  <li>
+    <strong>Negativni test – uklanjanje CPU request vrednosti.</strong>
+    HPA ne može pouzdano izračunati CPU utilization kada relevantnom kontejneru nedostaje CPU request. Test namerno uvodi pogrešnu konfiguraciju, ali se izvodi samo u laboratorijskom namespace-u. Originalni manifest ostaje sačuvan radi neposrednog povratka.
+    <pre><code class="language-bash">kubectl patch deployment/web-api \
+  --namespace=skaliranje-lab \
+  --type=json \
+  --patch='[
+    {
+      "op": "remove",
+      "path": "/spec/template/spec/containers/0/resources/requests/cpu"
+    }
+  ]'
+
+kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab 
+--timeout=180s
+
+kubectl describe hpa/web-api-hpa \
+  --namespace=skaliranje-lab</code></pre> <strong>Očekivani rezultat:</strong> nakon zamene podova i osvežavanja metrika HPA treba da prijavi da nije uspeo da izračuna CPU metriku zbog nedostajućeg request-a ili da prikaže nepoznatu vrednost. To potvrđuje da HPA konfiguracija zavisi od pravilno deklarisanih resursa. <strong>Povratak:</strong> ispravan Deployment odmah se ponovo primenjuje. <pre><code class="language-bash">kubectl apply --filename=web-api.yaml
+
+kubectl rollout status deployment/web-api \
+  --namespace=skaliranje-lab 
+--timeout=180s
+
+kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab
+
+kubectl get deployment/web-api \
+  --namespace=skaliranje-lab 
+--output=jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}{"\n"}'</code></pre>
+Poslednja komanda mora vratiti <code>200m</code>, a HPA treba ponovo da dobije važeću CPU metriku.
+
+  </li>
+  <li>
+    <strong>Prekid opterećenja i provera kontrolisanog smanjivanja.</strong>
+    Brisanjem generatora prekida se testni saobraćaj. Ovo ne briše aplikaciju niti HPA.
+    <pre><code class="language-bash">kubectl delete pod/load-generator \
+  --namespace=skaliranje-lab
+
+kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab 
+--watch</code></pre> <strong>Validacija:</strong> opterećenje treba da padne, ali broj replika ne mora odmah da se smanji zbog stabilizacionog prozora od 300 sekundi. Nakon isteka prozora HPA treba postepeno da vrati Deployment na najmanje dve replike. Trenutno zadržavanje većeg broja replika tokom stabilizacionog perioda predstavlja normalno zaštitno ponašanje, a ne kvar.
+
+  </li>
+  <li>
+    <strong>Završna funkcionalna provera.</strong>
+    Nakon vraćanja na stabilno stanje proveravaju se broj replika, endpoint adrese, HTTP odgovor i odsustvo kritičnih događaja.
+    <pre><code class="language-bash">kubectl get deployment/web-api \
+  --namespace=skaliranje-lab
+
+kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab
+
+kubectl get pods \
+  --namespace=skaliranje-lab 
+--selector=app=web-api
+
+kubectl run final-service-test \
+  --namespace=skaliranje-lab \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --rm \
+  --attach \
+  --command -- \
+  wget -qO- http://web-api
+
+kubectl get events \
+  --namespace=skaliranje-lab 
+--field-selector=type=Warning 
+--sort-by=.metadata.creationTimestamp</code></pre> <strong>Kriterijumi prihvatanja:</strong> najmanje dve replike su raspoložive; HPA prikazuje važeću CPU metriku; tokom opterećenja broj replika je porastao iznad minimuma; po prestanku opterećenja replike su se kontrolisano vratile ka minimumu; Service vraća uspešan odgovor; nema trajnih <code>FailedScheduling</code>, probe, image pull ili metrics upozorenja.
+
+  </li>
+  <li>
+    <strong>Cleanup laboratorijskog okruženja.</strong>
+    Pre brisanja administrator čuva manifest, izlaz HPA objekta i događaje kao dokaz testa. U produkciji se namespace ne briše kao način rollback-a.
+    <pre><code class="language-bash">kubectl get hpa/web-api-hpa \
+  --namespace=skaliranje-lab \
+  --output=yaml &gt; hpa-zavrsno-stanje.yaml
+
+kubectl get events \
+  --namespace=skaliranje-lab \
+  --sort-by=.metadata.creationTimestamp \
+  &gt; dogadjaji-zavrsno-stanje.txt
+
+kubectl delete --filename=web-api-hpa.yaml
+kubectl delete --filename=web-api.yaml</code></pre> <strong>Validacija:</strong> objekti treba da budu uklonjeni, a lokalni manifesti i evidencija testa da ostanu u radnom direktorijumu. <pre><code class="language-bash">kubectl get namespace skaliranje-lab
+ls -l ~/vanilla-k8s/39-skaliranje-dostupnost</code></pre>
+
+  </li>
+</ol>
+
+<h3>Logovi i dijagnostika problema sa skaliranjem</h3>
+<p>
+  HPA nema aplikativni log unutar namespace-a korisnika. Najvažniji prvi izvor su njegov <code>status.conditions</code>, događaji i opis objekta. Poruke <code>FailedGetResourceMetric</code>, <code>FailedComputeMetricsReplicas</code> ili <code>FailedGetScale</code> usmeravaju administratora ka izvoru metrika, resource requests konfiguraciji ili ciljnom resursu.
+</p>
+<p>
+  Logovi Metrics Server komponente obično se čitaju iz podova u namespace-u <code>kube-system</code>:
+</p>
+<pre><code class="language-bash">kubectl logs \
+  --namespace=kube-system \
+  deployment/metrics-server \
+  --tail=200 \
+  --timestamps</code></pre>
+<p>
+  Oni su relevantni za greške komunikacije sa kubelet servisima, sertifikate, adresiranje čvorova i objavljivanje metrika. Za klasterski HPA controller logovi se, zavisno od načina instalacije control plane-a, nalaze u logovima <code>kube-controller-manager</code> komponente. U kubeadm klasteru ona se često izvršava kao static Pod u <code>kube-system</code> namespace-u:
+</p>
+<pre><code class="language-bash">kubectl get pods \
+  --namespace=kube-system \
+  --selector=component=kube-controller-manager
+
+kubectl logs \
+  --namespace=kube-system 
+--selector=component=kube-controller-manager 
+--tail=200 
+--prefix</code></pre>
+
+<p>
+  U upravljanom Kubernetes servisu korisnik možda nema pristup tim logovima. Tada se koriste dostupni kontrolni događaji, audit zapisi i podrška pružaoca usluge. Aplikativni logovi ostaju neophodni da se proveri da li dodatne replike stvarno smanjuju latenciju i greške:
+</p>
+<pre><code class="language-bash">kubectl logs \
+  --namespace=skaliranje-lab \
+  --selector=app=web-api \
+  --all-containers=true \
+  --tail=100 \
+  --prefix</code></pre>
+
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatan uzrok</th>
+      <th>Prva provera</th>
+      <th>Prva reakcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>HPA prikazuje <code>&lt;unknown&gt;</code></td>
+      <td>Metrics API nije dostupan, nema svežih uzoraka ili nedostaje resource request</td>
+      <td><code>kubectl top pods</code> i <code>kubectl describe hpa</code></td>
+      <td>Otkloniti problem metrika ili vratiti ispravne requests vrednosti</td>
+    </tr>
+    <tr>
+      <td>Željeni broj replika raste, podovi ostaju <code>Pending</code></td>
+      <td>Nedovoljan CPU, memorija, kvota ili odgovarajući čvor</td>
+      <td><code>kubectl describe pod</code> i namespace ResourceQuota</td>
+      <td>Obezbediti kapacitet ili korigovati zahteve na osnovu merenja</td>
+    </tr>
+    <tr>
+      <td>Podovi postoje, ali Service nema sve endpoint adrese</td>
+      <td>Readiness proba ne prolazi ili label selector nije usklađen</td>
+      <td>Pod conditions i EndpointSlice</td>
+      <td>Ispraviti aplikaciju, probu, port ili oznake; ne zaobilaziti readiness zaštitu</td>
+    </tr>
+    <tr>
+      <td>Broj replika često osciluje</td>
+      <td>Nestabilna metrika, loš cilj ili prekratka stabilizacija</td>
+      <td>Istorija metrike i HPA događaji</td>
+      <td>Podesiti cilj i <code>behavior</code> na osnovu testa opterećenja</td>
+    </tr>
+    <tr>
+      <td>Više replika ne smanjuje latenciju</td>
+      <td>Usko grlo je baza, storage, mreža ili spoljni servis</td>
+      <td>End-to-end tracing i metrike zavisnosti</td>
+      <td>Zaustaviti nekorisno skaliranje i eskalirati vlasniku zavisnog sistema</td>
+    </tr>
+    <tr>
+      <td>Ručna vrednost replika se sama vraća</td>
+      <td>HPA ili GitOps kontroler upravlja istim poljem</td>
+      <td>HPA target, managed fields i GitOps status</td>
+      <td>Odrediti jednog vlasnika polja i izmenu sprovesti kroz odobreni proces</td>
+    </tr>
+    <tr>
+      <td><code>kubectl drain</code> ili Eviction API vraća HTTP 429 i čeka</td>
+      <td>PDB nema dozvoljenih prekida jer nema dovoljno spremnih replika ili je budžet previše strog</td>
+      <td><code>kubectl get pdb</code>, pod readiness, događaji i selector PDB-a</td>
+      <td>Zaustaviti dalji prekid; oporaviti replike ili odobreno uskladiti budžet, bez direktnog brisanja kao prečice</td>
+    </tr>
+    <tr>
+      <td>Nova replika ostaje <code>Pending</code> sa topology spread porukom</td>
+      <td>Nema dovoljno prihvatljivih domena, node labele nisu ispravne ili druga scheduler ograničenja suzavaju izbor</td>
+      <td><code>kubectl describe pod</code>, node labele, taints, affinity i kapacitet</td>
+      <td>Otkloniti uzrok domena ili kapaciteta; menjati <code>DoNotSchedule</code> samo uz dokumentovanu procenu rizika</td>
+    </tr>
+    <tr>
+      <td>PDB postoji, ali prekid aplikacije se ipak dogodio</td>
+      <td>Pad čvora, direktno brisanje ili rollout ne spadaju u PDB zaštitu</td>
+      <td>Audit trag zahteva, node conditions, Deployment događaji i vreme incidenta</td>
+      <td>Klasifikovati vrstu prekida i uvesti odgovarajuću zaštitu: raspodelu, replike, rollout strategiju ili kontrolu pristupa</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Redovno praćenje HPA uslova i događaja.</strong> Posle svake izmene i najmanje jednom po operativnoj smeni proveravaju se <code>kubectl get hpa</code>, <code>kubectl describe hpa</code> i centralni monitoring. Reakciju zahtevaju trajno nepoznate metrike, <code>ScalingActive=False</code>, ponovljene greške pribavljanja metrika ili dug boravak na maksimalnom broju replika. Prva reakcija je potvrda Metrics API-ja, requests vrednosti i stvarnog opterećenja. U incident zapis se unose vreme, HPA uslovi, događaji, ciljna i stvarna metrika. Uspeh prakse meri se odsustvom neotkrivenih prekida autoskaliranja.</li>
+  <li><strong>Praćenje vremena od opterećenja do spremnog kapaciteta.</strong> Tokom testa opterećenja i nakon izmene slike meri se vreme između prelaska metrike preko cilja i trenutka kada nove replike postanu <code>Ready</code>. Koriste se HPA događaji, Deployment status, pod timestamps i monitoring grafikoni. Reakciju zahteva vreme duže od vrednosti definisane SLO dokumentom. Prvo se proveravaju image pull, scheduler, init kontejneri, probe i vreme pokretanja aplikacije. Rezultat se dokumentuje u izveštaju testa kapaciteta.</li>
+  <li><strong>Kontrola boravka na granicama.</strong> Alert se postavlja kada HPA duže vreme ostane na <code>maxReplicas</code> ili kada je stvarna metrika iznad cilja uprkos maksimalnom kapacitetu. Prva reakcija nije automatsko povećavanje maksimuma, već provera čvorova, grešaka aplikacije i zavisnih sistema. Odluka o novoj granici dokumentuje se kroz change record sa dokazom testa i procenom troška. Uspeh se meri održavanjem SLO-a bez nekontrolisanog rasta resursa.</li>
+  <li><strong>Provera domena kvara.</strong> Posle skaliranja, rollout-a i promene node labela proverava se stvarna raspodela replika po čvorovima i zonama. Reakciju zahtevaju koncentracija replika u jednom domenu i ponovljeni <code>FailedScheduling</code> događaji. Korekcija počinje proverom labela, affinity pravila, taints i kapaciteta, a ne automatskim ublažavanjem zaštite.</li>
+  <li><strong>Operativna usklađenost PDB-a.</strong> Pre planiranog održavanja vlasnik workload-a i klasterski administrator proveravaju <code>disruptionsAllowed</code>, broj zdravih replika i očekivano vreme zamene. PDB koji trajno blokira održavanje tretira se kao zajednički incident aplikacije i platforme. Privremena izmena budžeta mora imati odobrenje, vremensko ograničenje, dokaz vraćanja i potvrdu da SLO može podneti rizik.</li>
+  <li><strong>Provera resource requests vrednosti.</strong> Posle svake značajne verzije aplikacije i najmanje kvartalno porede se requests vrednosti sa stvarnom potrošnjom iz dugoročnog monitoring sistema. Reakciju zahteva trajna velika razlika ili često CPU throttling ponašanje. Prva reakcija je analiza reprezentativnog perioda, a ne promena na osnovu jednog uzorka. Izmena se dokumentuje u manifest repozitorijumu, change zapisu i izveštaju o kapacitetu.</li>
+  <li><strong>Test smanjivanja i urednog gašenja.</strong> Posle promene aplikativnog lifecycle ponašanja proverava se da li uklanjanje replike prekida zahteve ili poslove. Prate se greške klijenata, SIGTERM obrada, termination vreme i aplikativni logovi. Svaki gubitak potvrđenog posla zahteva zaustavljanje produkcionog uvođenja i eskalaciju razvojnom timu. Uspeh predstavlja smanjenje replika bez gubitka prihvaćenih transakcija.</li>
+  <li><strong>Čuvanje deklarativne konfiguracije i audit dokaza.</strong> Deployment i HPA manifesti čuvaju se u verzionisanom repozitorijumu, a Kubernetes audit log u centralnom, zaštićenom skladištu u skladu sa politikom zadržavanja. Posle svake produkcione promene proveravaju se commit, odobrenje, identitet izvršioca i rezultat validacije. Probni povratak se periodično izvodi u neprodukcijskom namespace-u primenom prethodno odobrene revizije manifesta. Upotrebljivost konfiguracionog backup-a potvrđuje ponovno kreiranje objekata i uspešna funkcionalna provera, a ne samo postojanje YAML fajla.</li>
+</ul>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Aktivni <code>kubectl</code> kontekst i ciljni namespace potvrđeni su pre promene.</li>
+  <li>Operator ima samo potrebna prava nad Deployment, <code>scale</code> podresursom, HPA, podovima, događajima i logovima.</li>
+  <li><code>kubectl top nodes</code> i <code>kubectl top pods</code> vraćaju aktuelne metrike bez greške.</li>
+  <li>CPU requests postoje za sve kontejnere uključene u CPU utilization izračunavanje.</li>
+  <li><code>minReplicas</code> i <code>maxReplicas</code> odgovaraju raspoloživosti, kvotama i kapacitetu zavisnih sistema.</li>
+  <li>Broj replika je dovoljan za projektovani kvar, a topology spread pravila ih raspoređuju među stvarno postojećim domenima.</li>
+  <li>PDB selector bira tačno ciljne podove, <code>disruptionsAllowed</code> je protumačen i dobrovoljna evikcija je proverena bez zaobilaženja zaštite.</li>
+  <li>Razlikuju se PDB zaštita dobrovoljnih evikcija, Deployment rollout ograničenja i nedobrovoljni kvarovi čvora.</li>
+  <li>Readiness proba sprečava usmeravanje saobraćaja ka nespremnim novim podovima.</li>
+  <li>Test opterećenja je dokazao povećavanje broja spremnih replika iznad minimuma.</li>
+  <li>Prekid opterećenja je dokazao kontrolisano smanjivanje bez oscilovanja i gubitka zahteva.</li>
+  <li>Provereni su HPA uslovi, događaji, Metrics Server logovi i aplikativni logovi.</li>
+  <li>Manifesti, kriterijumi prihvatanja, rezultati testa i rollback postupak sačuvani su u odobrenom repozitorijumu i change evidenciji.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da horizontalno skaliranje predstavlja saradnju više kontrolnih petlji, a ne neposredno umnožavanje podova. Mora umeti da proceni da li je aplikacija pogodna za paralelno izvršavanje, da ručno promeni broj replika uz proveru početnog stanja i da implementira HPA sa realnim metrikama, granicama i stabilizacionim pravilima.
+</p>
+<p>
+  Ispravna implementacija podrazumeva proveru Metrics API-ja, resource requests vrednosti, scheduler kapaciteta, readiness ponašanja, Service endpoint adresa i kapaciteta zavisnih sistema. Administrator mora razlikovati normalno kašnjenje kontrolne petlje i stabilizacionog prozora od problema kao što su nepoznate metrike, nedostatak čvornih resursa, neprolazak probe ili zagušena baza podataka.
+</p>
+<p>
+  Promena je bezbedna tek kada je merljivo potvrđeno da dodatne replike postaju spremne, raspoređuju se između planiranih domena, stvarno primaju saobraćaj i poboljšavaju ponašanje sistema, kao i da se dobrovoljna evikcija i kasnije smanjivanje odvijaju bez prekida posla. PDB ne garantuje opštu dostupnost, kao što HPA ne zamenjuje testiranje kapaciteta, monitoring, node autoscaling, optimizaciju aplikacije niti upravljanje zavisnostima. Administrator je odgovoran za tehničku validaciju i dokumentovanje promene, ali povećavanje infrastrukturnih kvota, menjanje klasterskih komponenti ili rizikovanje integriteta baze zahteva odobrenje i eskalaciju odgovarajućem vlasniku sistema.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za HorizontalPodAutoscaler i autoscaling/v2 API, PodDisruptionBudget i policy/v1 API, dobrovoljne prekide i Eviction API, topology spread i scheduler ponašanje, Deployment i scale podresurs, node autoscaling, probe i EndpointSlice objekte; zvanična Metrics Server arhitektonska, kompatibilnosna i troubleshooting dokumentacija; kubectl administrativne i dijagnostičke reference
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-38-secrets-audit-policy.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-40-monitoring-metrike-alarmi.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

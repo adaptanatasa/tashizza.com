@@ -1,0 +1,463 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-15-supervisor-control-plane-i-status.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Supervisor control plane – komponente, statusi, zavisnosti i provera zdravlja | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Supervisor control plane – komponente, statusi, infrastrukturne zavisnosti i sistematska provera zdravlja vSphere Supervisor platforme.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Supervisor control plane, komponente, statusi, provera zdravlja, vSphere Supervisor, VKS, Kubernetes, troubleshooting, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-15-supervisor-control-plane-i-status.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Supervisor control plane – komponente, statusi, zavisnosti i provera zdravlja">
+
+  <meta property="og:description"
+        content="Petnaesta lekcija VMware &amp; Tanzu tutorijala – komponente, statusi, zavisnosti i provera zdravlja Supervisor control plane-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-15-supervisor-control-plane-i-status.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-15-supervisor-control-plane-i-status.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Supervisor control plane – komponente, statusi, zavisnosti i provera zdravlja">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-15-supervisor-control-plane-i-status.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-15-supervisor-control-plane-i-status.png"
+           alt="Supervisor control plane – komponente, statusi, zavisnosti i provera zdravlja">
+
+    </a>
+
+    <div class="page-subtitle">
+  IV. Omogućavanje i početna validacija Supervisor-a
+</div>
+
+<div class="page-subtitle">
+  15. Supervisor control plane – komponente, statusi, zavisnosti i provera zdravlja
+</div>
+
+<p>Prethodna lekcija završila se kontrolisanom aktivacijom Supervisor-a. Zeleni završni status čarobnjaka, međutim, nije dovoljan dokaz da je platforma spremna za produkcioni rad. Administrator mora da razume šta se nalazi iza zbirnog statusa, kako se željeno stanje iz vCenter-a prevodi u Kubernetes objekte i vSphere resurse, koje komponente čine control plane dostupnim i kako se kvar lokalizuje bez nasumičnih promena. Ova lekcija zato posmatra Supervisor kao distribuirani upravljački sistem: zdravlje postoji tek kada su zdravi njegovi podaci, API, kontroleri, čvorovi i spoljne infrastrukturne zavisnosti.</p>
+
+<p>Terminologija zavisi od generacije proizvoda. U dokumentaciji za vSphere 7 i deo vSphere 8 izdanja često se sreću nazivi <em>vSphere with Tanzu</em>, <em>Workload Management</em> i <em>Supervisor Cluster</em>. U aktuelnijoj dokumentaciji koriste se <em>vSphere Supervisor</em>, <em>Supervisor</em> i, u okviru VMware Cloud Foundation 9, <em>vSphere IaaS control plane</em>. Operativni princip ostaje isti, ali se tačan prikaz stranica, nazivi statusa, dostupne metrike i lifecycle postupci moraju proveriti prema build-u vCenter Server-a, ESXi hostova, Supervisor verziji i odgovarajućoj Broadcom Product Interoperability Matrix dokumentaciji.</p>
+
+<h3>1. Ishodi učenja i administratorsko pitanje „šta znači zdrav?”</h3>
+
+<p>Posle ove lekcije administrator treba da ume da razlikuje dostupnost VM-a od funkcionalnog zdravlja control plane-a, mapira komponentu na njenu zavisnost i dokaz, izvrši neinvazivnu proveru iz vSphere Client-a i autorizovanog Kubernetes konteksta, prepozna kada je problem lokalni, klasterski ili infrastrukturni i pripremi kvalitetan paket dokaza za narednu lekciju o detaljnom troubleshooting-u inicijalizacije.</p>
+
+<p>Supervisor je zdrav kada su istovremeno ispunjena najmanje sledeća svojstva: Kubernetes API je dostupan preko očekivane control-plane adrese; većina, a u normalnom stanju svi control-plane čvorovi prijavljuju <code>Ready</code>; <code>etcd</code> ima kvorum i stabilno čuva stanje; scheduler i controller manager rade; sistemski podovi imaju očekivan broj spremnih replika; ESXi hostovi koji učestvuju u Supervisor-u pravilno su predstavljeni i komuniciraju preko <code>spherelet</code> komponente; vCenter WCP i EAM mogu da usklađuju željeno i stvarno stanje; DNS, NTP, mreža, load balancer, storage i sertifikati ne prekidaju tokove od kojih control plane zavisi.</p>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead>
+      <tr><th>Nivo dokaza</th><th>Pitanje</th><th>Primer dokaza</th><th>Šta dokaz ne potvrđuje</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Infrastruktura</td><td>Da li VM-ovi i hostovi rade?</td><td>Power state, host connectivity, datastore i mrežni alarmi</td><td>Da Kubernetes API i <code>etcd</code> rade</td></tr>
+      <tr><td>Platforma</td><td>Da li vCenter vidi Supervisor kao zdrav?</td><td>Supervisor status, Conditions, Config Status i događaji</td><td>Da je svaka aplikativna funkcija spremna</td></tr>
+      <tr><td>Kubernetes</td><td>Da li čvorovi i sistemski workload-i konvergiraju?</td><td><code>kubectl get nodes</code>, podovi, događaji i condition-i</td><td>Da je spoljni DNS, storage ili load balancer bez skrivenih degradacija</td></tr>
+      <tr><td>Usluga</td><td>Može li autorizovani klijent da izvrši očekivanu operaciju?</td><td>API login, read-only upit, kontrolisana probna operacija</td><td>Da će sistem ostati zdrav pod opterećenjem ili tokom kvara</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>2. Arhitektura Supervisor control plane-a</h3>
+
+<p>Supervisor control plane se u tipičnoj vSphere 7/8 implementaciji sastoji od tri upravljana control-plane VM-a. Oni nisu obične administratorske VM mašine: njihov lifecycle vodi vSphere kroz Workload Control Plane i ESX Agent Manager mehanizme. Tri instance omogućavaju toleranciju pojedinačnog otkaza i održavanje <code>etcd</code> kvoruma. Broj tri ne znači da se svaka komponenta može proizvoljno gasiti niti da su istovremeni radovi na dva čvora bezbedni. Kod tročlanog <code>etcd</code> klastera većina su dva člana; gubitak dva člana ukida mogućnost pouzdanog upisa i praktično zaustavlja upravljačku ravan.</p>
+
+<p>Na control-plane čvorovima rade ključne Kubernetes komponente. <code>kube-apiserver</code> je kontrolisana ulazna tačka za zahteve; <code>etcd</code> je distribuirana baza željenog i opaženog stanja; <code>kube-controller-manager</code> pokreće kontrolne petlje koje usklađuju stvarno stanje sa deklarisanim; <code>kube-scheduler</code> bira odgovarajuće odredište za podove; <code>kubelet</code> na svakom control-plane VM-u održava lokalne statičke podove i prijavljuje stanje čvora. VMware kontroleri i operatori povezuju Kubernetes modele sa vSphere inventarom, VM lifecycle-om, storage-om, mrežom, identitetom i Supervisor servisima.</p>
+
+<p>ESXi host u omogućenom klasteru učestvuje kao Supervisor node preko komponente <code>spherelet</code>, VMware implementacije Kubernetes node-agenta prilagođene hypervisor sloju. Zbog toga host koji je u vCenter-u <em>Connected</em> može u Supervisor-u biti <code>NotReady</code>: infrastruktura za VM-ove radi, ali Kubernetes registracija, sertifikat, komunikacija ili <code>spherelet</code> nisu zdravi. Nasuprot tome, problem jednog workload pod-a ne mora značiti kvar control plane-a. Dobro upravljanje počinje pravilnim određivanjem sloja.</p>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead><tr><th>Komponenta</th><th>Uloga</th><th>Ključna zavisnost</th><th>Tipičan simptom</th><th>Primarni dokaz</th></tr></thead>
+    <tbody>
+      <tr><td><code>kube-apiserver</code></td><td>Autentikacija, autorizacija i Kubernetes API</td><td><code>etcd</code>, sertifikati, FIP/VIP i mreža</td><td>Timeout, TLS ili authorization greška za više klijenata</td><td>API probe, pod/container stanje, log i događaj</td></tr>
+      <tr><td><code>etcd</code></td><td>Konzistentno čuvanje klasterskog stanja</td><td>Kvorum, disk, vreme, mreža 2379/2380</td><td>API je spor ili ne prihvata upise; kontroleri zastaju</td><td>Member list i endpoint health, uz podržan postupak</td></tr>
+      <tr><td>Controller manager</td><td>Reconciliation kontrolne petlje</td><td>API, leader election i RBAC</td><td>Objekti ostaju <code>Pending</code>, <code>Provisioning</code> ili <code>Deleting</code></td><td>Condition-i, događaji, controller logovi</td></tr>
+      <tr><td>Scheduler</td><td>Raspoređivanje podova</td><td>API, resursi, taint/toleration i politike</td><td>Podovi ostaju <code>Pending</code></td><td><code>kubectl describe pod</code> i scheduler događaji</td></tr>
+      <tr><td>Kubelet na CP VM-u</td><td>Lokalni node status i statički podovi</td><td>Disk, runtime, sertifikati, vreme</td><td><code>Kubelet stopped posting node status</code></td><td>Node Conditions, service status i journal</td></tr>
+      <tr><td><code>spherelet</code> na ESXi-u</td><td>Veza hypervisor node-a sa Supervisor-om</td><td>WCP, sertifikat, DNS/NTP i mreža</td><td>ESXi node <code>NotReady</code> ili ne prihvata podove</td><td>Node status, <code>spherelet</code> service i log</td></tr>
+      <tr><td>WCP na vCenter-u</td><td>Lifecycle i usklađivanje Supervisor konfiguracije</td><td>vCenter servisi, DB, privilegije i hostovi</td><td>Konfiguracija ili upgrade ne konvergira</td><td><code>wcpsvc.log</code>, task, event i operation ID</td></tr>
+      <tr><td>EAM</td><td>Životni ciklus upravljanih agenata/CP VM-ova</td><td>vCenter, host placement i resursi</td><td>CP VM nedostaje, ne postavlja se ili se ne oporavlja</td><td>EAM agency korelacija i EAM/vpxd logovi</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>3. Tok zahteva i lanac zavisnosti</h3>
+
+<p>Kada administrator izvrši <code>kubectl get nodes</code>, klijent ne „pita VM-ove” direktno. Kubeconfig određuje control-plane endpoint i sertifikacioni kontekst; mreža i load-balancing mehanizam usmeravaju TLS sesiju ka dostupnom API serveru; API server proverava identitet i RBAC prava; zatim čita stanje iz <code>etcd</code>. Prikazani node condition-i potiču od kubelet/spherelet izveštaja i kontrolera. Jedna komanda zato testira više slojeva, ali ne određuje sama koji sloj je uzrok kvara.</p>
+
+<ol>
+  <li>Klijent razrešava endpoint i uspostavlja mrežnu/TLS vezu.</li>
+  <li>API server autentikuje korisnika i autorizuje konkretnu operaciju.</li>
+  <li>API server čita ili menja stanje u <code>etcd</code> bazi.</li>
+  <li>Kontroleri opažaju promenu i kreiraju vSphere/Kubernetes podoperacije.</li>
+  <li>vCenter, EAM, ESXi, mrežni i storage kontroleri sprovode infrastrukturni deo.</li>
+  <li>Agenti vraćaju status; kontroler ažurira condition; korisnik vidi konvergenciju ili grešku.</li>
+</ol>
+
+<p>Posledica za troubleshooting je važna: greška na šestom koraku može poticati iz bilo kog prethodnog koraka. Status <code>Pending</code> nije osnovni uzrok, već stanje procesa. Administrator mora da pronađe prvi condition ili događaj koji je prekinuo napredovanje, a zatim da ga koreliše sa vCenter task-om, alarmom i logom u istom vremenskom prozoru.</p>
+
+<h3>4. Statusi, Conditions i razlika između signala i dijagnoze</h3>
+
+<p>vSphere Client prikazuje zbirno zdravlje Supervisor-a i pojedinačnih kontrolnih elemenata. Tačni nazivi kartica zavise od verzije, ali se provera obično obavlja u prikazu Workload Management/Supervisors, preko stranica Summary, Config Status, Control Plane Node ili odgovarajućih Conditions i Events prikaza. Zabeležite puni tekst poruke, vreme, pogođeni objekat, task ili operation ID i poslednju promenu. Snimak ekrana bez vremena i identiteta objekta nije dovoljan operativni dokaz.</p>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead><tr><th>Status/signal</th><th>Operativno značenje</th><th>Prvi bezbedni korak</th><th>Pogrešan zaključak</th></tr></thead>
+    <tbody>
+      <tr><td><code>Ready</code></td><td>Čvor trenutno zadovoljava Kubernetes uslove spremnosti</td><td>Proveriti stabilnost kroz vreme i sistemske podove</td><td>„Cela platforma je zdrava”</td></tr>
+      <tr><td><code>NotReady</code></td><td>Node agent ne prijavljuje zdravlje ili je condition negativan/nepoznat</td><td><code>describe node</code>, vreme poslednjeg heartbeat-a, događaji</td><td>„VM je ugašen”</td></tr>
+      <tr><td><code>SchedulingDisabled</code></td><td>Čvor je cordon-ovan, često zbog održavanja</td><td>Proveriti aktivan maintenance/lifecycle task</td><td>„Treba odmah izvršiti uncordon”</td></tr>
+      <tr><td><code>Pending</code></td><td>Objekat/pod još nema ispunjene uslove za sledeću fazu</td><td>Condition-i i Events, ne restart</td><td>„Samo treba sačekati bez vremenskog praga”</td></tr>
+      <tr><td><code>CrashLoopBackOff</code></td><td>Kontejner se ponavlja i pada</td><td>Prethodni container log i opis probe/exit code-a</td><td>„Problem je u scheduler-u”</td></tr>
+      <tr><td><code>Degraded</code>/<code>Error</code></td><td>Zbirni kontroler je otkrio neispunjeni uslov</td><td>Otvoriti detalj condition-a i zavisni objekat</td><td>„Zbirna poruka je root cause”</td></tr>
+      <tr><td><code>Unknown</code></td><td>Nema svežeg ili pouzdanog signala</td><td>Proveriti vreme, komunikaciju i poslednji heartbeat</td><td>„Komponenta sigurno ne radi”</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p>Kubernetes condition ima tip, status, razlog, poruku i vreme tranzicije. Razlog je mašinski sažetak, poruka pruža kontekst, a <code>lastTransitionTime</code> pomaže da se događaj poveže sa promenom. Condition <code>False</code> nije univerzalno loš: značenje zavisi od tipa. Na primer, <code>MemoryPressure=False</code> je zdravo stanje, dok je <code>Ready=False</code> kvar. Uvek čitajte tip i vrednost zajedno.</p>
+
+<h3>5. Infrastrukturne zavisnosti koje menjaju zdravlje control plane-a</h3>
+
+<ul>
+  <li><strong>DNS:</strong> tačno forward i, gde je zahtevano, reverse razrešavanje za vCenter, ESXi, control-plane i load-balancer adrese. Povremeni DNS kvar proizvodi sporadične timeout-e koji liče na problem aplikacije.</li>
+  <li><strong>NTP:</strong> usklađeno vreme na vCenter-u, ESXi hostovima, mrežnim komponentama i control-plane čvorovima. Odstupanje vremena remeti TLS validaciju, tokene, leader election i korelaciju logova.</li>
+  <li><strong>Mreža:</strong> VLAN/segment, routing, firewall, MTU, port grupe, uplink redundansa i control-plane FIP/VIP. ICMP uspeh ne dokazuje da su TCP port i povratna ruta ispravni.</li>
+  <li><strong>Load balancer:</strong> dostupnost API/control-plane endpoint-a i pravilno mapiranje backend-a. Implementacija zavisi od izabranog mrežnog modela i verzije; ne primenjujte NSX, HAProxy ili NSX Advanced Load Balancer korake na drugi model.</li>
+  <li><strong>Storage:</strong> dostupnost datastore-a i storage policy-ja za upravljačke VM-ove, dovoljan kapacitet i prihvatljive latencije. Uključen VM sa punim sistemskim diskom nije zdrav control-plane čvor.</li>
+  <li><strong>Compute i placement:</strong> dovoljan CPU/RAM, DRS/HA funkcionalnost, host kompatibilnost i failure-domain raspored. Tri CP VM-a na jednom failure domenu ne obezbeđuju stvarnu otpornost na taj kvar.</li>
+  <li><strong>Identitet i sertifikati:</strong> važeći lanac poverenja, SAN vrednosti, rok važenja, automatska rotacija i potrebne privilegije WCP servisnih identiteta.</li>
+  <li><strong>vCenter servisi i baza:</strong> WCP, EAM, vpxd, SSO/STS i baza moraju imati dovoljno prostora i funkcionisati. Restart celog vCenter-a nije početni dijagnostički korak.</li>
+</ul>
+
+<h3>6. Slojevita, read-only provera zdravlja</h3>
+
+<p>Redosled je namerno od najmanje invazivnog ka dubljem. Najpre definišite vremenski prozor i obim: jedan pod, jedan namespace, jedan ESXi node, jedan control-plane VM ili cela platforma. Zatim proverite poslednju promenu, vSphere alarme i taskove, zbirno stanje Supervisor-a, Kubernetes API, čvorove, sistemske workload-e i events. Tek kada dokazi opravdaju hipotezu prelazi se na logove ili direktan pristup čvoru.</p>
+
+<h4>6.1. Provera u vSphere Client-u</h4>
+
+<ol>
+  <li>Otvorite Supervisor/Workload Management prikaz i zabeležite naziv Supervisor-a, verziju, zbirni status i vreme poslednje tranzicije.</li>
+  <li>Otvorite detalje control-plane i host čvorova. Uporedite broj očekivanih i vidljivih čvorova, power state, placement i pojedinačne poruke.</li>
+  <li>Pregledajte Recent Tasks, Events i aktivne alarme za Supervisor, klaster, CP VM-ove, ESXi hostove, mrežu i datastore.</li>
+  <li>Proverite da li je u toku activation, remediation, upgrade, certificate rotation ili maintenance operacija. Ne pokrećite konkurentnu lifecycle promenu.</li>
+  <li>Zabeležite operation ID, MoRef/VM ID ili EAM agency identitet kada je prikazan; oni povezuju UI događaj sa logovima.</li>
+</ol>
+
+<h4>6.2. Kubernetes provera iz autorizovanog Supervisor konteksta</h4>
+
+<p>Sledeće komande su read-only i bezbedne su za produkcionu dijagnostiku kada se izvršavaju sa odobrenog administratorskog računara i najmanjim potrebnim RBAC pravima. Tačan login postupak i dozvoljeni resursi zavise od verzije i dodeljene uloge. Ne delite kubeconfig; čuvajte ga sa ograničenim dozvolama i uklonite privremene sesije prema politici.</p>
+
+<pre><code class="language-bash"># Potvrdite koji endpoint, klaster i identitet koristite.
+kubectl config current-context
+kubectl config view --minify
+
+# Kratak test dostupnosti API-ja; ne menja stanje.
+kubectl cluster-info
+
+# Pregled node spremnosti, uloga, verzija i adresa.
+kubectl get nodes -o wide
+
+# Conditions, taints, kapacitet, događaji i vreme heartbeat-a jednog čvora.
+kubectl describe node &lt;node-name&gt;</code></pre>
+
+<p>Očekivano zdravo stanje je dostupan API, svi očekivani čvorovi prisutni i <code>Ready</code>, bez neočekivanih pressure condition-a i bez starih heartbeat vrednosti. Verzije među komponentama moraju odgovarati podržanom lifecycle stanju; kratkotrajna razlika tokom kontrolisanog upgrade-a može biti očekivana, ali trajna razlika zahteva proveru plana nadogradnje.</p>
+
+<pre><code class="language-bash"># Sistemski podovi i njihova raspodela po čvorovima.
+kubectl get pods -A -o wide
+
+# Samo podovi koji nisu u stabilnoj Running/Succeeded fazi.
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
+
+# Najnoviji događaji; korelišite vreme, objekat, reason i message.
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+
+# Detalj pogođenog pod-a pre bilo kakvog restarta.
+kubectl describe pod -n &lt;namespace&gt; &lt;pod-name&gt;
+
+# Log tekuće instance i, kod restartovanja, prethodne instance.
+kubectl logs -n &lt;namespace&gt; &lt;pod-name&gt; -c &lt;container-name&gt; --since=30m
+kubectl logs -n &lt;namespace&gt; &lt;pod-name&gt; -c &lt;container-name&gt; --previous --since=30m</code></pre>
+
+<p>Filter faze je pomoćni prikaz, ne potpuna dijagnoza: pod može biti <code>Running</code>, a da kontejner nije <code>Ready</code> ili da se često restartuje. Zato proverite kolone <code>READY</code> i <code>RESTARTS</code>, detalje probe-a i condition-e. Događaji imaju ograničeno vreme zadržavanja; prikupljajte ih rano. Log bez vremenske zone, namespace-a, pod-a i container-a gubi dokaznu vrednost.</p>
+
+<h4>6.3. Strukturisan izlaz za preciznu korelaciju</h4>
+
+<pre><code class="language-bash">kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\t"}{.reason}{"\t"}{.lastTransitionTime}{"\n"}{end}{end}'</code></pre>
+
+<pre><code class="language-none">supervisor-control-plane-vm-1    True    KubeletReady    2026-07-20T08:14:32Z
+supervisor-control-plane-vm-2    True    KubeletReady    2026-07-20T08:16:05Z
+supervisor-control-plane-vm-3    True    KubeletReady    2026-07-20T08:17:41Z</code></pre>
+
+<p>Ovaj primer prikazuje očekivani oblik, ne garantovane nazive čvorova ili reason vrednosti. JSONPath izraz samo čita podatke. Ako vrati prazan red, proverite strukturu sa <code>kubectl get node &lt;ime&gt; -o yaml</code>; nemojte zaključiti da condition ne postoji samo zato što filter nije odgovarao verziji ili objektu.</p>
+
+<h3>7. Logovi, lokacije i korelacija</h3>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead><tr><th>Izvor</th><th>Pristup/lokacija</th><th>Šta se traži</th><th>Korelacioni ključ</th></tr></thead>
+    <tbody>
+      <tr><td>WCP</td><td>VCSA: <code>/var/log/vmware/wcp/wcpsvc.log</code> i rotirani logovi</td><td>Lifecycle, reconciliation, host/node i certificate greške</td><td>Supervisor MoRef, operation ID, vreme</td></tr>
+      <tr><td>EAM</td><td>VCSA: <code>/var/log/vmware/eam/</code></td><td>Agency, agent/CP VM deployment i remediation</td><td>EAM agency i VM ID</td></tr>
+      <tr><td>vpxd</td><td>VCSA: <code>/var/log/vmware/vpxd/</code></td><td>Task, privilege, placement i vCenter operacije</td><td>MoRef, task/op ID, korisnik</td></tr>
+      <tr><td>Spherelet</td><td>ESXi: odgovarajući <code>/var/log/spherelet*</code> ili bundle za verziju</td><td>Registracija, heartbeat, sertifikat i runtime</td><td>Host/node ime i timestamp</td></tr>
+      <tr><td>Kubernetes workload</td><td><code>kubectl logs</code>, <code>describe</code>, events</td><td>Probe, restart, RBAC, API i dependency greške</td><td>Namespace, pod UID, container, vreme</td></tr>
+      <tr><td>CP VM OS/container</td><td>Direktan pristup samo po podržanom KB/support postupku</td><td>Kubelet, runtime, disk i statički control-plane podovi</td><td>Node, container ID i vreme</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p>Za tekstualne logove koristite uski vremenski prozor i poznat identifikator. Sledeći primer je read-only, ali se izvršava na VCSA kao nalog sa odgovarajućim privilegijama; root pristup mora biti odobren i auditovan. Prilagodite datum i identifikator, a ne pretražujte nekontrolisano kompletan višegigabajtni skup.</p>
+
+<pre><code class="language-bash"># Na VCSA: korelacija jednog Supervisor objekta ili operation ID-a.
+grep -Rni --include='*.log*' '&lt;operation-id-or-domain-c-id&gt;' \
+  /var/log/vmware/wcp /var/log/vmware/eam /var/log/vmware/vpxd 2&gt;/dev/null</code></pre>
+
+<p>Prvo uskladite vremenske zone. Potom čitajte nekoliko redova pre prve greške: kasniji <code>context deadline exceeded</code> često je posledica ranijeg DNS, TLS, RBAC, storage ili mrežnog problema. Ponavljanje iste poruke ne znači više uzroka; pronađite prvu tranziciju iz zdravog u nezdravo stanje.</p>
+
+<h3>8. Posebna provera <code>etcd</code> zdravlja i zašto nije rutinska komanda</h3>
+
+<p><code>etcd</code> je najosetljivija komponenta control plane-a. Direktna provera se radi tek kada API simptomi, node stanje i zvanična procedura opravdaju ulazak u CP VM. Broadcom KB za Supervisor navodi <code>etcdctl member list</code> i cluster endpoint health kao dijagnostičke komande, ali pristup root nalogom u upravljani control-plane VM nije uobičajen administratorski tok. Sesija treba da bude read-only, vremenski ograničena, auditovana i izvedena prema KB-u ili uz Technical Support. Ručno uklanjanje člana, menjanje manifesta, brisanje podataka ili prisilno formiranje klastera može trajno uništiti Supervisor.</p>
+
+<pre><code class="language-bash"># SAMO u podržanoj dijagnostičkoj sesiji na Supervisor CP VM-u.
+etcdctl member list -w table
+etcdctl --cluster=true endpoint health -w table
+
+# Lokalno stanje etcd kontejnera i prethodnih pokušaja.
+crictl ps --name etcd
+crictl ps -a --name etcd</code></pre>
+
+<pre><code class="language-none">Zdrav obrazac:
+- očekivani članovi su navedeni bez neočekivanih duplikata;
+- većina endpoint-a, a normalno svi, odgovara healthy=true;
+- aktivan etcd container je Running;
+- nema trajnih timeout-a između članova.</code></pre>
+
+<p>Portovi 2379 i 2380 imaju različite uloge za klijentsku i peer komunikaciju; uspešna lokalna konekcija ne dokazuje komunikaciju između članova. Ako svaki čvor lokalno odgovara, a međusobne veze ne rade, osnovni uzrok je verovatnije mreža, firewall ili MTU nego sam <code>etcd</code>. Nikada ne „popravljajte kvorum” brisanjem podataka. Sačuvajte output, support bundle i eskalirajte.</p>
+
+<h3>9. Tipični obrasci kvara i bezbedne odluke</h3>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead><tr><th>Simptom i obim</th><th>Hipoteze</th><th>Dokazi</th><th>Bezbedna korekcija/eskalacija</th></tr></thead>
+    <tbody>
+      <tr><td>Jedan CP node <code>NotReady</code>; API radi</td><td>Kubelet, disk, runtime, host ili mreža tog čvora</td><td>Node condition/heartbeat, VM/host alarm, disk i kubelet dokaz po KB-u</td><td>Ne gasiti druge CP čvorove; prikupiti bundle; podržana remediation</td></tr>
+      <tr><td>Svi <code>kubectl</code> upiti timeout-uju</td><td>Endpoint/load balancer, API, <code>etcd</code> kvorum, certifikat ili routing</td><td>Više klijenata, TCP/TLS test, vSphere status, WCP događaji</td><td>Otkloniti potvrđenu spoljnu zavisnost ili eskalirati pre menjanja CP-a</td></tr>
+      <tr><td>ESXi node <code>NotReady</code>, VM workload-i rade</td><td><code>spherelet</code>, sertifikat, WCP komunikacija</td><td>Node status, service status, spherelet/WCP log</td><td>Primeniti tačan KB za build; ne reinstalirati agent ručno</td></tr>
+      <tr><td>Sistemski pod <code>CrashLoopBackOff</code></td><td>Konfiguracija, dependency, secret/certifikat, resource/disk pritisak</td><td><code>describe</code>, current i <code>--previous</code> log, restarts</td><td>Ne brisati nasumično; korigovati potvrđenu zavisnost podržanim lifecycle tokom</td></tr>
+      <tr><td>Objekti ostaju u <code>Provisioning</code></td><td>Kontroler ne konvergira, quota, placement, mreža, storage</td><td>Condition lanac, events, WCP/vpxd task i objekti zavisnosti</td><td>Otkloniti prvi neuspešan preduslov; ponoviti samo idempotentnu operaciju</td></tr>
+      <tr><td>CP VM root filesystem 100%</td><td>Akumulirani logovi/slike/stari resursi</td><td><code>df -h</code> po zvaničnom KB-u, kubelet poruka</td><td>Isključivo Broadcom cleanup KB/script ili podrška; ne ručno <code>rm</code></td></tr>
+      <tr><td>Sertifikat/rotacija prijavljuje <code>Unauthorized</code></td><td>Istek, lanac poverenja, vreme ili neuspešna spherelet rotacija</td><td>Validity/SAN, NTP, WCP i spherelet logovi</td><td>Verzijski odgovarajući certificate workflow; ne zaobilaziti TLS proveru</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="alert alert-warning">
+  <strong>Upozorenje:</strong> ručno brisanje EAM agency objekta nije validan troubleshooting postupak. Ono može obrisati odgovarajući Supervisor control-plane VM, izazvati nekontrolisanu rekreaciju i učiniti klaster neoporavljivim. Ne menjajte niti brišite EAM agency, statičke pod manifeste, <code>etcd</code> članstvo ili podatke bez izričitog Broadcom KB postupka ili instrukcije Technical Support-a.
+</div>
+
+<h3>10. Praktikum – uspostavljanje baseline-a i dijagnostika kontrolisane degradacije</h3>
+
+<h4>10.1. Cilj, topologija i preduslovi</h4>
+
+<p>Cilj vežbe je da tim izradi ponovljiv health-check zapis i pravilno razvrsta simulirani incident bez promene Supervisor internih objekata. Laboratorija sadrži jedan vCenter Server, vSphere klaster sa aktivnim Supervisor-om, tri upravljana CP VM-a, najmanje tri ESXi hosta, funkcionalan DNS/NTP, odabrani mrežni/load-balancer model i administratorsku radnu stanicu sa odgovarajućim <code>kubectl</code> dodatkom i Supervisor kontekstom.</p>
+
+<p>Potrebni su vSphere read-only pristup proširen pravom pregleda Workload Management statusa i Kubernetes nalog koji može da čita nodes, pods i events u potrebnom opsegu. Root na VCSA/ESXi ili CP VM-u nije potreban za osnovnu vežbu. Rizik je nizak dok se koriste samo GET/list/describe/log operacije. Sve eksperimente sa gašenjem mreže, hosta ili VM-a izostavite iz deljene ili produkcione sredine.</p>
+
+<h4>10.2. Vežba A – baseline zdravog sistema</h4>
+
+<ol>
+  <li>Zabeležite build vCenter-a i ESXi-a, Supervisor/Kubernetes verziju, mrežni model, broj CP VM-ova i broj ESXi node-ova.</li>
+  <li>U vSphere Client-u potvrdite zbirni status, pojedinačne node statuse, odsustvo kritičnih alarma i odsustvo aktivne lifecycle operacije.</li>
+  <li>Izvršite read-only komande iz odeljka 6. Sačuvajte izlaze sa UTC vremenom i nazivom konteksta.</li>
+  <li>Prebrojte podove koji nisu spremni i objasnite svaki očekivani <code>Completed</code>, init ili tranzicioni status. „Nula ne-Running podova” nije univerzalni kriterijum.</li>
+  <li>Odaberite jedan CP node i jedan ESXi node; iz <code>describe</code> izlaza zabeležite <code>Ready</code>, pressure condition-e, heartbeat i događaje.</li>
+  <li>Sačuvajte baseline kao vremenski označen incident artefakt, bez tokena, lozinki i privatnih ključeva.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> API je dostupan, očekivani čvorovi su prisutni i spremni, sistemski podovi imaju očekivane replike, nema neobjašnjenih učestalih restartovanja, a vSphere i Kubernetes prikaz nemaju kontradiktorne neistražene signale. Kriterijum završetka je potpisan baseline sa verzijama, vremenom, kontekstom i dokazima, ne samo ocena „zeleno”.</p>
+
+<h4>10.3. Vežba B – bezbedna simulacija incidenta pomoću istorijskog scenarija</h4>
+
+<p>Najbezbednija simulacija ne menja platformu. Instruktor bira raniji događaj ili priprema tekstualni scenario: „jedan ESXi node je <code>NotReady</code>, VM-ovi na hostu rade, a ostali Supervisor čvorovi i API su dostupni”. Tim ne dobija unapred uzrok. Zadatak je da formira hipoteze i napiše redosled provera.</p>
+
+<ol>
+  <li><strong>Simptom:</strong> zabeležite tačan status, objekat, početak i učestalost.</li>
+  <li><strong>Obim:</strong> proverite da li je pogođen jedan ESXi node, CP node, namespace ili ceo Supervisor.</li>
+  <li><strong>Posledica:</strong> navedite šta ne radi i šta još radi; ne poistovećujte degradaciju sa potpunim prekidom.</li>
+  <li><strong>Hipoteze:</strong> rangirajte <code>spherelet</code> service/process, sertifikat/rotaciju, mrežu, vreme i WCP registraciju.</li>
+  <li><strong>Dokazni plan:</strong> node describe i heartbeat; vSphere host/task/alarm; potom WCP i spherelet log u istom prozoru.</li>
+  <li><strong>Privremena mera:</strong> zaustaviti nove promene i održavanje na pogođenom hostu; ne restartovati nasumično servise.</li>
+  <li><strong>Trajna korekcija:</strong> odabrati tek posle potvrde uzroka i mapiranja na KB za tačan build.</li>
+  <li><strong>Validacija:</strong> node ponovo <code>Ready</code>, heartbeat svež, bez ponovne greške u posmatranom periodu i workload stanje stabilno.</li>
+</ol>
+
+<h4>10.4. Vežba C – kontrolisana dijagnostika jednog ne-spremnog sistemskog pod-a</h4>
+
+<p>Koristite samo postojeći laboratorijski pod koji je instruktor označio kao bezbedan za posmatranje ili unapred pripremljene izlaze. Ne brišite Supervisor sistemski pod radi „simulacije”.</p>
+
+<pre><code class="language-bash">LAB_NS='&lt;namespace&gt;'
+LAB_POD='&lt;pod-name&gt;'
+
+kubectl get pod -n "$LAB_NS" "$LAB_POD" -o wide
+kubectl describe pod -n "$LAB_NS" "$LAB_POD"
+kubectl logs -n "$LAB_NS" "$LAB_POD" --all-containers=true --since=20m
+kubectl logs -n "$LAB_NS" "$LAB_POD" --all-containers=true --previous --since=20m</code></pre>
+
+<p>Razdvojite scheduling problem (nema dodeljenog node-a), image/configuration problem (container se ne pokreće), readiness problem (radi, ali ne prima saobraćaj) i runtime crash. Očekivani rezultat vežbe nije nužno oporavak, već dokazano svrstavanje kvara, identifikovan sledeći vlasnik komponente i bezbedna korektivna preporuka. Ako prava ne dozvoljavaju log, zabeležite RBAC zabranu kao ograničenje dokaza; nemojte tražiti šira trajna prava samo radi vežbe.</p>
+
+<h4>10.5. Incident response, recovery i rollback</h4>
+
+<p>Za realan incident primenite sledeći tok: otvorite zapis sa UTC vremenom; zamrznite nepovezane promene; sačuvajte UI status, events, conditions i logove; postavite jednu proverljivu hipotezu; izvedite najmanje invazivnu proveru; odredite vlasnika zavisnosti; primenite samo dokumentovanu korekciju; ponovite isti health-check; pratite stabilnost; dokumentujte neposredni i osnovni uzrok. Ako korekcija menja konfiguraciju, rollback je povratak na prethodno dokumentovanu podržanu vrednost kroz isti lifecycle interfejs, ne ručno menjanje generisanih Kubernetes objekata.</p>
+
+<p>U ovoj lekciji nema opravdanog laboratorijskog rollback-a control-plane internog stanja, jer vežbe ne menjaju stanje. Ako je tokom realnog incidenta izvršena pogrešna promena, zaustavite dalje akcije, sačuvajte audit trag i uključite Broadcom podršku; pokušaj skrivanja ili „ispravljanja” ručne izmene može ukloniti ključne dokaze.</p>
+
+<h3>11. Administratorske prakse</h3>
+
+<ul>
+  <li>Definišite baseline i pragove pre incidenta: dostupnost API-ja, broj Ready čvorova, restart trend, resursni pritisak, storage kapacitet, certificate expiry i lifecycle stanje.</li>
+  <li>Kombinujte vSphere i Kubernetes signale. Jedan zeleni dashboard ili jedna uspešna komanda nisu dovoljni.</li>
+  <li>Čuvajte događaje i logove centralno u vremenski sinhronizovanom sistemu, uz kontrolu pristupa i retenciju usklađenu sa politikom.</li>
+  <li>Koristite najmanja potrebna prava. Kubeconfig, support bundle i logovi mogu sadržati osetljive adrese, identitete i tokene.</li>
+  <li>Ne obavljajte konkurentne activation, upgrade, certificate, network ili maintenance promene bez proverene sekvence i matrice interoperabilnosti.</li>
+  <li>Ne tretirajte automatsku rekreaciju CP VM-a kao zamenu za root-cause analizu; prvo sačuvajte dokaze i proverite da li lifecycle kontroler uopšte može bezbedno da konvergira.</li>
+  <li>Za VCF 9.x i novije proverite tačnu dokumentaciju za konkretno izdanje: monitoring integracije, nazivi objekata i podržani update redosled nisu identični starijim vSphere 7/8 postupcima.</li>
+  <li>Runbook mora sadržati stop-uslove: gubitak <code>etcd</code> kvoruma, dva ne-spremna CP čvora, sumnju na korupciju podataka, ručnu promenu upravljanog objekta ili nejasan upgrade mismatch.</li>
+</ul>
+
+<h3>12. Završna kontrolna tačka</h3>
+
+<p>Lekcija je savladana kada administrator može, bez menjanja platforme, da:</p>
+
+<ul class="checklist">
+  <li>objasni uloge tri control-plane VM-a, API servera, <code>etcd</code>-a, kontrolera, scheduler-a, kubelet-a, <code>spherelet</code>-a, WCP-a i EAM-a;</li>
+  <li>razlikuje VM power/host connectivity, Supervisor zbirni status, Kubernetes <code>Ready</code> i funkcionalnu dostupnost usluge;</li>
+  <li>prikaže aktuelni kontekst, nodes, sistemske podove, events i condition-e read-only komandama;</li>
+  <li>poveže simptom sa DNS, NTP, mrežom, load balancer-om, storage-om, resursima, identitetom ili sertifikatima;</li>
+  <li>koreliše vSphere task/event sa WCP, EAM, vpxd i Kubernetes dokazima u istom vremenskom prozoru;</li>
+  <li>razdvoji simptom, obim, posledicu, neposredni uzrok, osnovni uzrok, workaround, trajnu meru i validaciju;</li>
+  <li>prepozna stop-uslov i eskalira pre rizične promene <code>etcd</code>-a, EAM agency-ja ili upravljanog CP VM-a;</li>
+  <li>napravi proverljiv baseline i incident zapis bez izlaganja kredencijala.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Supervisor control plane nije skup od tri uključena VM-a, već distribuirani lanac API-ja, stanja, kontrolnih petlji, node agenata i vSphere infrastrukturnih servisa. Zdravlje se zato ne dokazuje jednim zelenim indikatorom. Pouzdan administrator počinje obimom i vremenom incidenta, prikuplja read-only dokaze kroz više slojeva, tumači condition-e umesto da reaguje na etiketu statusa, proverava zavisnosti i menja stanje tek kada je uzrok potvrđen.</p>
+
+<p>Najvažnija operativna disciplina jeste znati gde prestaje redovna administracija. Direktno menjanje Supervisor control-plane VM-a, <code>etcd</code> članstva, EAM agency-ja ili generisanih sistemskih objekata može pretvoriti parcijalnu degradaciju u gubitak platforme i podrške. Ova lekcija priprema administratora da prepozna zdravo i degradirano stanje i sačuva dokaze; naredna lekcija koristiće taj model za sistematsku validaciju i troubleshooting neuspele inicijalizacije.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom TechDocs za vSphere Supervisor i VMware Cloud Foundation vSphere IaaS control plane; zvanični vodiči za arhitekturu, monitoring, administraciju i lifecycle; Broadcom Knowledge Base članci za Supervisor control-plane VM-ove, WCP, EAM, spherelet, sertifikate, disk i etcd; Kubernetes administrativne, API, node-status, logging i troubleshooting reference; zvanične vSphere CLI i log reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

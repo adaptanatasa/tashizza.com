@@ -1,0 +1,567 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-32-storage-class-i-vsphere-storage-policy.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Storage Class – izbor tipa skladištenja za Kubernetes workload-e | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Storage Class definiše način dinamičkog kreiranja Persistent Volume resursa i izbor odgovarajućeg tipa skladištenja za Kubernetes workload-e u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, Storage Class, Persistent Volume, Persistent Volume Claim, CSI, vSphere CSI Driver, storage, dynamic provisioning, TKG, cloud native, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-32-storage-class-i-vsphere-storage-policy.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Storage Class – izbor tipa skladištenja za Kubernetes workload-e">
+
+  <meta property="og:description"
+        content="Trideseta lekcija VMware & Tanzu tutorijala – razumevanje Storage Class resursa, dinamičkog provisioninga i izbora skladišta za Kubernetes aplikacije.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-32-storage-class-i-vsphere-storage-policy.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-32-storage-class.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Storage Class – izbor tipa skladištenja za Kubernetes workload-e">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-32-storage-class.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-32-storage-class.png"
+           alt="Storage Class – izbor tipa skladištenja za Kubernetes workload-e">
+
+    </a>
+ 
+<div class="page-subtitle">
+ VIII. Storage, trajni podaci i zaštita stateful workload-a
+</div>
+  <div class="page-subtitle">
+ 32. StorageClass i vSphere Storage Policy – deklarativni izbor karakteristika skladištenja
+</div>
+<h3>Uloga StorageClass objekta u Kubernetes arhitekturi</h3>
+<p>PersistentVolume obezbeđuje trajni kapacitet, a PersistentVolumeClaim predstavlja zahtev aplikacije za tim kapacitetom. StorageClass povezuje zahtev aplikacije sa konkretnim načinom na koji će storage biti obezbeđen. Ona je administratorski ugovor između Kubernetes platforme i storage infrastrukture: definiše koji CSI provisioner izvršava zahtev, koju infrastrukturnu politiku koristi, kada se volumen kreira, da li se može proširiti i šta se događa sa fizičkim volumenom nakon brisanja zahteva.</p>
+<p>Bez StorageClass objekta administrator bi veliki broj volumena morao unapred ručno da kreira i registruje kao PersistentVolume objekte. Dinamičko provisioniranje menja taj model. Kada aplikacija kreira PVC sa odgovarajućim nazivom klase, Kubernetes prosleđuje zahtev CSI drajveru. CSI kontroler zatim traži od storage sistema da napravi odgovarajući volumen, registruje ga u Kubernetes-u kao PV i poveže sa PVC objektom.</p>
+<p>U vSphere i Tanzu okruženju ova veza se najčešće ostvaruje pomoću vSphere CSI drajvera i vSphere Storage Policy mehanizma. Kubernetes StorageClass može da upućuje na određenu vSphere storage politiku, dok Cloud Native Storage u vCenter-u prati odnos između Kubernetes volumena, PVC objekta, klastera, namespace-a, workload-a i stvarnog virtualnog diska ili file share-a.</p>
+<p><strong>StorageClass nije sam storage.</strong> Kreiranje klase ne rezerviše kapacitet i ne stvara volumen. Ona opisuje pravila koja će biti primenjena tek kada PVC zatraži skladište. Takođe, naziv klase kao što je <code>gold</code>, <code>silver</code> ili <code>database</code> nema ugrađeno Kubernetes značenje. Platform tim mora precizno da dokumentuje šta naziv predstavlja: tip datastore-a, očekivane performanse, nivo redundanse, backup politiku, dozvoljene access mode vrednosti, cenu i operativnu namenu.</p>
+<h3>Od zahteva aplikacije do fizičkog volumena</h3>
+<p>Tipičan tok dinamičkog provisioniranja počinje PVC objektom. PVC navodi traženi kapacitet, access mode i <code>storageClassName</code>. Kubernetes persistent volume kontroler i eksterni CSI provisioner prate novi zahtev. Kada uslovi klase i infrastrukture mogu da se ispune, CSI provisioner kreira backend volumen, a Kubernetes generiše odgovarajući PV.</p>
+<ol>
+<li>Aplikacija ili operator kreira PVC i navodi StorageClass.</li>
+<li>Kubernetes proverava da li klasa postoji i koji provisioner je definisan.</li>
+<li>U zavisnosti od <code>volumeBindingMode</code> vrednosti, provisioniranje počinje odmah ili tek nakon raspoređivanja Pod-a.</li>
+<li>CSI drajver prevodi Kubernetes zahtev u operaciju prema storage platformi.</li>
+<li>vSphere CSI koristi odgovarajuću storage politiku i bira kompatibilan datastore.</li>
+<li>Kreira se virtualni disk ili file volume, a CNS evidentira njegov identitet i Kubernetes metapodatke.</li>
+<li>Kubernetes kreira PV, povezuje ga sa PVC objektom i postavlja oba objekta u stanje <code>Bound</code>.</li>
+<li>Kada se Pod rasporedi, CSI komponente obavljaju attach i mount operacije na odgovarajućem worker node-u.</li>
+</ol>
+<p>Administrator zato ne proverava samo da li StorageClass postoji. Mora da potvrdi čitav lanac: klasa, provisioner, storage politika, kompatibilan datastore, namespace kvota, CSI kontroleri, mrežna komunikacija sa vCenter-om, mogućnost attach operacije i podrška worker operativnog sistema za traženi filesystem.</p>
+<p>Normalno stanje je da PVC nakon kratkog perioda pređe u <code>Bound</code>, da PV ima isti StorageClass, očekivani kapacitet i CSI drajver, a da Pod uspešno montira volumen. PVC koji ostane u stanju <code>Pending</code> nije automatski dokaz nedostatka kapaciteta. Uzrok može biti nepostojeća klasa, nekompatibilna storage politika, nedostupan datastore, iscrpljena kvota, topology ograničenje ili namerno čekanje na prvog potrošača.</p>
+<h3>Najvažnija polja StorageClass objekta</h3>
+<table>
+<thead>
+<tr>
+<th>Polje</th>
+<th>Administratorsko značenje</th>
+<th>Produkcioni rizik</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provisioner</code></td>
+<td>Identifikuje CSI drajver koji dinamički kreira volumen. Za vSphere CSI uobičajena vrednost je <code>csi.vsphere.vmware.com</code>.</td>
+<td>Pogrešan ili neinstaliran provisioner ostavlja PVC u stanju <code>Pending</code>.</td>
+</tr>
+<tr>
+<td><code>parameters</code></td>
+<td>Sadrži vrednosti specifične za drajver, na primer tačan naziv vSphere Storage Policy objekta.</td>
+<td>Pogrešno ime može usmeriti volumen na neželjeni tier ili potpuno onemogućiti provisioniranje.</td>
+</tr>
+<tr>
+<td><code>reclaimPolicy</code></td>
+<td>Određuje šta se događa sa dinamički kreiranim PV-om kada se PVC izbriše: <code>Delete</code> ili <code>Retain</code>.</td>
+<td><code>Delete</code> može ukloniti backend volumen i podatke; <code>Retain</code> može ostaviti neiskorišćene diskove i troškove.</td>
+</tr>
+<tr>
+<td><code>volumeBindingMode</code></td>
+<td>Određuje da li se volumen kreira odmah ili tek kada postoji Pod koji ga koristi.</td>
+<td><code>Immediate</code> može izabrati lokaciju koja nije dostupna budućem node-u; pogrešno čekanje se može protumačiti kao kvar.</td>
+</tr>
+<tr>
+<td><code>allowVolumeExpansion</code></td>
+<td>Dozvoljava povećavanje zahteva u PVC objektu ako ga CSI drajver i backend podržavaju.</td>
+<td>Ne garantuje automatsko smanjivanje niti garantuje da svaki filesystem podržava online proširenje.</td>
+</tr>
+<tr>
+<td><code>allowedTopologies</code></td>
+<td>Ograničava zone ili druge topološke segmente u kojima volumen može biti provisioniran.</td>
+<td>Nepodudaranje sa node topologijom može ostaviti Pod i PVC neraspoređene.</td>
+</tr>
+<tr>
+<td>default anotacija</td>
+<td>Označava klasu koja se koristi za PVC bez eksplicitnog <code>storageClassName</code>.</td>
+<td>Više podrazumevanih klasa daje nepredvidiv izbor, dok promena podrazumevane klase utiče na buduće zahteve.</td>
+</tr>
+</tbody>
+</table>
+<p>Vrednosti u <code>parameters</code> nisu univerzalne. One zavise od CSI drajvera i njegove verzije. Manifest koji radi sa jednim provisioner-om ne treba kopirati na drugi storage sistem. Administrator pre primene proverava zvaničnu dokumentaciju drajvera, podržane parametre, kompatibilnost sa verzijom Kubernetes-a i ponašanje tokom nadogradnje.</p>
+<h3>StorageClass i vSphere Storage Policy</h3>
+<p>U vSphere okruženju StorageClass često predstavlja Kubernetes prikaz vSphere storage politike. Politika opisuje zahteve koje datastore mora da zadovolji, kao što su redundansa, tip skladišta, tag-based placement ili mogućnosti koje pruža vSAN. Kada CSI dobije zahtev, vSphere proverava koji datastore je kompatibilan sa izabranom politikom i na njemu kreira volumen.</p>
+<p>Ta veza omogućava da aplikacioni tim bira deklarativnu klasu, dok infrastrukturni tim zadržava kontrolu nad fizičkim smeštajem i pravilima. Razvojni tim ne mora da zna naziv datastore-a niti njegov URL. On bira podržanu uslugu, na primer <code>tanzu-gold-retain</code>, dok administrator održava njeno značenje i kompatibilnost.</p>
+<p>U Supervisor okruženju storage politike dodeljene vSphere Namespace-u mogu se prikazati kao StorageClass objekti dostupni workload-ima. U gostujućim Tanzu Kubernetes klasterima način propagacije i upravljanja klasama zavisi od verzije vSphere Supervisor-a, Tanzu Kubernetes Grid servisa i konfiguracije klastera. Platform-managed klasu ne treba ručno menjati ako je kontroler periodično usklađuje sa stanjem definisanim u vCenter-u, jer će ručna promena biti vraćena.</p>
+<p>Kod samostalno upravljanih TKG workload klastera sa instaliranim vSphere CSI drajverom administrator može kreirati dodatnu StorageClass definiciju koja koristi postojeću storage politiku. Ne treba menjati podrazumevanu klasu koju je platforma automatski kreirala. Za drugačiji <code>reclaimPolicy</code>, binding režim ili administrativnu namenu kreira se nova klasa sa jedinstvenim imenom.</p>
+<p>Promena sadržaja vSphere Storage Policy objekta može uticati na kompatibilnost datastore-a i buduće volumene. Ne treba pretpostaviti da će postojeći volumeni trenutno promeniti performanse ili fizičku lokaciju samo zato što je politika izmenjena. Pre promene proveravaju se policy compliance, podržane mogućnosti migracije i ponašanje postojećih CNS volumena.</p>
+<p>U aktuelnoj Broadcom dokumentaciji naziv proizvoda zavisi od generacije platforme: stariji vodiči koriste <em>vSphere with Tanzu</em> i <em>TKG Service</em>, dok noviji koriste <em>vSphere Supervisor</em>, <em>vSphere Kubernetes Service</em> i, u VCF 9 dokumentaciji, <em>vSphere IaaS control plane</em>. Osnovni odnos StorageClass–storage politika ostaje isti, ali postupak objavljivanja klase i skup automatski generisanih klasa nisu identični u svim izdanjima. Zato se pre promene proveravaju tačna vSphere/VCF verzija, Supervisor model, verzija VKS servisa i matrica kompatibilnosti vSphere CSI drajvera.</p>
+<table>
+<thead>
+<tr>
+<th>Model implementacije</th>
+<th>Izvor StorageClass objekta</th>
+<th>Ispravna administratorska tačka promene</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Supervisor Namespace</td>
+<td>vSphere Storage Policy dodeljena namespace-u automatski se izlaže kao Kubernetes StorageClass; naziv se može normalizovati, uključujući pretvaranje velikih slova u mala.</td>
+<td>Politika i njena dodela menjaju se podržanim vSphere/VCF upravljačkim tokom, a ne ručnim patch-ovanjem izvedenog Kubernetes objekta.</td>
+</tr>
+<tr>
+<td>VKS/TKG Service klaster na Supervisor-u</td>
+<td>Dostupne klase i način njihovog prenosa zavise od verzije servisa, Cluster API-ja i politika dodeljenih nadređenom vSphere Namespace-u.</td>
+<td>Najpre se proverava platform-managed poreklo klase; korisnička klasa se dodaje samo kada je taj model dokumentovano podržan.</td>
+</tr>
+<tr>
+<td>Samostalni Kubernetes/TKG sa vSphere CSI drajverom</td>
+<td>Platform administrator obično kreira StorageClass manifest i parametrom <code>storagepolicyname</code> upućuje na postojeću vSphere Storage Policy.</td>
+<td>Promena se vodi kroz Git/change proces, uz proveru CSI verzije, privilegija i policy kompatibilnosti.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Važna posledica za automatizaciju:</strong> ne treba pretpostaviti da je Kubernetes naziv klase uvek identičan prikaznom nazivu vSphere politike. U Supervisor okruženju čita se stvarni naziv pomoću <code>kubectl get storageclass</code>, dok se u samostalnom vSphere CSI modelu parametar <code>storagepolicyname</code> mora podudarati sa postojećom politikom koju vCenter može da razreši. Manifest se zato ne prenosi između ova dva modela bez ponovne validacije.</p>
+<h3>Projektovanje storage politike pre objavljivanja klase</h3>
+<p>StorageClass ne može da obeća osobinu koju odgovarajuća vSphere politika i kompatibilni datastore-i stvarno ne isporučuju. Pre objavljivanja klase infrastrukturni tim u vSphere Client-u otvara <strong>Policies and Profiles &gt; VM Storage Policies</strong>, proverava pravila politike i pokreće proveru kompatibilnosti. Za tag-based placement proverava se da li su tag kategorija, tag i dodela datastore-u tačni; za vSAN proveravaju se pravila dostupnosti, tolerancija na otkaze, stripe width, checksum, enkripcija i druge mogućnosti koje konkretna verzija podržava. Stroža politika obično smanjuje skup kompatibilnih datastore-a i može povećati efektivnu potrošnju kapaciteta.</p>
+<p>Policy compliance nije jednokratna potvrda pri kreiranju volumena. Datastore može kasnije postati nekompatibilan zbog promene politike, taga, host dostupnosti ili kapaciteta. <em>Out of date</em> ili <em>noncompliant</em> stanje zahteva procenu da li je promenjena željena politika, da li objekt još nije usklađen ili infrastruktura više ne može da ispuni zahtev. Remedijacija ili migracija ne pokreće se naslepo: prvo se utvrđuju aplikacioni RPO/RTO, podržani vSphere postupak, slobodan kapacitet i uticaj na aktivni CNS volumen.</p>
+<p>Performanse se ne obećavaju samo nazivom <code>gold</code>. Politika mora imati dokazivu tehničku osnovu, a platform tim objavljuje merljive SLO/SLA granice: očekivanu dostupnost, failure domain, približnu latenciju/IOPS kada ih infrastruktura garantuje, podržani tip volumena, režime pristupa, backup i restore odgovornost. StorageClass bira servis; ona sama ne nameće Kubernetes QoS za I/O niti zamenjuje kapacitetno planiranje.</p>
+<h3>Binding režim i topološka ispravnost</h3>
+<p><code>Immediate</code> pokreće provisioniranje čim se kreira PVC. Ovaj režim je jednostavan kada je storage jednako dostupan svim worker node-ovima i ne postoje značajna zonalna ograničenja. Međutim, u topološki složenom klasteru volumen može biti napravljen u lokaciji koja ne odgovara node-u na koji bi Pod trebalo da bude raspoređen.</p>
+<p><code>WaitForFirstConsumer</code> odlaže izbor i provisioniranje volumena dok scheduler ne uzme u obzir Pod koji koristi PVC. Scheduler tada razmatra node selektore, affinity pravila, taints, tolerations, zone i storage topologiju. Ovaj režim je obično bezbedniji kada datastore-i nisu dostupni svim node-ovima ili kada postoje zone dostupnosti.</p>
+<p>Kod klase sa <code>WaitForFirstConsumer</code> PVC bez Pod-a može legitimno ostati u stanju <code>Pending</code>. Događaj kao što je <code>waiting for first consumer to be created before binding</code> predstavlja očekivano ponašanje, a ne grešku. Tek nakon kreiranja Pod-a administrator očekuje početak provisioniranja.</p>
+<p>Greška nastaje kada Pod ne može da se rasporedi ni na jedan node koji zadovoljava i compute i storage uslove. Tada treba paralelno analizirati događaje Pod-a i PVC-a. Posmatranje samo jednog objekta često vodi pogrešnom zaključku da je problem isključivo u storage sloju.</p>
+<h3>Tip volumena, access mode i semantika montaže</h3>
+<p>StorageClass i PVC moraju zajedno opisati mogućnost koju backend i drajver podržavaju. <code>ReadWriteOnce</code> znači da volumen može biti montiran za čitanje i pisanje sa jednog node-a; ne znači nužno „jedan Pod”, jer više Pod-ova na istom node-u može koristiti isti volumen ako aplikacija i filesystem to bezbedno podnose. <code>ReadWriteOncePod</code> ograničava pristup na jedan Pod, ali zahteva odgovarajuću CSI i Kubernetes podršku. <code>ReadWriteMany</code> tipično zahteva file volume i vSAN File Services ili drugi podržani file backend; običan vSphere blok volumen time ne postaje deljeni filesystem.</p>
+<p>Izbor access mode-a nije mehanizam zaštite od konkurentnog upisa na nivou aplikacije. Baza podataka i dalje mora imati sopstvenu kontrolu procesa, zaključavanje i dokumentovan failover. Isto tako, filesystem kao što je <code>ext4</code> ili <code>xfs</code> nije sam po sebi cluster filesystem. Pre obećanja RWX usluge proveravaju se podržane verzije vSphere CSI drajvera, mrežna dostupnost file servisa, ograničenja topologije, bezbednosni zahtevi i matrica podržanih mogućnosti.</p>
+<table>
+<thead>
+<tr>
+<th>Zahtev workload-a</th>
+<th>Tipično rešenje</th>
+<th>Provera pre objavljivanja klase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jedan stateful Pod ili više Pod-ova na istom node-u</td>
+<td>Blok volumen sa <code>ReadWriteOnce</code></td>
+<td>Attach granice, podržani filesystem, topologija i ponašanje pri rescheduling-u.</td>
+</tr>
+<tr>
+<td>Strogo jedan Pod</td>
+<td><code>ReadWriteOncePod</code>, kada ga klaster i CSI sidecar verzije podržavaju</td>
+<td>Feature/version podrška i ponašanje kontrolera tokom failover-a.</td>
+</tr>
+<tr>
+<td>Istovremeni pristup sa više node-ova</td>
+<td>Podržani file volume sa <code>ReadWriteMany</code></td>
+<td>File Services, mreža, DNS, kapacitet, CSI podrška i aplikaciona semantika zaključavanja.</td>
+</tr>
+</tbody>
+</table>
+<h3>Reclaim politika i životni ciklus podataka</h3>
+<p><code>Delete</code> je čest izbor za privremena razvojna okruženja i podatke koji se lako ponovo kreiraju. Nakon brisanja PVC-a Kubernetes pokušava da obriše dinamički kreirani PV i pripadajući backend volumen. Ova pogodnost nosi ozbiljan rizik: pogrešno brisanje namespace-a, Helm release-a ili PVC objekta može dovesti do gubitka podataka.</p>
+<p><code>Retain</code> zadržava PV i backend volumen nakon brisanja PVC-a. PV obično prelazi u stanje <code>Released</code> i ne može se automatski dodeliti novom zahtevu dok administrator ne sprovede kontrolisani postupak povrata ili brisanja. Ovaj režim smanjuje rizik od automatskog uništenja podataka, ali zahteva evidenciju vlasništva i redovno otkrivanje napuštenih volumena.</p>
+<p>Reclaim politika nije zamena za backup. <code>Retain</code> štiti od jednog tipa automatskog brisanja, ali ne štiti od oštećenja filesystem-a, greške aplikacije, ransomware-a, kvara infrastrukture ili administratorske operacije izvršene direktno u vSphere-u. Backup i restore moraju se projektovati odvojeno.</p>
+<p>Za baze podataka i poslovno važne workload-e platform tim često koristi klasu sa <code>Retain</code>, uz aplikaciono konzistentan backup, snapshot politiku i dokumentovan postupak povrata. Za kratkotrajne testove može se koristiti <code>Delete</code>, ali samo kada je vlasnicima aplikacije jasno da brisanje PVC-a može ukloniti i podatke.</p>
+<h3>Podrazumevana klasa i eksplicitni izbor</h3>
+<p>Podrazumevana StorageClass koristi se kada PVC ne navede <code>storageClassName</code>. Obeležava se anotacijom <code>storageclass.kubernetes.io/is-default-class: "true"</code>. U stabilnom klasteru treba da postoji najviše jedna aktivna podrazumevana klasa.</p>
+<p>Za produkcione workload-e eksplicitni izbor klase je sigurniji. Manifest tada jasno beleži očekivani tier i ne menja ponašanje kada platform tim kasnije promeni podrazumevanu klasu. Ovo je posebno važno za StatefulSet, bazu podataka, message broker i druge aplikacije kod kojih performanse i životni ciklus podataka nisu proizvoljni.</p>
+<p>PVC sa <code>storageClassName: ""</code> izričito zahteva da se ne koristi StorageClass za dinamičko provisioniranje. Takav zahtev očekuje odgovarajući prethodno kreiran PV. Izostavljeno polje i prazna vrednost nisu isto. Administrator mora da razlikuje ova dva slučaja tokom dijagnostike.</p>
+<p>Promena podrazumevane klase utiče prvenstveno na nove ili još neobrađene zahteve koji ne navode klasu. Ona ne migrira već vezane volumene. Pre promene treba pronaći sve aplikacione manifeste koji se oslanjaju na implicitni izbor i proceniti da li će dobiti drugačiju cenu, performanse ili reclaim ponašanje.</p>
+<h3>Proširenje volumena i ograničenja promene</h3>
+<p><code>allowVolumeExpansion: true</code> omogućava da se u PVC objektu poveća vrednost <code>spec.resources.requests.storage</code>. Uspeh zavisi od podrške CSI drajvera, vSphere verzije, tipa volumena, filesystem-a i načina na koji workload koristi disk. Neke kombinacije podržavaju online proširenje, dok druge zahtevaju da volumen nije aktivno montiran.</p>
+<p>Smanjivanje PVC kapaciteta nije standardna operacija. Pokušaj postavljanja manje vrednosti biće odbijen. Za smanjivanje je potreban novi manji volumen i kontrolisana migracija podataka, pri čemu administrator mora proveriti iskorišćenost, konzistentnost i rollback mogućnost.</p>
+<p>StorageClass nije objekat koji treba proizvoljno menjati nakon što ga koriste workload-i. Brojna polja su nepromenljiva, a promena semantike postojećeg imena predstavlja operativni rizik čak i kada je tehnički moguća. Bezbedniji model je verzionisanje klasa, na primer <code>tanzu-gold-retain-v1</code> i <code>tanzu-gold-retain-v2</code>, pa zatim kontrolisana migracija aplikacija.</p>
+<p>Promena <code>storageClassName</code> postojećeg vezanog PVC-a nije podržan način migracije volumena. Nova klasa se primenjuje stvaranjem novog PVC-a, kopiranjem ili restore-om podataka i preusmeravanjem workload-a. Za stateful aplikacije ovaj postupak zahteva aplikacioni plan, period održavanja i potvrdu vlasnika podataka.</p>
+<h3>Bezbednost, prava i podela odgovornosti</h3>
+<p>StorageClass je cluster-scoped objekat. Njeno kreiranje i menjanje ne treba dozvoliti svakom korisniku namespace-a. Platform administrator definiše podržane klase, dok aplikacioni tim dobija pravo da kreira PVC objekte samo u svojim namespace-ovima. Time se sprečava proizvoljno upućivanje na datastore, kreiranje klasa sa opasnim parametrima ili nekontrolisano menjanje podrazumevane politike.</p>
+<p>RBAC ograničenje samo po sebi ne rešava potrošnju kapaciteta. Namespace treba da ima <code>ResourceQuota</code> za PVC broj i ukupnu storage potrošnju, a u Supervisor okruženju treba proveriti i storage policy quota mehanizme. Slobodan prostor na datastore-u ne znači da namespace ima pravo da ga koristi.</p>
+<p>CSI kredencijali za vCenter ne smeju se navoditi u StorageClass manifestu. Njima upravljaju CSI komponente u zaštićenom sistemskom namespace-u. Aplikacioni korisnik ne treba da ima pristup tim Secret objektima niti dozvolu da menja CSI Deployment, DaemonSet ili konfiguraciju.</p>
+<p>Podela odgovornosti mora biti dokumentovana: storage tim održava fizički kapacitet i policy compliance; vSphere tim održava datastore vidljivost, vCenter i CNS; platform tim održava CSI, StorageClass, kvote i Kubernetes validaciju; aplikacioni tim definiše kapacitet, access mode, backup zahteve i bezbedno ponašanje aplikacije tokom prekida.</p>
+<h3>Najčešće greške i dijagnostički pristup</h3>
+<ul>
+<li><strong>Nepostojeći naziv klase.</strong> PVC ostaje <code>Pending</code>, a događaji navode da StorageClass nije pronađen. Proveravaju se velika i mala slova, jer je naziv egzaktan.</li>
+<li><strong>Pogrešan naziv vSphere Storage Policy objekta.</strong> CSI ne pronalazi kompatibilan placement. Proverava se tačan naziv politike i njena kompatibilnost sa datastore-ovima dostupnim svim relevantnim ESXi hostovima.</li>
+<li><strong>Datastore nije dostupan svim potrebnim hostovima.</strong> Provisioniranje ili attach mogu uspeti samo na delu klastera, što dovodi do Pending Pod-ova ili attach grešaka nakon rescheduling-a.</li>
+<li><strong>Iscrpljena kvota.</strong> Datastore može imati slobodan prostor, ali namespace ili storage politika nema raspoloživu kvotu. Proveravaju se Kubernetes ResourceQuota i platform-specific quota objekti.</li>
+<li><strong>Pogrešno tumačenje WaitForFirstConsumer režima.</strong> PVC bez Pod-a ostaje <code>Pending</code> po dizajnu. Događaji moraju potvrditi da čeka prvog potrošača.</li>
+<li><strong>Više podrazumevanih klasa.</strong> PVC bez navedene klase može dobiti neželjenu klasu. Pregled anotacija treba da pokaže samo jednu podrazumevanu vrednost.</li>
+<li><strong>Očekivanje da Retain predstavlja backup.</strong> Zadržan disk bez dokumentovanog identiteta, aplikacione konzistentnosti i restore testa nije pouzdana zaštita.</li>
+<li><strong>Direktna izmena automatski upravljane klase.</strong> Platformski reconciliation može vratiti promenu, pa se kreira nova korisnička klasa ili menja izvorna konfiguracija u podržanom upravljačkom sloju.</li>
+</ul>
+<p>Prva dijagnostička komanda nije pregled logova, već <code>kubectl describe pvc</code>. Kubernetes događaji često direktno navode razlog neuspeha. Zatim se proveravaju Pod događaji, StorageClass definicija, PV objekat i CSI komponente. Tek nakon toga se prelazi na detaljne controller i node logove.</p>
+<h3>Integrisani praktikum: produkciona klasa za poslovne podatke</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Platform tim održava Tanzu Kubernetes Grid workload klaster <code>tkg-prod-01</code> na vSphere infrastrukturi. Finansijska aplikacija koristi namespace <code>fin-data</code> i zahteva dinamički provisioniran blok volumen. Podaci ne smeju automatski nestati ako se PVC slučajno izbriše, volumen mora moći da se proširi, a izbor datastore-a treba da prati postojeću vSphere Storage Policy politiku <code>Tanzu-Gold-Policy</code>.</p>
+<p><strong>Cilj.</strong> Kreirati klasu <code>tanzu-gold-retain</code>, proveriti dinamičko provisioniranje pomoću PVC-a <code>ledger-data</code>, montirati volumen u Pod <code>ledger-storage-test</code>, dokazati trajnost zapisa nakon rekreiranja Pod-a i sprovesti negativni test sa nepostojećom klasom.</p>
+<p><strong>Referentno okruženje.</strong> Kubernetes klaster koristi vSphere CSI provisioner <code>csi.vsphere.vmware.com</code>. Postojeća vSphere politika <code>Tanzu-Gold-Policy</code> kompatibilna je sa datastore-om dostupnim svim worker node-ovima. Administratorski radni direktorijum biće <code>/opt/tashizza/storageclass-lab</code>.</p>
+<p><strong>Preduslovi i prava.</strong> Administrator mora imati pravo za čitanje StorageClass, CSIDriver, PV, node i sistemskih CSI resursa, kao i pravo za kreiranje StorageClass objekta. U namespace-u <code>fin-data</code> potrebna su prava za kreiranje PVC-a, Pod-a i ConfigMap objekta. U vCenter-u je potreban read-only pristup CNS prikazu i storage policy compliance podacima; menjanje datastore-a ili politike nije deo ovog praktikuma.</p>
+<ol>
+<li>
+<strong>Potvrditi kontekst i početno stanje klastera.</strong> Pogrešan kubeconfig ili context može izazvati promenu u drugom klasteru. Komande prikazuju aktivni context, node-ove, registrovane CSI drajvere i postojeće klase.
+<pre><code class="language-bash">kubectl config current-context
+kubectl get nodes -o wide
+kubectl get csidrivers
+kubectl get storageclass -o wide</code></pre>
+<strong>Validacija:</strong> aktivni context mora odgovarati klasteru <code>tkg-prod-01</code>, svi očekivani worker node-ovi treba da budu <code>Ready</code>, a među CSIDriver objektima mora postojati <code>csi.vsphere.vmware.com</code>. Ako drajver ne postoji, praktikum se prekida; kreiranje klase ne može nadomestiti neinstaliran CSI.
+</li>
+<li>
+<strong>Proveriti postojeće podrazumevane klase i CSI komponente.</strong> Pre kreiranja nove klase proverava se da li klaster već ima platform-managed objekte i da li postoji samo jedna podrazumevana klasa.
+<pre><code class="language-bash">kubectl get storageclass \
+  -o custom-columns='NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\.kubernetes\.io/is-default-class,PROVISIONER:.provisioner,RECLAIM:.reclaimPolicy,BINDING:.volumeBindingMode,EXPAND:.allowVolumeExpansion'
+
+kubectl get pods -A -o wide | grep -E 'vsphere-csi|csi-provisioner|csi-attacher|csi-resizer'</code></pre> <strong>Validacija:</strong> CSI controller i node komponente moraju biti u stanju <code>Running</code>. Nova klasa neće biti označena kao default, pa postojeće ponašanje aplikacija ostaje nepromenjeno. Ako se vide dve klase sa default anotacijom postavljenom na <code>true</code>, stanje se dokumentuje i eskalira platform timu pre nastavka.
+
+</li>
+<li>
+<strong>Proveriti namespace i kvotu.</strong> Najpre se read-only komandama proveravaju namespace i postojeća ograničenja.
+<pre><code class="language-bash">kubectl get namespace fin-data
+kubectl get resourcequota -n fin-data
+kubectl describe resourcequota -n fin-data</code></pre>
+<strong>Validacija:</strong> namespace mora postojati i biti <code>Active</code>. Ako komanda vrati <code>NotFound</code>, namespace se ne kreira implicitno u produkcionom klasteru: najpre se sprovodi odobreni onboarding sa vlasnikom, RBAC-om, kvotama i politikama. Samo u namenskoj laboratoriji ovlašćeni administrator može izvršiti <code>kubectl create namespace fin-data</code>. Ako postoji storage kvota, raspoloživi iznos mora biti najmanje 10 GiB za glavni test i dodatni mali negativni zahtev. Kvota se ne povećava bez odobrenja vlasnika kapaciteta.
+</li>
+<li>
+<strong>Kreirati radni direktorijum i StorageClass manifest.</strong> Nova klasa koristi vSphere CSI, postojeću storage politiku, <code>Retain</code> zaštitu i <code>WaitForFirstConsumer</code> radi topološki ispravnog izbora.
+<pre><code class="language-bash">sudo install -d -m 0750 /opt/tashizza/storageclass-lab
+sudo chown "$(id -u):$(id -g)" /opt/tashizza/storageclass-lab
+cd /opt/tashizza/storageclass-lab
+
+cat &gt; storageclass-tanzu-gold-retain.yaml &lt;&lt;'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: tanzu-gold-retain
+  labels:
+    tashizza.example/service-tier: gold
+    tashizza.example/data-lifecycle: retained
+provisioner: csi.vsphere.vmware.com
+parameters:
+  storagepolicyname: Tanzu-Gold-Policy
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+EOF
+
+kubectl apply --dry-run=server -f storageclass-tanzu-gold-retain.yaml
+kubectl apply -f storageclass-tanzu-gold-retain.yaml</code></pre> <strong>Validacija:</strong> server-side dry run mora proći bez greške, a primena mora prijaviti da je objekat kreiran.
+
+<pre><code class="language-bash">kubectl get storageclass tanzu-gold-retain -o yaml
+kubectl get storageclass tanzu-gold-retain -o jsonpath='{.provisioner}{"\n"}{.parameters.storagepolicyname}{"\n"}{.reclaimPolicy}{"\n"}{.volumeBindingMode}{"\n"}{.allowVolumeExpansion}{"\n"}'</code></pre>
+
+Očekivane vrednosti su <code>csi.vsphere.vmware.com</code>, <code>Tanzu-Gold-Policy</code>, <code>Retain</code>, <code>WaitForFirstConsumer</code> i <code>true</code>. Klasa ne sme imati default anotaciju.
+
+</li>
+<li>
+<strong>Kreirati PVC koji eksplicitno koristi novu klasu.</strong> Zahtev traži 10 GiB i <code>ReadWriteOnce</code>, što je odgovarajuće za blok volumen koji u datom trenutku koristi jedan node.
+<pre><code class="language-bash">cat &gt; ledger-pvc.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ledger-data
+  namespace: fin-data
+  labels:
+    app.kubernetes.io/name: ledger
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: tanzu-gold-retain
+  resources:
+    requests:
+      storage: 10Gi
+EOF
+
+kubectl apply --dry-run=server -f ledger-pvc.yaml
+kubectl apply -f ledger-pvc.yaml
+kubectl get pvc ledger-data -n fin-data
+kubectl describe pvc ledger-data -n fin-data</code></pre> <strong>Validacija:</strong> pošto klasa koristi <code>WaitForFirstConsumer</code>, očekivano je da PVC trenutno bude <code>Pending</code>. U događajima treba da postoji poruka da se čeka prvi consumer. To potvrđuje da je zahtev prihvaćen i da odloženo provisioniranje radi po dizajnu.
+
+</li>
+<li>
+<strong>Kreirati Pod koji montira PVC i zapisuje kontrolni podatak.</strong> Pod koristi bezbednu zamensku test aplikaciju i ne sadrži tajne.
+<pre><code class="language-bash">cat &gt; ledger-storage-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ledger-storage-test
+  namespace: fin-data
+  labels:
+    app.kubernetes.io/name: ledger-storage-test
+spec:
+  securityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+  containers:
+    - name: writer
+      image: busybox:1.36
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          if [ ! -f /data/acceptance-marker.txt ]; then
+            printf 'storageclass=tanzu-gold-retain\nstatus=initialized\n' &gt; /data/acceptance-marker.txt
+          fi
+          exec sleep 3600
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+      volumeMounts:
+        - name: ledger-volume
+          mountPath: /data
+  volumes:
+    - name: ledger-volume
+      persistentVolumeClaim:
+        claimName: ledger-data
+EOF
+
+kubectl apply --dry-run=server -f ledger-storage-test.yaml
+kubectl apply -f ledger-storage-test.yaml
+kubectl get pod ledger-storage-test -n fin-data -w</code></pre> <strong>Validacija:</strong> praćenje se prekida kombinacijom <code>Ctrl+C</code> kada Pod postane <code>Running</code>. PVC treba da pređe u <code>Bound</code>.
+
+<pre><code class="language-bash">kubectl get pvc ledger-data -n fin-data -o wide
+kubectl get pod ledger-storage-test -n fin-data -o wide
+kubectl describe pod ledger-storage-test -n fin-data
+kubectl exec -n fin-data ledger-storage-test -- cat /data/acceptance-marker.txt</code></pre>
+
+Očekuju se vrednosti <code>storageclass=tanzu-gold-retain</code> i <code>status=initialized</code>. Pod događaji ne smeju sadržati aktivne <code>FailedAttachVolume</code> ili <code>FailedMount</code> greške.
+
+</li>
+<li>
+<strong>Proveriti automatski kreiran PV i CSI identitet.</strong> Ime PV-a se dobija iz PVC objekta, čime se izbegava ručno pogađanje naziva.
+<pre><code class="language-bash">PV_NAME="$(kubectl get pvc ledger-data -n fin-data -o jsonpath='{.spec.volumeName}')"
+printf 'PV_NAME=%s\n' "$PV_NAME"
+
+kubectl get pv "$PV_NAME" -o wide
+kubectl get pv "$PV_NAME" -o jsonpath='{.spec.storageClassName}{"\n"}{.spec.persistentVolumeReclaimPolicy}{"\n"}{.spec.csi.driver}{"\n"}{.spec.csi.volumeHandle}{"\n"}'
+kubectl describe pv "$PV_NAME"</code></pre> <strong>Validacija:</strong> PV mora biti <code>Bound</code>, StorageClass mora biti <code>tanzu-gold-retain</code>, reclaim politika <code>Retain</code>, a CSI driver <code>csi.vsphere.vmware.com</code>. <code>volumeHandle</code> predstavlja identitet koji se koristi za korelaciju sa CNS prikazom u vCenter-u. U vCenter Cloud Native Storage pregledu volumen treba da bude zdrav, povezan sa odgovarajućim klasterom i da prikazuje očekivanu storage politiku.
+
+</li>
+<li>
+<strong>Dokazati trajnost podataka kroz rekreiranje Pod-a.</strong> Brisanje Pod-a nije brisanje PVC-a. Novi Pod sa istim imenom koristi isti zahtev i treba da pronađe prethodni zapis.
+<pre><code class="language-bash">kubectl delete pod ledger-storage-test -n fin-data
+kubectl wait --for=delete pod/ledger-storage-test -n fin-data --timeout=120s
+kubectl apply -f ledger-storage-test.yaml
+kubectl wait --for=condition=Ready pod/ledger-storage-test -n fin-data --timeout=300s
+kubectl exec -n fin-data ledger-storage-test -- cat /data/acceptance-marker.txt</code></pre>
+<strong>Validacija:</strong> sadržaj mora biti identičan prethodnom rezultatu. PV ime dobijeno iz PVC-a mora ostati isto.
+<pre><code class="language-bash">kubectl get pvc ledger-data -n fin-data -o jsonpath='{.spec.volumeName}{"\n"}'</code></pre>
+Ako je zapis nestao, administrator proverava da li je aplikacija zaista montirala očekivani PVC, da li je mountPath tačan i da li je došlo do neočekivanog reprovisioniranja.
+</li>
+<li>
+<strong>Sprovesti negativni test sa nepostojećom klasom.</strong> Ovaj test pokazuje kako izgleda greška u nazivu klase i kako se razlikuje od legitimnog čekanja na consumer.
+<pre><code class="language-bash">cat &gt; invalid-class-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: invalid-class-test
+  namespace: fin-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: tanzu-gold-typo
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+kubectl apply -f invalid-class-test.yaml
+kubectl get pvc invalid-class-test -n fin-data
+kubectl describe pvc invalid-class-test -n fin-data</code></pre> <strong>Očekivani rezultat:</strong> PVC ostaje <code>Pending</code>, ali razlog nije čekanje na prvog potrošača. Događaji treba da pokažu da StorageClass <code>tanzu-gold-typo</code> ne postoji. Time se potvrđuje da administrator mora tumačiti događaje, a ne samo status.
+
+<pre><code class="language-bash">kubectl delete pvc invalid-class-test -n fin-data
+kubectl get pvc invalid-class-test -n fin-data</code></pre>
+
+<strong>Validacija cleanup-a:</strong> komanda za pregled treba da vrati <code>NotFound</code>. Pošto provisioniranje nije ni počelo, ne treba da postoji PV za ovaj negativni zahtev.
+
+</li>
+<li>
+<strong>Proveriti relevantne logove samo ako postoji problem.</strong> Nazivi CSI namespace-a i workload-a razlikuju se između Tanzu modela i verzija, pa se prvo pronalaze stvarni resursi.
+<pre><code class="language-bash">kubectl get pods -A | grep -E 'vsphere-csi|csi-provisioner|csi-attacher|csi-resizer'
+kubectl get events -n fin-data --sort-by='.lastTimestamp'
+kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp'</code></pre>
+Ako PVC ne prelazi u <code>Bound</code>, pregledaju se logovi provisioner i vSphere CSI controller kontejnera u namespace-u u kome su pronađeni. Ako Pod prijavljuje attach ili mount problem, pregledaju se CSI node komponenta na node-u na kojem je Pod raspoređen i kubelet logovi tog node-a.
+<pre><code class="language-bash">kubectl logs -n &lt;CSI_NAMESPACE&gt; &lt;CSI_CONTROLLER_POD&gt; -c vsphere-csi-controller --since=15m
+kubectl logs -n &lt;CSI_NAMESPACE&gt; &lt;CSI_CONTROLLER_POD&gt; -c csi-provisioner --since=15m
+kubectl logs -n &lt;CSI_NAMESPACE&gt; &lt;CSI_NODE_POD&gt; -c vsphere-csi-node --since=15m</code></pre>
+<strong>Tumačenje:</strong> controller logovi služe za provisioniranje, brisanje, proširenje i komunikaciju sa vCenter-om; node logovi za staging, mount i unmount operacije. Na worker node-u sa systemd-om kubelet se obično proverava komandom <code>journalctl -u kubelet</code>, ali samo uz odobren administratorski pristup node-u.
+</li>
+<li>
+<strong>Dokumentovati rollback i cleanup granice.</strong> StorageClass ne treba brisati dok postoji PVC ili PV koji je koriste. Za rollback aplikacije na prethodnu klasu potreban je novi PVC i migracija podataka; promena klase postojećeg vezanog PVC-a nije bezbedan prečac.
+<pre><code class="language-bash">kubectl get pvc -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,CLASS:.spec.storageClassName,STATUS:.status.phase,VOLUME:.spec.volumeName' \
+  | grep 'tanzu-gold-retain' || true
+
+kubectl get pv \
+  -o custom-columns='NAME:.metadata.name,CLASS:.spec.storageClassName,STATUS:.status.phase,CLAIM:.spec.claimRef.namespace/.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy' \
+  | grep 'tanzu-gold-retain' || true</code></pre> <strong>Upozorenje:</strong> ne izvršavati <code>kubectl delete pvc ledger-data</code> kao običan cleanup. Klasa koristi <code>Retain</code>, pa bi PV i backend volumen ostali izdvojeni, a aplikacija izgubila vezu sa zahtevom. Glavni PVC i Pod ostaju aktivni kao prihvaćeni rezultat praktikuma. Kada vlasnik podataka odobri potpuno uklanjanje, redosled obuhvata aplikacioni backup, potvrdu restore testa, zaustavljanje workload-a, evidentiranje <code>volumeHandle</code> vrednosti, brisanje PVC-a, proveru <code>Released</code> PV-a i tek zatim odobreno brisanje ili ponovno preuzimanje volumena.
+
+</li>
+</ol>
+<p><strong>Merljivi kriterijumi prihvatanja.</strong></p>
+<ul>
+<li>StorageClass <code>tanzu-gold-retain</code> postoji i koristi provisioner <code>csi.vsphere.vmware.com</code>.</li>
+<li>Klasa upućuje na <code>Tanzu-Gold-Policy</code>, ima <code>Retain</code>, <code>WaitForFirstConsumer</code> i dozvoljeno proširenje.</li>
+<li>PVC <code>ledger-data</code> je <code>Bound</code> i zahteva 10 GiB.</li>
+<li>PV koristi očekivanu klasu, reclaim politiku i CSI driver.</li>
+<li>Pod <code>ledger-storage-test</code> je <code>Ready</code> i može da pročita kontrolni zapis.</li>
+<li>Kontrolni zapis ostaje dostupan nakon brisanja i ponovnog kreiranja Pod-a.</li>
+<li>Negativni PVC ostaje <code>Pending</code> zbog nepostojeće klase i zatim je uklonjen bez kreiranja PV-a.</li>
+<li>U događajima nema aktivnih provision, attach ili mount upozorenja za glavni workload.</li>
+<li>CNS prikaz povezuje volumen sa očekivanim klasterom, namespace-om i storage politikom.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<p><strong>Inventar i vlasništvo StorageClass objekata.</strong> Najmanje jednom mesečno i nakon nadogradnje platforme izvršiti <code>kubectl get storageclass -o yaml</code> i sačuvati kontrolisani izvoz u Git repozitorijumu platform konfiguracije. Za svaku klasu dokumentovati vlasnika, CSI provisioner, storage politiku, reclaim ponašanje, podržane access mode vrednosti, expansion podršku i namenjene workload-e. Reakciju zahtevaju klasa bez vlasnika, nepoznat provisioner ili parametar koji ne postoji u odobrenom baseline-u. Uspeh se meri potpunim mapiranjem svih aktivnih klasa na odobrene infrastrukturne politike.</p>
+<p><strong>Kontrola podrazumevane klase.</strong> Nakon instalacije, nadogradnje ili promene storage dodatka proveriti anotacije komandom <code>kubectl get sc -o custom-columns</code>. Reakciju zahtevaju nula default klasa ako organizacija očekuje implicitno provisioniranje ili više od jedne klase sa vrednošću <code>true</code>. Prva reakcija je zaustavljanje promena koje kreiraju PVC bez eksplicitne klase i utvrđivanje koji kontroler upravlja klasama. Odluka i promena beleže se u change zapisu i platformskom Git repozitorijumu.</p>
+<p><strong>Praćenje Pending PVC objekata.</strong> Kontinuirani monitoring treba da alarmira kada produkcioni PVC ostane <code>Pending</code> duže od organizaciono definisanog intervala, na primer deset minuta, osim kada odobreni workflow koristi <code>WaitForFirstConsumer</code> bez kreiranog Pod-a. Prva reakcija je <code>kubectl describe pvc</code>, zatim korelacija sa Pod događajima, kvotom i CSI logovima. Dokumentuju se uzrok, pogođeni namespace, StorageClass, vreme oporavka i preduzeta mera. Uspeh se meri smanjenjem neopravdanih Pending zahteva i prosečnog vremena dijagnostike.</p>
+<p><strong>Kapacitet i policy compliance.</strong> Storage i vSphere tim periodično prate datastore kapacitet, rast CNS volumena, storage policy compliance i neravnomernu potrošnju. Pragovi zavise od organizacije, ali ulazak datastore-a u unapred definisanu upozoravajuću zonu, na primer ispod 20% slobodnog prostora, zahteva plan proširenja ili kontrolisanu redistribuciju. Prva reakcija nije nasumično brisanje PV objekata, već identifikacija vlasnika volumena i provera backup i retention obaveza.</p>
+<p><strong>Kontrola Retain volumena.</strong> Najmanje nedeljno pregledati PV objekte u stanjima <code>Released</code> i <code>Failed</code>. Svaki zadržani volumen mora imati vlasnika, tiket, datum odluke i plan: ponovno vezivanje, arhiviranje ili odobreno brisanje. Nepoznat <code>Released</code> volumen zahteva zaštitu od brisanja i korelaciju sa CNS identitetom. Uspeh se meri odsustvom volumena bez vlasnika i dokazivim odobrenjem za svaku destruktivnu operaciju.</p>
+<p><strong>Backup i probni restore.</strong> Čuvaju se aplikaciono konzistentni podaci, Kubernetes manifesti, informacije o StorageClass i PVC objektima i, kada se koristi CSI snapshot zaštita, odgovarajući VolumeSnapshot i VolumeSnapshotClass metapodaci. Učestalost prati RPO aplikacije, a kopija se čuva izvan failure domain-a primarnog datastore-a. Integritet se ne potvrđuje samo statusom backup posla: najmanje kvartalno ili prema kritičnosti radi se probni restore u izolovan namespace, pokreće aplikaciona provera i upoređuju broj zapisa, kontrolni checksum ili drugi poslovni kriterijum. Backup je upotrebljiv tek kada restore ispuni dokumentovani RTO i aplikacija potvrdi konzistentnost.</p>
+<p><strong>Kontrola promena.</strong> Pre kreiranja nove klase proveravaju se kompatibilnost storage politike, dostupnost datastore-a svim potrebnim hostovima, kvote, podržana CSI verzija i rollback plan. Nakon promene kreira se test PVC i izvršavaju provision, attach, mount i restart provere. Manifest, rezultat testa, CNS identitet i odobrenje čuvaju se u change sistemu. Uspeh se meri time da promena ne utiče na postojeće klase i da test zadovolji sve kriterijume prihvatanja.</p>
+<h3>Završna kontrolna tačka</h3>
+<p>Administrator je završio lekciju kada sledeće sposobnosti može da dokaže stvarnim objektima, događajima i CNS podacima, a ne samo opisom postupka:</p>
+<ul>
+<li>Aktivni <code>kubectl</code> context odgovara ciljnom Tanzu klasteru.</li>
+<li><code>kubectl get csidrivers</code> prikazuje očekivani vSphere CSI drajver.</li>
+<li>Tačan naziv vSphere Storage Policy objekta potvrđen je u vCenter-u.</li>
+<li>Politika je kompatibilna sa datastore-om dostupnim svim relevantnim ESXi hostovima.</li>
+<li>StorageClass manifest koristi odobren provisioner i podržane parametre.</li>
+<li>Izabrani <code>reclaimPolicy</code> odgovara klasifikaciji i životnom ciklusu podataka.</li>
+<li><code>volumeBindingMode</code> odgovara storage topologiji klastera.</li>
+<li>Postoji najviše jedna podrazumevana StorageClass.</li>
+<li>Namespace kvota omogućava zahtevani kapacitet.</li>
+<li>Test PVC prelazi u očekivano stanje, a događaji ne sadrže neobjašnjena upozorenja.</li>
+<li>Automatski kreiran PV koristi očekivanu klasu, CSI driver i reclaim politiku.</li>
+<li>Pod uspešno montira volumen i čita prethodno zapisane podatke nakon rekreiranja.</li>
+<li>CNS prikaz potvrđuje zdravlje, politiku i identitet volumena.</li>
+<li>Backup i probni restore postupak postoje za poslovno važne podatke.</li>
+<li>Manifest, rezultati validacije, vlasnik klase i rollback postupak evidentirani su u Git i change sistemu.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>StorageClass pretvara infrastrukturne mogućnosti u kontrolisanu Kubernetes uslugu. Administrator mora da razume da ona nije samo naziv storage tier-a, već skup odluka o provisioner-u, placement-u, topologiji, proširenju i sudbini podataka. Ispravna klasa omogućava aplikacionim timovima samostalno provisioniranje bez direktnog pristupa datastore infrastrukturi, dok pogrešna klasa može izazvati nedostupnost workload-a, potrošnju pogrešnog tier-a ili gubitak podataka.</p>
+<p>Nakon ove lekcije administrator treba da ume da poveže StorageClass sa vSphere Storage Policy objektom, kreira novu klasu bez menjanja platform-managed definicija, proveri odloženo i trenutno binding ponašanje, validira dinamički kreiran PV i koreliše Kubernetes identitet sa CNS volumenom. Takođe treba da razlikuje legitimni <code>Pending</code> status od problema sa nazivom klase, kvotom, topologijom, policy compliance stanjem ili CSI komponentama.</p>
+<p>Bezbedna promena zahteva proveru pre implementacije, server-side validaciju manifesta, funkcionalni test provisioniranja i mount-a, dokumentovan rollback i jasno vlasništvo nad podacima. Brisanje PVC-a, PV-a ili backend volumena prevazilazi običnu konfiguracionu promenu i mora biti usklađeno sa vlasnikom aplikacije, backup politikom i change procedurom.</p>
+<p>Razlog za eskalaciju postoji kada storage politika nije kompatibilna, datastore nije dostupan svim hostovima, CSI prijavljuje greške komunikacije sa vCenter-om, quota stanje nije usklađeno sa prikazanim kapacitetom, policy-managed objekat vraća ručne promene ili je potreban destruktivan zahvat nad volumenom čije vlasništvo nije dokazano. Odgovornost Kubernetes administratora završava se tamo gde počinju neodobrene infrastrukturne i podatkovne promene; njegova obaveza je da problem precizno identifikuje, sačuva dokaze i uključi odgovarajući storage, vSphere ili aplikacioni tim.</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za StorageClass, PersistentVolume i dinamičko provisioniranje; Kubernetes API i administrativne CLI reference; Broadcom vSphere Supervisor i Tanzu Kubernetes Grid vodiči za vSphere CSI, Cloud Native Storage, storage politike, kvote, volume expansion i troubleshooting; zvanični vSphere CSI izvori i Broadcom Knowledge Base članci o provisioniranju, topologiji, policy compliance stanju i upravljanju podrazumevanim klasama
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+     VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-31-vsphere-csi-i-persistent-volume.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-33-stateful-workload-i-storage-topologija.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

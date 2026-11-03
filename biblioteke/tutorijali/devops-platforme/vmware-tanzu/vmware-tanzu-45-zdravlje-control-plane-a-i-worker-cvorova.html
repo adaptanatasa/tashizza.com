@@ -1,0 +1,473 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Zdravlje control plane-a i worker čvorova – stanje, pritisak resursa i degradacija klastera | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Zdravlje control plane-a i worker čvorova VKS klastera – stanje komponenti, pritisak resursa i prepoznavanje degradacije.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, VKS zdravlje, control plane, worker čvorovi, resource pressure, degradacija klastera, Kubernetes monitoring, troubleshooting, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Zdravlje control plane-a i worker čvorova – stanje, pritisak resursa i degradacija klastera">
+
+  <meta property="og:description"
+        content="Četrdeset peta lekcija VMware &amp; Tanzu tutorijala – zdravlje control plane-a i worker čvorova, pritisak resursa i degradacija klastera.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Zdravlje control plane-a i worker čvorova – stanje, pritisak resursa i degradacija klastera">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-45-zdravlje-control-plane-a-i-worker-cvorova.png"
+           alt="Zdravlje control plane-a i worker čvorova – stanje, pritisak resursa i degradacija klastera">
+
+    </a>
+
+   <div class="page-subtitle">
+  XI. Observability, operativni rad i troubleshooting
+</div>
+
+<div class="page-subtitle">
+  45. Zdravlje control plane-a i worker čvorova – stanje, pritisak resursa i degradacija klastera
+</div>
+
+<p>
+  Zdrav VKS klaster nije samo klaster u kome <code>kubectl get nodes</code> trenutno prikazuje
+  <code>Ready</code>. Operativno zdravlje vSphere Kubernetes Service klastera znači da su željeno i
+  stvarno stanje usklađeni, Kubernetes API stabilno dostupan, control plane sposoban da održava stanje
+  i obrađuje promene, worker čvorovi sposobni da prihvate workload-e, a mreža, storage, DNS, vreme i
+  vSphere resursi ne uvode skrivenu degradaciju. Zato se zdravlje dokazuje trendom i korelacijom više
+  slojeva, a ne jednim zelenim indikatorom.
+</p>
+
+<p>
+  Ova lekcija povezuje metrike, alarme, događaje, logove i audit trag iz prethodnih lekcija. Najpre
+  utvrđujemo obim i posledicu, zatim razdvajamo problem deklarativnog upravljanja na Supervisor-u od
+  problema unutar workload klastera i problema vSphere infrastrukture. Tako administrator ne leči
+  simptom niti ručno menja objekat kojim upravlja kontroler.
+</p>
+
+<h3>Tri ravni zdravlja VKS klastera</h3>
+
+<table>
+  <thead><tr><th>Ravan</th><th>Šta se proverava</th><th>Dokazi</th><th>Ograničenje zaključka</th></tr></thead>
+  <tbody>
+    <tr><td>Supervisor i Cluster API</td><td>Cluster/Machine reconciliation, infrastruktura i control plane</td><td>Conditions, events, observed generation, Machine i MachineDeployment</td><td>Ne dokazuje zdravlje sistemskih Pod-ova u VKS klasteru</td></tr>
+    <tr><td>VKS workload klaster</td><td>API, Node conditions, Lease, kubelet, runtime, CNI, CSI i DNS</td><td><code>kubectl</code>, metrike, events i podržani log bundle</td><td>Ne dokazuje da VM, host ili datastore nemaju contention</td></tr>
+    <tr><td>vSphere infrastruktura</td><td>VM, ESXi, resource pool, mreža, datastore, HA/DRS</td><td>vSphere Client, alarmi, task/events i performance trendovi</td><td>Ne dokazuje da scheduler, CNI ili CSI rade ispravno</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Nazivi resursa zavise od vSphere/VCF verzije i generacije API-ja. Starija dokumentacija koristi
+  TKG Service i <code>TanzuKubernetesCluster</code>, dok novije platforme koriste VKS i aktuelne
+  Cluster API resurse. Pre upotrebe primera proverite podržanu verziju i komandom
+  <code>kubectl api-resources</code> utvrdite stvarno dostupne vrste; ne primenjujte slepo komandu iz
+  druge generacije proizvoda.
+</p>
+
+<h3>Zdravlje control plane-a</h3>
+
+<p>
+  Control plane obuhvata API server, <code>etcd</code>, scheduler, controller manager i mehanizme
+  kojima VKS/Cluster API održava njihove mašine. Zdravlje znači: API endpoint je dostupan; očekivani
+  broj replika je raspoloživ; kontroleri napreduju ka željenom stanju; nema trajnih timeout-a, 5xx
+  odgovora ili rastuće latencije; DNS, NTP, sertifikati, mreža i storage su dostupni. API koji odgovara
+  na jednostavan zahtev još ne dokazuje da scheduler radi, da je <code>etcd</code> stabilan ili da
+  reconciliation napreduje.
+</p>
+
+<p>
+  Kada podržana produkciona topologija nudi tri control plane člana, gubitak jednog ostavlja većinu,
+  dok gubitak dva prekida pouzdan upis u <code>etcd</code>. Administrator ne sme samostalno brisati
+  control plane VM, članstvo u <code>etcd</code>-u, statičke Pod manifeste ili sertifikate. To su
+  upravljane komponente; za recovery se koristi verzijski tačna Broadcom procedura i, kada je potrebno,
+  podrška proizvođača.
+</p>
+
+<h3>Node conditions, heartbeat, taints i eviction</h3>
+
+<p>
+  Kubelet obnavlja Node status i Lease u namespace-u <code>kube-node-lease</code>. Node controller iz
+  tih signala određuje dostupnost. <code>Ready=True</code> znači da je čvor zdrav prema kubelet
+  proverama; <code>Ready=False</code> da je prijavio problem; <code>Ready=Unknown</code> da control
+  plane u grace periodu nije dobio heartbeat. <code>False</code> upućuje na poznat lokalni problem,
+  a <code>Unknown</code> na prekid komunikacije, ugašen/zamrznut VM, zaustavljen kubelet ili teško
+  iscrpljenje resursa.
+</p>
+
+<table>
+  <thead><tr><th>Condition</th><th>Zdravo</th><th>Nepovoljno stanje</th><th>Prvi dokazi</th></tr></thead>
+  <tbody>
+    <tr><td><code>Ready</code></td><td><code>True</code></td><td><code>False</code>: nezdrav; <code>Unknown</code>: nema heartbeat-a</td><td>Reason, Message, vreme tranzicije, Lease, VM i mreža</td></tr>
+    <tr><td><code>MemoryPressure</code></td><td><code>False</code></td><td>Niska raspoloživa memorija; mogući eviction i OOM</td><td>Working set, requests/limits, <code>Evicted</code>, <code>OOMKilled</code></td></tr>
+    <tr><td><code>DiskPressure</code></td><td><code>False</code></td><td>Nizak kapacitet ili inode-i na node/image filesystem-u</td><td>Image-i, logovi, ephemeral storage i GC događaji</td></tr>
+    <tr><td><code>PIDPressure</code></td><td><code>False</code></td><td>Broj procesa ugrožava kubelet/runtime</td><td>Runaway workload, fork greške i sistemski logovi</td></tr>
+    <tr><td><code>NetworkUnavailable</code></td><td><code>False</code></td><td>Mreža čvora nije inicijalizovana; detalji zavise od CNI-ja</td><td>CNI Pod-ovi, rute, MTU, interfejsi i IPAM</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Conditions i taints nisu isto. Control plane probleme mapira na taints kao što su
+  <code>node.kubernetes.io/not-ready</code>, <code>unreachable</code>, <code>memory-pressure</code>
+  i <code>disk-pressure</code>. Scheduler odlučuje prema taints i tolerations, a
+  <code>NoExecute</code> može izazvati evikciju. Podrazumevane tolerancije za
+  <code>not-ready</code>/<code>unreachable</code> tipično odlažu evikciju približno pet minuta, ali
+  aplikacija može imati drugačiju eksplicitnu toleranciju.
+</p>
+
+<h3>Pritisak resursa i rana degradacija</h3>
+
+<p>
+  Requests utiču na planiranje, limits ograničavaju potrošnju, a node-pressure eviction štiti OS i
+  kubelet. Visoka rezervacija nije isto što i visoka stvarna potrošnja: prva objašnjava
+  <code>Insufficient cpu/memory</code>, druga throttling, OOM i eviction. Kubernetes nema standardni
+  <code>CPUPressure</code> condition; CPU problem se vidi kroz throttling, spor kubelet/API, CPU ready
+  u vSphere-u i neuspešno raspoređivanje. DiskPressure često izazivaju image slojevi, container logovi,
+  writable layer i ephemeral storage. Nasumično brisanje runtime direktorijuma nije podržana korekcija.
+</p>
+
+<p>
+  VM može imati dovoljno deklarisanih vCPU i RAM-a, ali resource pool limit, host contention,
+  ballooning, swapping ili storage latencija mogu oduzeti efektivni kapacitet. Degradacija zato počinje
+  pre <code>NotReady</code>: rast restarta i API latencije, kasni Lease, duže kreiranje Pod-ova,
+  ponovljeni leader election, rast Pending workload-a, image pull ili volume attach kašnjenja.
+</p>
+
+<h3>Minimalno invazivan dijagnostički tok</h3>
+
+<ol>
+  <li><strong>Definišite simptom, vreme i obim:</strong> API, jedan node, failure domain, svi worker-i ili aplikacija.</li>
+  <li><strong>Sačuvajte dokaze:</strong> Cluster/Machine/Node opis, događaje, metrike, vCenter taskove i alarme pre promene.</li>
+  <li><strong>Proverite poslednje promene:</strong> upgrade, scale, VM klasa, quota, CNI/CSI, firewall, DNS/NTP ili resource pool.</li>
+  <li><strong>Razdvojite ravni:</strong> Machine bez NodeRef ukazuje na provisioning/bootstrap; Machine sa NodeRef i NotReady Node-om na kubelet, runtime, CNI ili resurse.</li>
+  <li><strong>Postavite proverljivu hipotezu</strong> i potvrdite je nezavisnim signalom.</li>
+  <li><strong>Primenite najmanju podržanu korekciju;</strong> ne popravljajte ručno resurs koji kontroler poseduje.</li>
+  <li><strong>Validirajte oporavak:</strong> API, Node, sistemske Pod-ove, aplikacije, DNS, storage i infrastrukturni baseline.</li>
+</ol>
+
+<h3>Read-only komande i tumačenje</h3>
+
+<p>
+  Administrator prvo potvrđuje kubeconfig i kontekst. Sledeći upiti čitaju stanje i bezbedni su za
+  produkciju; široki upiti ipak mogu opteretiti veoma veliki API.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get --raw='/readyz?verbose'
+kubectl get nodes -o wide
+kubectl get nodes -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,MEMORY:.status.conditions[?(@.type=="MemoryPressure")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status,PID:.status.conditions[?(@.type=="PIDPressure")].status,UNSCHEDULABLE:.spec.unschedulable'
+kubectl describe node &lt;NODE_NAME&gt;
+kubectl get lease -n kube-node-lease
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+kubectl get pods -A --field-selector=status.phase=Pending
+kubectl top nodes
+kubectl top pods -A --sort-by=memory</code></pre>
+
+<p>
+  <code>/readyz</code> je prikladniji signal spremnosti API servera od istorijskog
+  <code>/healthz</code>, ali detalji zavise od verzije i RBAC-a. <code>kubectl top</code> zahteva
+  Metrics API; njegov neuspeh dokazuje kvar telemetrijskog lanca, ne postojanje ili odsustvo pritiska.
+  U Supervisor namespace kontekstu prvo uradite discovery, jer plural i API grupa zavise od verzije:
+</p>
+
+<pre><code class="language-bash">kubectl api-resources | grep -Ei 'cluster|machine'
+kubectl get clusters
+kubectl describe cluster &lt;CLUSTER_NAME&gt;
+kubectl get machines -o wide
+kubectl describe machine &lt;MACHINE_NAME&gt;
+kubectl get events --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  Traže se Ready, infrastructure i control plane conditions, Reason, Message, vreme tranzicije i
+  observed generation. Ako <code>metadata.generation</code> napreduje, a status zaostaje, kontroler
+  možda nije obradio specifikaciju. Ponavljanje iste greške u pravilnim intervalima često pokazuje
+  neuspelu reconciliation petlju.
+</p>
+
+<h3>Mapa simptoma i reakcija</h3>
+
+<table>
+  <thead><tr><th>Simptom</th><th>Mogući uzrok</th><th>Potvrda</th><th>Bezbedna reakcija</th></tr></thead>
+  <tbody>
+    <tr><td>API timeout; promene kasne</td><td>Control plane contention, VIP/mreža, storage ili gubitak replike</td><td><code>readyz</code>, API latency, conditions i vSphere trendovi</td><td>Stabilizovati dokazanu zavisnost; za kvorum/sertifikate koristiti Broadcom recovery proceduru</td></tr>
+    <tr><td><code>Ready=Unknown</code></td><td>VM/kubelet/mreža ili ozbiljan CPU/I/O zastoj</td><td>Lease, VM status, TCP putanja, events i podržani logovi</td><td>Vratiti komunikaciju/resurse; nepovratni worker zameniti deklarativno</td></tr>
+    <tr><td>MemoryPressure, Evicted, OOMKilled</td><td>Leak, loši requests/limits, premala klasa ili contention</td><td>Conditions, QoS, trend i vSphere balloon/swap</td><td>Smanjiti opterećenje/povećati kapacitet; ispraviti resurse workload-a</td></tr>
+    <tr><td>DiskPressure</td><td>Image-i, logovi, ephemeral storage ili inode-i</td><td>Kubelet poruka, eviction events i filesystem metrike</td><td>Zaustaviti rast; podržano čišćenje/rotacija; ne brisati runtime podatke ručno</td></tr>
+    <tr><td>Machine bez NodeRef</td><td>VM provisioning, bootstrap, IPAM, DNS/NTP, quota ili CNI</td><td>Machine conditions/events, vCenter taskovi, adresa/providerID</td><td>Ispraviti zavisnost i dozvoliti reconciliation; ne praviti ručni VM</td></tr>
+    <tr><td>Node Ready, aplikacija degradirana</td><td>CNI/CSI/DNS, Pending Pod, PDB ili spoljna zavisnost</td><td>Sistemski workload-i, endpoints, Pod events i test DNS/storage-a</td><td>Incident rešavati u pogođenom sloju; ne restartovati zdrave node-ove</td></tr>
+  </tbody>
+</table>
+
+<h3>Praktikum – bazna linija i degradirani worker</h3>
+
+<p><strong>Cilj i kontekst.</strong> Napraviti dokazivu health snimku, povezati VKS Node sa Cluster API Machine i vSphere VM-om, analizirati realan incident i sprovesti bezbedan rollback.</p>
+<p><strong>Topologija i preduslovi.</strong> Isključivo laboratorijski VKS sa redundantnim control plane-om i najmanje tri worker-a; dozvole za čitanje Node/Lease/events i Cluster API resursa; odobren namespace; vSphere Client i <code>kubectl</code>. Klaster ne sme imati aktivan upgrade/remediation.</p>
+<p><strong>Rizik.</strong> Stvarno iscrpljivanje memorije/diska može destabilizovati node. Vežba koristi mali workload i zadati incidentni nalaz; produkcioni node se ne drenira, restartuje niti briše.</p>
+
+<h3>Vežba 1 – snimanje početnog stanja</h3>
+
+<pre><code class="language-bash">INCIDENT_DIR="vks-health-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$INCIDENT_DIR"
+kubectl config current-context &gt; "$INCIDENT_DIR/context.txt"
+kubectl get --raw='/readyz?verbose' &gt; "$INCIDENT_DIR/readyz.txt"
+kubectl get nodes -o wide &gt; "$INCIDENT_DIR/nodes-wide.txt"
+kubectl get nodes -o yaml &gt; "$INCIDENT_DIR/nodes.yaml"
+kubectl get pods -A -o wide &gt; "$INCIDENT_DIR/pods-wide.txt"
+kubectl get events -A --sort-by=.metadata.creationTimestamp &gt; "$INCIDENT_DIR/events.txt"
+kubectl get lease -n kube-node-lease -o yaml &gt; "$INCIDENT_DIR/node-leases.yaml"</code></pre>
+
+<p>
+  Komande samo čitaju klaster i lokalno zapisuju dokaze. YAML sadrži interne adrese i operativne
+  podatke; zaštitite ga i redigujte pre spoljnog deljenja. Očekuje se <code>ok</code> za relevantne
+  readyz provere, svi očekivani node-ovi Ready, pressure conditions False i Cluster/Machine bez
+  aktivne greške. U vSphere Client-u za isti period proverite VM status, CPU ready, balloon/swap,
+  datastore latenciju, alarme i taskove.
+</p>
+
+<h3>Vežba 2 – bezbedan test workload</h3>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: health-lab-memory
+  namespace: vks-health-lab
+spec:
+  restartPolicy: Never
+  containers:
+    - name: observer
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 50m
+          memory: 64Mi</code></pre>
+
+<pre><code class="language-bash">kubectl create namespace vks-health-lab
+kubectl apply -f health-lab-memory.yaml
+kubectl get pod -n vks-health-lab -o wide
+kubectl describe pod -n vks-health-lab health-lab-memory
+kubectl get pod -n vks-health-lab health-lab-memory -o jsonpath='{.status.qosClass}{"\n"}'
+kubectl top pod -n vks-health-lab health-lab-memory</code></pre>
+
+<p>
+  Kreiranje namespace-a i Pod-a menja stanje i dozvoljeno je samo u laboratoriji. Očekuje se Running
+  i QoS Burstable. Ako je Pending, events moraju razlikovati nedostatak resursa, taint, affinity i
+  image pull. Neuspešan <code>top</code> vodi ka Metrics API-ju, ne zaključku da Pod nema potrošnju.
+</p>
+
+<h3>Vežba 3 – analiza incidenta</h3>
+
+<pre><code class="language-none">10:12:05  worker-03: Ready=True, MemoryPressure=False
+10:14:40  vCenter: resource pool CPU limit reached
+10:15:11  worker-03: Ready=Unknown, reason=NodeStatusUnknown
+10:15:14  taint: node.kubernetes.io/unreachable:NoExecute
+10:20:20  stateless Pod-ovi se premeštaju; StatefulSet Pod ostaje Pending
+10:21:02  CSI: waiting for volume attachment/detachment</code></pre>
+
+<ol>
+  <li><strong>Simptom/posledica:</strong> worker je nedostupan; stateful replika nema oporavak.</li>
+  <li><strong>Neposredni uzrok:</strong> nema heartbeat-a; Node je Unknown i dobija unreachable taint.</li>
+  <li><strong>Osnovni uzrok za potvrdu:</strong> CPU limit sprečava VM da izvršava kubelet; potvrditi CPU ready/usage, VM responsiveness i odsustvo mrežnog kvara.</li>
+  <li><strong>Privremena mera:</strong> zaštititi servisni kapacitet i ukloniti dokazani limit prema change proceduri; ne forsirati brisanje stateful Pod-a dok volume status nije poznat.</li>
+  <li><strong>Trajna mera:</strong> ispraviti resource pool sizing/alarme, rezervu, requests i VM klase; testirati gubitak worker-a.</li>
+</ol>
+
+<p>
+  Oporavak zahteva novi heartbeat, Ready=True, uklonjen automatski taint, stabilan CSI attach, sve
+  replike i normalizovan CPU ready/latency trend. Ako izostane, hipoteza nije dovoljna i proveravaju se
+  mreža, kubelet/runtime i storage.
+</p>
+
+<h3>Vežba 4 – cordon, validacija i rollback</h3>
+
+<p>
+  Samo u laboratoriji izaberite worker bez kritičnog singleton workload-a. <code>cordon</code>
+  zabranjuje novo raspoređivanje, ali ne premešta postojeće Pod-ove. <code>drain</code> pokreće
+  evikcije i može ugroziti PDB, lokalne podatke i volume detach, pa se ovde ne izvršava.
+</p>
+
+<pre><code class="language-bash">kubectl cordon &lt;WORKER_NODE&gt;
+kubectl get node &lt;WORKER_NODE&gt;
+kubectl get pods -A --field-selector spec.nodeName=&lt;WORKER_NODE&gt; -o wide
+
+# Rollback
+kubectl uncordon &lt;WORKER_NODE&gt;
+kubectl get node &lt;WORKER_NODE&gt;</code></pre>
+
+<p>
+  Posle cordon očekuje se <code>Ready,SchedulingDisabled</code>, bez premeštanja postojećih Pod-ova.
+  Rollback je uspešan kada SchedulingDisabled nestane. Automatski pressure/unreachable taint ne uklanja
+  se ručno radi prikrivanja kvara; uklanja se uzrok i kontroleru prepušta ažuriranje.
+</p>
+
+<h3>Povratak laboratorije u početno stanje</h3>
+
+<pre><code class="language-bash">kubectl uncordon &lt;WORKER_NODE&gt;
+kubectl delete namespace vks-health-lab
+kubectl get nodes
+kubectl get pods -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+
+<p>
+  Brisanje namespace-a i uncordon menjaju stanje. Pre brisanja potvrdite da namespace sadrži samo
+  test resurse. Završetak zahteva: nema test workload-a, svi početno zdravi node-ovi su Ready, nema
+  novih upozorenja, a Cluster API objekti su usklađeni.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Definišite SLO, prag, vlasnika i runbook za API, Node readiness, pressure, restart rate i Machine remediation.</li>
+  <li>Planirajte rezervu za gubitak node-a/failure domain-a; Kubernetes HA ne stvara fizički kapacitet.</li>
+  <li>Uskladite requests/limits, PDB, topology spread i anti-affinity; PDB ne garantuje dostupnost pri iznenadnom kvaru.</li>
+  <li>Za control plane, remediation, upgrade i recovery koristite proceduru tačne VKS/vSphere/VCF verzije.</li>
+  <li>Korelišite Kubernetes tranzicije i vCenter događaje; sinhronizovan NTP je preduslov.</li>
+  <li>Pre zamene worker-a proverite PDB, lokalne podatke, volumene, kapacitet drugih node-ova i failure domain.</li>
+  <li>Incident zatvorite tek sa osnovnim uzrokom, dokazom oporavka, preventivnom merom i vlasnikom.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Administrator sada može da:</p>
+<ul>
+  <li>razdvoji Supervisor/Cluster API, VKS i vSphere ravan zdravlja;</li>
+  <li>protumači Ready, pressure conditions, Lease, taints, tolerations i eviction;</li>
+  <li>prepozna degradaciju pre NotReady stanja;</li>
+  <li>poveže Cluster, Machine, Node i VM;</li>
+  <li>prikupi dokaze read-only komandama pre promene;</li>
+  <li>razdvoji simptom, neposredni i osnovni uzrok, privremenu i trajnu meru;</li>
+  <li>bezbedno primeni cordon/uncordon i objasni rizik drain-a;</li>
+  <li>validira oporavak kroz API, node, sistemske Pod-ove, aplikaciju, storage i vSphere metrike.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Zdravlje VKS klastera svojstvo je celog sistema. Pouzdan administrator razume kako Cluster API
+  održava mašine, kako kubelet i Lease prenose životni signal, kako pressure utiče na taints,
+  scheduling i eviction i kako vSphere contention, mreža ili storage postaju Kubernetes simptom.
+  Ključna veština nije brzo restartovanje, već očuvanje dokaza, proverljiva hipoteza, najmanje
+  invazivna podržana korekcija i višeslojna validacija oporavka.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Supervisor i vSphere Kubernetes Service administrativna i troubleshooting dokumentacija; Broadcom Knowledge Base članci o VKS/TKG stanju čvorova, resource pool ograničenjima, mreži i lifecycle incidentima; zvanična Kubernetes dokumentacija za Node status, Lease, taints, tolerations, scheduling i node-pressure eviction; Cluster API dokumentacija za Cluster, Machine, control plane i MachineHealthCheck uslove
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-44-logovi-dogadjaji-i-audit-trag.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-46-sistematican-troubleshooting-tanzu-platforme.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

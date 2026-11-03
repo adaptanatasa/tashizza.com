@@ -1,0 +1,794 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-48-politike-admission-policy-as-code.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Admission politike i policy as code u Kubernetesu | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Admission politike i policy as code u Kubernetesu: ValidatingAdmissionPolicy, CEL, admission webhooks, bezbedno uvođenje pravila, audit, validacija i rollback.">
+
+  <meta name="keywords"
+        content="Kubernetes admission policy, policy as code, ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding, CEL, admission webhook, Pod Security Admission, Kubernetes politika, Kubernetes bezbednost, vanilla Kubernetes, Kubernetes administracija, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-48-politike-admission-policy-as-code.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Admission politike i policy as code u Kubernetesu">
+
+  <meta property="og:description"
+        content="Naučite kako se Kubernetes admission politike projektuju, testiraju i uvode kao kod pomoću CEL-a, ValidatingAdmissionPolicy resursa i bezbedno konfigurisanih webhook-ova.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-48-politike-admission-policy-as-code.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-48-politike-admission-policy-as-code.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Admission politike i policy as code u Kubernetesu">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-48-politike-admission-policy-as-code.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-48-politike-admission-policy-as-code.png"
+           alt="Admission politike i policy as code u Kubernetesu">
+
+    </a>
+
+<div class="page-subtitle">
+XI. Upravljanje platformom i interoperabilnost
+</div>
+<div class="page-subtitle">
+48. Admission politike i policy as code – standardizacija bez ručne kontrole svakog manifesta
+</div>
+
+<p>
+Prethodna lekcija uspostavila je kontrolisan rečnik labels i annotations, vlasništvo resursa i vezu Kubernetes inventara sa CMDB sistemom. Takav standard nema punu operativnu vrednost ako njegova primena zavisi od toga da administrator ručno pregleda svaki manifest. U produkcionom klasteru promene dolaze kroz GitOps kontrolere, CI/CD naloge, operatore, Helm instalacije i neposredne API zahteve. Admission politika pretvara dogovoreni standard u izvršivu kontrolu na zajedničkoj tački kroz koju prolaze zahtevi za promenom Kubernetes objekata.
+</p>
+<p>
+Policy as code znači da se pravilo opisuje deklarativno, verzioniše, pregleda, testira, promoviše i povlači kao i drugi kod. Cilj nije da se u jednu politiku prenesu sve organizacione procedure, već da se u trenutku prijema zahteva automatski provere činjenice koje Kubernetes API pouzdano vidi: prisustvo obaveznih metapodataka, dozvoljene vrednosti, bezbednosni kontekst, registar slike, granice resursa ili nedozvoljena promena zaštićenog polja. Dobra politika skraćuje vreme povratne informacije i daje isti rezultat bez obzira na to ko je poslao manifest. Loša politika može zaustaviti deployment-e, kontrolere, oporavak sistema ili sam rad API servera, pa se projektuje kao komponenta kontrolne ravni, a ne kao obična skripta za proveru YAML-a.
+</p>
+
+<h3>Mesto admission kontrole u Kubernetes API toku</h3>
+<p>
+Zahtev za kreiranje, izmenu ili brisanje objekta prvo prolazi autentikaciju i autorizaciju, a zatim admission kontrolu pre nego što bude trajno upisan u etcd. Admission kontroleri ne obrađuju read-only operacije <code>get</code>, <code>list</code> i <code>watch</code>. Zbog toga admission politika sprečava novu neusaglašenu promenu, ali sama ne pronalazi niti popravlja objekte koji već postoje. Za postojeće stanje potrebni su inventar, periodično skeniranje usklađenosti i kontrolisana remedijacija.
+</p>
+<p>
+Admission se izvršava u dve logičke faze. Mutating kontroleri mogu dopuniti ili izmeniti zahtev, na primer dodati podrazumevanu vrednost. Posle njih se izvršava objektna validacija, a zatim validating kontroleri i politike odlučuju da li konačan oblik objekta sme biti prihvaćen. Pravilo koje mora videti konačno stanje objekta pripada validacionoj fazi. Ako bilo koja obavezna kontrola odbije zahtev, objekat se ne upisuje.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Pitanje na koje odgovara</th>
+      <th>Tipičan rezultat</th>
+      <th>Granica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Autentikacija</td>
+      <td>Ko šalje zahtev?</td>
+      <td>Identitet korisnika ili ServiceAccount-a</td>
+      <td>Ne određuje da li je željena konfiguracija dozvoljena</td>
+    </tr>
+    <tr>
+      <td>Autorizacija</td>
+      <td>Da li identitet sme da izvrši glagol nad resursom?</td>
+      <td>Dozvola ili zabrana API operacije</td>
+      <td>RBAC uglavnom ne procenjuje sadržaj manifesta</td>
+    </tr>
+    <tr>
+      <td>Mutating admission</td>
+      <td>Da li zahtev treba dopuniti ili izmeniti?</td>
+      <td>Izmenjen objekat ili odbijanje</td>
+      <td>Skrivena mutacija otežava razumevanje efektivnog stanja</td>
+    </tr>
+    <tr>
+      <td>Validating admission</td>
+      <td>Da li konačan objekat zadovoljava politiku?</td>
+      <td>Prihvatanje, upozorenje, audit zapis ili odbijanje</td>
+      <td>Ne sanira ranije objekte i ne proverava read zahteve</td>
+    </tr>
+    <tr>
+      <td>Reconciliation</td>
+      <td>Da li stvarno stanje ostaje usklađeno posle prijema?</td>
+      <td>Kontinuirana korekcija ili izveštaj o drift-u</td>
+      <td>Nije zamena za preventivnu admission kontrolu</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Redosled je važan za dijagnostiku. HTTP 401 obično upućuje na autentikaciju, 403 na autorizaciju, dok admission odbijanje vraća poruku politike i često HTTP 422 ili drugi odgovarajući status API greške. Administrator najpre utvrđuje koji je sloj doneo odluku; širenje RBAC prava neće ispraviti manifest koji krši CEL izraz.
+</p>
+
+<h3>Ugrađeni kontroleri, ValidatingAdmissionPolicy i webhook proširenja</h3>
+<p>
+Kubernetes sadrži skup ugrađenih admission kontrolera u <code>kube-apiserver</code> binarnoj datoteci. Među njima su kontrole kao što su <code>NamespaceLifecycle</code>, <code>ResourceQuota</code>, <code>LimitRanger</code>, <code>ServiceAccount</code>, <code>PodSecurity</code>, <code>MutatingAdmissionWebhook</code>, <code>ValidatingAdmissionWebhook</code> i <code>ValidatingAdmissionPolicy</code>. Podrazumevani skup zavisi od Kubernetes verzije; zato se ne prepisuje lista iz tutorijala u produkcionu proceduru, već se proveravaju dokumentacija konkretne minor verzije i efektivni argumenti svakog API servera.
+</p>
+<p>
+<code>ValidatingAdmissionPolicy</code> je stabilan od Kubernetes v1.30. Pravila se pišu u Common Expression Language-u, CEL-u, i izvršavaju unutar API servera bez spoljnog HTTP poziva. Politika opisuje logiku i resurse na koje može da se odnosi, a <code>ValidatingAdmissionPolicyBinding</code> je povezuje sa konkretnim scope-om, opcionim parametrima i akcijama. Bez binding objekta politika nema efekat. Deklarativni in-process model smanjuje mrežne i TLS zavisnosti u odnosu na webhook i najčešće je prvi izbor kada CEL može jasno izraziti zahtev.
+</p>
+<p>
+Admission webhook je HTTP servis kome API server šalje <code>AdmissionReview</code>. Mutating webhook može vratiti JSON Patch, dok validating webhook prihvata ili odbija zahtev. Webhook je opravdan kada je potrebna mutacija, složena logika ili integracija koju ugrađeni CEL model ne može bezbedno da izrazi. Cena je veća: dostupnost servisa, DNS, Service mreža, TLS identitet, CA bundle, latencija, timeout, skaliranje i ponašanje pri kvaru postaju deo API write putanje.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Mehanizam</th>
+      <th>Najbolja primena</th>
+      <th>Prednost</th>
+      <th>Operativni rizik</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ugrađeni kontroler</td>
+      <td>Standardna funkcija platforme, na primer Pod Security Admission</td>
+      <td>Održava ga Kubernetes i radi u API serveru</td>
+      <td>Promena konfiguracije kontrolne ravni može zahtevati restart i strogu verzijsku proveru</td>
+    </tr>
+    <tr>
+      <td>ValidatingAdmissionPolicy + CEL</td>
+      <td>Deklarativna validacija API objekta i stare/nove vrednosti</td>
+      <td>Nema mrežnog poziva; verzioniše se kao Kubernetes resurs</td>
+      <td>Pogrešan scope ili izraz može masovno odbijati legitimne zahteve</td>
+    </tr>
+    <tr>
+      <td>Validating webhook</td>
+      <td>Složena validacija koju CEL ne pokriva</td>
+      <td>Fleksibilan programski model</td>
+      <td>Latencija, TLS, dostupnost i failure policy utiču na API zahteve</td>
+    </tr>
+    <tr>
+      <td>Mutating webhook</td>
+      <td>Kontrolisano dodavanje podrazumevanih polja ili sidecar-a</td>
+      <td>Standardizuje efektivni objekat</td>
+      <td>Više mutatora, redosled i reinvocation mogu dati neočekivano stanje</td>
+    </tr>
+    <tr>
+      <td>CI/linter provera</td>
+      <td>Rana povratna informacija pre slanja API zahteva</td>
+      <td>Brza i ne utiče na kontrolnu ravan</td>
+      <td>Može se zaobići drugim putem ka API serveru</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>ValidatingAdmissionPolicy: politika, binding, parametri i CEL</h3>
+<p>
+Policy resurs sadrži <code>matchConstraints</code>, opcioni <code>paramKind</code>, CEL izraze u <code>validations</code>, opcione <code>auditAnnotations</code>, <code>matchConditions</code> i <code>variables</code>. Binding navodi <code>policyName</code>, <code>validationActions</code>, <code>matchResources</code> i, kada je potrebno, <code>paramRef</code>. Ovo razdvajanje omogućava da se jedna proverena logika primeni na različite namespace grupe ili sa različitim granicama bez kopiranja izraza.
+</p>
+<p>
+Akcija <code>Warn</code> vraća upozorenje klijentu, ali prihvata zahtev. <code>Audit</code> dodaje informaciju audit događaju ako je audit politika podešena tako da događaj bude zabeležen. <code>Deny</code> odbija zahtev. <code>Deny</code> i <code>Warn</code> ne mogu se kombinovati u istom binding-u, dok je <code>Warn</code> sa <code>Audit</code> koristan za probni period. Produkciona primena zato počinje ograničenim scope-om i akcijama <code>Warn</code> i <code>Audit</code>, meri posledice, koriguje izuzetke, a tek zatim uvodi <code>Deny</code> kroz pregledanu promenu binding-a.
+</p>
+<p>
+CEL izrazi u admission politici najčešće koriste promenljive <code>object</code>, <code>oldObject</code>, <code>request</code>, <code>params</code>, <code>namespaceObject</code>, deklarisane <code>variables</code> i, gde je podržano, <code>authorizer</code>. Pošto je <code>object</code> dinamički tipizovan za različite Kubernetes vrste, prisustvo opcionih polja proverava se makroom <code>has()</code> pre pristupa. Pravilo mora eksplicitno obraditi CREATE, UPDATE i DELETE semantiku; pri DELETE zahtevu novi <code>object</code> može biti null, a <code>oldObject</code> nosi prethodno stanje.
+</p>
+<pre><code class="language-yaml">apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload-metadata.tashizza.example
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  variables:
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+  validations:
+    - expression: >-
+        'tashizza.example/owner-team' in variables.labels
+      message: >-
+        Obavezna je label tashizza.example/owner-team.
+      reason: Invalid
+    - expression: >-
+        'tashizza.example/environment' in variables.labels &amp;&amp;
+        variables.labels['tashizza.example/environment'] in
+          ['development', 'test', 'staging', 'production']
+      message: >-
+        Environment mora biti development, test, staging ili production.
+      reason: Invalid
+    - expression: >-
+        'tashizza.example/criticality' in variables.labels &amp;&amp;
+        variables.labels['tashizza.example/criticality'] in
+          ['low', 'medium', 'high', 'critical']
+      message: >-
+        Criticality mora biti low, medium, high ili critical.
+      reason: Invalid</code></pre>
+<p>
+Ovaj manifest samo definiše apstraktnu proveru; ne uključuje je. Binding je namerno odvojen kako bi rollout mogao da se menja bez izmene verifikovane logike.
+</p>
+<pre><code class="language-yaml">apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: workload-metadata-warn.tashizza.example
+spec:
+  policyName: workload-metadata.tashizza.example
+  validationActions: [Warn, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        tashizza.example/policy-profile: standard</code></pre>
+<p>
+<code>failurePolicy</code> na politici određuje ponašanje kada dođe do greške evaluacije, na primer ako izraz pristupi nepostojećem polju. To nije isto što i neuspešna poslovna validacija. Uz <code>Fail</code> greška evaluacije tretira se kao odbijanje prema akciji binding-a; uz <code>Ignore</code> zahtev može proći. Bezbednosna politika obično zahteva fail-closed ponašanje, ali samo posle dokazane kompatibilnosti. Za politiku čiji kvar može blokirati oporavak klastera odluka mora da uključi threat model, zavisnosti i dokumentovan break-glass postupak.
+</p>
+
+<h3>Scope, izuzeci i granice pravila</h3>
+<p>
+Najopasnija politika nije nužno ona sa pogrešnim izrazom, već ona sa preširokim match pravilom. Scope se definiše kroz API grupe, verzije, operacije, resurse i podresurse, cluster ili namespaced opseg, namespace selector, object selector i CEL match uslove. Pravilo namenjeno Deployment objektima ne treba bez dokaza proširiti na sve resurse sa zvezdicom. Policy i binding resursi, Namespace, Node, Lease, TokenReview i kontrolni objekti mogu imati sasvim drugačiji životni ciklus i vlasnike.
+</p>
+<p>
+<code>namespaceSelector</code> za namespaced zahtev bira labels Namespace objekta, ne labels workload-a. Za Namespace resurs i cluster-scoped resurse mora se pažljivo proveriti dokumentovana semantika. <code>objectSelector</code> olakšava canary rollout, ali nije bezbedna osnova za izuzetak koji korisnik može sam dodati svom objektu. Ako aplikacioni nalog ima pravo da postavi label koja isključuje politiku, on praktično poseduje pravo zaobilaženja.
+</p>
+<p>
+Izuzetak mora imati vlasnika, razlog, odobrenje, scope i rok isteka. Preferira se ograničenje na poseban namespace čije labels kontroliše platformski tim ili na strogo definisan ServiceAccount uslov, uz audit. Trajna label <code>policy-exempt=true</code> bez roka pretvara privremeni incidentni postupak u nevidljivu rupu u kontroli. Break-glass nije tajni trik već unapred testirana procedura sa višestrukim odobrenjem, vremenski ograničenim pristupom, audit tragom i obaveznim vraćanjem politike.
+</p>
+
+<h3>Politike za workload metapodatke, slike i resurse</h3>
+<p>
+Pravila treba graditi oko kontrola koje imaju jasan tehnički dokaz. Obavezne labels iz prethodne lekcije dobar su početak jer imaju stabilan rečnik. Sledeće korisne kontrole mogu zahtevati da svaki kontejner ima resource requests i limits, zabraniti privilegovani security context, ograničiti registries ili sprečiti upotrebu promenljivog taga <code>latest</code>. Ipak, jedna sintaksna provera ne dokazuje celokupnu bezbednost: dozvoljeni registry ne znači da je konkretna slika skenirana ili potpisana, a postojanje limita ne znači da je vrednost pravilno dimenzionisana.
+</p>
+<pre><code class="language-yaml">apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: deployment-runtime-baseline.tashizza.example
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  variables:
+    - name: containers
+      expression: "object.spec.template.spec.containers"
+  validations:
+    - expression: >-
+        variables.containers.all(c,
+          has(c.resources) &amp;&amp;
+          has(c.resources.requests) &amp;&amp;
+          'cpu' in c.resources.requests &amp;&amp;
+          'memory' in c.resources.requests &amp;&amp;
+          has(c.resources.limits) &amp;&amp;
+          'memory' in c.resources.limits)
+      message: >-
+        Svaki kontejner mora imati CPU i memory requests i memory limit.
+    - expression: >-
+        variables.containers.all(c,
+          c.image.startsWith('registry.tashizza.example/') &amp;&amp;
+          !c.image.endsWith(':latest'))
+      message: >-
+        Slika mora dolaziti iz odobrenog registra i ne sme koristiti tag latest.</code></pre>
+<p>
+Ovaj primer je namerno ograničen na Deployment i obične kontejnere. Produkciona politika mora odlučiti kako obrađuje <code>initContainers</code>, ephemeral containers, Job, CronJob, StatefulSet i DaemonSet pod template strukture. Kopiranje izraza bez te analize stvara lažan osećaj pokrivenosti. Digest pinning, provera potpisa i provenance zahtevaju zaseban dizajn; spoljne provere u admission putanji moraju imati determinističan rezultat, cache strategiju i jasno ponašanje kada registry ili verifikacioni servis nije dostupan.
+</p>
+
+<h3>Pod Security Admission i odnos prema prilagođenim politikama</h3>
+<p>
+Ugrađeni <code>PodSecurity</code> admission kontroler sprovodi Pod Security Standards profile <code>privileged</code>, <code>baseline</code> i <code>restricted</code> pomoću Namespace labels za režime <code>enforce</code>, <code>audit</code> i <code>warn</code>. Za opštu pod bezbednosnu osnovu on je primereniji od ponovnog pisanja desetina prilagođenih pravila. Prilagođena ValidatingAdmissionPolicy dopunjuje ga organizacionim zahtevima koje standard ne pokriva, ali ne treba da kopira njegovu logiku bez stručnog razloga.
+</p>
+<p>
+Pod Security Admission procenjuje podove i workload kontrolere koji sadrže Pod template. Namespace labels mogu zaključati verziju standarda, na primer <code>pod-security.kubernetes.io/enforce-version: v1.36</code>, čime se izbegava nenamerna promena ponašanja posle nadogradnje. Pre promene minor verzije proverava se novi standard u warn/audit režimu. Sistemски namespace-i i infrastruktura često zahtevaju pažljivo profilisane izuzetke; globalno označavanje svih namespace-a kao <code>restricted</code> bez inventara može zaustaviti CNI, CSI, monitoring ili druge privilegovane komponente.
+</p>
+
+<h3>Admission webhook kao komponenta kritične putanje</h3>
+<p>
+Webhook konfiguracija mora precizno definisati <code>rules</code>, <code>scope</code>, <code>namespaceSelector</code> ili <code>objectSelector</code>, <code>matchPolicy</code>, opcione <code>matchConditions</code>, <code>admissionReviewVersions</code>, <code>sideEffects</code>, kratak <code>timeoutSeconds</code>, <code>failurePolicy</code> i TLS podatke. Kada <code>clientConfig.service</code> upućuje na servis u klasteru, sertifikat webhook servera mora važiti za odgovarajuće DNS ime oblika <code>SERVICE.NAMESPACE.svc</code>, a <code>caBundle</code> mora omogućiti API serveru proveru tog identiteta.
+</p>
+<p>
+Webhook treba da bude stateless kada je moguće, sa najmanje dve replike raspoređene na različite čvorove i zone, odgovarajućim readiness proverama, PodDisruptionBudget-om, resource requests/limits, kontrolisanim rollout-om i nadzorom. Ipak, broj replika ne uklanja zavisnost: kvar DNS-a, mreže, sertifikata ili samog control-plane-to-Service puta može učiniti sve replike nedostupnim. Latencija svakog serijskog webhook-a ulazi u latenciju API zahteva, a timeout se obrađuje prema <code>failurePolicy</code> vrednosti.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Odluka</th>
+      <th>Fail</th>
+      <th>Ignore</th>
+      <th>Administratorski kriterijum</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Webhook je nedostupan ili timeout-uje</td>
+      <td>Zahtev se odbija; bezbednost ostaje zatvorena, dostupnost trpi</td>
+      <td>Zahtev prolazi; dostupnost ostaje, kontrola može biti zaobiđena</td>
+      <td>Threat model, kritičnost pravila i nezavisnost recovery puta</td>
+    </tr>
+    <tr>
+      <td>CEL evaluacija politike ima grešku</td>
+      <td>Greška se tretira prema failure policy i akciji binding-a</td>
+      <td>Greška se ignoriše</td>
+      <td>Testovi svih vrsta i operacija pre Deny režima</td>
+    </tr>
+    <tr>
+      <td>Objekat jasno krši ispravno pravilo</td>
+      <td colspan="2">Rezultat određuje validation action ili webhook odgovor, ne dostupnost servisa</td>
+      <td>Poruka mora navesti pravilo i bezbednu korekciju</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Webhook ne treba da poziva Kubernetes API ili udaljene sisteme za svaki zahtev ako se odluka može doneti iz <code>AdmissionReview</code> sadržaja. Takvi pozivi stvaraju petlje, deadlock rizik i kaskadne kvarove. Mutating webhook mora deklarisati side effects i ponašanje za dry-run zahteve. Mutacije treba da budu idempotentne, jer reinvocation može ponovo pozvati mutator nakon izmene drugog webhook-a. Konačna bezbednosna garancija pripada validating sloju koji vidi završni objekat.
+</p>
+
+<h3>Policy as code životni ciklus</h3>
+<p>
+Politika ima isti lifecycle kao aplikacioni kod, ali veći blast radius. Repozitorijum treba da sadrži zahtev, threat model, manifeste, testne slučajeve koji moraju proći i pasti, dokumentovane izuzetke, kompatibilnost Kubernetes verzija, plan rollout-a, metrike uspeha i rollback. Pull request pregled obuhvata vlasnika platforme, bezbednost i predstavnika timova na koje pravilo utiče. Samo sintakski ispravan YAML nije dovoljan dokaz.
+</p>
+<ol>
+  <li><strong>Definisanje namere.</strong> Pravilo se izražava kao proverljiva rečenica sa razlogom, scope-om, vlasnikom i očekivanom korekcijom.</li>
+  <li><strong>Offline i server-side test.</strong> Proveravaju se YAML šema, CEL izrazi, pozitivni i negativni manifesti i kompatibilnost sa ciljnim API serverom.</li>
+  <li><strong>Canary scope.</strong> Binding se primenjuje na namenski laboratorijski ili canary namespace sa <code>Warn</code> i <code>Audit</code> akcijama.</li>
+  <li><strong>Posmatranje.</strong> Mere se upozorenja, audit događaji, API server latencija, webhook rejection i fail-open metrike, incidenti i legitimni use case-ovi.</li>
+  <li><strong>Postepeno sprovođenje.</strong> Scope se širi kontrolisano, a <code>Deny</code> uključuje tek kada vlasnici mogu da isprave manifest i postoji testiran recovery put.</li>
+  <li><strong>Održavanje.</strong> Svaka nadogradnja Kubernetes-a, promena CRD šeme ili workload obrasca ponavlja kompatibilnost i regresione testove.</li>
+</ol>
+<p>
+CI provera i admission kontrola imaju različitu svrhu. CI daje ranu, prijatniju povratnu informaciju i može raditi nad Helm/Kustomize izlazom pre klastera. Admission je poslednja zajednička granica koja obuhvata i ručne i automatizovane klijente. Pravilo se po mogućnosti deli kao isti testni ugovor, ali rezultat u CI-u ne sme biti jedina zaštita API servera.
+</p>
+
+<h3>Validacija, audit i observability</h3>
+<p>
+Pre promene stanja administrator proverava dostupnost API-ja, postojanje admission API resursa, trenutne politike i binding-e, Namespace labels i efektivna prava. Sledeće komande su read-only:
+</p>
+<pre><code class="language-bash">kubectl api-resources --api-group=admissionregistration.k8s.io
+kubectl get validatingadmissionpolicies,validatingadmissionpolicybindings
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations
+kubectl get namespaces --show-labels
+kubectl auth can-i create validatingadmissionpolicies.admissionregistration.k8s.io
+kubectl auth can-i create validatingadmissionpolicybindings.admissionregistration.k8s.io</code></pre>
+<p>
+<code>kubectl apply --dry-run=server</code> šalje zahtev API serveru i aktivira relevantnu admission obradu, ali ne trajno čuva objekat. To je važna razlika u odnosu na <code>--dry-run=client</code>, koji ne dokazuje ponašanje klastera. Dry-run ipak može imati ograničenja kada webhook pogrešno prijavi side effects ili ne podržava dry-run; takav problem je nalaz o webhook konfiguraciji, a ne razlog da se test preskoči.
+</p>
+<pre><code class="language-bash">kubectl apply --dry-run=server -f 48-validating-policy.yaml
+kubectl apply --dry-run=server -f 48-binding-warn.yaml
+kubectl apply --dry-run=server -f 48-workload-valid.yaml
+kubectl apply --dry-run=server -f 48-workload-invalid.yaml</code></pre>
+<p>
+Za ValidatingAdmissionPolicy proverava se <code>status.typeChecking.expressionWarnings</code>. Prazna lista upozorenja je potreban, ali ne i dovoljan uslov; objekat može imati logičku grešku koja je tipovski dozvoljena. Audit akcija daje vrednost samo ako je audit logging omogućen i audit politika beleži odgovarajući nivo. U audit događajima traže se policy i binding identitet, korisnik, operacija, resource, namespace, razlog i request UID. Osetljivi objekti i payload-i moraju biti zaštićeni audit pravilima i pravilima čuvanja logova.
+</p>
+<pre><code class="language-bash">kubectl get validatingadmissionpolicy \
+  workload-metadata.tashizza.example -o yaml
+
+kubectl get --raw='/metrics' | grep -E \
+  'apiserver_admission|admission_webhook' | head -n 40</code></pre>
+<p>
+Direktan pristup <code>/metrics</code> zahteva posebna prava i u produkciji se obično radi kroz odobren monitoring sistem, ne interaktivnim administratorskim nalogom. Za webhook se prate request rate, latencija po kvantilima, timeout-i, rejection-i, fail-open događaji, HTTP/TLS greške, broj dostupnih replika i vreme do isteka sertifikata. Za CEL politike prate se odbijanja, audit upozorenja, API server admission latencija i promene broja neusaglašenih zahteva po timu i pravilu.
+</p>
+
+<h3>Praktikum: od upozorenja do kontrolisanog Deny režima</h3>
+<p><strong>Cilj i kontekst.</strong></p>
+<p>
+Laboratorija uvodi izvršivu verziju standarda metapodataka iz lekcije 47. Politika proverava Deployment, StatefulSet i DaemonSet objekte u namespace-u označenom policy profilom. Najpre radi u <code>Warn</code> i <code>Audit</code> režimu, zatim se negativnim i pozitivnim testom potvrđuje ponašanje, a tek nakon dokaza uključuje <code>Deny</code>. Vežba ne instalira eksterni policy engine niti webhook i zato ne uvodi dodatnu mrežnu zavisnost.
+</p>
+<p><strong>Topologija i preduslovi.</strong></p>
+<ul>
+  <li>Jedan laboratorijski Vanilla Kubernetes klaster v1.30 ili noviji sa stabilnim <code>admissionregistration.k8s.io/v1</code> ValidatingAdmissionPolicy resursima.</li>
+  <li><code>kubectl</code> kompatibilan sa klasterom i kubeconfig nalog sa pravima za policy, binding, Namespace i Deployment resurse.</li>
+  <li>Audit akcija je opciono vidljiva samo ako operator kontrolne ravni ima omogućen audit logging i odgovarajuću audit politiku.</li>
+  <li>Fajlovi se verzionišu u radnoj grani; produkcioni klaster nije cilj ove laboratorije.</li>
+</ul>
+<p><strong>Rizik.</strong> Policy i binding su cluster-scoped resursi. Pogrešan binding može obuhvatiti više namespace-a nego što je planirano. Namespace selector zato koristi jedinstvenu laboratorijsku label, a pre svake state-changing komande izvršava se server-side dry-run. U deljenom klasteru vežba zahteva odobrenje vlasnika platforme.</p>
+
+<h4>Vežba 1: početni dokazi i laboratorijski namespace</h4>
+<p>
+Sledeće komande prvo čitaju capability i prava. Kreiranje namespace-a i label-a menja stanje klastera. Ako <code>kubectl api-resources</code> ne prikaže oba policy resursa, laboratorija se ne nastavlja; ne pokušava se beta API sa interneta bez dokumentacije konkretne verzije.
+</p>
+<pre><code class="language-bash">kubectl version
+kubectl api-resources --api-group=admissionregistration.k8s.io \
+  | grep -E 'validatingadmissionpolic(y|ies)|validatingadmissionpolicybinding'
+kubectl auth can-i create validatingadmissionpolicies.admissionregistration.k8s.io
+kubectl auth can-i create validatingadmissionpolicybindings.admissionregistration.k8s.io
+
+# Menja stanje: kreira izolovani laboratorijski scope
+kubectl create namespace admission-lab
+kubectl label namespace admission-lab \
+  tashizza.example/policy-profile=standard
+
+# Read-only validacija scope-a
+kubectl get namespace admission-lab --show-labels</code></pre>
+<p><strong>Očekivani rezultat:</strong> API discovery prikazuje <code>v1</code> policy i binding resurse, obe autorizacione provere vraćaju <code>yes</code>, a namespace ima tačno očekivanu label. Ako je odgovor <code>no</code>, ne vezuje se širi ClusterRole; zahtev se prosleđuje administratoru sa potrebnim glagolima i resursima.</p>
+
+<h4>Vežba 2: politika i neblokirajući binding</h4>
+<p>
+Sačuvaj sledeći višedokumentni manifest kao <code>48-policy-warn.yaml</code>. Politika je ista kao u teorijskom delu, a binding je ograničen na laboratorijski namespace preko label selektora.
+</p>
+<pre><code class="language-yaml">apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload-metadata.tashizza.example
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  variables:
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+  validations:
+    - expression: "'tashizza.example/owner-team' in variables.labels"
+      message: "Obavezna je label tashizza.example/owner-team."
+      reason: Invalid
+    - expression: >-
+        'tashizza.example/environment' in variables.labels &amp;&amp;
+        variables.labels['tashizza.example/environment'] in
+          ['development', 'test', 'staging', 'production']
+      message: "Environment mora biti development, test, staging ili production."
+      reason: Invalid
+    - expression: >-
+        'tashizza.example/criticality' in variables.labels &amp;&amp;
+        variables.labels['tashizza.example/criticality'] in
+          ['low', 'medium', 'high', 'critical']
+      message: "Criticality mora biti low, medium, high ili critical."
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: workload-metadata-warn.tashizza.example
+spec:
+  policyName: workload-metadata.tashizza.example
+  validationActions: [Warn, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        tashizza.example/policy-profile: standard</code></pre>
+<pre><code class="language-bash"># Read-only lokalna provera renderovanih dokumenata
+kubectl apply --dry-run=client -f 48-policy-warn.yaml
+
+# Read-only u pogledu trajnog stanja; API server validira manifest
+kubectl apply --dry-run=server -f 48-policy-warn.yaml
+
+# Menja cluster-scoped stanje
+kubectl apply -f 48-policy-warn.yaml
+
+# Read-only dokaz kreiranja i type-check statusa
+kubectl get validatingadmissionpolicy \
+  workload-metadata.tashizza.example -o yaml
+kubectl get validatingadmissionpolicybinding \
+  workload-metadata-warn.tashizza.example -o yaml</code></pre>
+<p><strong>Validacija:</strong> oba resursa postoje, binding ima samo <code>Warn</code> i <code>Audit</code>, a selector odgovara samo namespace-ima sa laboratorijskom label. U statusu politike pregledaju se type-check upozorenja. Svako upozorenje zahteva korekciju izraza pre testiranja; ne prelazi se na Deny.</p>
+
+<h4>Vežba 3: pozitivan i negativan zahtev</h4>
+<p>
+Sačuvaj sledeće kao <code>48-workloads.yaml</code>. Prvi Deployment je usklađen. Drugom nedostaje owner-team, environment ima nedozvoljenu vrednost <code>prod</code>, a criticality je izostavljen.
+</p>
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-demo-valid
+  namespace: admission-lab
+  labels:
+    app.kubernetes.io/name: policy-demo-valid
+    tashizza.example/owner-team: platform-operations
+    tashizza.example/environment: test
+    tashizza.example/criticality: medium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: policy-demo-valid
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: policy-demo-valid
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-demo-invalid
+  namespace: admission-lab
+  labels:
+    app.kubernetes.io/name: policy-demo-invalid
+    tashizza.example/environment: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: policy-demo-invalid
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: policy-demo-invalid
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine</code></pre>
+<pre><code class="language-bash">kubectl apply --dry-run=server -f 48-workloads.yaml
+kubectl apply -f 48-workloads.yaml
+kubectl get deployments -n admission-lab --show-labels</code></pre>
+<p><strong>Očekivani rezultat:</strong> u Warn/Audit režimu klijent prikazuje tri jasna upozorenja za neispravan Deployment, ali oba objekta mogu biti kreirana. Ako upozorenja nema, proveravaju se Namespace label, binding selector, <code>policyName</code>, operations i resourceRules. Ako je zahtev odbijen, postoji drugi binding sa <code>Deny</code> ili druga admission kontrola; pre promene se popisuju svi policy i webhook objekti.</p>
+
+<h4>Vežba 4: korekcija, Deny promocija i dokaz</h4>
+<p>
+Najpre se neispravan Deployment koriguje u izvornom manifestu. Ručni patch ovde služi samo kao laboratorijski dokaz i menja živi objekat; u GitOps okruženju korekcija mora ući u repozitorijum.
+</p>
+<pre><code class="language-bash"># Menja stanje laboratorijskog objekta
+kubectl label deployment policy-demo-invalid -n admission-lab \
+  tashizza.example/owner-team=platform-operations \
+  tashizza.example/environment=test \
+  tashizza.example/criticality=medium --overwrite
+
+# Read-only dokaz usklađenosti
+kubectl get deployment policy-demo-invalid -n admission-lab \
+  -o jsonpath='{.metadata.labels}{"\n"}'</code></pre>
+<p>
+Zatim napravi <code>48-binding-deny.yaml</code>. Novi binding uvodi Deny tek pošto su upozorenja analizirana i postojeći objekti usklađeni. Warn binding se uklanja da ne bi duplirao rezultat.
+</p>
+<pre><code class="language-yaml">apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: workload-metadata-deny.tashizza.example
+spec:
+  policyName: workload-metadata.tashizza.example
+  validationActions: [Deny, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        tashizza.example/policy-profile: standard</code></pre>
+<pre><code class="language-bash">kubectl apply --dry-run=server -f 48-binding-deny.yaml
+kubectl apply -f 48-binding-deny.yaml
+kubectl delete validatingadmissionpolicybinding \
+  workload-metadata-warn.tashizza.example
+
+# Mora uspeti: validan zahtev
+kubectl apply --dry-run=server -f 48-workloads-valid-only.yaml
+
+# Mora biti odbijen: negativni test bez trajne promene
+kubectl create deployment deny-proof -n admission-lab \
+  --image=nginx:1.27-alpine --dry-run=server -o yaml</code></pre>
+<p><strong>Napomena:</strong> fajl <code>48-workloads-valid-only.yaml</code> sadrži samo prvi dokument iz prethodnog manifesta. Poslednja komanda namerno ne postavlja obavezne labels i mora biti odbijena sa porukama politike. Ako prođe, Deny nije efektivan i rollout se zaustavlja. Kriterijum završetka je: usklađen manifest prolazi server-side dry-run, neusklađen je odbijen, a drugi namespace bez policy-profile label nije slučajno obuhvaćen.</p>
+
+<h4>Vežba 5: kontrolisan kvar i rollback</h4>
+<p>
+Bezbedna simulacija ne kvari API server niti webhook. U posebnoj radnoj kopiji namerno se uvede CEL izraz koji pristupa nepostojećem polju i primeni samo u Warn/Audit binding-u. Pregleda se <code>status.typeChecking.expressionWarnings</code>, potvrđuje da greška nije kandidat za Deny i promena se ne promoviše. Produkcioni incident se ne simulira globalnim neispravnim Deny pravilom.
+</p>
+<p>
+Najbrži rollback enforcement-a je uklanjanje ili vraćanje binding-a, jer politika bez binding-a nema efekat. Ovo je state-changing break-glass postupak i mora biti auditovan. Brisanje same politike pre binding-a može zakomplikovati dijagnostiku i gubi centralni objekat koji objašnjava nameru.
+</p>
+<pre><code class="language-bash"># Read-only: sačuvaj dokaz pre rollback-a
+kubectl get validatingadmissionpolicybinding \
+  workload-metadata-deny.tashizza.example -o yaml \
+  &gt; 48-binding-deny-backup.yaml
+
+# Menja stanje: hitno uklanja enforcement scope
+kubectl delete validatingadmissionpolicybinding \
+  workload-metadata-deny.tashizza.example
+
+# Read-only dokaz: zahtev više ne odbija upravo ovaj binding
+kubectl create deployment rollback-proof -n admission-lab \
+  --image=nginx:1.27-alpine --dry-run=server -o yaml
+
+# Kontrolisano vraćanje tek posle korekcije
+kubectl apply --dry-run=server -f 48-binding-deny-backup.yaml
+kubectl apply -f 48-binding-deny-backup.yaml</code></pre>
+<p>
+Prolazak <code>rollback-proof</code> testa ne dokazuje da nema drugih politika; samo dokazuje da je predmetni binding uklonjen ako poruka više ne pominje njegovo ime. Posle korekcije ponavljaju se svi pozitivni i negativni testovi, a incident beleži početak, obim odbijenih zahteva, request UID vrednosti, uzrok, privremenu meru, trajnu korekciju i vreme vraćanja enforcement-a.
+</p>
+
+<h4>Vežba 6: cleanup laboratorije</h4>
+<p>
+Cleanup je destruktivan samo za jasno imenovane laboratorijske objekte. Pre brisanja proverava se da namespace ne sadrži tuđe resurse. Redosled prvo uklanja binding, zatim politiku i na kraju namespace.
+</p>
+<pre><code class="language-bash">kubectl get all -n admission-lab
+kubectl get validatingadmissionpolicybinding \
+  workload-metadata-deny.tashizza.example
+
+kubectl delete validatingadmissionpolicybinding \
+  workload-metadata-deny.tashizza.example --ignore-not-found
+kubectl delete validatingadmissionpolicy \
+  workload-metadata.tashizza.example --ignore-not-found
+kubectl delete namespace admission-lab
+
+rm -f 48-policy-warn.yaml 48-workloads.yaml \
+  48-workloads-valid-only.yaml 48-binding-deny.yaml \
+  48-binding-deny-backup.yaml</code></pre>
+<p><strong>Kriterijum završetka:</strong> laboratorijski namespace, binding i politika više ne postoje; nijedan drugi policy ili webhook objekat nije izmenjen; Git radna grana čuva samo dokumentovane primere i rezultate koji ne sadrže poverljive podatke.</p>
+
+<h3>Tipični kvarovi i sistematična dijagnostika</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Najverovatniji neposredni uzrok</th>
+      <th>Dokaz</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Legitimni deployment-i su masovno odbijeni</td>
+      <td>Preširok binding scope ili pogrešan CEL izraz</td>
+      <td>API odgovor, policy/binding YAML, audit request UID i poslednja Git promena</td>
+      <td>Ograničiti ili ukloniti binding, zatim ispraviti i ponovo testirati politiku</td>
+    </tr>
+    <tr>
+      <td>Neispravan manifest prolazi</td>
+      <td>Nema binding-a, pogrešan selector, operacija ili resource rule</td>
+      <td>Discovery, Namespace labels, policyName i server-side dry-run</td>
+      <td>Ispraviti scope; ne širiti ga na zvezdicu bez regresionih testova</td>
+    </tr>
+    <tr>
+      <td>API write zahtevi su spori</td>
+      <td>Spor ili serijski webhook, predugačak timeout ili spoljna zavisnost</td>
+      <td>API server admission metrike, webhook metrike i logovi sa request UID-om</td>
+      <td>Smanjiti scope/timeout, ukloniti udaljene pozive, skalirati i profilisati webhook</td>
+    </tr>
+    <tr>
+      <td>Webhook vraća TLS grešku</td>
+      <td>Pogrešan CA bundle, SAN/DNS ime ili istekao sertifikat</td>
+      <td>API server log, sertifikat i Service/DNS podaci</td>
+      <td>Rotirati sertifikat i CA kontrolisano; ne postavljati neprovereni endpoint</td>
+    </tr>
+    <tr>
+      <td>Audit akcija nije vidljiva</td>
+      <td>Audit logging nije omogućen ili politika ne beleži potreban nivo</td>
+      <td>kube-apiserver konfiguracija i audit politika na control-plane čvoru</td>
+      <td>Promeniti audit konfiguraciju kroz proceduru kontrolne ravni</td>
+    </tr>
+    <tr>
+      <td>UPDATE prolazi, CREATE pada ili obrnuto</td>
+      <td>Različita polja object/oldObject ili neusklađen operations scope</td>
+      <td>Odvojeni CREATE i UPDATE testovi i CEL expression warnings</td>
+      <td>Eksplicitno modelovati semantiku svake operacije</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Dijagnostika počinje očuvanjem API odgovora, vremena, korisnika, request UID-a, vrste i namespace-a. Zatim se određuje obim: jedan manifest, jedna vrsta, jedan namespace ili svi write zahtevi. Pregledaju se poslednje promene policy repozitorijuma, policy i binding generacije, Namespace labels, webhook konfiguracije, endpoint-i, sertifikati, API server i audit logovi. Tek nakon potvrđene hipoteze menja se binding ili webhook. Privremeno uklanjanje enforcement-a nije trajna korekcija; osnovni uzrok može biti nedovoljan testni skup, vlasništvo nad izuzetkom ili nepostojanje canary rollout-a.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Najmanji mogući scope.</strong> Svaka politika eksplicitno navodi API grupe, verzije, operacije i resurse. Zvezdice zahtevaju posebno obrazloženje i testove nad cluster-scoped, namespaced i subresource zahtevima.</li>
+  <li><strong>Warn/Audit pre Deny.</strong> Nova ili značajno izmenjena kontrola prvo radi najmanje jedan reprezentativan deployment ciklus u neblokirajućem režimu. Deny se uvodi tek kada su poznati vlasnici, izuzeci i korektivna uputstva.</li>
+  <li><strong>Razdvajanje logike i primene.</strong> Stabilna politika koristi odvojene binding-e za canary, standardni i eventualno stroži profil. Kopiranje CEL izraza u više politika izbegava se jer stvara verzijski drift.</li>
+  <li><strong>Regresioni test paket.</strong> Za svako pravilo postoje validan, nevalidan i granični manifest, CREATE i UPDATE test, kao i test nedostajućeg opcionog polja. Testovi se ponavljaju pri Kubernetes minor nadogradnji.</li>
+  <li><strong>Webhook SLO i sertifikati.</strong> Prate se dostupnost, p95/p99 latencija, timeout-i, rejection-i, fail-open događaji i rok sertifikata. Alarm se aktivira pre nego što kvar postane API incident.</li>
+  <li><strong>Kontrolisani izuzeci.</strong> Svaki izuzetak ima identitet vlasnika, ticket, razlog, precizan scope i rok. Dodela exemption label korisniku čiji objekat politika proverava nije dozvoljena.</li>
+  <li><strong>Zaštićeni policy repozitorijum.</strong> Obavezni review, potpisani commit-i gde politika organizacije to zahteva, zaštićena grana i audit primene sprečavaju da jedna nekontrolisana promena postane cluster-wide zabrana.</li>
+  <li><strong>Dokumentovan break-glass.</strong> Postupak navodi ko odobrava, koji binding se privremeno uklanja, kako se čuva dokaz, koliko izuzetak traje i kojim testom se enforcement bezbedno vraća.</li>
+  <li><strong>Bez tajni u pravilima i porukama.</strong> Policy, parametri, audit annotations i denial poruke ne sadrže tokene, privatne registry podatke ili sadržaj Secrets objekata.</li>
+  <li><strong>Komplementarne kontrole.</strong> Pod Security Admission, RBAC, NetworkPolicy, image scanning, potpisivanje, runtime nadzor i GitOps drift kontrola rešavaju različite slojeve; admission politika nije njihova zamena.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>☐ Objašnjavam tačan položaj mutating i validating admission faza posle autentikacije i autorizacije.</li>
+  <li>☐ Razlikujem ugrađeni kontroler, ValidatingAdmissionPolicy/CEL, validating webhook, mutating webhook i CI proveru.</li>
+  <li>☐ Mogu da dokažem da je <code>admissionregistration.k8s.io/v1</code> capability dostupan na ciljnom klasteru.</li>
+  <li>☐ Policy i binding imaju odvojenu odgovornost, najmanji scope i eksplicitne operacije i resurse.</li>
+  <li>☐ CEL izrazi bezbedno proveravaju opciona polja i imaju pozitivne, negativne i granične testove.</li>
+  <li>☐ Razumem razliku između <code>validationActions</code> i <code>failurePolicy</code>.</li>
+  <li>☐ Server-side dry-run dokazuje ponašanje API servera, dok client-side dry-run nije dovoljan admission dokaz.</li>
+  <li>☐ Warn/Audit canary daje merljive rezultate pre prelaska na Deny.</li>
+  <li>☐ Izuzetak ne može samostalno postaviti korisnik čiji se zahtev kontroliše.</li>
+  <li>☐ Webhook ima kratak timeout, ispravan TLS identitet, HA raspored, nadzor i dokumentovano fail-open/fail-closed obrazloženje.</li>
+  <li>☐ Znam gde tražim API odgovor, request UID, audit događaj, API server metriku i webhook log.</li>
+  <li>☐ Rollback binding-a i ponovno uključivanje politike testirani su bez globalnog kvara klastera.</li>
+  <li>☐ Nadogradnja Kubernetes minor verzije pokreće proveru CEL biblioteka, policy API-ja, Pod Security verzije i webhook kompatibilnosti.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+Admission politike pomeraju standardizaciju sa ručnog pregleda na doslednu kontrolu samog Kubernetes API toka. Administrator sada treba da razume da RBAC odgovara na pitanje ko sme da pošalje promenu, dok admission procenjuje sadržaj dozvoljenog zahteva. ValidatingAdmissionPolicy i CEL pružaju stabilan, deklarativan i in-process način za veliki broj validacionih pravila; binding daje scope, parametre i režim sprovođenja. Pod Security Admission pokriva standardnu pod bezbednosnu osnovu, a webhook ostaje moćan, ali operativno skuplji izbor za mutaciju i složene provere.
+</p>
+<p>
+Praktična vrednost policy as code pristupa nije samo u odbijanju pogrešnog manifesta. Ona je u sledljivom zahtevu, testovima, code review-u, canary primeni, jasnoj denial poruci, audit dokazu, merljivoj latenciji i pouzdanom rollback-u. Politika koja nema vlasnika, testni skup, ograničen scope i recovery proceduru nije enterprise kontrola, čak i kada je njen CEL izraz sintakski ispravan.
+</p>
+<p>
+Odgovornost administratora je da izbalansira bezbednost i dostupnost kontrolne ravni. Fail-closed pravilo može sprečiti rizičnu konfiguraciju, ali i blokirati oporavak; fail-open čuva dostupnost, ali mora proizvesti vidljiv bezbednosni signal. Zato se odluke zasnivaju na threat modelu i dokazima, a ne na univerzalnom receptu. Ovaj disciplinovani model priprema teren za sledeću lekciju, u kojoj Git postaje izvor željenog stanja, a GitOps rekonsilijacija i detekcija drift-a povezuju odobrenu promenu sa dokazom njene stvarne primene.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija o admission kontrolerima, dinamičkoj admission kontroli i webhook konfiguraciji; ValidatingAdmissionPolicy i ValidatingAdmissionPolicyBinding API i administrativne reference; Kubernetes CEL jezik, biblioteke, tipizacija i ograničenja resursa; Pod Security Standards i Pod Security Admission vodiči; kubectl, API audit, API server metrics, autentikaciona, autorizaciona, TLS i bezbednosna dokumentacija
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-47-inventar-labels-annotations-cmdb.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-49-gitops-promene-drift.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+</body>
+
+</html>

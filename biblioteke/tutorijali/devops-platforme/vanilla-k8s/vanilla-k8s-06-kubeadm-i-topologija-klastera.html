@@ -1,0 +1,741 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-06-kubeadm-i-topologija-klastera.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>kubeadm i topologija klastera – bootstrap i endpoint kontrolne ravni | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="kubeadm i topologija Kubernetes klastera – preduslovi, bootstrap, controlPlaneEndpoint, stacked i external etcd, join proces, validacija, troubleshooting i granice alata.">
+
+  <meta name="keywords"
+        content="kubeadm, Kubernetes bootstrap, controlPlaneEndpoint, control plane endpoint, Kubernetes topologija, stacked etcd, external etcd, kubeadm init, kubeadm join, kubeadm reset, vanilla Kubernetes, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-06-kubeadm-i-topologija-klastera.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="kubeadm i topologija klastera – bootstrap, endpoint kontrolne ravni i granice alata">
+
+  <meta property="og:description"
+        content="Razumite šta kubeadm automatizuje, kako se projektuje endpoint kontrolne ravni, kako se biraju stacked i external etcd topologije i kako se klaster gradi i validira dokazima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-06-kubeadm-i-topologija-klastera.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-06-kubeadm-i-topologija-klastera.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="kubeadm i topologija klastera – bootstrap, endpoint kontrolne ravni i granice alata">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-06-kubeadm-i-topologija-klastera.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-06-kubeadm-i-topologija-klastera.png"
+           alt="kubeadm i topologija klastera – bootstrap, endpoint kontrolne ravni i granice alata">
+
+    </a>
+
+    <div class="page-subtitle">
+      II. Topologija, komponente i život klastera
+    </div>
+
+    <div class="page-subtitle">
+      6. kubeadm i topologija klastera – bootstrap, endpoint kontrolne ravni i granice alata
+    </div>
+
+    <p>
+      U prethodnoj lekciji lokalni klaster je posmatran kao instrument za određenu vrstu dokaza. Sada prelazimo na okruženje u kojem administrator neposredno odgovara za Linux čvorove, container runtime, kubelet, mrežnu dostupnost, PKI materijal i način na koji se kontrolna ravan izlaže ostatku klastera. <strong>kubeadm</strong> je zvanični Kubernetes alat za standardizovan bootstrap: izvršava proverljiv niz koraka kojima pripremljeni server postaje prvi control plane čvor ili se novi čvor pridružuje postojećem klasteru.
+    </p>
+    <p>
+      kubeadm nije kompletna platforma za obezbeđivanje infrastrukture i nije operater klastera tokom čitavog njegovog životnog ciklusa. On ne kreira virtuelne mašine, ne bira niti instalira CNI i CSI rešenje, ne obezbeđuje spoljašnji load balancer, DNS, firewall, monitoring, backup, upravljanje tajnama ili politiku oporavka. Upravo ta granica je njegova obrazovna vrednost: administrator jasno vidi koje odgovornosti pripadaju Kubernetes bootstrap-u, a koje ostaju infrastrukturi i operativnom timu.
+    </p>
+    <p>
+      U ovoj lekciji topologija se projektuje pre prve komande. Posebna pažnja posvećena je stabilnom <code>controlPlaneEndpoint</code> endpointu, izboru između jednog control plane čvora, stacked etcd i external etcd modela, konfiguracionom API-ju kubeadm-a, tokenima i sertifikatima, dokazima uspešnog bootstrap-a i kontrolisanom oporavku od tipičnih grešaka. Unutrašnji rad API servera, scheduler-a i controller manager-a biće sistematski obrađen u narednoj lekciji; ovde ih posmatramo onoliko koliko je potrebno da razumemo njihov nastanak i dostupnost.
+    </p>
+
+    <h3>Šta kubeadm radi, a šta namerno ne radi</h3>
+    <p>
+      Komanda <code>kubeadm init</code> izvršava uređeni workflow: proverava preduslove, priprema sertifikate i kubeconfig datoteke, generiše static Pod manifeste za komponente kontrolne ravni i lokalni etcd kada se koristi podrazumevana topologija, pokreće kubelet, čeka da kontrolna ravan postane dostupna, zapisuje bootstrap konfiguraciju u klaster, postavlja RBAC pravila i bootstrap tokene i instalira osnovne dodatke kao što su CoreDNS i kube-proxy. Pojedinačni koraci mogu se videti ili pozvati kroz <code>kubeadm init phase</code>, ali fazno izvršavanje zahteva disciplinu: preskočena ili ručno izmenjena faza postaje odgovornost administratora.
+    </p>
+    <p>
+      Na worker čvoru <code>kubeadm join</code> obavlja discovery klastera, proverava identitet API servera pomoću CA javnog ključa, preuzima potrebnu konfiguraciju, uspostavlja TLS bootstrap za kubelet i registruje Node objekat. Pri dodavanju novog control plane čvora join proces dodatno pribavlja ili koristi PKI materijal kontrolne ravni i generiše lokalne static Pod manifeste. Token nije dovoljan dokaz identiteta servera: bezbedan join uključuje i proveru <code>discovery-token-ca-cert-hash</code> vrednosti ili drugi eksplicitno projektovan discovery mehanizam.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>kubeadm obezbeđuje</th><th>Administrator ili drugi sistem obezbeđuje</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Bootstrap control plane i worker čvorova</td><td>VM, fizičke servere, OS image, firmware i kapacitet</td></tr>
+        <tr><td>Kubernetes PKI i kubeconfig datoteke u podrazumevanom modelu</td><td>Zaštitu ključeva, rotaciju, eksterni CA/KMS dizajn i bezbedan backup</td></tr>
+        <tr><td>Static Pod manifeste za lokalne control plane komponente</td><td>Load balancer, DNS ime i health check za stabilan API endpoint</td></tr>
+        <tr><td>Bootstrap tokene i TLS bootstrap kubeleta</td><td>Politiku izdavanja, distribucije, isteka i opoziva tokena</td></tr>
+        <tr><td>CoreDNS i kube-proxy osnovne dodatke</td><td>CNI, CSI, ingress, observability, policy i backup rešenja</td></tr>
+        <tr><td>Komande za upgrade, sertifikate, tokene i reset kubeadm artefakata</td><td>Kompletan lifecycle OS-a, runtime-a, mreže, workload-a i DR plana</td></tr>
+      </tbody>
+    </table>
+    <p>
+      kubeadm se zato često koristi kao građevni blok u širem automatizovanom rešenju. Terraform može obezbediti infrastrukturu, Ansible pripremiti operativni sistem i pakete, load balancer i DNS automatizacija obezbediti endpoint, a kubeadm izvršiti Kubernetes-specifičan bootstrap. Činjenica da je <code>kubeadm init</code> uspešno završen nije sama po sebi dokaz da je klaster produkciono spreman.
+    </p>
+
+    <h3>Topologija pre bootstrap-a</h3>
+    <p>
+      Topologija određuje granice kvara, quorum, putanju do API servera, način održavanja i cenu oporavka. Odluka se ne svodi na broj servera. Potrebno je znati gde se nalaze etcd članovi, da li control plane čvorovi dele hipervizor, rack, mrežnu putanju ili storage, šta predstavlja stabilan endpoint i koja komponenta uklanja neispravan backend iz saobraćaja.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Raspored</th><th>Prednosti</th><th>Ograničenja i rizik</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Jedan control plane</td><td>API server, controller manager, scheduler i jedan etcd član na istom čvoru</td><td>Najmanje resursa; jasan laboratorijski bootstrap</td><td>Nema HA; kvar čvora ili etcd-a prekida upravljanje klasterom</td></tr>
+        <tr><td>HA sa stacked etcd</td><td>Na svakom control plane čvoru radi i lokalni etcd član</td><td>Manje infrastrukturnih čvorova; najčešći kubeadm HA model</td><td>Kvar control plane čvora istovremeno uklanja API backend i etcd člana; zahteva neparan quorum i stvarne failure-domain granice</td></tr>
+        <tr><td>HA sa external etcd</td><td>Control plane i etcd rade na odvojenim skupovima čvorova</td><td>Odvojene granice kvara i mogućnost nezavisnog upravljanja etcd-om</td><td>Najmanje tri dodatna etcd čvora za HA; više mreže, PKI-ja, monitoringa i operativne složenosti</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Za HA stacked topologiju uobičajena su tri control plane čvora. Tri etcd člana mogu tolerisati gubitak jednog člana; pet mogu tolerisati dva, ali povećavaju mrežni i operativni trošak. Parni broj članova ne daje dodatnu toleranciju u odnosu na prethodni neparni broj. Quorum nije isto što i broj dostupnih API servera: klijent može dosegnuti jedan API server, a da kontrolna ravan ipak ne može pouzdano menjati stanje zato što etcd nema većinu.
+    </p>
+    <p>
+      Više VM na istom laptopu ili istom fizičkom hostu može demonstrirati distribuisane procese, ali ne predstavlja nezavisne failure domene. Produkcioni dizajn mora razmotriti hostove, rack-ove, zone dostupnosti, napajanje, mrežu, vremensku sinhronizaciju i latenciju etcd komunikacije. etcd zahteva pouzdan disk sa stabilnom latencijom; spor ili prezasićen storage može ugroziti kontrolnu ravan iako CPU i memorija izgledaju zdravo.
+    </p>
+
+    <h3>Endpoint kontrolne ravni: identitet koji mora nadživeti čvor</h3>
+    <p>
+      <code>controlPlaneEndpoint</code> je stabilna adresa preko koje se klijenti i čvorovi povezuju sa kontrolnom ravni, na primer <code>k8s-api.lab.internal:6443</code>. U HA dizajnu ta adresa obično pokazuje na TCP load balancer ili drugi podržan mehanizam koji prosleđuje saobraćaj samo zdravim API serverima. Ona nije isto što i <code>localAPIEndpoint.advertiseAddress</code>: advertise adresa pripada konkretnoj instanci API servera, dok control plane endpoint predstavlja klaster.
+    </p>
+    <p>
+      Stabilan DNS naziv treba izabrati pre bootstrap-a. kubeadm uključuje potrebna imena i adrese u Subject Alternative Name polja API server sertifikata. Naknadna promena endpointa nije obična DNS izmena: može zahtevati obnovu sertifikata i kubeconfig datoteka, promenu konfiguracije i pažljivo testiranje svih klijenata. Za laboratoriju sa jednim control plane čvorom DNS ime može privremeno pokazivati direktno na taj čvor; to ne daje HA, ali sprečava da identitet klastera bude trajno vezan za hostname pojedinačne mašine i omogućava kasnije plansko uvođenje load balancer-a.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Element</th><th>Primer</th><th>Administratorska odluka i dokaz</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Stabilno ime</td><td><code>k8s-api.lab.internal</code></td><td>DNS se razrešava sa svih čvorova i administratorskih stanica</td></tr>
+        <tr><td>Port API servera</td><td><code>6443/TCP</code></td><td>Firewall i load balancer prosleđuju samo potreban saobraćaj</td></tr>
+        <tr><td>Backend</td><td><code>10.20.30.11:6443</code></td><td>U HA modelu postoje najmanje tri nezavisna control plane backenda</td></tr>
+        <tr><td>Health check</td><td>TCP ili odgovarajuća HTTPS provera</td><td>Neispravan backend se uklanja bez oslanjanja na ručnu intervenciju</td></tr>
+        <tr><td>Sertifikat</td><td>SAN sadrži DNS ime endpointa</td><td>TLS validacija uspeva bez preskakanja provere sertifikata</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Round-robin DNS bez health check-a nije ekvivalentan load balancer-u: može vraćati adresu neispravnog API servera i produžiti kvar zbog DNS cache-a. Load balancer takođe ne popravlja gubitak etcd quorum-a. Njegov zadatak je raspodela i uklanjanje neispravnih API backenda; konzistentnost stanja ostaje odgovornost etcd-a i kontrolne ravni.
+    </p>
+
+    <h3>Preduslovi čvorova i mrežni ugovor</h3>
+    <p>
+      Svi čvorovi moraju imati podržan Linux, jedinstveno ime hosta, MAC adresu i <code>product_uuid</code>, stabilnu adresu, sinhronizovano vreme i punu mrežnu dostupnost potrebnih portova. Klonirane VM mogu naslediti identitete i izazvati teško objašnjive konflikte. Pod CIDR i Service CIDR ne smeju se preklapati međusobno niti sa mrežom čvorova, VPN rutama, data-centar mrežama ili adresama koje organizacija planira da rutira.
+    </p>
+    <p>
+      Container runtime mora implementirati Kubernetes CRI. Docker Engine sam po sebi nije CRI runtime za kubelet; potreban je odgovarajući posredni sloj ili se koristi runtime kao što je containerd ili CRI-O. cgroup driver kubeleta i runtime-a mora biti usklađen, a <code>systemd</code> je preporučen izbor na systemd distribucijama. Ako je instalirano više runtime-a ili socket nije standardan, <code>criSocket</code> se navodi eksplicitno da auto-detekcija ne bi izabrala pogrešan endpoint.
+    </p>
+    <p>
+      Podrazumevano ponašanje kubeleta u kubeadm okruženju zahteva da swap bude onemogućen, osim ako je swap podrška namerno i verzijski usklađeno konfigurisana kroz kubelet. U ovoj laboratoriji swap se isključuje da bi početno stanje bilo jednoznačno. Produkciona promena swap politike, kernel modula, sysctl parametara ili firewall-a prolazi change proceduru i proveru uticaja na ostale servise.
+    </p>
+
+    <pre><code class="language-bash">hostnamectl --static
+cat /sys/class/dmi/id/product_uuid
+ip -brief address
+ip route
+timedatectl status
+swapon --show
+systemctl is-active containerd
+containerd --version
+kubeadm version -o short
+kubelet --version
+kubectl version --client
+sudo ss -lntup</code></pre>
+    <p>
+      Prikazane komande čitaju stanje. Čitanje <code>product_uuid</code> može zahtevati drugačiju putanju ili privilegije na pojedinim platformama. Rezultati se porede između svih čvorova; uspeh nije samo odsustvo poruke o grešci, već jedinstveni identiteti, očekivane rute, sinhronizovano vreme, aktivan runtime i ista planirana Kubernetes minor verzija.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Saobraćaj</th><th>Tipični port</th><th>Odredište</th><th>Napomena</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Kubernetes API</td><td><code>6443/TCP</code></td><td>Control plane / load balancer</td><td>Potreban svim čvorovima i administratorima kojima je pristup odobren</td></tr>
+        <tr><td>etcd klijentski</td><td><code>2379-2380/TCP</code></td><td>etcd članovi</td><td>Ne izlagati široko; 2380 je peer komunikacija</td></tr>
+        <tr><td>Kubelet API</td><td><code>10250/TCP</code></td><td>Svi čvorovi</td><td>Ograničiti na potrebne izvore</td></tr>
+        <tr><td>Scheduler</td><td><code>10259/TCP</code></td><td>Control plane lokalno</td><td>Secure port; ne zahteva široko mrežno izlaganje</td></tr>
+        <tr><td>Controller manager</td><td><code>10257/TCP</code></td><td>Control plane lokalno</td><td>Secure port; ne zahteva široko mrežno izlaganje</td></tr>
+        <tr><td>NodePort</td><td><code>30000-32767/TCP/UDP</code></td><td>Čvorovi</td><td>Otvarati samo ako dizajn i test to zahtevaju</td></tr>
+        <tr><td>CNI saobraćaj</td><td>Zavisi od plugina</td><td>Između čvorova</td><td>Proveriti zvaničnu dokumentaciju izabranog CNI-ja</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Tabela je početni ugovor, ne univerzalna firewall politika. Tačni smerovi, izvori, protokoli i dodatni portovi zavise od topologije, CNI-ja, eksternog etcd-a i načina izlaganja servisa. Port se proverava sa stvarnog izvornog čvora; uspešna lokalna provera na control plane serveru ne dokazuje da worker može dosegnuti endpoint.
+    </p>
+
+    <h3>Verzije, repozitorijumi i konfiguracioni API</h3>
+    <p>
+      Kubernetes projekat održava tri najnovije minor grane. U julu 2026. to su 1.36, 1.35 i 1.34; za novu instalaciju bira se podržana grana i njen aktuelni patch, uz proveru release i security obaveštenja neposredno pre promene. Repozitorijumi paketa na <code>pkgs.k8s.io</code> odvojeni su po minor verziji. Paket ne treba neplanirano nadograditi prelaskom na drugu granu; <code>kubeadm</code>, <code>kubelet</code> i <code>kubectl</code> se pin-uju ili drže prema mehanizmu konkretne distribucije, a upgrade se izvodi svesno i u podržanom redosledu.
+    </p>
+    <p>
+      Za Kubernetes 1.36 aktuelni kubeadm konfiguracioni API je <code>kubeadm.k8s.io/v1beta4</code>. Stari primeri sa <code>v1beta3</code> mogu biti korisni za starije grane, ali se ne kopiraju bez provere. Konfiguraciona datoteka je bolja od duge jednokratne komandne linije jer omogućava code review, verzionisanje, preflight proveru i ponovljivost. Tajne, bootstrap tokeni i privatni ključevi ipak se ne čuvaju u repozitorijumu.
+    </p>
+
+    <pre><code class="language-yaml">apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 10.20.30.11
+  bindPort: 6443
+nodeRegistration:
+  name: k8s-cp01
+  criSocket: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.36.2
+clusterName: tashizza-lab
+controlPlaneEndpoint: "k8s-api.lab.internal:6443"
+networking:
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16
+  dnsDomain: cluster.local
+apiServer:
+  certSANs:
+    - k8s-api.lab.internal
+    - 10.20.30.10</code></pre>
+    <p>
+      Primer prikazuje laboratorijski plan: <code>10.20.30.11</code> je adresa prvog control plane čvora, a <code>10.20.30.10</code> rezervisana virtualna IP adresa budućeg load balancer-a. Ako load balancer još ne postoji, DNS ime u single-control-plane laboratoriji može pokazivati na <code>10.20.30.11</code>, ali IP <code>10.20.30.10</code> ne treba oglašavati niti koristiti dok zaista nije implementiran. Vrednost <code>kubernetesVersion</code> u stvarnoj vežbi mora se zameniti aktuelnim odobrenim patch-em iz izabrane minor grane; ovde je navedena vremenski određena laboratorijska vrednost iz jula 2026, a ne trajni „latest”.
+    </p>
+    <p>
+      Pre promene stanja konfiguracija se može normalizovati i proveriti lokalnim kubeadm komandama. <code>config migrate</code> je koristan pri prelasku sa starije kubeadm API verzije, ali rezultat mora proći pregled; migracija sintakse ne dokazuje da je svaka stara operativna odluka i dalje dobra.
+    </p>
+
+    <pre><code class="language-bash">sudo kubeadm config validate --config /etc/kubernetes/kubeadm-init.yaml
+sudo kubeadm config images list --config /etc/kubernetes/kubeadm-init.yaml
+sudo kubeadm init --config /etc/kubernetes/kubeadm-init.yaml --dry-run</code></pre>
+    <p>
+      Validacija i listanje slika ne menjaju klaster. <code>--dry-run</code> ne izvršava stvarni bootstrap, ali može kreirati privremene lokalne artefakte i ne zamenjuje proveru mreže, DNS-a, image registry pristupa ni CNI kompatibilnosti. Komande se izvršavaju na planiranom prvom control plane čvoru sa <code>sudo</code> zato što kubeadm čita i priprema sistemske putanje.
+    </p>
+
+    <h3>Bootstrap prvog control plane čvora</h3>
+    <p>
+      Pre <code>init</code> komande mora postojati odobren plan, sačuvana konfiguracija, dokaz da su preduslovi zadovoljeni i rollback tačka za laboratoriju. kubeadm preflight greške se ne zaobilaze automatski opcijom <code>--ignore-preflight-errors</code>. Upozorenje se prvo tumači: ako je uzrok pogrešan hostname, aktivan swap, zauzet port, postojeći manifest ili nedostupan runtime, ignorisanje samo pomera kvar dublje u bootstrap i otežava cleanup.
+    </p>
+    <p>
+      Tokom bootstrap-a kubelet posmatra <code>/etc/kubernetes/manifests</code> i pokreće static Podove kontrolne ravni. Njih nema u Deployment objektima; lokalni kubelet je njihov neposredni upravljač, a API server kasnije prikazuje mirror Podove. Zato se rani kvar ne dijagnostikuje samo komandom <code>kubectl get pods</code>: API možda još nije dostupan, pa su <code>journalctl -u kubelet</code>, runtime alat i sadržaj manifest direktorijuma primarni dokazi.
+    </p>
+
+    <pre><code class="language-bash">sudo kubeadm init \
+  --config /etc/kubernetes/kubeadm-init.yaml \
+  --upload-certs \
+  2&gt;&amp;1 | tee "$HOME/kubeadm-init-$(date -u +%Y%m%dT%H%M%SZ).log"</code></pre>
+    <p>
+      Ovo je state-changing i bezbednosno osetljiva komanda. Opcija <code>--upload-certs</code> privremeno šifrovano otprema zajedničke control plane sertifikate u klaster kako bi se olakšao join dodatnih control plane čvorova; odgovarajući <code>certificate-key</code> je tajna i automatski upload ima ograničen rok. U single-control-plane laboratoriji opcija nije neophodna, ali je uključena samo ako je sledeći odobreni korak vežba HA pridruživanja. Log može sadržati join podatke i zato se čuva sa restriktivnim dozvolama, ne objavljuje se i ne ulazi u Git.
+    </p>
+
+    <pre><code class="language-bash">mkdir -p "$HOME/.kube"
+sudo install -o "$(id -u)" -g "$(id -g)" -m 0600 \
+  /etc/kubernetes/admin.conf "$HOME/.kube/config"
+
+kubectl cluster-info
+kubectl get nodes -o wide
+kubectl get pods -A -o wide</code></pre>
+    <p>
+      <code>admin.conf</code> daje privilegovani administratorski identitet i mora se štititi kao tajna. Kopiranje je state-changing lokalna operacija; naredne tri komande čitaju stanje. Pre instalacije CNI-ja očekivano je da Node još nije <code>Ready</code> i da CoreDNS Podovi nisu funkcionalni. To nije dokaz da je bootstrap neuspešan: proverava se da li API odgovara, static Podovi kontrolne ravni rade i događaji ukazuju na odsustvo mrežnog plugina, a ne na certifikat, runtime ili endpoint kvar.
+    </p>
+
+    <h3>CNI kao obavezna, ali odvojena odluka</h3>
+    <p>
+      kubeadm namerno ne bira Pod mrežu. Administrator bira CNI implementaciju čija verzija podržava odabranu Kubernetes granu, čiji adresni model odgovara <code>podSubnet</code> planu i čiji zahtevi za kernel module, MTU, encapsulation, BGP, firewall i NetworkPolicy odgovaraju infrastrukturi. Manifest se pre primene preuzima iz zvaničnog izvora izabranog projekta, verzioniše interno ili pin-uje na proverenu verziju, pregleda i po mogućnosti proverava kontrolnom sumom ili potpisom.
+    </p>
+
+    <pre><code class="language-bash">kubectl diff -f "$HOME/lab/cni-manifest.yaml" || true
+kubectl apply -f "$HOME/lab/cni-manifest.yaml"
+kubectl get pods -n kube-system -w
+kubectl wait --for=condition=Ready node/k8s-cp01 --timeout=300s</code></pre>
+    <p>
+      <code>diff</code> je read-oriented provera, mada kontaktira API i vraća poseban izlazni kod kada razlika postoji; <code>apply</code> menja stanje. Ne koristi se neproveren „latest” URL direktno u produkcionoj komandi. Očekivani rezultat je da CNI DaemonSet dostigne željeni broj spremnih Podova, CoreDNS postane <code>Running</code> i čvor dobije stanje <code>Ready</code>. Ako se to ne dogodi, prvo se pregledaju događaji i logovi CNI Podova, CIDR preklapanje, kernel zahtevi i MTU, umesto ponavljanja <code>kubeadm init</code> komande.
+    </p>
+
+    <h3>Pridruživanje worker i dodatnih control plane čvorova</h3>
+    <p>
+      Podrazumevani bootstrap token ima ograničen rok važenja. Join komanda iz izlaza <code>kubeadm init</code> nije trajni administratorski artefakt niti treba da se šalje kroz nezaštićen chat ili tiket. Kada je potreban novi worker, na control plane čvoru se kreira namenski kratkotrajan token, beleži svrha, a komanda se prenosi odobrenim tajnim kanalom.
+    </p>
+
+    <pre><code class="language-bash">sudo kubeadm token list
+sudo kubeadm token create \
+  --ttl 30m \
+  --description "join k8s-wk01 and k8s-wk02" \
+  --print-join-command</code></pre>
+    <p>
+      Prva komanda čita stanje; druga menja stanje i ispisuje tajnu. Pre izvršavanja join komande worker mora proći iste OS, runtime, swap, DNS i mrežne provere. Na workeru se endpoint dodatno proverava bez slanja tokena u istoriju komandi kad god automatizacioni mehanizam omogućava bezbedno prosleđivanje tajne.
+    </p>
+
+    <pre><code class="language-bash">getent hosts k8s-api.lab.internal
+nc -vz k8s-api.lab.internal 6443
+sudo kubeadm join k8s-api.lab.internal:6443 \
+  --token &lt;BOOTSTRAP_TOKEN&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;CA_PUBLIC_KEY_HASH&gt;</code></pre>
+    <p>
+      Prve dve komande čitaju i proveravaju mrežno stanje; join menja čvor i klaster. Placeholder vrednosti se ne unose doslovno. Očekivani rezultat je uspešan TLS bootstrap i registracija čvora. Na control plane čvoru se zatim proveravaju Node objekat, uslovi, dodeljeni Pod CIDR i CNI Pod na novom čvoru. <code>Ready</code> je potreban, ali nije dovoljan dokaz: testira se i Pod-to-Pod komunikacija, DNS i raspoređivanje workload-a.
+    </p>
+    <p>
+      Dodatni control plane čvor pridružuje se opcijom <code>--control-plane</code> i, u automatizovanom upload modelu, odgovarajućim <code>--certificate-key</code>. Pre toga stabilni endpoint već mora biti load balancer koji može proslediti saobraćaj na postojeći zdravi API server. Novi backend se dodaje u load balancer tek kada njegov API server i lokalni etcd član prođu health provere. Sertifikacioni ključ i bootstrap token su dve različite tajne sa različitim ulogama; obe se povlače ili ostavljaju da isteknu čim odobreni join prozor završi.
+    </p>
+
+    <h3>Artefakti, identiteti i bezbednosne granice</h3>
+    <table>
+      <thead>
+        <tr><th>Artefakt</th><th>Uloga</th><th>Rizik i praksa</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/etc/kubernetes/pki</code></td><td>CA, klijentski i serverski sertifikati i ključevi</td><td>Privatni ključevi su kritične tajne; backup mora biti šifrovan, kontrolisan i testiran</td></tr>
+        <tr><td><code>/etc/kubernetes/admin.conf</code></td><td>Administratorski kubeconfig</td><td>Visoko privilegovan; ne deliti kao korisnički kubeconfig</td></tr>
+        <tr><td><code>/etc/kubernetes/manifests</code></td><td>Static Pod manifesti kontrolne ravni i lokalnog etcd-a</td><td>Izmena odmah utiče na kubelet; prvo backup, diff i plan povratka</td></tr>
+        <tr><td><code>/var/lib/etcd</code></td><td>Podaci lokalnog stacked etcd člana</td><td>Ne kopirati kao običan „live” direktorijum; koristiti podržan snapshot i recovery postupak</td></tr>
+        <tr><td>Bootstrap token</td><td>Privremeni discovery i TLS bootstrap</td><td>Kratak TTL, ograničena distribucija, revocation posle upotrebe</td></tr>
+        <tr><td>Certificate key</td><td>Dešifrovanje privremeno otpremljenih control plane sertifikata</td><td>Posebno osetljiva kratkotrajna tajna; nije isto što i CA hash</td></tr>
+        <tr><td>CA public key hash</td><td>Pinovanje identiteta root CA pri token discovery-ju</td><td>Nije privatna tajna, ali mora biti autentično distribuiran</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Čuvanje <code>admin.conf</code> datoteke za svakog administratora stvara zajednički identitet bez individualnog audit traga. Posle inicijalnog bootstrap-a uspostavlja se organizacioni identity provider, zasebni korisnički identiteti i RBAC najmanjih privilegija. Bootstrap superuser pristup ostaje break-glass mehanizam pod strogom kontrolom, a ne svakodnevni način rada.
+    </p>
+
+    <h3>Granice promena i životni ciklus kubeadm klastera</h3>
+    <p>
+      kubeadm čuva <code>ClusterConfiguration</code> u ConfigMap objektu <code>kubeadm-config</code>, ali izmena tog objekta sama po sebi ne prepisuje automatski sve lokalne manifeste i konfiguracije. Rekonfiguracija komponenti zahteva verzijski odgovarajući podržan postupak, backup lokalnih fajlova, kontrolisano izvršavanje faza ili patch mehanizma i validaciju. Direktno ručno uređivanje static Pod manifesta može izazvati trenutni restart komponente; zato nije bezazlena „konfiguraciona promena”.
+    </p>
+    <p>
+      Nadogradnja se ne radi paketnim <code>upgrade</code> svih čvorova odjednom. kubeadm ima planirani workflow, pravila version skew-a i redosled control plane pa worker čvorova. Sertifikati koje kubeadm izdaje imaju rok važenja i proveravaju se komandom <code>kubeadm certs check-expiration</code>; automatska obnova tokom upgrade-a ne zamenjuje evidenciju, alarmiranje, backup i vežbu oporavka. Detaljan lifecycle i upgrade pripadaju kasnijim lekcijama, ali topologija izabrana danas određuje koliko će ti postupci biti bezbedni.
+    </p>
+
+    <pre><code class="language-bash">sudo kubeadm certs check-expiration
+kubectl -n kube-system get configmap kubeadm-config -o yaml
+kubectl get --raw='/readyz?verbose'
+kubectl get --raw='/livez?verbose'</code></pre>
+    <p>
+      Komande čitaju stanje. <code>readyz</code> odgovara na pitanje da li je API server spreman da prihvati saobraćaj, dok <code>livez</code> prvenstveno pokazuje da li proces treba smatrati živim; load balancer health check se bira prema nameni i aktuelnim Kubernetes preporukama. Ne koristi se istorijski nebezbedan health endpoint niti se TLS validacija isključuje samo da bi provera „prošla”.
+    </p>
+
+    <hr>
+
+    <h3>Integrisani praktikum – bootstrap klastera sa stabilnim endpointom</h3>
+    <p><strong>Kontekst i cilj.</strong> Tim priprema realističnu laboratoriju sa jednim control plane i dva worker čvora. Cilj je da se pre bootstrap-a formalizuju topologija i mrežni ugovor, da se klaster kreira deklarativnom kubeadm konfiguracijom, instalira prethodno odobren CNI, pridruže worker čvorovi, potvrde osnovne funkcije, simulira tipičan join incident i prikupe dokazi. Laboratorija namerno nije HA; stabilno DNS ime priprema migraciju ka budućem load balancer-u bez lažne tvrdnje o redundansi.</p>
+
+    <table>
+      <thead>
+        <tr><th>Čvor / ime</th><th>Adresa</th><th>Uloga</th><th>Minimalni laboratorijski budžet</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>k8s-cp01</code></td><td><code>10.20.30.11</code></td><td>Control plane + stacked single-member etcd</td><td>2 vCPU, 4 GB RAM, 40 GB disk</td></tr>
+        <tr><td><code>k8s-wk01</code></td><td><code>10.20.30.21</code></td><td>Worker</td><td>2 vCPU, 3 GB RAM, 30 GB disk</td></tr>
+        <tr><td><code>k8s-wk02</code></td><td><code>10.20.30.22</code></td><td>Worker</td><td>2 vCPU, 3 GB RAM, 30 GB disk</td></tr>
+        <tr><td><code>k8s-api.lab.internal</code></td><td><code>10.20.30.11</code> u ovoj vežbi</td><td>Stabilni API identitet</td><td>Interni DNS zapis dostupan svim čvorovima</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Preduslovi.</strong> Sve tri VM imaju podržan Linux release, jedinstvene identitete, statične DHCP rezervacije ili druge stabilne adrese, sinhronizovano vreme, containerd sa usklađenim systemd cgroup driver-om i pakete <code>kubeadm</code>, <code>kubelet</code> i <code>kubectl</code> iz iste odobrene minor grane. Paket kubelet može biti u stanju restarta pre init/join postupka jer još nema konfiguraciju. Pripremljen je provereni lokalni fajl <code>$HOME/lab/cni-manifest.yaml</code> iz zvaničnog izvora izabranog CNI projekta, kompatibilan sa Pod CIDR-om <code>10.244.0.0/16</code>.</p>
+    <p><strong>Nalozi i privilegije.</strong> Koristi se imenovani Linux administrator sa <code>sudo</code> pravima. Root login i deljenje <code>admin.conf</code> datoteke nisu potrebni. Bootstrap token i certificate key ne upisuju se u Git, tiket ili nezaštićen terminal transcript.</p>
+    <p><strong>Rizik i rollback.</strong> Vežba menja mrežne i Kubernetes sistemske putanje na tri namenske VM. Pre početka napraviti proverene powered-off snapshot-e čistih laboratorijskih VM ili automatizovan način ponovnog kreiranja. Snapshot nije produkcioni backup. <code>kubeadm reset</code> koristi se samo na tačno potvrđenom laboratorijskom čvoru i nije potpun cleanup svih CNI, firewall, kubeconfig ili storage artefakata.</p>
+
+    <ol>
+      <li>
+        <strong>Dokumentovati plan i početno stanje na sva tri čvora.</strong>
+        <pre><code class="language-bash">mkdir -p "$HOME/lab/evidence"
+{
+  date -u
+  hostnamectl --static
+  cat /sys/class/dmi/id/product_uuid
+  ip -brief address
+  ip route
+  timedatectl status
+  swapon --show
+  systemctl is-active containerd
+  containerd --version
+  kubeadm version -o short
+  kubelet --version
+} | tee "$HOME/lab/evidence/$(hostname)-preflight.txt"</code></pre>
+        <p><strong>Očekivani rezultat i validacija:</strong> svaki čvor ima tačno planirano ime i adresu, jedinstven UUID, očekivanu default rutu, sinhronizovano vreme, nema aktivan swap, containerd je aktivan i Kubernetes alati pripadaju odobrenoj minor grani. Komande su read-only osim kreiranja lokalnog direktorijuma i evidence fajla.</p>
+      </li>
+      <li>
+        <strong>Proveriti DNS i portove iz stvarnih izvora.</strong>
+        <pre><code class="language-bash">getent ahostsv4 k8s-api.lab.internal
+for host in 10.20.30.11 10.20.30.21 10.20.30.22; do
+  ping -c 2 "$host"
+done
+nc -vz k8s-api.lab.internal 6443 || true
+sudo ss -lntup</code></pre>
+        <p><strong>Tumačenje:</strong> DNS mora vratiti <code>10.20.30.11</code>. Pre bootstrap-a je očekivano da port 6443 još ne sluša; važan dokaz je da ime pravilno pokazuje na planiranu adresu i da firewall pravila neće blokirati buduću putanju. ICMP uspeh ne dokazuje TCP dostupnost. Na workerima proveriti da nijedan Kubernetes sistemski port već nije zauzet.</p>
+      </li>
+      <li>
+        <strong>Kreirati konfiguraciju na <code>k8s-cp01</code>.</strong>
+        <pre><code class="language-bash">sudo install -d -m 0700 /etc/kubernetes
+sudoedit /etc/kubernetes/kubeadm-init.yaml
+sudo chmod 0600 /etc/kubernetes/kubeadm-init.yaml</code></pre>
+        <p>U editor uneti sledeći sadržaj, uz aktuelni odobreni patch umesto demonstracione vrednosti ako se vežba izvodi kasnije:</p>
+        <pre><code class="language-yaml">apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 10.20.30.11
+  bindPort: 6443
+nodeRegistration:
+  name: k8s-cp01
+  criSocket: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.36.2
+clusterName: tashizza-lab
+controlPlaneEndpoint: "k8s-api.lab.internal:6443"
+networking:
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16
+  dnsDomain: cluster.local
+apiServer:
+  certSANs:
+    - k8s-api.lab.internal
+    - 10.20.30.11</code></pre>
+        <p><strong>Rizik:</strong> konfiguracija ne sadrži token, ali otkriva internu topologiju; dozvole su restriktivne. Adresa, ime čvora, CRI socket i CIDR vrednosti moraju odgovarati stvarnom planu. Ne dodavati buduću virtualnu IP adresu kao aktivnu putanju ako ona nije rezervisana i kontrolisana.</p>
+      </li>
+      <li>
+        <strong>Validirati konfiguraciju i preuzeti slike pre change prozora.</strong>
+        <pre><code class="language-bash">sudo kubeadm config validate --config /etc/kubernetes/kubeadm-init.yaml
+sudo kubeadm config images list --config /etc/kubernetes/kubeadm-init.yaml \
+  | tee "$HOME/lab/evidence/control-plane-images.txt"
+sudo kubeadm config images pull --config /etc/kubernetes/kubeadm-init.yaml
+sudo kubeadm init --config /etc/kubernetes/kubeadm-init.yaml --dry-run \
+  2&gt;&amp;1 | tee "$HOME/lab/evidence/kubeadm-dry-run.txt"</code></pre>
+        <p><strong>Promena stanja:</strong> <code>images pull</code> puni runtime image cache, ali ne kreira klaster; ostale komande su validacija. <strong>Kriterijum:</strong> nema fatalne preflight greške, sve slike su dostupne i postoji dovoljno diska. Ako registry nije dostupan, problem se rešava proxy/mirror i supply-chain procedurom, ne isključivanjem TLS provere.</p>
+      </li>
+      <li>
+        <strong>Pokrenuti bootstrap prvog control plane čvora.</strong>
+        <pre><code class="language-bash">umask 077
+sudo kubeadm init --config /etc/kubernetes/kubeadm-init.yaml \
+  2&gt;&amp;1 | tee "$HOME/lab/evidence/kubeadm-init.log"</code></pre>
+        <p><strong>Očekivani rezultat:</strong> kubeadm završava sve faze i prikazuje uputstvo za kubeconfig i worker join. Ovo je state-changing korak. Ako komanda ne uspe, ne pokretati je naslepo drugi put; sačuvati izlaz, <code>journalctl</code> i runtime stanje, utvrditi poslednju završenu fazu i tek zatim izabrati recovery.</p>
+      </li>
+      <li>
+        <strong>Postaviti administratorski kubeconfig i potvrditi ranu kontrolnu ravan.</strong>
+        <pre><code class="language-bash">mkdir -p "$HOME/.kube"
+sudo install -o "$(id -u)" -g "$(id -g)" -m 0600 \
+  /etc/kubernetes/admin.conf "$HOME/.kube/config"
+
+kubectl cluster-info
+kubectl get --raw='/readyz?verbose' | tee "$HOME/lab/evidence/apiserver-readyz.txt"
+kubectl get nodes -o wide
+kubectl get pods -n kube-system -o wide
+sudo crictl ps --name 'kube-apiserver|kube-scheduler|kube-controller-manager|etcd'</code></pre>
+        <p><strong>Validacija:</strong> API je dostupan preko DNS endpointa navedenog u kubeconfig-u, static Pod kontejneri rade, a jedini čvor može privremeno biti <code>NotReady</code> zbog neinstaliranog CNI-ja. Ako <code>crictl</code> nije konfigurisan za pravi runtime endpoint, prvo se rešava endpoint upozorenje; ne zaključuje se da kontejneri ne postoje.</p>
+      </li>
+      <li>
+        <strong>Instalirati prethodno odobren CNI i dokazati stabilizaciju.</strong>
+        <pre><code class="language-bash">sha256sum "$HOME/lab/cni-manifest.yaml" \
+  | tee "$HOME/lab/evidence/cni-manifest.sha256"
+kubectl diff -f "$HOME/lab/cni-manifest.yaml" || true
+kubectl apply -f "$HOME/lab/cni-manifest.yaml"
+kubectl get pods -n kube-system -w</code></pre>
+        <p>Kada se CNI Podovi stabilizuju, u drugom terminalu izvršiti:</p>
+        <pre><code class="language-bash">kubectl wait --for=condition=Ready node/k8s-cp01 --timeout=300s
+kubectl get daemonsets -n kube-system
+kubectl get pods -n kube-system -o wide
+kubectl get events -A --sort-by=.metadata.creationTimestamp \
+  &gt; "$HOME/lab/evidence/events-after-cni.txt"</code></pre>
+        <p><strong>Kriterijum:</strong> control plane čvor je <code>Ready</code>, CNI DaemonSet i CoreDNS imaju očekivan broj spremnih instanci, a događaji ne pokazuju trajni sandbox ili routing kvar. Kontrolna suma omogućava kasnije dokazivanje tačne CNI deklaracije.</p>
+      </li>
+      <li>
+        <strong>Kreirati kratkotrajan worker join postupak.</strong>
+        <pre><code class="language-bash">sudo kubeadm token create \
+  --ttl 30m \
+  --description "lab workers 2026-07" \
+  --print-join-command</code></pre>
+        <p><strong>Bezbednost:</strong> izlaz se prenosi samo na <code>k8s-wk01</code> i <code>k8s-wk02</code> odobrenim kanalom. Komanda menja stanje kreiranjem tokena. U dokazima se beleže opis, vreme i kasniji status tokena, ali ne njegova puna vrednost.</p>
+      </li>
+      <li>
+        <strong>Na svakom workeru proveriti endpoint i izvršiti join.</strong>
+        <pre><code class="language-bash">getent hosts k8s-api.lab.internal
+nc -vz k8s-api.lab.internal 6443
+sudo kubeadm join k8s-api.lab.internal:6443 \
+  --token &lt;BOOTSTRAP_TOKEN&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;CA_PUBLIC_KEY_HASH&gt;</code></pre>
+        <p><strong>Očekivani rezultat:</strong> kubeadm potvrđuje uspešan join. Placeholder vrednosti zamenjuju se tajnim, autentično dobijenim vrednostima. Komanda se izvršava jednom po workeru. Ako join ne uspe, pre ponavljanja proveravaju se DNS, vreme, port 6443, token TTL, CA hash, runtime i kubelet logovi.</p>
+      </li>
+      <li>
+        <strong>Sa control plane čvora validirati oba workera.</strong>
+        <pre><code class="language-bash">kubectl get nodes -o wide
+kubectl wait --for=condition=Ready node/k8s-wk01 --timeout=300s
+kubectl wait --for=condition=Ready node/k8s-wk02 --timeout=300s
+kubectl describe node k8s-wk01
+kubectl describe node k8s-wk02
+kubectl get pods -n kube-system -o wide</code></pre>
+        <p><strong>Kriterijum:</strong> tri Node objekta postoje, svi su <code>Ready</code>, imaju očekivane interne adrese i Pod CIDR vrednosti, a CNI komponenta radi na svakom čvoru. Pošto control plane čvor standardno ima taint, obični workload-i treba da se raspoređuju na workere; taint se ne uklanja samo da bi laboratorijski kapacitet izgledao veći.</p>
+      </li>
+      <li>
+        <strong>Izvršiti funkcionalni DNS i raspoređivački test.</strong>
+        <pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topology-test
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: topology-test
+  template:
+    metadata:
+      labels:
+        app: topology-test
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args: ["netexec", "--http-port=8080"]
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: topology-test
+  namespace: default
+spec:
+  selector:
+    app: topology-test
+  ports:
+    - port: 80
+      targetPort: 8080</code></pre>
+        <p>Manifest sačuvati kao <code>$HOME/lab/topology-test.yaml</code>, zatim:</p>
+        <pre><code class="language-bash">kubectl apply -f "$HOME/lab/topology-test.yaml"
+kubectl rollout status deployment/topology-test --timeout=180s
+kubectl get pods -o wide
+kubectl get service topology-test
+kubectl get endpointslice -l kubernetes.io/service-name=topology-test
+kubectl run dns-test --rm -i --restart=Never \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --command -- /bin/sh -c \
+  'nslookup topology-test.default.svc.cluster.local &amp;&amp; wget -qO- http://topology-test'</code></pre>
+        <p><strong>Validacija:</strong> dve replike rade na worker čvorovima kada kapacitet to dopušta, EndpointSlice sadrži spremne endpoint-e, DNS ime servisa se razrešava i HTTP zahtev vraća odgovor. Test proverava osnovni scheduling, CNI i DNS tok; ne dokazuje NetworkPolicy, ingress, trajni storage ni HA kontrolne ravni.</p>
+      </li>
+      <li>
+        <strong>Simulirati istekao ili pogrešan join token bez menjanja zdravih čvorova.</strong>
+        <p>Na control plane čvoru kreirati token sa kratkim TTL-om samo za kontrolisanu vežbu, zabeležiti njegov ID, sačekati istek van produkcionog change prozora ili ga odmah opozvati, a zatim pokušati join na čistoj dodatnoj VM <code>k8s-wk03</code>. Bezbednija i brža simulacija je opoziv pre upotrebe:</p>
+        <pre><code class="language-bash">TOKEN=$(sudo kubeadm token create --ttl 10m --description "negative join test")
+TOKEN_ID=${TOKEN%%.*}
+sudo kubeadm token delete "$TOKEN_ID"
+sudo kubeadm token list</code></pre>
+        <p>Na čistom testnom workeru pokušati join sa opozvanim tokenom i ispravnim CA hash-em. Token se unosi iz sigurnog privremenog izvora, ne iz shell istorije u produkciji.</p>
+        <pre><code class="language-bash">sudo kubeadm join k8s-api.lab.internal:6443 \
+  --token &lt;REVOKED_TOKEN&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;CA_PUBLIC_KEY_HASH&gt;</code></pre>
+        <p><strong>Očekivani simptom:</strong> discovery ili autentikacija ne uspeva; zdravi klaster i postojeći čvorovi ostaju nepromenjeni. <strong>Neposredni uzrok:</strong> token više nije važeći. <strong>Osnovni uzrok:</strong> namerna negativna proba. <strong>Korekcija:</strong> potvrditi identitet testnog workera, kreirati nov kratkotrajan token sa opisom i ponoviti join samo ako je taj čvor odobren. Ne koristiti <code>--discovery-token-unsafe-skip-ca-verification</code> kao workaround.</p>
+      </li>
+      <li>
+        <strong>Prikupiti završne dokaze i zatvoriti bootstrap prozor.</strong>
+        <pre><code class="language-bash">kubectl get nodes -o wide \
+  &gt; "$HOME/lab/evidence/nodes-final.txt"
+kubectl get pods -A -o wide \
+  &gt; "$HOME/lab/evidence/pods-final.txt"
+kubectl get events -A --sort-by=.metadata.creationTimestamp \
+  &gt; "$HOME/lab/evidence/events-final.txt"
+kubectl get --raw='/readyz?verbose' \
+  &gt; "$HOME/lab/evidence/readyz-final.txt"
+sudo kubeadm token list \
+  | sed -E 's/[a-z0-9]{6}\.[a-z0-9]{16}/REDACTED/g' \
+  &gt; "$HOME/lab/evidence/token-status-redacted.txt"
+tar -C "$HOME/lab" -czf "$HOME/tashizza-kubeadm-evidence.tar.gz" evidence
+sha256sum "$HOME/tashizza-kubeadm-evidence.tar.gz"</code></pre>
+        <p><strong>Kriterijum završetka:</strong> sva tri planirana čvora su <code>Ready</code>; testni workload, Service i DNS rade; nema nepotrebnog aktivnog tokena; dokazna arhiva ne sadrži tajne i ima kontrolnu sumu. CNI manifest i kubeadm konfiguracija čuvaju se u kontrolisanom repozitorijumu samo nakon pregleda i uklanjanja osetljivih podataka.</p>
+      </li>
+    </ol>
+
+    <h3>Troubleshooting – od simptoma do potvrđenog uzroka</h3>
+    <p>
+      Dijagnostika počinje vremenom incidenta, obimom i poslednjom promenom. Najpre se prikupljaju dokazi koji ne menjaju stanje, zatim se postavlja hipoteza, a korektivna akcija se bira tek kada nalaz podržava uzrok. Restart kubeleta, brisanje manifesta ili <code>kubeadm reset</code> nisu početne dijagnostičke komande.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Simptom</th><th>Prvi dokaz</th><th>Verovatni uzrok</th><th>Bezbedna korekcija</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Preflight prijavljuje aktivan swap</td><td><code>swapon --show</code> i kubelet konfiguracija</td><td>OS image nije pripremljen ili swap politika nije usklađena</td><td>U labu planski isključiti swap; u produkciji primeniti odobrenu, verzijski podržanu politiku</td></tr>
+        <tr><td><code>kubeadm init</code> čeka control plane</td><td><code>journalctl -u kubelet</code>, <code>crictl ps -a</code>, <code>crictl logs</code></td><td>Runtime, cgroup, image, sertifikat, bind adresa ili static Pod crash</td><td>Ispraviti dokazani uzrok; ne ignorisati preflight niti ponavljati init naslepo</td></tr>
+        <tr><td>API radi lokalno, worker ne može da se pridruži</td><td>DNS i TCP 6443 provera sa workera</td><td>Pogrešan DNS, firewall, route ili endpoint</td><td>Ispraviti mrežni ugovor ili load balancer; ne menjati token dok mreža nije potvrđena</td></tr>
+        <tr><td>Join prijavljuje nevažeći token</td><td><code>kubeadm token list</code> i vreme na čvorovima</td><td>Token je istekao/opozvan ili sat nije tačan</td><td>Kreirati novi kratkotrajan token posle potvrde identiteta čvora</td></tr>
+        <tr><td>CA hash se ne poklapa</td><td>Autentični hash iz kontrolisanog izvora</td><td>Pogrešan klaster, kopiranje ili potencijalni MITM</td><td>Zaustaviti join i nezavisno potvrditi endpoint i CA; nikada naslepo preskočiti proveru</td></tr>
+        <tr><td>Node postoji ali je <code>NotReady</code></td><td>Node Conditions, Events, CNI Pod i kubelet log</td><td>CNI nije instaliran ili ima CIDR/MTU/kernel kvar</td><td>Ispraviti CNI uzrok; ponovno init nije rešenje</td></tr>
+        <tr><td>CoreDNS ostaje <code>Pending</code></td><td>Pod Events i dostupni čvorovi/taint-i</td><td>Nema spremnog schedulable workera ili CNI nije funkcionalan</td><td>Osposobiti worker/CNI; ne uklanjati control plane taint bez dizajnerske odluke</td></tr>
+        <tr><td>HA endpoint povremeno ne odgovara</td><td>LB backend health, API <code>readyz</code>, etcd quorum</td><td>Nezdrav backend, DNS round-robin ili gubitak etcd većine</td><td>Izolovati sloj; LB korekcija ne može vratiti izgubljen etcd quorum</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code class="language-bash">sudo journalctl -u kubelet --since '-20 min' --no-pager
+sudo crictl ps -a
+sudo crictl logs &lt;CONTAINER_ID&gt;
+sudo ls -l /etc/kubernetes/manifests
+sudo ss -lntp | grep -E ':6443|:2379|:2380|:10250'
+kubectl get nodes
+kubectl get pods -n kube-system -o wide
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+kubectl get --raw='/readyz?verbose'</code></pre>
+    <p>
+      Kubelet journal stvara systemd servis <code>kubelet</code> i u njemu se traže greške vezane za tačno vreme bootstrap-a: CRI endpoint, cgroup, static Pod, certifikat i probe. <code>crictl</code> čita runtime stanje i logove kontejnera čak i kada API server nije dostupan. Kubernetes Events su korisni za redosled skorijih događaja, ali nisu trajni audit sistem; za dužu korelaciju potrebni su centralizovani logovi i monitoring.
+    </p>
+
+    <h3>Bezbedan reset i povratak laboratorije</h3>
+    <p>
+      <code>kubeadm reset</code> pokušava da vrati promene koje su napravili <code>init</code> ili <code>join</code>. Na control plane čvoru sa stacked etcd-om uklanja i lokalnog etcd člana. Komanda je destruktivna i ne izvršava se kao opšti „repair”; pre nje se potvrđuju hostname, IP, uloga čvora, postojanje potrebnog backup-a i plan za uklanjanje člana. U zdravom višekontrolnom klasteru pogrešan reset može smanjiti etcd quorum i produžiti incident.
+    </p>
+    <p>
+      Reset ne čisti nužno CNI konfiguraciju u <code>/etc/cni/net.d</code>, sva mrežna pravila, korisnički <code>$HOME/.kube/config</code> ili podatke eksternog storage-a. Cleanup je zavisan od CNI-ja i okruženja. Najbezbedniji povratak ove vežbe je gašenje i vraćanje unapred proverenih čistih VM snapshot-a ili potpuno ponovno kreiranje VM iz automatizacije.
+    </p>
+
+    <pre><code class="language-bash">hostnamectl --static
+ip -brief address
+sudo kubeadm reset --dry-run
+sudo kubeadm reset --force</code></pre>
+    <p>
+      Prve dve komande potvrđuju cilj; <code>--dry-run</code> prikazuje plan bez namernog izvršavanja promena, a poslednja komanda destruktivno menja stanje. Izvršava se samo na namenskoj laboratorijskoj VM posle čuvanja dokaza. Zatim se primenjuje dokumentovani cleanup izabranog CNI-ja ili se VM vraća na čistu snapshot tačku. Ručno univerzalno brisanje iptables/nftables pravila nije bezbedan generički korak jer može ukloniti pravila drugih servisa.
+    </p>
+
+    <h3>Administratorske prakse</h3>
+    <ul>
+      <li><strong>Projektuj endpoint pre klastera.</strong> Stabilno DNS ime, load balancer, backend health i SAN vrednosti pripadaju dizajnu, ne naknadnoj improvizaciji.</li>
+      <li><strong>Razdvoji HA API-ja od etcd quorum-a.</strong> Dostupan load balancer ne dokazuje konzistentan backend store; obe ravni imaju posebne SLO, metrike i recovery procedure.</li>
+      <li><strong>Koristi deklarativni kubeadm API.</strong> Konfiguracija prolazi review i verzioniše se; tokeni, privatni ključevi i privilegovani kubeconfig-i ostaju izvan repozitorijuma.</li>
+      <li><strong>Pinuj podržanu minor granu i aktuelni patch.</strong> Repozitorijum, paketi, slike, CNI i version skew proveravaju se kao jedna kompatibilna celina.</li>
+      <li><strong>Ne zaobilazi identitet klastera.</strong> CA hash, TLS SAN i kontrolisani DNS sprečavaju da čvor bude pridružen pogrešnom ili lažnom endpointu.</li>
+      <li><strong>Tokeni su kratkotrajni.</strong> Kreiraju se za konkretan join prozor, prenose bezbedno, evidentiraju i opozivaju kada više nisu potrebni.</li>
+      <li><strong>Dokaz pre restarta.</strong> Kubelet journal, runtime stanje, static Pod manifesti, događaji i endpoint provere prikupljaju se pre korekcije.</li>
+      <li><strong>Ne tretiraj reset kao troubleshooting.</strong> Reset služi kontrolisanom uklanjanju kubeadm stanja sa potvrđenog čvora; nije bezazleni pokušaj popravke.</li>
+      <li><strong>Dokumentuj ono što kubeadm ne radi.</strong> CNI, CSI, ingress, monitoring, backup, DR, OS hardening i load balancer moraju imati vlasnika i lifecycle.</li>
+      <li><strong>Testiraj failure domene, ne samo broj VM.</strong> Tri control plane procesa na jednom fizičkom hostu nisu produkciona redundansa.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Možeš precizno da objasniš faze <code>kubeadm init</code> i <code>kubeadm join</code> i granice odgovornosti alata.</li>
+      <li>Razlikuješ single control plane, HA stacked etcd i HA external etcd topologiju, njihove granice kvara i operativni trošak.</li>
+      <li>Razlikuješ stabilni <code>controlPlaneEndpoint</code> od lokalne advertise adrese konkretne API server instance.</li>
+      <li>Možeš da projektuješ DNS, load balancer, portove, CIDR opsege i SAN vrednosti pre bootstrap-a.</li>
+      <li>Proveravaš jedinstvene identitete čvorova, vreme, swap, runtime, cgroup usklađenost, portove i verzije dokazima.</li>
+      <li>Pišeš i validiraš <code>kubeadm.k8s.io/v1beta4</code> konfiguraciju bez čuvanja tajni u repozitorijumu.</li>
+      <li>Bezbedno pokrećeš prvi control plane, instaliraš odobren CNI i razlikuješ očekivani pre-CNI <code>NotReady</code> od bootstrap kvara.</li>
+      <li>Kreiraš kratkotrajan join token, autentično proveravaš CA hash i pridružuješ workere bez preskakanja TLS identiteta.</li>
+      <li>Validiraš Node stanje, sistemske Podove, EndpointSlice, DNS i osnovnu komunikaciju, bez preuveličavanja dometa testa.</li>
+      <li>Za init/join kvar povezuješ simptom, vreme, kubelet journal, runtime log, DNS, port, token i sertifikat pre promene stanja.</li>
+      <li>Razumeš posledice <code>kubeadm reset</code> na stacked etcd člana i znaš šta reset ne uklanja.</li>
+      <li>Možeš da predaš dokaznu arhivu bez tajni, sa verzijama, topologijom, događajima, finalnim stanjem i kontrolnom sumom.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      kubeadm pretvara pripremljene Linux čvorove u Kubernetes klaster kroz standardizovan, fazni i proverljiv bootstrap. Njegova snaga nije u tome što skriva infrastrukturu, već što jasno odvaja Kubernetes-specifične korake od odgovornosti koje ostaju administratoru: serveri, runtime, mreža, DNS, load balancer, CNI, storage, identitet, monitoring, backup i oporavak.
+    </p>
+    <p>
+      Najvažnija arhitektonska odluka ove lekcije jeste da identitet kontrolne ravni pripada klasteru, a ne prvom serveru. Stabilan <code>controlPlaneEndpoint</code>, ispravan TLS SAN, zdravi API backend-i i održan etcd quorum čine povezanu, ali ne istu celinu. Single-control-plane laboratorija može verno naučiti bootstrap i dijagnostiku; ne može dokazati HA. Stacked i external etcd modeli zatim menjaju failure domene, broj čvorova, mrežne zavisnosti i složenost oporavka.
+    </p>
+    <p>
+      Posle praktikuma čitalac ume da formalizuje topologiju, proveri preduslove, validira kubeadm konfiguraciju, podigne prvi control plane, instalira odobrenu Pod mrežu, bezbedno pridruži workere, potvrdi DNS i workload tok, analizira neuspešan join i vrati laboratoriju u poznato stanje. To je osnova za narednu lekciju, u kojoj se komponente kontrolne ravni više ne posmatraju samo kao bootstrap artefakti, već kao učesnici u kompletnom toku upravljačke odluke.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        Zvanična Kubernetes dokumentacija za kubeadm instalaciju, init i join workflow, faze i implementacione detalje; kubeadm v1beta4 konfiguracioni API, version skew i podržane release grane; zvanični vodiči za HA stacked i external etcd topologije, control plane endpoint, sertifikate, tokene, rekonfiguraciju i reset; zvanične administrativne reference za container runtime, portove, CNI integraciju, API health endpoint-e, troubleshooting i etcd operacije.
+      </p>
+
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-05-lokalni-i-lab-klasteri.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-07-control-plane.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+  <script src="/js/syntax/prism.js"></script>
+
+</body>
+
+</html>

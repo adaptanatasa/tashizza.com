@@ -1,0 +1,770 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-22-probes-i-graceful-shutdown.html-->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Liveness, readiness i startup probe – provere zdravlja aplikacija | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kubernetes liveness, readiness i startup probe proveravaju zdravlje, spremnost i uspešno pokretanje aplikacija kako bi klaster pravilno upravljao kontejnerima i saobraćajem.">
+
+  <meta name="keywords"
+        content="Kubernetes probe, liveness probe, readiness probe, startup probe, provera zdravlja aplikacije, health check, kontejneri, Pod, restart kontejnera, dostupnost aplikacije, vanilla Kubernetes, k8s, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-22-probes-i-graceful-shutdown.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Liveness, readiness i startup probe – provere zdravlja aplikacija">
+
+  <meta property="og:description"
+        content="Upoznajte Kubernetes liveness, readiness i startup probe koje proveravaju stanje kontejnera, upravljaju restartovanjem i određuju kada je aplikacija spremna da prima saobraćaj.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-22-probes-i-graceful-shutdown.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-33-liveness-readiness-startup.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Liveness, readiness i startup probe – provere zdravlja aplikacija">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Workload platforma, mreža, podaci i bezbednost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-33-liveness-readiness-startup.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-33-liveness-readiness-startup.png"
+           alt="Liveness, readiness i startup probe – provere zdravlja aplikacija">
+
+    </a>
+
+ 
+<div class="page-subtitle">
+  V. Konfiguracija, zdravlje, resursi i raspoređivanje
+</div>
+   <div class="page-subtitle">
+22. Startup, readiness i liveness probe – zdravlje aplikacije i kontrolisano gašenje
+</div>
+<p>
+  Kubernetes može da utvrdi da li je proces kontejnera pokrenut, ali samo postojanje procesa ne znači da je aplikacija funkcionalna. Proces može da radi dok su njegove radne niti blokirane, interni red zahteva zagušen, keš neinicijalizovan ili HTTP server nesposoban da odgovori. Obrnuto, aplikacija može da bude potpuno ispravna, ali joj je za inicijalizaciju potrebno nekoliko minuta. Probe omogućavaju kubelet-u da razlikuje ova stanja i da na njih reaguje na predvidiv način.
+</p>
+<p>
+  Liveness, readiness i startup probe nisu tri varijante iste kontrole. One odgovaraju na tri različita operativna pitanja: da li kontejner treba restartovati, da li Pod trenutno sme da prima saobraćaj i da li je aplikacija završila početno pokretanje. Pouzdana konfiguracija zato ne počinje izborom URL putanje, već definisanjem preciznog ugovora između aplikacije i Kubernetes platforme.
+</p>
+
+<h3>Uloga proba u životnom ciklusu kontejnera</h3>
+<p>
+  Probe periodično izvršava kubelet na worker čvoru na kome se Pod nalazi. Kontrola se, zavisno od konfiguracije, obavlja HTTP ili HTTPS zahtevom, pokušajem uspostavljanja TCP veze, pozivanjem standardnog gRPC health interfejsa ili izvršavanjem komande unutar kontejnera. Rezultat pojedinačne provere može biti uspeh, neuspeh ili nepoznato stanje. Kubelet zatim primenjuje pravila definisana parametrima probe i ažurira stanje kontejnera ili pokreće odgovarajuću akciju.
+</p>
+<p>
+  Probe nisu centralni monitoring sistem. API server ne šalje health zahteve aplikaciji, a scheduler ne odlučuje o svakom pojedinačnom testu. Kubelet izvršava provere lokalno i rezultat prenosi u status Pod-a. Zbog toga problem sa kubelet-om, mrežom čvora ili container runtime-om može da izgleda kao problem aplikacije. Administrator mora da posmatra Pod status, događaje, restartovanja, aplikacione logove i sistemske logove čvora kao povezane izvore podataka.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Proba</th>
+      <th>Pitanje na koje odgovara</th>
+      <th>Akcija nakon trajnog neuspeha</th>
+      <th>Tipična namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Liveness</td>
+      <td>Da li se kontejner nalazi u stanju iz kog se može oporaviti bez restarta?</td>
+      <td>Kubelet zaustavlja kontejner i primenjuje njegovu restart politiku.</td>
+      <td>Detekcija blokade procesa, deadlock-a ili nepovratnog internog kvara.</td>
+    </tr>
+    <tr>
+      <td>Readiness</td>
+      <td>Da li instanca sada može bezbedno da obrađuje saobraćaj?</td>
+      <td>Pod ostaje pokrenut, ali njegov endpoint prestaje da bude spreman za Service.</td>
+      <td>Zagrevanje keša, privremena preopterećenost, nedostupna obavezna zavisnost.</td>
+    </tr>
+    <tr>
+      <td>Startup</td>
+      <td>Da li je aplikacija završila početnu inicijalizaciju?</td>
+      <td>Kontejner se restartuje ako ne uspe u dozvoljenom vremenskom prozoru.</td>
+      <td>Zaštita sporih aplikacija od prerane liveness provere.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Liveness probe – odluka o restartovanju kontejnera</h3>
+<p>
+  Liveness probe treba da utvrdi samo stanje koje restart kontejnera realno može da popravi. Ako aplikacija više ne obrađuje događaje zbog deadlock-a, zaglavljenog event loop-a ili nepopravljivo oštećenog internog stanja, restart je razumna automatska reakcija. Ako je uzrok nedostupna baza podataka, DNS servis, spoljni API ili mrežni uređaj, restart aplikacije najčešće ne uklanja uzrok i može da izazove masovno restartovanje svih replika.
+</p>
+<p>
+  Kritična greška je povezivanje liveness probe sa dubokom proverom svih zavisnosti. Kratak prekid baze tada može istovremeno da obori liveness svih Pod-ova. Kubelet počinje da ih restartuje, aplikacije ponavljaju inicijalizaciju, otvaraju nove konekcije i dodatno opterećuju već nestabilnu bazu. Umesto kontrolisanog degradiranog rada nastaje restart oluja i produženi prekid usluge.
+</p>
+<p>
+  Dobar liveness endpoint treba da bude lokalni, brz, determinističan i jeftin. Obično proverava da li glavna izvršna petlja napreduje, da li ključne interne niti rade ili da li aplikacija nije označila sopstveno stanje kao nepovratno oštećeno. Endpoint ne treba da zahteva autentikaciju koja može isteći, poziva udaljene sisteme niti obavlja skupe upite.
+</p>
+<p>
+  Neuspešna liveness proba ne briše Pod objekat niti zahteva da Deployment napravi novi Pod. Kubelet zaustavlja konkretan kontejner i, za uobičajene workload Pod-ove sa politikom <code>Always</code>, pokreće ga ponovo u istom Pod-u. Broj restartovanja raste, a <code>kubectl logs --previous</code> omogućava pregled izlaza prethodne instance kontejnera. Ako se kvar ponavlja, kontejner može preći u stanje <code>CrashLoopBackOff</code>, sa progresivnim odlaganjem novih pokušaja.
+</p>
+
+<h3>Readiness probe – kontrola prijema saobraćaja</h3>
+<p>
+  Readiness probe ne odlučuje da li proces treba restartovati. Ona određuje da li je kontejner spreman da učestvuje u pružanju usluge. Kada readiness ne uspe, Pod ostaje pokrenut i može nastaviti inicijalizaciju, obradu pozadinskog posla ili oporavak konekcija, ali njegovo stanje <code>Ready</code> postaje netačno. Kontrolni mehanizmi zatim ažuriraju EndpointSlice objekte, pa Service više ne usmerava redovan saobraćaj ka tom Pod-u.
+</p>
+<p>
+  Readiness je prikladna za proveru da li je aplikacija učitala konfiguraciju, završila migraciju lokalnog stanja, popunila obavezni keš, uspostavila minimalan skup konekcija ili ima dovoljno kapaciteta da primi novi zahtev. Ipak, zavisnost treba uključiti samo kada aplikacija bez nje zaista ne može da ispuni ugovor usluge. Ako može da vrati keširane podatke ili kontrolisan odgovor sa smanjenom funkcionalnošću, potpuno uklanjanje iz saobraćaja možda nije najbolja odluka.
+</p>
+<p>
+  Previše osetljiva readiness proba izaziva oscilovanje endpointa. Kratak skok latencije može ukloniti Pod iz Service-a, povećati opterećenje preostalih replika, oboriti njihove provere i izazvati kaskadni gubitak kapaciteta. Pragovi moraju da apsorbuju kratke prolazne smetnje, ali ne smeju toliko da kasne da korisnici dugo dobijaju greške. Izbor je deo SLO i kapacitativnog dizajna aplikacije, a ne samo YAML sintakse.
+</p>
+<p>
+  Readiness takođe učestvuje u rollout-u Deployment-a. Nova replika se ne smatra raspoloživom dok ne postane spremna i ne ispuni eventualni <code>minReadySeconds</code>. Pogrešno pozitivan rezultat pušta saobraćaj prerano, dok pogrešno negativan rezultat može zaustaviti rollout i dovesti do prekoračenja <code>progressDeadlineSeconds</code>.
+</p>
+
+<h3>Startup probe – zaštita sporog pokretanja</h3>
+<p>
+  Startup probe se koristi kada aplikacija ima dugo ili promenljivo vreme inicijalizacije. Dok ona ne uspe, kubelet ne izvršava liveness i readiness probe za taj kontejner. Time se sprečava da liveness prekine aplikaciju dok učitava veliki model, obnavlja lokalni indeks, kompajlira interne artefakte ili zagreva keš.
+</p>
+<p>
+  Startup probe nije dodatno trajno nadgledanje. Nakon prvog uspeha ona završava svoju ulogu, a kontrolu preuzimaju liveness i readiness. Maksimalno vreme koje aplikacija dobija za pokretanje približno je proizvod <code>failureThreshold</code> i <code>periodSeconds</code>, uz uticaj trajanja samih pokušaja i početnog raspoređivanja provere. Na primer, prag od 30 neuspeha uz period od 10 sekundi daje oko pet minuta za inicijalizaciju.
+</p>
+<p>
+  Veliki <code>initialDelaySeconds</code> na liveness probi može privremeno da zaštiti spor start, ali ne pravi jasnu razliku između inicijalizacije i kasnijeg rada. Ako vreme startovanja varira, fiksno kašnjenje mora biti podešeno prema najsporijem slučaju i nepotrebno odlaže detekciju stvarnog kvara kod brzih startova. Startup probe eksplicitno signalizira trenutak kada je aplikacija prešla u operativnu fazu.
+</p>
+
+<h3>Mehanizmi izvođenja proba</h3>
+<p>
+  Izbor mehanizma zavisi od protokola aplikacije, kvaliteta njenog health interfejsa i bezbednosnih ograničenja. Mehanizmi nisu potpuno zamenljivi: uspešno otvaranje TCP porta ne dokazuje da aplikacija obrađuje zahteve, dok složena <code>exec</code> komanda može uvoditi zavisnost od alata koji nisu deo minimalne kontejnerske slike.
+</p>
+<ul>
+  <li><strong>HTTP GET.</strong> Kubelet šalje zahtev na IP adresu Pod-a, izabrani port i putanju. Statusni kod od 200 do 399 smatra se uspehom. HTTP probe su najčešći izbor za web aplikacije jer mogu da izlože odvojene <code>/live</code>, <code>/ready</code> i <code>/startup</code> ugovore. Zahtev dolazi sa čvora, a ne kroz Service ili Ingress, pa mrežne politike i aplikaciono vezivanje interfejsa moraju to da dozvole.</li>
+  <li><strong>TCP socket.</strong> Kubelet pokušava da uspostavi TCP vezu. Uspeh potvrđuje da je port dostupan, ali ne i da protokol radi ispravno. Ovaj mehanizam je koristan kada aplikacija nema health API, uz svest da može dati lažno pozitivan rezultat.</li>
+  <li><strong>Exec.</strong> Kubelet preko container runtime-a izvršava navedenu komandu u kontejneru. Izlazni kod nula predstavlja uspeh. Komanda se ne izvršava automatski kroz shell, pa operatori kao što su <code>&amp;&amp;</code>, preusmeravanja i promenljive zahtevaju eksplicitno pozivanje shell-a. Exec probe troše resurse kontejnera i mogu zakazati ako slika nema potreban program.</li>
+  <li><strong>gRPC.</strong> Kubelet koristi standardni gRPC Health Checking Protocol i numerički port. Može se navesti ime logičke usluge kako bi isti endpoint razlikovao liveness i readiness. Ugrađene gRPC probe ne podržavaju imenovani port, a pogrešan port ili servis rezultuje neuspehom probe.</li>
+</ul>
+<p>
+  Za HTTPS probe kubelet uspostavlja TLS vezu, ali standardna proba ne obezbeđuje punu proveru identiteta servera kao namenski aplikacioni klijent. Health endpoint zato ne treba pogrešno tretirati kao zamenu za end-to-end TLS validaciju, autentikaciju ili eksterni sintetički monitoring.
+</p>
+
+<h3>Parametri i proračun vremena reakcije</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Parametar</th>
+      <th>Značenje</th>
+      <th>Administratorska posledica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>initialDelaySeconds</code></td>
+      <td>Odlaganje prve provere nakon pokretanja kontejnera.</td>
+      <td>Ne treba ga koristiti kao grubu zamenu za startup probe kod promenljivog startovanja.</td>
+    </tr>
+    <tr>
+      <td><code>periodSeconds</code></td>
+      <td>Planirani interval između provera.</td>
+      <td>Kraći period ubrzava reakciju, ali povećava broj zahteva i mogućnost reagovanja na prolazne smetnje.</td>
+    </tr>
+    <tr>
+      <td><code>timeoutSeconds</code></td>
+      <td>Najduže čekanje rezultata pojedinačnog pokušaja.</td>
+      <td>Mora biti iznad normalne gornje granice odziva health handler-a, ali dovoljno kratak za pravovremenu reakciju.</td>
+    </tr>
+    <tr>
+      <td><code>failureThreshold</code></td>
+      <td>Broj uzastopnih neuspeha potreban da se proba smatra neuspešnom.</td>
+      <td>Određuje toleranciju na prolazne kvarove i približno vreme detekcije.</td>
+    </tr>
+    <tr>
+      <td><code>successThreshold</code></td>
+      <td>Broj uzastopnih uspeha potreban nakon neuspeha.</td>
+      <td>Za liveness i startup mora biti 1; kod readiness može usporiti prerano vraćanje instance u saobraćaj.</td>
+    </tr>
+    <tr>
+      <td><code>terminationGracePeriodSeconds</code></td>
+      <td>Vreme dozvoljeno kontejneru da se ugasi nakon neuspešne liveness ili startup probe.</td>
+      <td>Može se definisati na nivou Pod-a, a za probe i preciznije na nivou konkretne probe kada podržana verzija API-ja to dozvoljava.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Ako liveness ima <code>periodSeconds: 10</code>, <code>timeoutSeconds: 2</code> i <code>failureThreshold: 3</code>, trajni kvar će obično biti potvrđen nakon približno 20 do 30 sekundi od prvog relevantnog pokušaja, a zatim sledi period gašenja i restart. To nije tvrdi real-time rok. Na raspored utiču trenutak nastanka kvara, trajanje pokušaja, opterećenje čvora i izvršavanje kubelet-a.
+</p>
+<p>
+  Pragovi se ne biraju napamet. Administrator treba da prikupi distribuciju vremena pokretanja i odziva health endpointa, uključujući hladan start, vršno opterećenje i oporavak posle prekida zavisnosti. Razuman cilj je da normalni najsporiji slučajevi ostanu unutar dozvoljenog prozora, dok trajni kvar bude detektovan pre nego što prekrši SLO ili preoptereti druge instance.
+</p>
+
+<h3>Dizajn health endpointa</h3>
+<p>
+  Aplikacioni i platform tim treba da dokumentuju semantiku svakog endpointa. Odgovor <code>200</code> mora imati stabilno značenje, a neuspeh mora biti posledica kontrolisanog stanja, ne slučajne implementacione greške. Endpoint treba da bude izuzet od skupih filtera, spoljne autentikacije, velikog zapisivanja logova i rate limiting pravila namenjenih korisničkom saobraćaju.
+</p>
+<ul>
+  <li><strong>Liveness</strong> proverava lokalni napredak procesa i nepovratna stanja. Ne zavisi od spoljne baze, DNS-a ili udaljenog API-ja.</li>
+  <li><strong>Readiness</strong> proverava minimum potreban za prihvatanje novog zahteva. Može uključiti ključnu zavisnost, ali samo uz zaštitu od kratkih oscilacija i jasno definisano degradirano ponašanje.</li>
+  <li><strong>Startup</strong> potvrđuje završetak inicijalizacije, a ne potpunu poslovnu ispravnost svih funkcija.</li>
+</ul>
+<p>
+  Health handler mora imati sopstvenu vremensku granicu za interne operacije. Ako čeka beskonačno na zaključavanje ili udaljeni poziv, kubelet će videti timeout, ali veliki broj zaglavljenih zahteva može potrošiti niti aplikacije. Rezultat probe treba evidentirati u metriku ili strukturisani log samo kada to ne stvara visok volumen. Za svakodnevno praćenje pogodnije su metrike broja neuspeha, trajanja proba, restartovanja i promene broja spremnih replika.
+</p>
+
+<h3>Kontrolisano gašenje Pod-a i prekid saobraćaja</h3>
+<p>
+  Probe opisuju stanje kontejnera dok radi, ali pouzdana usluga mora pravilno da se ponaša i kada se Pod uklanja zbog rollout-a, skaliranja, evikcije, preemption-a ili administratorskog brisanja. Kada započne regularno gašenje, API objekat dobija <code>deletionTimestamp</code>, EndpointSlice endpoint dobija <code>terminating: true</code>, a radi kompatibilnosti njegov uslov <code>ready</code> postaje <code>false</code>. Uslov <code>serving</code> može da ostane <code>true</code> dok aplikacija završava postojeće zahteve; potrošači EndpointSlice API-ja koji razumeju terminating endpoint-e mogu ga koristiti za kontrolisani drain. To nije isto što i neuspeh readiness probe, i aplikacija ne treba da računa na to da će svi eksterni load balancer-i istog trenutka prestati da šalju nove konekcije.
+</p>
+<p>
+  Kubelet pokreće <code>preStop</code> handler, ako je definisan, a zatim procesu 1 u kontejneru šalje signal <code>SIGTERM</code>. Odbrojavanje <code>terminationGracePeriodSeconds</code> počinje pre izvršavanja <code>preStop</code>; handler i aplikaciono gašenje dele isti budžet. Ako proces ne završi do isteka roka, kubelet šalje <code>SIGKILL</code>, pa se prekidaju aktivni zahtevi i neizvršeni flush podataka. Aplikacija zato mora da obrađuje <code>SIGTERM</code>, prestane da prihvata nov rad, dovrši zahteve u letu, zatvori konekcije i izađe sa predvidivim statusom. Shell kao PID 1 koji ne prosleđuje signal, predug <code>preStop</code> ili prekratak grace period česte su greške.
+</p>
+<p>
+  <code>preStop</code> nije obavezan kada aplikacija sama pravilno obrađuje <code>SIGTERM</code> i infrastruktura dovoljno brzo uklanja terminating endpoint iz redovnog saobraćaja. Kratko kontrolisano čekanje može pomoći starijim load balancer-ima da osveže stanje, ali nasumični dugi <code>sleep</code> samo troši raspoloživi rok. Ako se koristi, mora biti zasnovan na izmerenom vremenu propagacije i ostaviti dovoljno vremena aplikaciji za stvarni drain. Isti lifecycle handler može se izvršiti i pri restartu izazvanom liveness ili startup probom, zato ne sme pretpostaviti da se ceo Pod zauvek uklanja.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Faza</th>
+      <th>Signal ili stanje</th>
+      <th>Administratorska provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Početak terminacije</td>
+      <td>Pod dobija <code>deletionTimestamp</code>; endpoint postaje <code>terminating: true</code> i uobičajeno <code>ready: false</code>.</td>
+      <td>Pratiti Pod i EndpointSlice, ne samo nestanak imena Pod-a.</td>
+    </tr>
+    <tr>
+      <td>Lifecycle handler</td>
+      <td><code>preStop</code> se izvršava unutar već započetog grace perioda.</td>
+      <td>Potvrditi trajanje i izlaz handler-a u aplikacionim logovima.</td>
+    </tr>
+    <tr>
+      <td>Graceful stop</td>
+      <td>Runtime zahteva zaustavljanje, a proces tipično prima <code>SIGTERM</code>.</td>
+      <td>Potvrditi da PID 1 obrađuje signal i da aktivni zahtevi završavaju bez 5xx grešaka.</td>
+    </tr>
+    <tr>
+      <td>Prinudni stop</td>
+      <td>Po isteku roka sledi <code>SIGKILL</code>.</td>
+      <td>Pojava presečenih zahteva ukazuje na prekratak rok, zaglavljen handler ili neispravno rukovanje signalom.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Najčešće greške i posledice</h3>
+<ul>
+  <li><strong>Ista duboka provera za sva tri tipa.</strong> Kvar baze istovremeno uklanja Pod iz saobraćaja i pokreće restart, čime se problem pojačava umesto izoluje.</li>
+  <li><strong>Prekratak timeout.</strong> Health endpoint koji pri vršnom opterećenju legitimno odgovara za 1,2 sekunde neće biti pouzdan sa <code>timeoutSeconds: 1</code>.</li>
+  <li><strong>Preagresivna liveness proba.</strong> Jedan spor odgovor izaziva restart, a restart povećava opterećenje i proizvodi lančani kvar.</li>
+  <li><strong>Nepostojanje readiness probe.</strong> Pod se smatra spremnim čim kontejner radi, pa Service može poslati saobraćaj aplikaciji koja još učitava podatke.</li>
+  <li><strong>Probe kroz javni Ingress ili Service.</strong> Time se meri više komponenti od same instance i gubi se mogućnost preciznog povezivanja rezultata sa konkretnim Pod-om.</li>
+  <li><strong>Exec proba sa nepostojećim alatom.</strong> Minimalna slika nema <code>curl</code>, shell ili klijent baze, pa se zdrava aplikacija proglašava neispravnom.</li>
+  <li><strong>Pogrešan port ili putanja.</strong> Kubelet događaji pokazuju <code>connection refused</code>, timeout ili HTTP status neuspeha, iako aplikacioni proces radi.</li>
+  <li><strong>Health endpoint sluša samo na localhost-u.</strong> HTTP zahtev kubelet-a prema Pod IP adresi ne može da dođe do procesa vezanog isključivo za <code>127.0.0.1</code>.</li>
+  <li><strong>Ignorisanje resursnih limita.</strong> CPU throttling ili nedostatak memorije može usporiti health handler. Probe tada prikazuju simptom, dok je osnovni uzrok kapacitet ili QoS konfiguracija.</li>
+</ul>
+
+<h3>Administratorska dijagnostika</h3>
+<p>
+  Prva provera je status workload-a, broj spremnih replika, restartovanja i događaji. Kolona <code>READY</code> prikazuje broj spremnih kontejnera u Pod-u, ali sama ne objašnjava uzrok. <code>kubectl describe pod</code> prikazuje konfiguraciju proba, trenutno stanje kontejnera, prethodni razlog završetka i događaje poput <code>Unhealthy</code>, <code>Killing</code> ili neuspešnog sandbox mrežnog podešavanja.
+</p>
+<pre><code class="language-bash">kubectl -n &lt;namespace&gt; get deployment,pod -o wide
+kubectl -n &lt;namespace&gt; describe pod &lt;pod-name&gt;
+kubectl -n &lt;namespace&gt; get events --sort-by=.metadata.creationTimestamp
+kubectl -n &lt;namespace&gt; logs &lt;pod-name&gt; -c &lt;container-name&gt; --since=15m
+kubectl -n &lt;namespace&gt; logs &lt;pod-name&gt; -c &lt;container-name&gt; --previous</code></pre>
+<p>
+  Ako readiness ne uspe, administrator proverava da li se Pod nalazi među spremnim endpointima Service-a. EndpointSlice prikazuje adresu Pod-a i uslov <code>ready</code>. Ako je aplikacija spremna, a endpoint nedostaje, proveravaju se Service selektori i Pod labels; ako readiness nije uspešna, istražuje se njena putanja, port, odgovor i zavisnosti.
+</p>
+<pre><code class="language-bash">kubectl -n &lt;namespace&gt; get service &lt;service-name&gt; -o yaml
+kubectl -n &lt;namespace&gt; get endpointslice \
+  -l kubernetes.io/service-name=&lt;service-name&gt; -o wide
+kubectl -n &lt;namespace&gt; get pod &lt;pod-name&gt; \
+  -o jsonpath='{.status.containerStatuses[*].ready}{"\n"}'</code></pre>
+<p>
+  Kada događaji ukazuju na timeout ili grešku koju aplikacioni log ne objašnjava, sledeća granica je worker čvor. Na systemd Linux čvoru kubelet logovi se uobičajeno čitaju komandom <code>journalctl -u kubelet</code>. Pristup čvoru zahteva posebno operativno ovlašćenje i ne treba ga zameniti privilegovanim debug Pod-om bez odobrenja. Ako postoji sumnja na container runtime, ovlašćeni administrator može koristiti <code>crictl</code> na čvoru za pregled kontejnera i runtime logova.
+</p>
+
+<hr>
+
+<h3>Integrisani praktikum – pouzdane probe za internu API uslugu</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Interna usluga <code>orders-api</code> obrađuje zahteve drugih aplikacija. Pri pokretanju joj je potrebno približno 20 sekundi da učita lokalne referentne podatke. Posle toga može privremeno izgubiti spremnost bez potrebe za restartom, dok nepovratna blokada glavnog procesa treba da izazove restart. Cilj je implementirati tri odvojena health ugovora, dokazati ponašanje Service endpointa i kontrolisano izazvati liveness oporavak.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Koristi se vanilla Kubernetes klaster sa najmanje dva worker čvora, namespace <code>health-lab</code>, Deployment <code>orders-api</code> sa tri replike, Service <code>orders-api</code> i slika <code>python:3.12-slim</code>. Python aplikacija se isporučuje kroz ConfigMap radi transparentnosti laboratorije. U produkciji bi aplikacioni kod bio deo kontrolisane, skenirane i potpisane slike sa nepromenljivim digestom.
+</p>
+<p>
+  <strong>Preduslovi i prava.</strong> Potrebni su funkcionalan <code>kubectl</code> kontekst, pravo čitanja Pod-ova, događaja, logova, Service i EndpointSlice objekata, kao i pravo kreiranja i izmene Namespace, ConfigMap, Deployment i Service objekata u laboratorijskom prostoru. Za enterprise rad ta prava treba obezbediti namenskom Role i RoleBinding konfiguracijom, a ne trajnim korišćenjem <code>cluster-admin</code> naloga.
+</p>
+
+<ol>
+  <li>
+    <strong>Provera konteksta i početnog stanja.</strong>
+    Pre promene treba potvrditi identitet klastera i korisnika, jer primena manifesta u pogrešnom klasteru predstavlja ozbiljan operativni incident. Zatim se proverava da li namespace već postoji.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl auth can-i create namespaces
+kubectl auth can-i create deployments.apps --namespace=health-lab
+kubectl get namespace health-lab --ignore-not-found</code></pre>
+    <strong>Validacija:</strong> Kontekst mora odgovarati odobrenom laboratorijskom klasteru. Komande <code>auth can-i</code> treba da vrate <code>yes</code>. Ako namespace postoji, pre nastavka proveriti vlasništvo, labels i postojeće resurse; ne prepisivati tuđe okruženje.
+  </li>
+  <li>
+    <strong>Kreiranje namespace-a i aplikacionog koda.</strong>
+    Sledeći manifest pravi izolovan namespace i ConfigMap sa jednostavnom HTTP aplikacijom. Aplikacija koristi datoteke u <code>/state</code>: <code>started</code> potvrđuje završen start, <code>ready</code> dozvoljava saobraćaj, a <code>live</code> označava da je proces operativan.
+    <pre><code class="language-bash">cat &gt; health-lab-base.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: health-lab
+  labels:
+    environment: training
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-code
+  namespace: health-lab
+data:
+  server.py: |
+    import os
+    import signal
+    import sys
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+STATE_DIR = "/state"
+server = None
+
+def exists(name):
+    return os.path.exists(os.path.join(STATE_DIR, name))
+
+class Handler(BaseHTTPRequestHandler):
+    def send_result(self, status, message):
+        body = (message + "\n").encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/startup":
+            self.send_result(200 if exists("started") else 503,
+                             "started" if exists("started") else "starting")
+        elif self.path == "/ready":
+            self.send_result(200 if exists("ready") else 503,
+                             "ready" if exists("ready") else "not ready")
+        elif self.path == "/live":
+            self.send_result(200 if exists("live") else 500,
+                             "alive" if exists("live") else "unhealthy")
+        elif self.path == "/":
+            self.send_result(200, "orders-api")
+        else:
+            self.send_result(404, "not found")
+
+    def log_message(self, fmt, *args):
+        print("%s %s" % (self.address_string(), fmt % args), flush=True)
+
+def stop(signum, frame):
+    ready = os.path.join(STATE_DIR, "ready")
+    if os.path.exists(ready):
+        os.remove(ready)
+    print("SIGTERM received; stopping HTTP server", flush=True)
+    server.shutdown()
+    sys.exit(0)
+
+os.makedirs(STATE_DIR, exist_ok=True)
+open(os.path.join(STATE_DIR, "live"), "w").close()
+server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+signal.signal(signal.SIGTERM, stop)
+print("orders-api initialization started", flush=True)
+time.sleep(20)
+open(os.path.join(STATE_DIR, "started"), "w").close()
+open(os.path.join(STATE_DIR, "ready"), "w").close()
+print("orders-api is ready", flush=True)
+while True:
+    time.sleep(1)
+
+EOF
+
+kubectl apply -f health-lab-base.yaml</code></pre> <strong>Validacija:</strong> ConfigMap mora postojati u namespace-u i sadržati ključ <code>server.py</code>. <pre><code class="language-bash">kubectl -n health-lab get configmap orders-api-code
+kubectl -n health-lab get configmap orders-api-code 
+-o jsonpath='{.data.server.py}' | head</code></pre>
+
+  </li>
+  <li>
+    <strong>Implementacija Deployment-a i Service-a.</strong>
+    Deployment koristi tri replike i strategiju postepenog ažuriranja. Startup probe dozvoljava do 90 sekundi za početak rada. Readiness zahteva dva uzastopna uspeha pre vraćanja instance u saobraćaj, dok liveness zahteva tri neuspeha pre restarta. Service bira samo Pod-ove sa labelom <code>app: orders-api</code>.
+    <pre><code class="language-bash">cat &gt; health-lab-workload.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: health-lab
+spec:
+  replicas: 3
+  minReadySeconds: 5
+  progressDeadlineSeconds: 180
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: orders-api
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - /opt/orders/server.py
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - rm -f /state/ready; sleep 5
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 18
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+            successThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+            terminationGracePeriodSeconds: 10
+          volumeMounts:
+            - name: application-code
+              mountPath: /opt/orders
+              readOnly: true
+            - name: runtime-state
+              mountPath: /state
+      volumes:
+        - name: application-code
+          configMap:
+            name: orders-api-code
+        - name: runtime-state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: health-lab
+spec:
+  selector:
+    app: orders-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+EOF
+
+kubectl apply -f health-lab-workload.yaml</code></pre> <strong>Validacija:</strong> API server treba da prihvati oba objekta. Ako verzija klastera ne podržava <code>terminationGracePeriodSeconds</code> u probi, server će odbiti manifest; polje tada treba ukloniti tek nakon provere verzije i dokumentovanja promene. <pre><code class="language-bash">kubectl -n health-lab get deployment orders-api
+kubectl -n health-lab get service orders-api
+kubectl -n health-lab get deployment orders-api 
+-o jsonpath='{.spec.template.spec.containers[0].startupProbe.httpGet.path}{"\n"}'</code></pre>
+
+  </li>
+  <li>
+    <strong>Praćenje startup faze.</strong>
+    Odmah nakon kreiranja Pod-ovi treba da budu pokrenuti, ali još nespremni. Startup endpoint vraća 503 dok aplikacija ne završi simuliranu inicijalizaciju. Po prvom uspehu startup probe počinju readiness i liveness kontrole.
+    <pre><code class="language-bash">kubectl -n health-lab get pods -l app=orders-api -w</code></pre>
+    <strong>Validacija:</strong> U prvih približno 20 do 30 sekundi očekuje se <code>0/1</code> u koloni <code>READY</code>, bez restartovanja. Nakon inicijalizacije sva tri Pod-a treba da postanu <code>1/1 Running</code>. Praćenje se prekida kombinacijom <code>Ctrl+C</code>, a rollout se potvrđuje posebno.
+    <pre><code class="language-bash">kubectl -n health-lab rollout status deployment/orders-api --timeout=180s
+kubectl -n health-lab get pods -l app=orders-api \
+  -o custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount</code></pre>
+  </li>
+  <li>
+    <strong>Provera aplikacije kroz Service.</strong>
+    Privremeni klijentski Pod šalje više zahteva Service-u. Opcija <code>--rm</code> uklanja klijentski Pod po završetku, pa u namespace-u ne ostaje pomoćni workload.
+    <pre><code class="language-bash">kubectl -n health-lab run health-client \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never --rm -i \
+  -- sh -c 'for i in 1 2 3 4 5; do
+    curl -fsS http://orders-api/;
+  done'</code></pre>
+    <strong>Validacija:</strong> Svaki zahtev treba da vrati <code>orders-api</code>. EndpointSlice treba da sadrži tri adrese sa spremnim stanjem.
+    <pre><code class="language-bash">kubectl -n health-lab get endpointslice \
+  -l kubernetes.io/service-name=orders-api -o wide
+kubectl -n health-lab get deployment orders-api \
+  -o jsonpath='{.status.readyReplicas}{" ready of "}{.status.replicas}{" replicas\n"}'</code></pre>
+  </li>
+  <li>
+    <strong>Negativni readiness test.</strong>
+    Iz jedne instance uklanja se datoteka <code>/state/ready</code>. Ovo je kontrolisana laboratorijska promena koja ne restartuje proces. U produkciji se ne menja stanje aplikacije komandom <code>kubectl exec</code> bez odobrenog testa i plana povratka.
+    <pre><code class="language-bash">TEST_POD=$(kubectl -n health-lab get pod -l app=orders-api \
+  -o jsonpath='{.items[0].metadata.name}')
+echo "$TEST_POD"
+kubectl -n health-lab exec "$TEST_POD" -c orders-api -- \
+  rm /state/ready</code></pre>
+    <strong>Validacija:</strong> Posle dva neuspešna readiness pokušaja, približno u okviru 10 do 15 sekundi, testni Pod treba da bude <code>0/1 Running</code>, dok ostala dva ostaju spremna. Broj restartovanja testnog Pod-a ne sme da poraste.
+    <pre><code class="language-bash">sleep 15
+kubectl -n health-lab get pod "$TEST_POD"
+kubectl -n health-lab get pod "$TEST_POD" \
+  -o jsonpath='{.status.containerStatuses[0].restartCount}{" restarts\n"}'
+kubectl -n health-lab get endpointslice \
+  -l kubernetes.io/service-name=orders-api -o yaml</code></pre>
+    U EndpointSlice izlazu adresa testnog Pod-a treba da ima uslov <code>ready: false</code> ili da ne učestvuje među endpointima koji primaju redovan Service saobraćaj, zavisno od prikaza klijenta i verzije API-ja.
+  </li>
+  <li>
+    <strong>Oporavak readiness stanja.</strong>
+    Datoteka se vraća, ali je zbog <code>successThreshold: 2</code> potrebno da dve uzastopne provere uspeju pre nego što se Pod vrati u saobraćaj.
+    <pre><code class="language-bash">kubectl -n health-lab exec "$TEST_POD" -c orders-api -- \
+  sh -c 'touch /state/ready'
+sleep 15
+kubectl -n health-lab get pod "$TEST_POD"
+kubectl -n health-lab get deployment orders-api</code></pre>
+    <strong>Validacija:</strong> Pod mora ponovo biti <code>1/1 Running</code>, Deployment mora imati tri spremne replike, a restart count mora ostati nepromenjen. Time je dokazano da readiness kontroliše saobraćaj, a ne životni ciklus procesa.
+  </li>
+  <li>
+    <strong>Negativni liveness test.</strong>
+    Uklanjanje datoteke <code>/state/live</code> simulira nepovratno interno stanje. Nakon tri neuspešna pokušaja kubelet treba da zaustavi kontejner. Pošto je <code>/state</code> emptyDir na nivou Pod-a, sadržaj volumena opstaje kroz restart kontejnera, ali Python aplikacija pri svakom novom pokretanju ponovo pravi <code>live</code> datoteku i prolazi inicijalizaciju.
+    <pre><code class="language-bash">BEFORE_RESTARTS=$(kubectl -n health-lab get pod "$TEST_POD" \
+  -o jsonpath='{.status.containerStatuses[0].restartCount}')
+kubectl -n health-lab exec "$TEST_POD" -c orders-api -- \
+  rm /state/live
+echo "Restart count before test: $BEFORE_RESTARTS"</code></pre>
+    <strong>Validacija:</strong> U roku od približno 30 do 50 sekundi očekuje se događaj neuspešne liveness probe i restart kontejnera. Pod će tokom ponovne inicijalizacije privremeno biti nespreman.
+    <pre><code class="language-bash">sleep 45
+kubectl -n health-lab get pod "$TEST_POD"
+kubectl -n health-lab describe pod "$TEST_POD"
+kubectl -n health-lab logs "$TEST_POD" -c orders-api --previous</code></pre>
+    Broj restartovanja mora biti najmanje za jedan veći od početne vrednosti. U događajima se očekuju poruke koje ukazuju na neuspeh liveness probe i zaustavljanje kontejnera, dok prethodni log treba da sačuva izlaz ugašene instance ako ga runtime još čuva.
+  </li>
+  <li>
+    <strong>Završna funkcionalna provera.</strong>
+    Po završetku ponovne inicijalizacije Deployment mora da se vrati na tri spremne replike bez ručne zamene Pod-a.
+    <pre><code class="language-bash">kubectl -n health-lab rollout status deployment/orders-api --timeout=180s
+kubectl -n health-lab get pods -l app=orders-api
+kubectl -n health-lab get endpointslice \
+  -l kubernetes.io/service-name=orders-api -o wide
+kubectl -n health-lab run final-health-client \
+  --image=curlimages/curl:8.12.1 \
+  --restart=Never --rm -i \
+  -- curl -fsS http://orders-api/</code></pre>
+    <strong>Kriterijumi prihvatanja:</strong> sva tri Pod-a su <code>1/1 Running</code>; Deployment prikazuje tri spremne i tri raspoložive replike; Service zahtev vraća <code>orders-api</code>; readiness test nije izazvao restart; liveness test jeste povećao restart count tačno testirane instance; rollout je završen unutar 180 sekundi.
+  </li>
+  <li>
+    <strong>Kontrolisani test graceful shutdown-a.</strong>
+    Ovaj korak namerno briše samo jedan Pod kojim upravlja Deployment; kontroler će odmah napraviti zamenu. Pre testa potvrđuju se tri spremne replike i pokreće praćenje događaja u posebnom terminalu. Brisanje celog Deployment-a nije potrebno i povećalo bi rizik laboratorije.
+    <pre><code class="language-bash">kubectl -n health-lab get deployment orders-api
+TERM_POD=$(kubectl -n health-lab get pod -l app=orders-api \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n health-lab get events --watch \
+  --field-selector involvedObject.name="$TERM_POD"</code></pre>
+    U drugom terminalu izvršava se state-changing komanda sa podrazumevanim grace periodom iz Pod specifikacije, a zatim se prate Pod i EndpointSlice uslovi.
+    <pre><code class="language-bash">kubectl -n health-lab delete pod "$TERM_POD" --wait=false
+kubectl -n health-lab get pod "$TERM_POD" -w</code></pre>
+    Dok Pod postoji u stanju <code>Terminating</code>, u trećem terminalu treba uhvatiti EndpointSlice prikaz. Na brzom klasteru prozor može biti kratak zbog pet sekundi u <code>preStop</code> handler-u.
+    <pre><code class="language-bash">kubectl -n health-lab get endpointslice \
+  -l kubernetes.io/service-name=orders-api -o yaml
+kubectl -n health-lab rollout status deployment/orders-api --timeout=180s
+kubectl -n health-lab get pods -l app=orders-api</code></pre>
+    <strong>Očekivani rezultat i validacija:</strong> endpoint testiranog Pod-a privremeno prikazuje <code>terminating: true</code> i <code>ready: false</code>; aplikacioni log sadrži poruku o prijemu <code>SIGTERM</code> ako je log još dostupan u centralnom logging sistemu; Deployment pravi zamenski Pod i vraća se na tri spremne replike. Odsustvo 5xx grešaka tokom kontinuiranog testa saobraćaja potvrđuje funkcionalni cilj. Ako Pod ostane u <code>Terminating</code> do isteka 30 sekundi ili se zahtevi prekidaju, proveravaju se trajanje <code>preStop</code> handler-a, rukovanje signalom i vreme propagacije load balancer-a pre povećavanja grace perioda.
+  </li>
+  <li>
+    <strong>Rollback i cleanup.</strong>
+    Ako je manifest deo GitOps repozitorijuma, ispravan rollback je vraćanje potvrđene prethodne revizije u repozitorijumu i pokretanje kontrolisanog usaglašavanja. Za imperative Deployment izmene može se koristiti rollout istorija i povratak na prethodnu reviziju, ali samo ako istorija sadrži odgovarajući ReplicaSet.
+    <pre><code class="language-bash">kubectl -n health-lab rollout history deployment/orders-api
+kubectl -n health-lab rollout undo deployment/orders-api
+kubectl -n health-lab rollout status deployment/orders-api --timeout=180s</code></pre>
+    Navedeni <code>rollout undo</code> ne treba izvršavati bez potrebe, jer u ovoj laboratoriji možda ne postoji korisna prethodna revizija. Potpuno uklanjanje laboratorije je destruktivno i briše sve objekte u namespace-u.
+    <p><strong>Upozorenje:</strong> sledeću komandu koristiti samo kada je potvrđeno da namespace pripada isključivo ovoj vežbi.</p>
+    <pre><code class="language-bash">kubectl delete namespace health-lab
+rm -f health-lab-base.yaml health-lab-workload.yaml</code></pre>
+    <strong>Validacija cleanup-a:</strong>
+    <pre><code class="language-bash">kubectl get namespace health-lab --ignore-not-found
+test ! -e health-lab-base.yaml &amp;&amp; test ! -e health-lab-workload.yaml</code></pre>
+    Uspešan rezultat je odsustvo namespace-a i lokalnih laboratorijskih manifesta.
+  </li>
+</ol>
+
+<h3>Logovi, metrike i razlikovanje uzroka</h3>
+<p>
+  Aplikacioni logovi u ovom scenariju odlaze na standardni izlaz i dostupni su kroz <code>kubectl logs</code>. Prethodna instanca kontejnera dostupna je opcijom <code>--previous</code> dok je runtime nije uklonio. Kubernetes događaji prikazuju neposredan rezultat probe i akciju kubelet-a, ali nisu trajni audit zapis i imaju ograničeno vreme zadržavanja. Produkciono okruženje zato treba da šalje aplikacione i sistemske logove u cluster-level logging platformu nezavisnu od životnog ciklusa Pod-a i čvora.
+</p>
+<p>
+  Kada health zahtev vraća HTTP 503, aplikacija je dostupna na mrežnom nivou i svesno prijavljuje nespremnost. <code>Connection refused</code> ukazuje da na ciljanom portu nema listener-a ili da proces sluša na pogrešnom interfejsu. Timeout može poticati od zagušenog procesa, CPU throttling-a, blokirane mreže, prekratkog praga ili problema čvora. Greška <code>command not found</code> kod exec probe znači da je pogrešan mehanizam ili sadržaj slike, a ne nužno kvar poslovne aplikacije.
+</p>
+<p>
+  Za produkciono praćenje treba povezati restart count, broj spremnih replika, trajanje rollout-a, stopu HTTP grešaka, latenciju aplikacije, CPU throttling, memoriju, OOM događaje i dostupnost ključnih zavisnosti. Sama poruka „probe failed” opisuje neposredni okidač, ali ne potvrđuje osnovni uzrok.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola rollout-a posle svake promene proba.</strong> Proveravaju se <code>kubectl rollout status</code>, broj ready replika, događaji i restart count tokom najmanje jednog punog rollout prozora. Reakcija je potrebna ako rollout prekorači <code>progressDeadlineSeconds</code>, ready replike padnu ispod dozvoljenog kapaciteta ili restart count počne kontinuirano da raste. Prva reakcija je zaustavljanje daljih promena i poređenje novog ReplicaSet-a sa prethodnim. U change zapisu dokumentuju se manifest, revizija, vreme promene, rezultat i rollback odluka. Uspeh znači završen rollout bez povećane stope grešaka i bez neočekivanih restartovanja.</li>
+  <li><strong>Praćenje oscilovanja readiness stanja.</strong> Kontrolišu se metrike spremnih replika, EndpointSlice promene i aplikaciona latencija kontinuirano, uz pregled posle incidenta i svakog skaliranja. Više prelazaka Ready/NotReady u kratkom periodu ili gubitak kapaciteta ispod SLO praga zahteva reakciju. Prvo se porede failure događaji sa CPU, memorijskim, mrežnim i dependency metrikama; ne povećavaju se pragovi naslepo. Nalaz se upisuje u incident zapis i backlog aplikacionog tima. Uspeh se meri smanjenjem flapping događaja bez povećanja korisničkih grešaka.</li>
+  <li><strong>Revizija semantike endpointa.</strong> Najmanje pri svakoj većoj verziji aplikacije proverava se šta tačno testiraju <code>/live</code>, <code>/ready</code> i <code>/startup</code>. Pregledaju se kod, tehnička specifikacija i testovi kvarova. Uključivanje udaljene zavisnosti u liveness ili nedokumentovana promena statusnih kodova zahteva blokiranje produkcionog rollout-a. Prva reakcija je zajednički pregled platform i aplikacionog tima. U repozitorijumu se čuvaju health ugovor i merljivi pragovi, a uspeh potvrđuju automatizovani testovi očekivanih pozitivnih i negativnih stanja.</li>
+  <li><strong>Kapacitativna provera health handler-a.</strong> Posle promene resursnih limita, broja replika ili obrasca opterećenja prate se latencija health endpointa, CPU throttling i timeout događaji. P95 i P99 odziv moraju ostati sa sigurnom rezervom ispod <code>timeoutSeconds</code>. Ako se približe pragu, prvo se proveravaju resursi i blokirajuće operacije handler-a, a ne povećava se automatski timeout. Rezultati se dokumentuju u performance izveštaju; uspeh je stabilan odziv bez lažno negativnih proba pri vršnom opterećenju.</li>
+  <li><strong>Čuvanje dokaza incidenta.</strong> Pri svakom neočekivanom restartu čuvaju se <code>describe pod</code>, događaji, trenutni i prethodni log, status kontejnera, konfiguracija probe i relevantne metrike. Prikupljanje počinje odmah jer se događaji i prethodni log mogu izgubiti. Podaci se smeštaju u incident sistem ili odobreno centralno skladište, bez tajni i ličnih podataka. Uspeh znači da postincident analiza može da rekonstruiše vreme, okidač, osnovni uzrok i efekat oporavka.</li>
+  <li><strong>Verzionisanje i oporavak konfiguracije.</strong> Probe nisu podatak za klasičan backup, ali njihovi manifesti, Helm vrednosti, Kustomize slojevi i policy pravila moraju biti u verzionisanom repozitorijumu. Svaka promena prolazi review i automatsku validaciju šeme. Probni restore se sprovodi periodičnim kreiranjem workload-a u testnom namespace-u iz označene revizije. Upotrebljivost je potvrđena kada se resursi uspešno kreiraju, probe prođu očekivanim redosledom i funkcionalni test završi bez ručnih korekcija.</li>
+</ul>
+
+<h3>Kontrolna lista</h3>
+<ul>
+  <li>☐ Liveness endpoint proverava samo stanje koje restart kontejnera može da popravi.</li>
+  <li>☐ Readiness neuspeh uklanja testni Pod iz spremnih EndpointSlice adresa bez povećanja restart count-a.</li>
+  <li>☐ Startup proba pokriva izmereno najsporije normalno pokretanje sa dokumentovanom rezervom.</li>
+  <li>☐ Portovi, putanje, protokol i imenovani portovi u probama odgovaraju stvarnoj konfiguraciji kontejnera.</li>
+  <li>☐ <code>timeoutSeconds</code>, <code>periodSeconds</code> i pragovi zasnovani su na metrikama, a ne na proizvoljnim vrednostima.</li>
+  <li>☐ <code>kubectl rollout status</code> završava uspešno unutar definisanog <code>progressDeadlineSeconds</code>.</li>
+  <li>☐ <code>kubectl describe pod</code> ne prikazuje neočekivane <code>Unhealthy</code> ili <code>Killing</code> događaje.</li>
+  <li>☐ Prethodni log kontejnera i cluster-level logovi dostupni su za analizu restartovanja.</li>
+  <li>☐ Negativni readiness i liveness test imaju očekivane, međusobno različite rezultate.</li>
+  <li>☐ Manifest, kriterijumi prihvatanja, rezultat promene i rollback postupak sačuvani su u change ili GitOps evidenciji.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da probe nisu univerzalni odgovor na pitanje da li je aplikacija „zdrava”, već tri odvojena upravljačka signala. Liveness dozvoljava platformi da restartuje kontejner samo kada restart ima realnu vrednost. Readiness štiti korisnički saobraćaj i rollout od instance koja trenutno ne može da ispuni ugovor usluge. Startup štiti legitimno sporu inicijalizaciju od preuranjene reakcije liveness mehanizma.
+</p>
+<p>
+  Praktična veština nije samo pisanje <code>httpGet</code> bloka, već izbor semantike endpointa, proračun vremenskih pragova, validacija EndpointSlice stanja, analiza događaja i prethodnih logova, kontrolisani negativni test i bezbedan rollback. Pogrešno podešena proba može smanjiti raspoloživost više nego kvar koji pokušava da otkrije: može izazvati restart oluju, izbaciti sve replike iz saobraćaja ili pustiti zahteve aplikaciji koja još nije spremna.
+</p>
+<p>
+  Granica odgovornosti administratora je jasna. Platform tim obezbeđuje ispravnu Kubernetes konfiguraciju, observability, kontrolu promena i zaštitne pragove, ali ne treba samostalno da izmišlja poslovnu semantiku health endpointa. Aplikacioni tim mora da potvrdi koja interna i zavisna stanja predstavljaju živost, spremnost i završen start. Neobjašnjivo pogoršanje svih replika, problem worker čvora, runtime greške, mrežna nedostupnost ili ponašanje koje zahteva promenu aplikacionog koda razlog su za pravovremenu eskalaciju, uz očuvane tehničke dokaze i bez nasumičnog povećavanja pragova.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija o liveness, readiness i startup probama; Pod životnom ciklusu i kontrolisanom gašenju; container lifecycle hook-ovima; Pod, Probe i EndpointSlice API referencama; Service i EndpointSlice saobraćaju; kubelet, kubectl i CRI dijagnostici; događajima, sistemskim i aplikacionim logovima i observability postupcima
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-21-secret.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-23-requests-limits-qos.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

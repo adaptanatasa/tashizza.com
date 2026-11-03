@@ -1,0 +1,1278 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-18-identitet-rbac-i-pristup-platformi.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>RBAC – uloge, dozvole i kontrola pristupa u Kubernetes okruženju | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="RBAC omogućava preciznu kontrolu pristupa Kubernetes resursima kroz uloge, dozvole i dodelu privilegija korisnicima, grupama i servisnim nalozima u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, RBAC, Role, ClusterRole, RoleBinding, ClusterRoleBinding, ServiceAccount, sigurnost, DevOps, TKG, cloud native, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-18-identitet-rbac-i-pristup-platformi.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="RBAC – uloge, dozvole i kontrola pristupa u Kubernetes okruženju">
+
+  <meta property="og:description"
+        content="Trideset prva lekcija VMware & Tanzu tutorijala – razumevanje Role, ClusterRole, RoleBinding i drugih RBAC mehanizama za bezbednu kontrolu pristupa Kubernetes resursima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-18-identitet-rbac-i-pristup-platformi.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-18-rbac.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="RBAC – uloge, dozvole i kontrola pristupa u Kubernetes okruženju">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-18-rbac.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-18-rbac.png"
+           alt="RBAC – uloge, dozvole i kontrola pristupa u Kubernetes okruženju">
+
+    </a>
+   <div class="page-subtitle">
+  V. Namespace, identitet, politike i multi-tenancy
+</div>
+<div class="page-subtitle">
+  18. Identitet, RBAC i pristup platformi – autentikacija administratora,
+  operatora i developera
+</div>
+<p>
+  Kubernetes klaster nije bezbedan samo zato što je API endpoint zaštićen TLS-om
+  i što se korisnici prijavljuju preko pouzdanog identity provider-a.
+  Autentikacija potvrđuje identitet korisnika, servisnog naloga ili komponente,
+  ali tek autorizacija određuje šta taj identitet sme da uradi. Role-Based
+  Access Control, skraćeno RBAC, standardni je Kubernetes mehanizam za
+  definisanje dozvoljenih operacija nad API resursima. U Tanzu okruženju isti
+  Kubernetes RBAC model koristi se za kontrolu pristupa workload klasterima, dok
+  način autentikacije i dobijanja kubeconfig konteksta zavisi od izdanja
+  platforme, integracije sa vSphere identitetima, OIDC provider-om i
+  organizacionim modelom upravljanja klasterima.
+</p>
+<p>
+  RBAC nije zamena za autentikaciju, admission kontrolu, NetworkPolicy, Pod
+  Security pravila, upravljanje tajnama ili bezbednost vSphere infrastrukture.
+  On rešava precizno određeno pitanje: da li autentifikovani subjekt sme da
+  izvrši konkretnu Kubernetes API operaciju nad određenim resursom. Zbog toga je
+  ispravno projektovanje RBAC-a jedna od osnovnih odgovornosti administratora
+  klastera. Preširoka dozvola može omogućiti čitanje tajni, pokretanje
+  privilegovanih workload-a, preuzimanje identiteta drugih servisa ili promenu
+  bezbednosnih kontrola. Preuska dozvola prekida aplikativne i DevOps tokove,
+  često bez jasnog simptoma osim odgovora <code>Forbidden</code>.
+</p>
+<h3>Tri ravni pristupa u vSphere Supervisor okruženju</h3>
+<p>
+  U vSphere Supervisor okruženju izraz „pristup platformi” obuhvata tri
+  povezane, ali odvojene ravni. Prva je <strong>vSphere autorizacija</strong>:
+  vCenter Single Sign-On ili federisani identitet i vSphere privilegije određuju
+  ko može da administrira vCenter, Supervisor i vSphere Namespace objekte. Druga
+  je <strong>pristup Supervisor Namespace-u</strong>: dozvole dodeljene
+  korisniku ili grupi na namespace-u određuju da li subjekt može da vidi
+  namespace, prijavi se na Supervisor i koristi resurse koje je platform
+  administrator tom namespace-u odobrio. Treća je
+  <strong>Kubernetes autorizacija u konkretnom klasteru</strong>: Kubernetes
+  RBAC određuje koje API operacije subjekt sme da izvrši u Supervisor API-ju ili
+  u VKS workload klasteru. Pravo u jednoj ravni ne treba automatski tumačiti kao
+  pravo u ostalima.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Ravan</th>
+      <th>Kontrolna tačka</th>
+      <th>Tipični administrator</th>
+      <th>Dokaz uspeha</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter i infrastruktura</td>
+      <td>vCenter SSO/federacija i vSphere role/permissions</td>
+      <td>vSphere/platform administrator</td>
+      <td>
+        Efektivna vSphere privilegija na tačnom objektu i očekivana vidljivost u
+        vSphere Client-u
+      </td>
+    </tr>
+    <tr>
+      <td>vSphere Namespace</td>
+      <td>Namespace Permissions i dodeljena namespace uloga</td>
+      <td>Platform administrator</td>
+      <td>
+        Korisnik dobija namespace u listi dostupnih konteksta i može da zatraži
+        podržane servise
+      </td>
+    </tr>
+    <tr>
+      <td>Supervisor ili VKS klaster</td>
+      <td>Kubernetes autentikator i RBAC authorizer</td>
+      <td>Cluster operator</td>
+      <td>
+        <code>kubectl auth can-i</code> i stvarni API zahtev daju očekivani
+        pozitivan ili negativan rezultat
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Nazivi proizvoda i tokovi zavise od izdanja. U dokumentaciji vSphere 7/8 često
+  se pojavljuju nazivi <em>vSphere with Tanzu</em>, <em>TKG Service</em>,
+  <em>Tanzu Kubernetes Cluster</em> i <code>kubectl vsphere</code>. U aktuelnoj
+  VCF 9 dokumentaciji dominantni su <em>vSphere Supervisor</em> i
+  <em>vSphere Kubernetes Service (VKS)</em>. Zato se postupak mora proveriti
+  prema tačnom build-u vCenter/VCF sistema, Supervisor verziji i podržanoj
+  Kubernetes release matrici; komande i RBAC principi ostaju isti, ali nazivi
+  uloga, ekrani, API resursi i mogućnosti identity provider-a nisu nužno
+  identični.
+</p>
+<h3>Autentikacija administratora, operatora i developera</h3>
+<p>
+  Platform administrator se najčešće autentikuje prema vCenter-u identitetom iz
+  vCenter Single Sign-On domena ili podržanog federisanog izvora identiteta i
+  poseduje vSphere privilegije za konfiguraciju Supervisor-a i namespace-a.
+  Cluster operator dobija administrativni ili delegirani pristup određenom
+  Supervisor/VKS klasteru. Developer dobija samo namespace i workload prava
+  potrebna timu. Za dnevni rad sva tri profila treba da koriste imenovane lične
+  naloge i grupno članstvo; zajednički administratorski nalog otežava opoziv,
+  atribuciju i audit.
+</p>
+<p>
+  Kod vCenter SSO toka korisnik preuzima kompatibilan vSphere Plugin for kubectl
+  sa Supervisor endpoint-a, zatim izvršava prijavu prema Supervisor
+  control-plane adresi. Plugin pribavlja kratkotrajan autentikacioni materijal i
+  ažurira kubeconfig kontekst; lozinku ne treba ugrađivati u komandu, shell
+  istoriju ili skriptu. Naziv izvršne komande je
+  <code>kubectl vsphere login</code>, iako se binarni plugin u distribuciji
+  uobičajeno pojavljuje kao <code>kubectl-vsphere</code>. Primer je šablon:
+  stvarni endpoint, korisničko ime, namespace i naziv workload klastera moraju
+  se preuzeti iz sopstvenog okruženja.
+</p>
+<pre><code class="language-bash"># Read-only provera klijenta i postojećih konteksta
+kubectl version --client
+kubectl config get-contexts
+
+# Interaktivna prijava: ne prosleđivati lozinku u komandnoj liniji
+kubectl vsphere login \
+  --server=SUPERVISOR-CONTROL-PLANE-IP-ILI-FQDN \
+  --vsphere-username='korisnik@domen' \
+  --insecure-skip-tls-verify=false
+
+# Izbor već kreiranog konteksta i potvrda identiteta/autorizacije
+kubectl config use-context NAZIV-KONTEKSTA
+kubectl auth whoami
+kubectl auth can-i get namespaces</code></pre>
+<p>
+  <code>kubectl auth whoami</code> je read-only SelfSubjectReview i radi samo
+  ako ga podržavaju verzija API servera i klijenta; u starijem klasteru njegov
+  izostanak nije dokaz neuspele prijave. TLS proveru ne treba zaobilaziti u
+  produkciji. Ako sertifikat endpoint-a nije pouzdan, trajna korekcija je
+  ispravan CA lanac, SAN i distribucija poverenja, a ne
+  <code>--insecure-skip-tls-verify=true</code>. Kubeconfig je poverljiv fajl:
+  čuva se sa dozvolom <code>0600</code>, ne šalje se tiketom i ne objavljuje u
+  repozitorijumu.
+</p>
+<p>
+  Spoljni OIDC/LDAP identitet ne stvara automatski Kubernetes User objekat, jer
+  takav trajni API objekat ne postoji. Autentikator iz tokena izvodi korisničko
+  ime i grupe, a RBAC binding mora koristiti upravo te efektivne stringove.
+  Promena claim mapiranja, prefiksa grupe ili identity provider-a može zato
+  prekinuti pristup iako se korisnik i dalje uspešno prijavljuje. Pre migracije
+  identiteta treba izvesti mapu svih binding-a, obezbediti provereni
+  „break-glass” put, testirati nov identitet u neprodukcijskom namespace-u i tek
+  zatim ukloniti stari binding.
+</p>
+<h3>Mesto RBAC-a u kontroli pristupa Kubernetes API-ju</h3>
+<p>
+  Zahtev prema Kubernetes API-ju prolazi kroz nekoliko logičkih kontrola. API
+  server najpre utvrđuje identitet podnosioca zahteva postupkom autentikacije.
+  Rezultat je korisničko ime, skup grupa i, kada je primenljivo, dodatni
+  identitetski podaci. Zatim autorizacioni mehanizmi procenjuju da li je zahtev
+  dozvoljen. Ako je autorizacija uspešna, admission kontroleri mogu dodatno da
+  odbiju zahtev ili izmene objekat pre njegovog čuvanja. RBAC zato ne potvrđuje
+  ko je korisnik i ne proverava bezbednost sadržaja Pod specifikacije; on poredi
+  atribute zahteva sa pravilima koja su administratoru dostupna kroz Kubernetes
+  API objekte.
+</p>
+<p>
+  Za autorizaciju su značajni identitet korisnika, pripadnost grupama, API
+  grupa, tip resursa, podresurs, namespace, naziv objekta i traženi glagol.
+  Zahtev za čitanje loga poda, na primer, nije isto što i zahtev za čitanje
+  samog Pod objekta: logovi se autorizuju nad podresursom <code>pods/log</code>.
+  Slično tome, pravilo koje dozvoljava <code>get</code> nad Deployment objektima
+  ne dozvoljava njihovu izmenu, a pravilo za resurse u jednom namespace-u ne
+  mora važiti u drugom.
+</p>
+<p>
+  Kubernetes autorizacija je efektivno model dozvola: zahtev mora biti dozvoljen
+  najmanje jednim aktivnim autorizacionim pravilom, dok nepostojanje
+  odgovarajuće dozvole dovodi do odbijanja. Standardni Kubernetes RBAC nema
+  eksplicitno pravilo „deny” kojim bi se poništila druga dozvola. Kada je
+  korisniku isto pravo dodeljeno preko bilo kog drugog RoleBinding ili
+  ClusterRoleBinding objekta, uža uloga ga neće oduzeti. Zbog toga se incident
+  sa preširokim pravima rešava pronalaženjem i uklanjanjem izvora dozvole, a ne
+  dodavanjem restriktivnije uloge.
+</p>
+<h3>RBAC objekti i opseg njihovog delovanja</h3>
+<p>
+  RBAC API definiše četiri osnovna objekta: <code>Role</code>,
+  <code>ClusterRole</code>, <code>RoleBinding</code> i
+  <code>ClusterRoleBinding</code>. Role i ClusterRole sadrže pravila, dok
+  RoleBinding i ClusterRoleBinding povezuju pravila sa korisnicima, grupama ili
+  servisnim nalozima. Razdvajanje uloge od dodele omogućava da se ista
+  definicija dozvola ponovo koristi za više timova i namespace-ova bez kopiranja
+  korisničkih identiteta u samu ulogu.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Objekat</th>
+      <th>Opseg</th>
+      <th>Namena</th>
+      <th>Važna posledica</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Role</code></td>
+      <td>Jedan namespace</td>
+      <td>Definiše dozvole nad namespaced resursima u tom namespace-u</td>
+      <td>
+        Ne može da daje prava u drugom namespace-u niti nad cluster-scoped
+        resursima
+      </td>
+    </tr>
+    <tr>
+      <td><code>ClusterRole</code></td>
+      <td>Definicija na nivou klastera</td>
+      <td>
+        Definiše prava nad cluster-scoped resursima ili skup pravila koji se
+        može koristiti u više namespace-ova
+      </td>
+      <td>
+        Sam objekat ne dodeljuje prava dok se ne poveže odgovarajućim binding-om
+      </td>
+    </tr>
+    <tr>
+      <td><code>RoleBinding</code></td>
+      <td>Jedan namespace</td>
+      <td>
+        Dodeljuje Role ili ClusterRole subjektima samo unutar namespace-a
+        binding-a
+      </td>
+      <td>
+        Referencirani ClusterRole ostaje ograničen na namespace za namespaced
+        resurse
+      </td>
+    </tr>
+    <tr>
+      <td><code>ClusterRoleBinding</code></td>
+      <td>Ceo klaster</td>
+      <td>
+        Dodeljuje ClusterRole subjektima u svim namespace-ovima i nad
+        odgovarajućim cluster-scoped resursima
+      </td>
+      <td>
+        Pogrešna dodela može trenutno proširiti pristup na kompletan klaster
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Posebno je važna razlika između ClusterRole objekta i njegove dodele.
+  Centralno održavan ClusterRole može sadržati standardna prava aplikativnog
+  operatera, a zatim se različitim RoleBinding objektima dodeliti timu samo u
+  namespace-ovima za koje je odgovoran. To je bezbednije od ClusterRoleBinding
+  objekta, koji bi istu ulogu proširio na ceo klaster. ClusterRoleBinding treba
+  koristiti samo kada posao zaista zahteva klasterski opseg, na primer za
+  kontroler koji mora da nadgleda resurse u svim namespace-ovima ili za strogo
+  kontrolisan administratorski tim.
+</p>
+<p>
+  Ugrađene ClusterRole uloge kao što su <code>view</code>, <code>edit</code>,
+  <code>admin</code> i <code>cluster-admin</code> olakšavaju početnu
+  administraciju, ali nisu automatski odgovarajuće za svaki enterprise model.
+  Uloga <code>view</code> je namenjena pretežno čitanju i standardno ne daje
+  pristup Secret objektima. Uloga <code>edit</code> omogućava široku izmenu
+  namespaced resursa i može biti znatno moćnija nego što njen naziv sugeriše.
+  Uloga <code>admin</code> namenjena je administraciji namespace-a, dok
+  <code>cluster-admin</code> predstavlja praktično neograničenu kontrolu i
+  zahteva strogu zaštitu. Ugrađene uloge treba pregledati u konkretnoj verziji
+  klastera komandom <code>kubectl describe clusterrole</code>, a ne procenjivati
+  samo prema nazivu.
+</p>
+<h3>Pravila, API grupe, resursi i glagoli</h3>
+<p>
+  Svako pravilo u Role ili ClusterRole objektu navodi API grupe, resurse i
+  dozvoljene glagole. Jezgro Kubernetes API-ja, u kome se nalaze Pod, Service,
+  ConfigMap i Secret, označava se praznim stringom u polju
+  <code>apiGroups</code>. Deployment i ReplicaSet pripadaju grupi
+  <code>apps</code>. Pravilo za pogrešnu API grupu neće dati očekivanu dozvolu
+  čak i kada je naziv resursa ispravan.
+</p>
+<p>
+  Najčešći RBAC glagoli su <code>get</code>, <code>list</code>,
+  <code>watch</code>, <code>create</code>, <code>update</code>,
+  <code>patch</code> i <code>delete</code>. Glagol <code>get</code> čita poznati
+  objekat, <code>list</code> vraća kolekciju, a <code>watch</code> prati
+  promene. <code>update</code> zamenjuje deklarisano stanje objekta na osnovu
+  njegove trenutne verzije, dok <code>patch</code> menja odabrane delove.
+  Dozvola <code>create</code> ne podrazumeva <code>update</code>, kao što
+  <code>update</code> ne podrazumeva <code>delete</code>. Podresursi se navode
+  eksplicitno, na primer <code>pods/log</code>, <code>pods/exec</code>,
+  <code>deployments/scale</code> ili <code>serviceaccounts/token</code>.
+</p>
+<p>
+  Dozvole nad podresursima zahtevaju posebnu pažnju. Pristup
+  <code>pods/exec</code> omogućava izvršavanje procesa u kontejneru i može
+  otvoriti pristup aplikativnim podacima, mrežnim identitetima i tokenu
+  servisnog naloga. Pravo kreiranja tokena preko
+  <code>serviceaccounts/token</code> omogućava dobijanje kredencijala servisnog
+  naloga. Pravo kreiranja Pod objekata takođe može biti put ka dodatnim
+  privilegijama ako korisnik može da izabere moćan service account, montira
+  osetljiv volumen ili iskoristi nedovoljno restriktivnu admission politiku.
+  RBAC analiza zato ne sme biti ograničena na čitanje liste glagola; mora se
+  proceniti šta dozvoljeni objekti omogućavaju u kombinaciji sa ostalim
+  kontrolama.
+</p>
+<p>
+  Wildcard vrednosti <code>*</code> za API grupe, resurse ili glagole treba
+  izbegavati u aplikativnim ulogama. One mogu automatski obuhvatiti nove resurse
+  ili operacije uvedene budućim verzijama, čime se stvarni obim dozvole menja
+  bez izmene RBAC manifesta. Kada je potreban pristup samo određenim imenovanim
+  objektima, polje <code>resourceNames</code> može dodatno ograničiti pravilo.
+  Takvo ograničenje ima praktična ograničenja, naročito kod operacija kreiranja
+  i listanja, pa se mora testirati konkretnim zahtevima koje koristi aplikacija
+  ili automatizacija.
+</p>
+<h3>Korisnici, grupe i servisni nalozi</h3>
+<p>
+  Kubernetes razlikuje normalne korisnike, koje obezbeđuje spoljni sistem
+  identiteta, i ServiceAccount objekte kojima upravlja Kubernetes API. Normalni
+  korisnik nije Kubernetes objekat koji administrator kreira komandom
+  <code>kubectl create user</code>. Njegovo korisničko ime i grupe dolaze iz
+  klijentskog sertifikata, OIDC tokena, autentikacionog proxy-ja ili
+  platformskog mehanizma. Zato RBAC manifest mora koristiti tačne vrednosti koje
+  API server vidi nakon autentikacije, a ne prikazno ime iz korporativnog
+  direktorijuma.
+</p>
+<p>
+  U enterprise okruženju prava je bolje dodeljivati grupama nego pojedinačnim
+  korisnicima. Članstvo se tada održava u centralnom identity provider-u, dok
+  Kubernetes binding ostaje stabilan. Individualna dodela opravdana je za
+  privremeni kontrolisani izuzetak, tehnički identitet ili incident, ali mora
+  imati vlasnika, rok važenja i zahtev za uklanjanje. Posebno treba izbegavati
+  trajne ClusterRoleBinding objekte vezane za lične naloge.
+</p>
+<p>
+  ServiceAccount je identitet procesa koji radi u klasteru. Njegovo puno
+  korisničko ime ima oblik <code>system:serviceaccount:NAMESPACE:NAME</code>, a
+  svi servisni nalozi pripadaju grupama kao što su
+  <code>system:serviceaccounts</code> i
+  <code>system:serviceaccounts:NAMESPACE</code>. Vezivanje privilegija za ove
+  široke grupe može nenamerno ovlastiti svaki postojeći i budući service
+  account. Bezbedniji pristup je namenski service account po komponenti,
+  minimalna Role ili ClusterRole i zaseban binding.
+</p>
+<p>
+  Savremeni Kubernetes workload-i uobičajeno koriste vremenski ograničene,
+  projektovane ServiceAccount tokene. Trajne token Secret objekte ne treba ručno
+  kreirati bez posebnog razloga. Za interaktivnu dijagnostiku administrator može
+  privremeno dobiti token komandom <code>kubectl create token</code>, ali token
+  se ne upisuje u Git, tiket, skriptu ili dokumentaciju. Kada aplikaciji nije
+  potreban pristup Kubernetes API-ju, u Pod specifikaciji treba razmotriti
+  <code>automountServiceAccountToken: false</code>.
+</p>
+<h3>Projektovanje najmanjeg potrebnog skupa privilegija</h3>
+<p>
+  Princip najmanjih privilegija znači da subjekt dobija samo resurse, glagole i
+  opseg potrebne za potvrđen poslovni zadatak. To nije jednokratno pisanje YAML
+  datoteke, već proces: identifikovanje stvarnih API zahteva, odvajanje ljudskih
+  i mašinskih identiteta, testiranje pozitivnih i negativnih operacija, nadzor
+  korišćenja i periodično uklanjanje neupotrebljenih prava.
+</p>
+<p>
+  Dobra uloga prati funkciju, a ne organizacionu hijerarhiju. Nazivi kao što su
+  <code>payments-developer</code>, <code>payments-deployer</code> i
+  <code>payments-observer</code> jasniji su od generičkih uloga
+  <code>team1</code> ili <code>power-user</code>. Operacije čitanja,
+  implementacije i administracije treba razdvojiti kada ih obavljaju različiti
+  identiteti. CI/CD servisnom nalogu nisu automatski potrebni
+  <code>pods/exec</code>, čitanje Secret vrednosti, kreiranje RoleBinding
+  objekata ili pristup node-ovima samo zato što implementira aplikaciju.
+</p>
+<p>
+  Prava za menjanje RBAC objekata predstavljaju privilegovanu operaciju.
+  Kubernetes sprečava neke oblike samostalnog proširenja privilegija tako što
+  korisnik ne može jednostavno dodeliti prava koja sam nema, osim kada poseduje
+  odgovarajuće specijalne dozvole kao što su <code>bind</code> ili
+  <code>escalate</code>. Međutim, nalog koji može menjati binding prema već
+  moćnoj ulozi, kreirati privilegovane workload-e ili preuzeti service account
+  sa širim pravima i dalje može postići efekat eskalacije. Zbog toga se RBAC
+  objekti, service account-i, admission politike i workload privilegije
+  analiziraju zajedno.
+</p>
+<h3>Provera efektivnih prava i dijagnostika odbijenog zahteva</h3>
+<p>
+  Osnovna administratorska komanda je <code>kubectl auth can-i</code>. Ona šalje
+  autorizacioni upit za određeni glagol, resurs, namespace i, po potrebi,
+  podresurs. Korisnik može proveriti sopstveno pravo, dok administrator sa
+  dozvolom impersonacije može simulirati drugi identitet korišćenjem opcija
+  <code>--as</code> i <code>--as-group</code>. Impersonacija je privilegovana i
+  mora se ograničiti i auditovati.
+</p>
+<pre><code class="language-bash">kubectl auth can-i get pods -n tanzu-prod-payments
+kubectl auth can-i create deployments.apps -n tanzu-prod-payments
+kubectl auth can-i get pods --subresource=log -n tanzu-prod-payments
+kubectl auth can-i --list -n tanzu-prod-payments</code></pre>
+<p>
+  Odgovor <code>yes</code> potvrđuje da autorizacioni sloj trenutno dozvoljava
+  proverenu operaciju, ali ne garantuje da će admission kontrola prihvatiti
+  objekat niti da će workload uspešno raditi. Odgovor <code>no</code> znači da
+  odgovarajuća dozvola nije pronađena ili da drugi aktivni autorizacioni
+  mehanizam nije dao potreban rezultat. Za analizu se zatim pregledaju
+  RoleBinding i ClusterRoleBinding objekti koji pominju korisnika, njegove grupe
+  ili service account, kao i sadržaj referenciranih uloga.
+</p>
+<pre><code class="language-bash">kubectl get role,rolebinding -n tanzu-prod-payments
+kubectl get clusterrole,clusterrolebinding
+kubectl describe role payments-developer -n tanzu-prod-payments
+kubectl describe rolebinding payments-developers -n tanzu-prod-payments
+kubectl get rolebinding payments-developers -n tanzu-prod-payments -o yaml</code></pre>
+<p>
+  Najčešće greške su pogrešno ime grupe, binding u pogrešnom namespace-u,
+  korišćenje Role umesto ClusterRole za cluster-scoped resurs, izostavljen
+  podresurs, pogrešna API grupa ili pretpostavka da jedno pravo podrazumeva
+  drugo. Ako autentikacija nije uspela, simptom može biti
+  <code>Unauthorized</code>; ako je identitet poznat ali nema dozvolu, uobičajen
+  odgovor je <code>Forbidden</code>. Greška admission kontrolera javlja se nakon
+  autorizacije i obično sadrži naziv politike ili kontrolera koji je odbio
+  objekat.
+</p>
+<h3>Audit, promena i životni ciklus RBAC konfiguracije</h3>
+<p>
+  Kubernetes audit evidencija pruža hronološke zapise o zahtevima prema API
+  serveru i omogućava odgovor na pitanja ko je izvršio operaciju, nad kojim
+  resursom, kada i sa kakvim rezultatom. Dostupnost, odredište i politika audit
+  logovanja zavise od načina implementacije klastera i odgovornosti platformskog
+  tima. U samostalno upravljanom control plane-u audit politika i backend
+  podešavaju se na API serveru; u platformski upravljanom Tanzu okruženju
+  administrator workload-a možda nema pristup host datotekama control plane-a,
+  pa logove preuzima kroz podržani centralni logging ili platformsku
+  dijagnostiku.
+</p>
+<p>
+  Audit zapise treba slati u centralni sistem sa kontrolisanim pristupom i
+  retencijom usklađenom sa bezbednosnom politikom. Posebno se prate izmene Role,
+  ClusterRole, RoleBinding i ClusterRoleBinding objekata, pokušaji
+  impersonacije, kreiranje service account tokena, pristup Secret objektima i
+  privilegovane operacije. Audit politika mora biti dovoljno informativna, ali
+  ne sme nekontrolisano beležiti osetljiva tela zahteva i odgovora.
+</p>
+<p>
+  RBAC konfiguraciju treba čuvati deklarativno u verzionisanom repozitorijumu,
+  pregledati kroz pull request i primenjivati kontrolisanim tokom. Ručna hitna
+  izmena komandom <code>kubectl edit</code> može biti opravdana tokom incidenta,
+  ali mora biti naknadno preneta u izvor konfiguracije ili vraćena, jer u
+  suprotnom nastaje razlika između klastera i repozitorijuma. Pre promene se
+  čuva trenutni YAML, proverava identitet operatera i utvrđuje postoji li
+  nezavisan administratorski pristup za oporavak. Nakon promene izvode se
+  pozitivni i negativni testovi, proverava audit trag i beleži vlasnik
+  odobrenja.
+</p>
+<hr />
+<h3>
+  Integrisani praktikum – namespace pristup za razvojni tim i CI/CD servisni
+  nalog
+</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Tim za platni servis održava
+  aplikaciju u workload klasteru Tanzu okruženja. Članovi grupe
+  <code>team-payments-developers</code> treba da pregledaju Pod, ReplicaSet i
+  Deployment objekte, čitaju logove i menjaju aplikativne Deployment, Service i
+  ConfigMap resurse isključivo u namespace-u <code>tanzu-prod-payments</code>.
+  Ne smeju da čitaju Secret objekte, izvršavaju komande u kontejnerima, menjaju
+  RBAC niti pristupaju drugim namespace-ovima. CI/CD sistem koristi service
+  account <code>cicd-deployer</code> i dobija samo prava potrebna za
+  deklarativnu implementaciju aplikacije.
+</p>
+<p>
+  <strong>Cilj.</strong> Kreirati namespace, dve namenski ograničene uloge i
+  odgovarajuće binding objekte, potvrditi dozvoljene operacije, izvesti
+  negativne testove i dokumentovati povratak na prethodno stanje.
+</p>
+<p>
+  <strong>Referentno okruženje i preduslovi.</strong> Administrator koristi
+  kontekst <code>tkg-workload-prod-admin</code>, ima pravo kreiranja namespace i
+  RBAC objekata i poseduje lokalni direktorijum
+  <code>~/tashizza-labs/rbac-payments</code>. Grupa
+  <code>team-payments-developers</code> već postoji u povezanom identity
+  provider-u i API server je vidi pod tim tačnim nazivom. Komande se izvršavaju
+  sa administrativne radne stanice na kojoj su instalirani kompatibilni
+  <code>kubectl</code> i bezbedno pribavljen kubeconfig. Pravo impersonacije
+  koristi se samo za testiranje i nije dostupno razvojnom timu.
+</p>
+<ol>
+  <li>
+    <strong>Potvrda klastera, identiteta i početnog stanja.</strong>
+    Pre promene proverava se aktivni kontekst kako bi se sprečilo primenjivanje
+    pravila na pogrešan klaster. Zatim se proverava da li ciljni namespace već
+    postoji.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get namespace tanzu-prod-payments</code></pre>
+    <strong>Validacija:</strong> aktivni kontekst mora biti
+    <code>tkg-workload-prod-admin</code>. Očekivano je da poslednja komanda pre
+    prve implementacije vrati <code>NotFound</code>. Ako namespace postoji,
+    postupak se zaustavlja dok se ne pregleda njegov vlasnik i postojeći RBAC
+    objekti; postojeće produkciono okruženje ne sme se prepisati pretpostavkom
+    da je prazno.
+  </li>
+  <li>
+    <strong>Priprema radnog direktorijuma i namespace manifesta.</strong>
+    Direktorijum se kreira sa restriktivnim dozvolama, a namespace dobija oznake
+    koje omogućavaju vlasništvo i klasifikaciju okruženja.
+    <pre><code class="language-bash">mkdir -p ~/tashizza-labs/rbac-payments
+chmod 700 ~/tashizza-labs/rbac-payments
+cd ~/tashizza-labs/rbac-payments
+
+cat &gt; 01-namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tanzu-prod-payments
+  labels:
+    app.kubernetes.io/part-of: payments-platform
+    environment: production
+    owner: payments-team
+EOF
+
+kubectl apply -f 01-namespace.yaml</code></pre>
+    <strong>Validacija:</strong> namespace mora biti u stanju
+    <code>Active</code>, sa očekivanim oznakama.
+    <pre><code class="language-bash">kubectl get namespace tanzu-prod-payments --show-labels
+kubectl wait --for=jsonpath='{.status.phase}'=Active namespace/tanzu-prod-payments --timeout=60s</code></pre>
+  </li>
+  <li>
+    <strong>Kreiranje service account-a za automatizaciju.</strong>
+    CI/CD dobija namenski identitet umesto korišćenja podrazumevanog service
+    account-a.
+    <pre><code class="language-bash">cat &gt; 02-serviceaccount.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cicd-deployer
+  namespace: tanzu-prod-payments
+automountServiceAccountToken: false
+EOF
+
+kubectl apply -f 02-serviceaccount.yaml</code></pre>
+    <strong>Validacija:</strong> objekat mora postojati u ciljnom namespace-u, a
+    automatsko montiranje tokena mora biti isključeno. Ovo ne sprečava
+    kontrolisano dobijanje vremenski ograničenog tokena kada CI/CD integracija
+    to zahteva, ali smanjuje nepotrebno izlaganje tokena Pod-ovima koji koriste
+    ovaj identitet.
+    <pre><code class="language-bash">kubectl get serviceaccount cicd-deployer -n tanzu-prod-payments -o yaml</code></pre>
+  </li>
+  <li>
+    <strong>Definisanje uloge razvojnog tima.</strong>
+    Uloga dozvoljava pregled workload-a, čitanje Pod logova i upravljanje
+    odabranim aplikativnim resursima. Namerno ne sadrži Secret, RoleBinding,
+    <code>pods/exec</code> niti wildcard pravila.
+    <pre><code class="language-bash">cat &gt; 03-developer-role.yaml &lt;&lt;'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: payments-developer
+  namespace: tanzu-prod-payments
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+EOF
+
+kubectl apply -f 03-developer-role.yaml</code></pre>
+    <strong>Validacija:</strong> opis uloge mora prikazati samo navedene API
+    grupe, resurse i glagole. Posebno se proverava da nema Secret i RBAC
+    resursa.
+    <pre><code class="language-bash">kubectl describe role payments-developer -n tanzu-prod-payments
+kubectl get role payments-developer -n tanzu-prod-payments -o yaml</code></pre>
+  </li>
+  <li>
+    <strong>Povezivanje razvojne grupe sa ulogom.</strong>
+    RoleBinding koristi subjekt tipa <code>Group</code>. Polje
+    <code>apiGroup</code> subjekta i <code>roleRef</code> moraju imati vrednost
+    <code>rbac.authorization.k8s.io</code>.
+    <pre><code class="language-bash">cat &gt; 04-developer-binding.yaml &lt;&lt;'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: payments-developers
+  namespace: tanzu-prod-payments
+subjects:
+  - kind: Group
+    name: team-payments-developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: payments-developer
+  apiGroup: rbac.authorization.k8s.io
+EOF
+
+kubectl apply -f 04-developer-binding.yaml</code></pre>
+    <strong>Validacija:</strong> binding mora referencirati Role
+    <code>payments-developer</code>, a subjekt mora biti tačno imenovana grupa.
+    Polje <code>roleRef</code> je nepromenljivo; promena referencirane uloge
+    zahteva brisanje i ponovno kreiranje binding-a.
+    <pre><code class="language-bash">kubectl describe rolebinding payments-developers -n tanzu-prod-payments</code></pre>
+  </li>
+  <li>
+    <strong>Definisanje uloge CI/CD identiteta.</strong>
+    Automatizacija dobija upravljanje Deployment, Service i ConfigMap objektima
+    i čitanje stanja Pod i ReplicaSet objekata. Ne dobija pravo čitanja logova,
+    tajni, izvršavanja komandi ili menjanja RBAC-a.
+    <pre><code class="language-bash">cat &gt; 05-cicd-role.yaml &lt;&lt;'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: payments-cicd-deployer
+  namespace: tanzu-prod-payments
+rules:
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+EOF
+
+cat &gt; 06-cicd-binding.yaml &lt;&lt;'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: payments-cicd-deployer
+  namespace: tanzu-prod-payments
+subjects:
+  - kind: ServiceAccount
+    name: cicd-deployer
+    namespace: tanzu-prod-payments
+roleRef:
+  kind: Role
+  name: payments-cicd-deployer
+  apiGroup: rbac.authorization.k8s.io
+EOF
+
+kubectl apply -f 05-cicd-role.yaml
+kubectl apply -f 06-cicd-binding.yaml</code></pre>
+    <strong>Validacija:</strong> service account mora biti jedini subjekt ovog
+    binding-a, a referencirana uloga mora biti namespaced Role.
+    <pre><code class="language-bash">kubectl get role,rolebinding -n tanzu-prod-payments
+kubectl describe rolebinding payments-cicd-deployer -n tanzu-prod-payments</code></pre>
+  </li>
+  <li>
+    <strong>Pozitivni autorizacioni testovi.</strong>
+    Administrator simulira razvojnog korisnika <code>ana.petrovic</code> sa
+    pripadnošću ciljnoj grupi. Opcija
+    <code>--as-group=system:authenticated</code> približava standardni skup
+    grupa autentifikovanog korisnika. Ovu proveru može izvršiti samo nalog koji
+    ima pravo impersonacije.
+    <pre><code class="language-bash">kubectl auth can-i get pods \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i get pods \
+  --subresource=log \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i patch deployments.apps \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i create deployments.apps \
+  --as=system:serviceaccount:tanzu-prod-payments:cicd-deployer \
+  -n tanzu-prod-payments</code></pre>
+    <strong>Validacija:</strong> sve četiri komande moraju vratiti
+    <code>yes</code>. Ako grupa nije prepoznata, prva tri testa vratiće
+    <code>no</code>; tada se proverava stvarni naziv grupe iz autentikacionog
+    sistema i audit zapisa, a ne proširuje se uloga nasumičnim dodavanjem
+    privilegija.
+  </li>
+  <li>
+    <strong>Negativni testovi.</strong>
+    Testovi potvrđuju da razvojni tim ne može čitati Secret objekte, izvršavati
+    komande u Pod-u, menjati RBAC niti pristupiti istim resursima u namespace-u
+    <code>default</code>. CI/CD identitet ne sme čitati Secret niti menjati
+    RoleBinding.
+    <pre><code class="language-bash">kubectl auth can-i get secrets \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i create pods \
+  --subresource=exec \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i create rolebindings.rbac.authorization.k8s.io \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i get pods \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n default
+
+kubectl auth can-i get secrets \
+  --as=system:serviceaccount:tanzu-prod-payments:cicd-deployer \
+  -n tanzu-prod-payments
+
+kubectl auth can-i patch rolebindings.rbac.authorization.k8s.io \
+  --as=system:serviceaccount:tanzu-prod-payments:cicd-deployer \
+  -n tanzu-prod-payments</code></pre>
+    <strong>Validacija:</strong> svih šest komandi mora vratiti <code>no</code>.
+    Bilo koji odgovor <code>yes</code> ukazuje da subjekt dobija dodatnu dozvolu
+    iz drugog binding-a ili autorizacionog mehanizma. Tada se promena ne
+    prihvata dok se ne identifikuje izvor efektivnog prava.
+  </li>
+  <li>
+    <strong>Funkcionalna provera kontrolisanim test objektom.</strong>
+    Administrator kreira malu demonstracionu aplikaciju bez tajni i eksternih
+    zavisnosti, a zatim proverava da li razvojna grupa ima očekivana prava nad
+    njenim objektima.
+    <pre><code class="language-bash">cat &gt; 07-demo-app.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payments-demo-config
+  namespace: tanzu-prod-payments
+data:
+  APP_MODE: "validation"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-demo
+  namespace: tanzu-prod-payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-demo
+  template:
+    metadata:
+      labels:
+        app: payments-demo
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args: ["netexec", "--http-port=8080"]
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-demo
+  namespace: tanzu-prod-payments
+spec:
+  selector:
+    app: payments-demo
+  ports:
+    - port: 80
+      targetPort: 8080
+EOF
+
+kubectl apply -f 07-demo-app.yaml
+kubectl rollout status deployment/payments-demo \
+  -n tanzu-prod-payments \
+  --timeout=180s</code></pre>
+    <strong>Validacija:</strong> Deployment mora imati jednu dostupnu repliku,
+    Service mora imati endpoint, a Pod mora biti u stanju <code>Running</code>.
+    U zatvorenom registru primer slike mora se prethodno preslikati u odobreni
+    interni registry i manifest prilagoditi; RBAC uspeh ne rešava problem
+    nedostupne slike.
+    <pre><code class="language-bash">kubectl get deployment,pod,service,endpoints \
+  -n tanzu-prod-payments \
+  -l app=payments-demo
+kubectl auth can-i patch deployment/payments-demo \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments</code></pre>
+  </li>
+  <li>
+    <strong>Čuvanje dokaza promene i provera audit traga.</strong>
+    Primenjeni objekti izvoze se kao stanje posle promene. Datoteke ne sadrže
+    tokene niti Secret vrednosti.
+    <pre><code class="language-bash">kubectl get namespace tanzu-prod-payments -o yaml \
+  &gt; applied-namespace.yaml
+kubectl get role,rolebinding,serviceaccount \
+  -n tanzu-prod-payments \
+  -o yaml &gt; applied-rbac-state.yaml
+kubectl auth can-i --list \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments \
+  &gt; developer-effective-access.txt</code></pre>
+    <strong>Validacija:</strong> fajlovi moraju biti čitljivi samo vlasniku
+    radnog direktorijuma i priloženi kontrolisanom change zapisu ili
+    repozitorijumu prema internoj proceduri.
+    <pre><code class="language-bash">chmod 600 applied-namespace.yaml applied-rbac-state.yaml developer-effective-access.txt
+ls -l applied-namespace.yaml applied-rbac-state.yaml developer-effective-access.txt</code></pre>
+    Audit sistem treba pretražiti prema namespace-u
+    <code>tanzu-prod-payments</code>, korisniku administratora i objektima iz
+    API grupe <code>rbac.authorization.k8s.io</code>. U upravljanom Tanzu
+    okruženju koristi se podržani centralni logging ili platforma za audit;
+    lokalna putanja API server loga ne sme se pretpostaviti. Očekivani rezultat
+    je zapis kreiranja Role i RoleBinding objekata i autorizacionih provera, bez
+    neobjašnjenih promena drugih subjekata.
+  </li>
+  <li>
+    <strong>Rollback i cleanup laboratorijskog scenarija.</strong>
+    U produkciji se namespace ne briše samo radi povratka RBAC promene, jer bi
+    brisanje uklonilo sve namespaced workload-e i podatke povezane sa tim
+    objektima. Bezbedan rollback RBAC dela uklanja binding-e i uloge, dok
+    workload ostaje pod administrativnom kontrolom.
+    <pre><code class="language-bash">kubectl delete -f 06-cicd-binding.yaml
+kubectl delete -f 05-cicd-role.yaml
+kubectl delete -f 04-developer-binding.yaml
+kubectl delete -f 03-developer-role.yaml
+kubectl delete -f 02-serviceaccount.yaml</code></pre>
+    <strong>Validacija:</strong> simulirani korisnik i service account više ne
+    smeju imati dodeljena prava.
+    <pre><code class="language-bash">kubectl auth can-i get pods \
+  --as=ana.petrovic \
+  --as-group=system:authenticated \
+  --as-group=team-payments-developers \
+  -n tanzu-prod-payments
+
+kubectl auth can-i create deployments.apps \
+  --as=system:serviceaccount:tanzu-prod-payments:cicd-deployer \
+  -n tanzu-prod-payments</code></pre>
+    Obe provere moraju vratiti <code>no</code>. Samo u namenskom laboratorijskom
+    klasteru, nakon potvrde da nema drugih resursa, kompletan scenario može se
+    ukloniti komandom <code>kubectl delete namespace tanzu-prod-payments</code>.
+    Brisanje namespace-a je destruktivno i nije prihvatljiv produkcioni
+    rollback.
+  </li>
+</ol>
+<p>
+  <strong>Merljivi kriterijumi prihvatanja.</strong> Namespace je
+  <code>Active</code>; razvojna grupa može da čita Pod objekte i logove i da
+  upravlja Deployment, Service i ConfigMap objektima samo u ciljnom namespace-u;
+  CI/CD service account može da implementira deklarisane aplikativne resurse;
+  oba subjekta dobijaju <code>no</code> za Secret, RBAC i nedozvoljene
+  podresurse; funkcionalni Deployment postaje raspoloživ u zadatom roku; audit i
+  change zapis sadrže identitet operatera, vreme, odobrenje, primenjene
+  manifeste, rezultate pozitivnih i negativnih testova i postupak rollback-a.
+</p>
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<ul>
+  <li>
+    <strong>Pogrešan namespace:</strong> Role i RoleBinding postoje, ali u
+    drugom namespace-u. <code>kubectl auth can-i</code> vraća
+    <code>no</code> samo u ciljnom prostoru. Proveravaju se metapodaci oba
+    objekta.
+  </li>
+  <li>
+    <strong>Pogrešan naziv grupe:</strong> manifest izgleda ispravno, ali
+    identity provider šalje drugi naziv ili prefiks. Proveravaju se
+    autentikacioni i audit podaci, a ne dodaje se individualni binding kao
+    trajna prečica.
+  </li>
+  <li>
+    <strong>Nedostajući podresurs:</strong> korisnik može da čita Pod, ali ne i
+    log ili exec sesiju. Proveravaju se posebni resursi <code>pods/log</code> i
+    <code>pods/exec</code>.
+  </li>
+  <li>
+    <strong>Pogrešna API grupa:</strong> pravilo koristi praznu grupu za
+    Deployment. <code>kubectl api-resources</code> pokazuje da Deployment
+    pripada grupi <code>apps</code>.
+  </li>
+  <li>
+    <strong>Skrivena dodatna dozvola:</strong> negativni test vraća
+    <code>yes</code>. Pregledaju se svi RoleBinding i ClusterRoleBinding objekti
+    koji obuhvataju korisnika, grupu, service account ili neku široku sistemsku
+    grupu.
+  </li>
+  <li>
+    <strong>Zamena autorizacionog i admission problema:</strong>
+    <code>can-i</code> vraća <code>yes</code>, ali kreiranje objekta je
+    odbijeno. Analizira se poruka admission kontrolera, Pod Security pravilo ili
+    druga politika, jer RBAC više nije uzrok.
+  </li>
+  <li>
+    <strong>Preširok ClusterRoleBinding:</strong> pravo namenjeno jednom
+    namespace-u važi svuda. Binding se zamenjuje RoleBinding objektima u tačno
+    odobrenim namespace-ovima.
+  </li>
+  <li>
+    <strong>Ručno izmenjeno stanje:</strong> manifest u Git-u ne odgovara
+    klasteru. Upoređuju se deklarativni izvor i izlaz
+    <code>kubectl get ... -o yaml</code>, utvrđuje vlasnik promene i uklanja
+    konfiguracioni drift.
+  </li>
+</ul>
+<h3>Incident response – korisnik se prijavljuje, ali nema očekivani pristup</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Najverovatniji sloj</th>
+      <th>Read-only dokaz</th>
+      <th>Bezbedna korektivna mera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TLS ili x509 greška pre prijave</td>
+      <td>DNS, sertifikat ili CA poverenje</td>
+      <td>
+        Provera FQDN-a, vremena, SAN vrednosti i lanca poverenja; bez slanja
+        kredencijala
+      </td>
+      <td>
+        Ispraviti sertifikat ili trust store; ne uvoditi trajni insecure režim
+      </td>
+    </tr>
+    <tr>
+      <td><code>Unauthorized</code> ili istekla sesija</td>
+      <td>Autentikacija/token/kubeconfig</td>
+      <td>
+        <code>kubectl config view --minify</code>, vreme sistema i novi
+        interaktivni login
+      </td>
+      <td>
+        Obnoviti kratkotrajnu sesiju, ispraviti issuer/client/claim
+        konfiguraciju ili plugin verziju
+      </td>
+    </tr>
+    <tr>
+      <td>Login uspeva, ali namespace ili kontekst nije ponuđen</td>
+      <td>vSphere Namespace permission ili pogrešan endpoint</td>
+      <td>
+        Efektivna dozvola korisnika/grupe na tačnom vSphere Namespace-u i lista
+        konteksta
+      </td>
+      <td>
+        Ispraviti grupno članstvo ili namespace dodelu; ne davati klasterski
+        <code>cluster-admin</code>
+      </td>
+    </tr>
+    <tr>
+      <td><code>Forbidden</code> za tačan API zahtev</td>
+      <td>Kubernetes RBAC</td>
+      <td>
+        <code>kubectl auth can-i</code>, binding-i, efektivne grupe i audit
+        zapis
+      </td>
+      <td>Ispraviti najmanje pravilo ili binding nakon potvrde potrebe</td>
+    </tr>
+    <tr>
+      <td><code>can-i</code> vraća <code>yes</code>, ali objekat je odbijen</td>
+      <td>Admission/Pod Security/politika</td>
+      <td>Poruka API servera, događaji i audit annotation kontrolera</td>
+      <td>Ispraviti manifest ili odobrenu politiku; RBAC ne širiti</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Tok dijagnostike počinje određivanjem obima: jedan korisnik, jedna grupa,
+  jedan namespace, jedan klaster ili svi korisnici. Pre promene se čuvaju tačno
+  vreme, aktivni kontekst, pun odgovor API servera, rezultat dozvoljene i
+  zabranjene <code>can-i</code> provere, relevantni binding-i i poslednja
+  IAM/RBAC promena. Neposredni uzrok može biti nedostajući binding, ali osnovni
+  uzrok često je pogrešno claim mapiranje, neodobrena ručna promena ili izostala
+  recertifikacija grupe. Privremeni individualni binding koristi se samo kao
+  vremenski ograničena, odobrena mera sa vlasnikom i automatskim podsetnikom za
+  uklanjanje; trajna mera ispravlja grupu, deklarativni manifest i proces
+  kontrole promene.
+</p>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li>
+    <strong>Periodični pregled privilegovanih binding-a.</strong> Najmanje
+    mesečno i nakon svake reorganizacije identiteta pregledaju se
+    ClusterRoleBinding objekti i binding-i prema ulogama
+    <code>cluster-admin</code>, <code>admin</code> i drugim internim
+    privilegovanim ClusterRole objektima. Koriste se
+    <code>kubectl get clusterrolebinding -o yaml</code>, centralni inventar i
+    audit sistem. Reakciju zahteva nepoznat subjekt, lični nalog bez roka ili
+    široka grupa. Prvo se potvrđuju vlasnik i poslovna potreba, zatim se pravo
+    ograničava ili uklanja kroz odobrenu promenu. Uspeh se meri odsustvom
+    neodobrenih privilegovanih binding-a.
+  </li>
+  <li>
+    <strong>Recertifikacija pristupa grupama.</strong> Kvartalno, kao i nakon
+    promene radnog mesta ili odlaska zaposlenog, vlasnik aplikacije i
+    bezbednosni tim potvrđuju članstvo u grupama koje se koriste u RoleBinding
+    objektima. Kubernetes manifest i izvoz iz identity provider-a porede se sa
+    evidencijom vlasništva. Nepoznat član zahteva privremeno uklanjanje ili
+    eskalaciju IAM timu. Rezultat se dokumentuje u sistemu za upravljanje
+    pristupom i change evidenciji.
+  </li>
+  <li>
+    <strong>Pozitivni i negativni test posle svake promene.</strong> Nakon
+    izmene Role, ClusterRole ili binding objekta izvršavaju se najmanje jedna
+    dozvoljena i jedna zabranjena operacija pomoću
+    <code>kubectl auth can-i</code>, a za kritične tokove i funkcionalni API
+    zahtev. Svaki neočekivani <code>yes</code> za Secret, RBAC, exec, token ili
+    klasterski resurs blokira puštanje promene. Dokaz testa čuva se uz pull
+    request ili tiket.
+  </li>
+  <li>
+    <strong>Nadzor RBAC promena kroz audit.</strong> Centralni SIEM ili logging
+    platforma kontinuirano prati operacije <code>create</code>,
+    <code>update</code>, <code>patch</code> i <code>delete</code> nad RBAC
+    resursima, kao i korišćenje impersonacije i ServiceAccount token podresursa.
+    Promena izvan odobrenog perioda ili od nepoznatog identiteta zahteva
+    trenutnu proveru session i change podataka, očuvanje audit dokaza i, kada je
+    potrebno, opoziv pristupa.
+  </li>
+  <li>
+    <strong>Deklarativno upravljanje i drift kontrola.</strong> RBAC manifesti
+    čuvaju se u zaštićenom Git repozitorijumu, uz obavezan pregled drugog
+    administratora za klasterske privilegije. Najmanje dnevno ili pri svakom
+    deployment ciklusu GitOps alat ili kontrolni skript poredi željeno i stvarno
+    stanje. Neodobren drift se ne prepisuje automatski dok se ne utvrdi da nije
+    deo aktivnog incidenta; zatim se vraća odobrena konfiguracija i dokumentuje
+    uzrok.
+  </li>
+  <li>
+    <strong>Ograničavanje servisnih naloga i tokena.</strong> Nakon uvođenja
+    nove aplikacije i najmanje kvartalno pregledaju se ServiceAccount objekti,
+    njihovi binding-i i potreba za montiranjem tokena. Koriste se
+    <code>kubectl get serviceaccount,rolebinding,clusterrolebinding -A</code>,
+    audit zapisi i inventar aplikacija. Service account bez vlasnika, workload-a
+    ili skorije upotrebe zahteva izolaciju i kontrolisano uklanjanje. Uspeh se
+    meri brojem identiteta sa potvrđenim vlasnikom i minimalnim pravima.
+  </li>
+  <li>
+    <strong>Čuvanje i oporavak konfiguracije.</strong> RBAC objekti su deo
+    Kubernetes stanja i moraju biti obuhvaćeni podržanim backup-om klastera ili
+    deklarativnim repozitorijumom. Git repozitorijum se čuva van klastera, sa
+    kontrolom pristupa i istorijom izmena, dok platformski backup obuhvata
+    odgovarajuće Kubernetes objekte i, gde je pod odgovornošću tima, pouzdan
+    backup backing store-a. Integritet se proverava hash kontrolom, uspehom
+    backup posla i periodičnim probnim restore-om u izolovanom klasteru. Backup
+    je upotrebljiv tek kada obnovljeni Role i binding objekti daju očekivane
+    pozitivne i negativne rezultate.
+  </li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>
+    Aktivni kubeconfig kontekst potvrđen je komandom
+    <code>kubectl config current-context</code> i odgovara odobrenom klasteru.
+  </li>
+  <li>
+    Za svaki subjekt dokumentovani su vlasnik, poslovna potreba, namespace i rok
+    važenja pristupa.
+  </li>
+  <li>
+    Role i ClusterRole pravila navode eksplicitne API grupe, resurse i glagole
+    bez nepotrebnih wildcard vrednosti.
+  </li>
+  <li>
+    ClusterRoleBinding je korišćen samo kada je dokazano potreban klasterski
+    opseg; namespaced pristup dodeljen je RoleBinding objektom.
+  </li>
+  <li>
+    Secret, <code>pods/exec</code>, <code>serviceaccounts/token</code>, RBAC i
+    privilegovani resursi nisu uključeni bez posebnog odobrenja.
+  </li>
+  <li>
+    <code>kubectl auth can-i</code> vraća <code>yes</code> za sve obavezne
+    operacije i <code>no</code> za najmanje jednu osetljivu i jednu operaciju
+    izvan odobrenog opsega.
+  </li>
+  <li>
+    Efektivna prava proverena su i za ljudsku grupu i za svaki service account
+    obuhvaćen promenom.
+  </li>
+  <li>
+    Audit sistem beleži RBAC promenu sa očekivanim korisničkim identitetom,
+    vremenom, resursom i rezultatom.
+  </li>
+  <li>
+    Primenjeni YAML, rezultati testova, odobrenje, vlasnik i rollback postupak
+    sačuvani su u change evidenciji ili verzionisanom repozitorijumu.
+  </li>
+  <li>
+    Rollback je testiran uklanjanjem binding-a ili vraćanjem prethodnog
+    manifesta bez brisanja produkcionog namespace-a.
+  </li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da RBAC nije lista titula
+  korisnika, već precizan autorizacioni model zasnovan na atributima Kubernetes
+  API zahteva. Mora umeti da razlikuje autentikaciju, autorizaciju i admission
+  kontrolu; da odabere između Role, ClusterRole, RoleBinding i
+  ClusterRoleBinding objekata; da pravilno navede API grupe, resurse, podresurse
+  i glagole; i da prava veže za proverene grupe ili namenske servisne naloge.
+</p>
+<p>
+  Praktična veština ne završava se uspešnim izvršenjem
+  <code>kubectl apply</code>. Administrator mora da potvrdi dozvoljene
+  operacije, dokaže da osetljive operacije ostaju zabranjene, pronađe dodatne
+  izvore efektivnih prava i razlikuje RBAC odbijanje od problema autentikacije
+  ili admission politike. Svaka produkciona promena mora biti deklarativna,
+  pregledana, auditovana i povezana sa postupkom povratka koji ne ugrožava
+  workload i podatke.
+</p>
+<p>
+  Granica RBAC-a mora ostati jasna. On ne ograničava mrežni saobraćaj, ne
+  proverava bezbednost kontejnera, ne štiti podatke koje je aplikacija već
+  učitala i ne sprečava zloupotrebu dozvoljene funkcije. Široko pravo kreiranja
+  workload-a, korišćenja service account-a ili menjanja binding-a može imati
+  posledice koje prevazilaze očigledan naziv API operacije. Zbog toga složene
+  zahteve koji uključuju klastersku administraciju, impersonaciju, Secret
+  pristup, token kreiranje, privilegovane Pod-ove ili promenu bezbednosnih
+  politika treba eskalirati vlasniku platforme i bezbednosnom timu.
+</p>
+<p>
+  Odgovoran administrator ne dodeljuje pravo samo zato što će time greška
+  <code>Forbidden</code> nestati. On utvrđuje stvarni zahtev aplikacije, bira
+  najmanji funkcionalni skup dozvola, meri rezultat pozitivnim i negativnim
+  testovima, nadzire korišćenje kroz audit i ostavlja proverljiv trag o tome ko
+  je pristup odobrio, zbog čega, u kom opsegu i do kada.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp; zvanična Kubernetes dokumentacija za autentikaciju,
+    autorizaciju, RBAC API, ServiceAccount identitete, impersonaciju, audit i
+    kubectl CLI; Broadcom arhitektonski i administrativni vodiči za identitet,
+    vSphere Namespace permissions, vSphere Plugin for kubectl, vSphere
+    Supervisor, vSphere Kubernetes Service i Tanzu Kubernetes Grid; zvanične
+    bezbednosne i troubleshooting reference
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali” &nbsp;|&nbsp; VMware &amp; Tanzu &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-17-supervisor-namespace-i-multi-tenancy.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-19-kvote-vm-klase-i-politike-resursa.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,539 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-18-daemonset-job-cronjob.html -->
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DaemonSet, Job i CronJob – čvorski servisi i planirani poslovi | TASHIZZA</title>
+  <!-- SEO -->
+  <meta name="description" content="Napredni Kubernetes vodič i praktikum za DaemonSet čvorske servise, završive Job poslove i bezbedno planirano izvršavanje pomoću CronJob objekata.">
+  <meta name="keywords" content="Kubernetes DaemonSet, Kubernetes Job, Kubernetes CronJob, batch/v1, apps/v1, čvorski servisi, batch poslovi, planirano izvršavanje, concurrencyPolicy, backoffLimit, kubectl, vanilla Kubernetes, DevOps, TASHIZZA">
+  <meta name="author" content="Nataša Mihajlović">
+  <link rel="canonical" href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-18-daemonset-job-cronjob.html">
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="../../../../img/ui/favicon.ico">
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="TASHIZZA">
+  <meta property="og:locale" content="sr_RS">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="DaemonSet, Job i CronJob – čvorski servisi i planirani poslovi">
+  <meta property="og:description" content="Razumevanje, projektovanje, validacija i dijagnostika Kubernetes DaemonSet, Job i CronJob workload objekata.">
+  <meta property="og:url" content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-18-daemonset-job-cronjob.html">
+  <meta property="og:image" content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-18-daemonset-job-cronjob.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="DaemonSet, Job i CronJob – čvorski servisi, završivi poslovi i planirano izvršavanje">
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="../../../../css/style.css" rel="stylesheet">
+</head>
+<body class="reading-page">
+  <main class="reading-card">
+    <h1>Vanilla Kubernetes</h1>
+    <div class="page-subtitle">
+      Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link" href="./og-galerija.html?img=og-vanilla-k8s-18-daemonset-job-cronjob.png" target="_blank" rel="noopener">
+      <img class="chapter-og-image" src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-18-daemonset-job-cronjob.png" alt="DaemonSet, Job i CronJob – čvorski servisi, završivi poslovi i planirano izvršavanje">
+    </a>
+    <div class="page-subtitle">
+      IV. Osnovni workload objekti i kontrolne petlje
+    </div>
+    <div class="page-subtitle">
+      18. DaemonSet, Job i CronJob – čvorski servisi, završivi poslovi i planirano izvršavanje
+    </div>
+
+    <p>
+      Prethodna lekcija uvela je ReplicaSet i Deployment kao kontrolere trajno aktivnih, zamenljivih Pod replika. Međutim, nisu svi workload-i dugovečni servisi. Neki proces mora postojati na svakom odgovarajućem čvoru, drugi mora izvršiti konačan zadatak i uspešno se završiti, a treći isti završivi zadatak mora pokretati prema rasporedu. Kubernetes za te tri namere pruža DaemonSet, Job i CronJob. Njihova zajednička osobina jeste deklarativna kontrolna petlja; kriterijum uspeha im je suštinski različit.
+    </p>
+    <p>
+      DaemonSet iz API grupe <code>apps/v1</code> održava Pod na svim ili izabranim čvorovima. Job i CronJob pripadaju stabilnoj grupi <code>batch/v1</code>: Job održava izvršavanje dok ne dostigne uslov završetka, dok CronJob prema rasporedu kreira nove Job objekte. Administrator zato ne bira objekat prema tome koliko često želi da pokrene komandu, već prema životnom ciklusu rada, modelu paralelizma, toleranciji na ponavljanje, zahtevanom položaju i načinu dokazivanja uspeha.
+    </p>
+
+    <h3>Tri različite kontrolne namere</h3>
+    <table>
+      <thead><tr><th>Objekat</th><th>Željeno stanje</th><th>Uspeh</th><th>Tipična namena</th><th>Nije dobar izbor</th></tr></thead>
+      <tbody>
+        <tr><td>DaemonSet</td><td>Po jedan Pod na svakom odgovarajućem čvoru</td><td>Broj dostupnih Pod-ova prati broj ciljnih čvorova</td><td>Log, monitoring, CNI, CSI i bezbednosni agenti</td><td>Poslovna aplikacija sa fiksnim brojem replika</td></tr>
+        <tr><td>Job</td><td>Zadati broj uspešnih završetaka</td><td>Uslov <code>Complete</code> ili definisana success policy</td><td>Import, izvoz, obrada skupa podataka, migracioni korak</td><td>Trajno aktivan servis ili neograničena petlja</td></tr>
+        <tr><td>CronJob</td><td>Kreiranje Job-a za dospeli termin</td><td>Svaka instanca se ocenjuje kao zaseban Job</td><td>Periodični izveštaj, cleanup, sinhronizacija, backup orkestracija</td><td>Precizan real-time scheduler ili posao koji nije idempotentan</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Nijedan od ova tri objekta sam po sebi ne obezbeđuje poslovnu transakciju „tačno jednom”. Kubernetes može ponovo pokrenuti kontejner, zameniti Pod, a CronJob u retkim okolnostima može kreirati dva Job-a za isti termin ili propustiti kreiranje. Proces mora biti idempotentan: ponovljeno izvršavanje sa istim ulazom ne sme da korumpira stanje, duplira naplatu ili proizvede nekontrolisane sporedne efekte. Za osetljive operacije koriste se jedinstveni ključevi, transakcije, zaključavanje ili evidencija obrađenog poslovnog događaja u pouzdanom spoljnom sistemu.
+    </p>
+
+    <h3>DaemonSet – servis vezan za skup čvorova</h3>
+    <p>
+      DaemonSet kontroler posmatra čvorove i obezbeđuje da svaki čvor koji odgovara Pod šablonu dobije odgovarajući Pod. Kada se novi čvor priključi klasteru, nastaje novi DaemonSet Pod; kada čvor prestane da bude odgovarajući ili se ukloni, kontroler i garbage collector usklađuju stanje. Broj Pod-ova zato nije eksplicitna vrednost <code>replicas</code>, već funkcija broja i osobina ciljnih čvorova.
+    </p>
+    <p>
+      Tipični DaemonSet workload-i moraju lokalno posmatrati ili opsluživati čvor: agent prikuplja logove iz dozvoljene host putanje, node exporter objavljuje metrike, CNI komponenta priprema mrežu, CSI node plugin priključuje volume, a bezbednosni senzor posmatra događaje jezgra. Ako proces samo treba više stateless replika dostupnih preko mreže, Deployment je prikladniji. „Jedan Pod po čvoru” nije isto što i visoka dostupnost aplikacije.
+    </p>
+    <pre><code class="language-yaml">apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-observer
+  namespace: it-tutorijali
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-observer
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-observer
+        app.kubernetes.io/component: node-agent
+    spec:
+      serviceAccountName: node-observer
+      nodeSelector:
+        kubernetes.io/os: linux
+        training.tashizza.com/observer: "enabled"
+      containers:
+        - name: observer
+          image: busybox:1.36.1
+          command: ["sh", "-c"]
+          args:
+            - while true; do echo "node=${NODE_NAME} time=$(date -u +%FT%TZ)"; sleep 30; done
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 20</code></pre>
+    <p>
+      Selektor mora odgovarati oznakama Pod šablona i nakon kreiranja je praktično nepromenljiv. Ograničenje na Linux i eksplicitno označene čvorove sprečava slučajno postavljanje laboratorijskog agenta na svaki čvor. Produkcioni sistemski DaemonSet-i često koriste tolerations, priority class, host mrežu, host PID ili <code>hostPath</code>, ali svaka od tih mogućnosti širi privilegije i domet incidenta. Ne treba ih prepisivati iz primera bez konkretne potrebe, Pod Security procene i odobrenja platformskog tima.
+    </p>
+
+    <h3>Raspoređivanje, taint-ovi i bezbednosna granica DaemonSet-a</h3>
+    <p>
+      DaemonSet kontroler dodaje node affinity koja vezuje svaki kreirani Pod za određeni čvor, a default scheduler obavlja raspoređivanje. Pod šablon može ograničiti skup čvorova pomoću <code>nodeSelector</code> ili node affinity pravila. Toleration samo dopušta raspoređivanje na čvor sa odgovarajućim taint-om; ona ne bira čvor i ne uklanja potrebu za selektorom ili affinity pravilom. Kubernetes automatski dodaje neke tolerations DaemonSet Pod-ovima da bi čvorski servisi opstali u posebnim stanjima čvora, ali aplikacioni manifest i dalje mora eksplicitno dokumentovati nameru za dedicated ili control-plane čvorove.
+    </p>
+    <p>
+      Pristup host filesystem-u preko <code>hostPath</code> zaobilazi deo izolacije kontejnera. Putanja može otkriti kredencijale, container runtime socket ili osetljive logove, a write mount može promeniti sam čvor. Kada je pristup neophodan, mount se ograničava na najmanju konkretnu putanju, po mogućnosti sa <code>readOnly: true</code>, uz ne-root UID, uklonjene capabilities, seccomp profil, read-only root filesystem i namenski ServiceAccount. Pristup runtime socket-u gotovo je ekvivalentan administratorskoj kontroli čvora i zahteva posebno bezbednosno odobrenje.
+    </p>
+
+    <h3>Ažuriranje i rollback DaemonSet-a</h3>
+    <p>
+      Strategija <code>RollingUpdate</code> podrazumevano zamenjuje stare Pod-ove kada se promeni <code>spec.template</code>. <code>maxUnavailable</code> ograničava broj nedostupnih ciljnih čvorova tokom promene; <code>maxSurge</code>, kada ga podržava verzija klastera, dopušta privremeni dodatni Pod na čvoru. Vrednosti se mogu zadati brojem ili procentom, ali <code>maxUnavailable</code> i <code>maxSurge</code> ne mogu oba biti nula. Za agente koji zaključavaju host resurs ili koriste host port često nije bezbedno imati dve verzije na istom čvoru, pa surge zahteva proveru kompatibilnosti.
+    </p>
+    <p>
+      Strategija <code>OnDelete</code> ne zamenjuje postojeće Pod-ove automatski nakon promene šablona; novi šablon važi tek kada se stari Pod ručno ukloni ili nestane. Ova strategija omogućava strogo kontrolisano održavanje po čvorovima, ali lako ostavlja mešovite verzije. Status se proverava kroz <code>desiredNumberScheduled</code>, <code>currentNumberScheduled</code>, <code>numberReady</code>, <code>numberAvailable</code>, <code>numberUnavailable</code> i <code>updatedNumberScheduled</code>, a ne samo brojanjem Pod-ova.
+    </p>
+    <pre><code class="language-bash">kubectl rollout status daemonset/node-observer -n it-tutorijali --timeout=180s
+kubectl rollout history daemonset/node-observer -n it-tutorijali
+kubectl rollout undo daemonset/node-observer -n it-tutorijali
+kubectl get daemonset node-observer -n it-tutorijali -o wide</code></pre>
+    <p>
+      Prve dve i poslednja komanda čitaju stanje; <code>rollout undo</code> ga menja. Pre rollback-a pregledaju se revizije, razlog neuspeha, kompatibilnost konfiguracije i efekat na čvor. Rollback je završen tek kada je rollout status uspešan, svi ciljni čvorovi imaju spreman očekivani Pod, agent funkcionalno radi i nema zaostalih starih Pod-ova.
+    </p>
+
+    <h3>Job – posao sa konačnim ishodom</h3>
+    <p>
+      Job kreira jedan ili više Pod-ova i nastavlja pokušaje dok se ne ostvari definisani broj uspešnih završetaka ili dok posao ne postane trajno neuspešan. Izlazni kod glavnog procesa je presudan: kod nula predstavlja uspešan završetak kontejnera, a nenulti kod grešku. Proces koji obavi posao pa ostane u beskonačnoj petlji nikada neće kompletirati Job; pomoćni kontejner koji ne završava takođe može sprečiti terminalno stanje Pod-a.
+    </p>
+    <pre><code class="language-yaml">apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inventory-export
+  namespace: it-tutorijali
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inventory-export
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: exporter
+          image: busybox:1.36.1
+          command: ["sh", "-c"]
+          args:
+            - 'echo "export-start=$(date -u +%FT%TZ)"; sleep 5; echo "export-complete"'
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault</code></pre>
+    <p>
+      Job Pod dozvoljava <code>restartPolicy: Never</code> ili <code>OnFailure</code>, ne <code>Always</code>. Sa <code>Never</code> svaki neuspeh ostavlja zaseban Failed Pod, što olakšava dijagnostiku; sa <code>OnFailure</code> kubelet ponovo pokreće kontejner unutar istog Pod-a, pa aplikacija mora tolerisati lokalno ponavljanje. Čak i sa jednom completion vrednošću i <code>Never</code> proces ponekad može biti pokrenut više puta. Spoljni efekti zato moraju biti idempotentni.
+    </p>
+
+    <h3>Paralelizam, completions i Indexed Job</h3>
+    <table>
+      <thead><tr><th>Obrazac</th><th>Ključna polja</th><th>Ponašanje</th><th>Uslov aplikacije</th></tr></thead>
+      <tbody>
+        <tr><td>Jedan završetak</td><td>podrazumevano <code>parallelism: 1</code>, <code>completions: 1</code></td><td>Jedan uspešan Pod kompletira Job</td><td>Ponovljiv završivi proces</td></tr>
+        <tr><td>Fiksni broj završetaka</td><td><code>completions: N</code>, <code>parallelism: M</code></td><td>Najviše M Pod-ova paralelno dok N ne uspe</td><td>Bezbedna konkurentna obrada</td></tr>
+        <tr><td>Work queue</td><td><code>parallelism</code> bez <code>completions</code></td><td>Worker-i uzimaju stavke iz spoljnog reda</td><td>Koordinisan red i potvrda obrade</td></tr>
+        <tr><td>Indexed</td><td><code>completionMode: Indexed</code></td><td>Svaki Pod dobija stabilan indeks od 0 do N−1</td><td>Deterministička podela rada po indeksu</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Kod Indexed Job-a indeks je dostupan, između ostalog, kroz anotaciju i promenljivu <code>JOB_COMPLETION_INDEX</code>. Savremene stabilne verzije podržavaju <code>backoffLimitPerIndex</code> i <code>maxFailedIndexes</code>, čime se pokušaji i prag neuspeha kontrolišu po segmentu. <code>successPolicy</code> može završiti Indexed Job kada dovoljan skup indeksa uspe. Ove mogućnosti treba vezati za minimalnu podržanu verziju klastera i validirati serverskim dry-run postupkom; ne treba ih stavljati u manifest koji mora raditi na starijim klasterima bez provere API podrške.
+    </p>
+
+    <h3>Retry, rok izvršavanja i politika neuspeha</h3>
+    <p>
+      <code>backoffLimit</code> podrazumevano iznosi šest i ograničava ponovne pokušaje uz eksponencijalno odlaganje. <code>activeDeadlineSeconds</code> ograničava ukupno aktivno vreme Job-a i ima prvenstvo nad raspoloživim retry pokušajima. Kada se rok dostigne, aktivni Pod-ovi se prekidaju, a Job dobija razlog <code>DeadlineExceeded</code>. Ova polja ne zamenjuju aplikacioni timeout za pojedinačan mrežni poziv; oba nivoa moraju biti projektovana zajedno.
+    </p>
+    <p>
+      Stabilni <code>podFailurePolicy</code> omogućava da se na osnovu exit koda ili Pod uslova izabere <code>FailJob</code>, <code>Ignore</code>, <code>Count</code>, odnosno <code>FailIndex</code> u odgovarajućem Indexed obrascu. Zahteva <code>restartPolicy: Never</code>, a pravila se obrađuju redom do prvog podudaranja. Na primer, exit kod koji označava trajno neispravnu konfiguraciju treba odmah završiti bez beskorisnih pokušaja, dok potvrđeni infrastrukturni disruption može biti izuzet iz retry brojanja. Exit kodovi su deo ugovora aplikacije i moraju biti dokumentovani, testirani i povezani sa monitoring alarmima.
+    </p>
+
+    <h3>Završetak, čuvanje dokaza i automatsko čišćenje</h3>
+    <p>
+      Završeni Job i njegovi Pod-ovi ostaju radi pregleda statusa i logova dok ih korisnik, viši kontroler ili TTL controller ne ukloni. <code>ttlSecondsAfterFinished</code> određuje koliko sekundi posle terminalnog stanja Job postaje podoban za kaskadno brisanje. Kratak TTL rasterećuje API server, ali može ukloniti jedini lokalni dokaz pre nego što administrator istraži incident. Produkciona praksa zato prvo centralizuje stdout/stderr, status i poslovni rezultat, pa zatim primenjuje razumnu retenciju.
+    </p>
+    <p>
+      U Kubernetes verzijama 1.31 i novijim terminalni uslovi <code>Complete</code> i <code>Failed</code> standardno se postavljaju tek po završetku svih Job Pod-ova. Ranije verzije mogle su prikazati terminalni Job dok su neki Pod-ovi još završavali. Automatizacija koja pokreće sledeći posao mora uzeti u obzir verziju, terminalne conditions i rizik paralelnog korišćenja istog resursa.
+    </p>
+
+    <h3>CronJob – raspored koji stvara Job objekte</h3>
+    <p>
+      CronJob ne izvršava kontejner direktno. CronJob kontroler procenjuje raspored i za dospeli termin kreira Job iz <code>jobTemplate</code>; Job zatim upravlja Pod-ovima. Izmena CronJob-a utiče samo na buduće Job objekte, ne menja već kreirane Job-ove i aktivne Pod-ove. Ovaj lanac vlasništva, <code>CronJob → Job → Pod</code>, ključan je za dijagnostiku i čišćenje.
+    </p>
+    <pre><code class="language-yaml">apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: inventory-report
+  namespace: it-tutorijali
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  suspend: false
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 180
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: inventory-report
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: busybox:1.36.1
+              command: ["sh", "-c"]
+              args:
+                - 'echo "report-time=$(date -u +%FT%TZ)"; sleep 10; echo "report-complete"'
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault</code></pre>
+
+    <h3>Raspored, vremenska zona, propušteni termini i konkurentnost</h3>
+    <p>
+      <code>schedule</code> koristi pet polja cron izraza: minut, sat, dan u mesecu, mesec i dan u nedelji. Polje <code>timeZone</code> koristi naziv iz IANA baze, na primer <code>Etc/UTC</code> ili <code>Europe/Belgrade</code>, i predstavlja stabilan API od Kubernetes 1.27. Umetanje <code>TZ</code> ili <code>CRON_TZ</code> u sam raspored nije podržano. UTC je najpredvidljiviji za infrastrukturne poslove; poslovni raspored u lokalnoj zoni mora eksplicitno uzeti u obzir letnje računanje vremena, kada se lokalni termin može preskočiti ili pojaviti dvaput.
+    </p>
+    <table>
+      <thead><tr><th><code>concurrencyPolicy</code></th><th>Ako prethodni Job još radi</th><th>Posledica</th><th>Primer odluke</th></tr></thead>
+      <tbody>
+        <tr><td><code>Allow</code></td><td>Novi Job se kreira</td><td>Preklapanje, veća potrošnja i mogući sudar nad podacima</td><td>Samo kada su paralelne instance bezbedne</td></tr>
+        <tr><td><code>Forbid</code></td><td>Novi termin se preskače</td><td>Nema preklapanja, ali nastaje missed schedule</td><td>Izveštaj ili cleanup koji ne sme raditi paralelno</td></tr>
+        <tr><td><code>Replace</code></td><td>Aktivni Job se zamenjuje novim</td><td>Prethodni rad se prekida; potreban checkpoint ili bezbedan restart</td><td>Rezultat najnovijeg termina je važniji od starog</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <code>startingDeadlineSeconds</code> određuje koliko kasno kontroler još sme pokrenuti propušteni termin. Vrednost manja od deset sekundi može sprečiti zakazivanje jer kontroler raspored proverava približno na deset sekundi. Ako ima više od sto propuštenih termina u relevantnom prozoru, kontroler ne pokreće posao i beleži poruku <code>too many missed start times</code>. Neograničen catch-up nije bezbedan za česte poslove posle dužeg control-plane prekida.
+    </p>
+    <p>
+      Raspoređivanje je približno, ne strogo real-time i ne garantuje exactly-once. Od Kubernetes 1.32 Job koji kreira CronJob dobija anotaciju <code>batch.kubernetes.io/cronjob-scheduled-timestamp</code> sa originalnim RFC3339 terminom. Ta vrednost je korisna kao idempotency ključ i za merenje kašnjenja, ali manifest koji mora podržati starije verzije ne sme pretpostaviti da anotacija postoji.
+    </p>
+
+    <h3>Suspenzija, ručno pokretanje i retencija istorije</h3>
+    <p>
+      <code>suspend: true</code> sprečava buduća zakazana kreiranja, ali ne zaustavlja Job-ove koje je CronJob već pokrenuo. Propušteni termini tokom suspenzije računaju se kao missed schedules; posle nastavka mogu biti razmatrani prema <code>startingDeadlineSeconds</code>. Pre ukidanja suspenzije administrator zato procenjuje da li bi nastao neželjeni catch-up. Za testiranje se ne menja produkcioni raspored na svaku minutu, već se iz šablona kreira jednokratni Job sa jedinstvenim imenom.
+    </p>
+    <pre><code class="language-bash">kubectl create job --from=cronjob/inventory-report inventory-report-manual-001 -n it-tutorijali
+kubectl wait --for=condition=complete job/inventory-report-manual-001 -n it-tutorijali --timeout=180s
+kubectl logs -n it-tutorijali job/inventory-report-manual-001</code></pre>
+    <p>
+      Prva komanda menja stanje, dok druge dve čitaju ishod. Ručni Job nije zakazana instanca i mora imati jedinstveno ime. <code>successfulJobsHistoryLimit</code> i <code>failedJobsHistoryLimit</code> ograničavaju broj završenih Job objekata koje CronJob zadržava. To je kapacitivna politika, dok TTL meri vreme od završetka; istovremena primena može ukloniti Job čim bilo koji mehanizam ispuni uslov. Dokaz mora pre toga biti izvezen u centralni sistem.
+    </p>
+
+    <h3>Dostupnost, resursi, storage i bezbednost batch rada</h3>
+    <p>
+      Batch Pod-ovi se takmiče za isti CPU, memoriju, ephemeral storage i API kapacitet kao dugovečni servisi. Bez requests vrednosti veliki paralelni Job može biti nepredvidljivo raspoređen; bez limits ili quota može ugroziti druge workload-e. <code>parallelism</code> se određuje prema kapacitetu klastera, propusnosti baze, API rate limit-u i mogućnosti skladišta, a ne samo prema željenom vremenu završetka. PriorityClass, ResourceQuota i odvojeni node pool mogu zaštititi kritične servise.
+    </p>
+    <p>
+      Lokalni <code>emptyDir</code> ne preživljava zamenski Pod. Posao koji nastavlja obradu mora checkpoint čuvati u trajnom ili spoljnjem sistemu i koristiti atomsko objavljivanje rezultata. ReadWriteOnce volume može sprečiti paralelne Pod-ove na različitim čvorovima; ReadWriteMany ne garantuje aplikaciono zaključavanje. Backup Job nije backup strategija dok nisu potvrđeni konzistentnost izvora, enkripcija, retencija, restore test i odvajanje privilegija.
+    </p>
+    <p>
+      Job i CronJob treba da koriste namenski ServiceAccount sa minimalnim RBAC pravima, a <code>automountServiceAccountToken: false</code> kada Kubernetes API nije potreban. Tajne se ne stavljaju u argumente komande ili obične promenljive ako mogu završiti u Pod specifikaciji, logovima ili proces listi. Slike se vezuju za odobren digest, skeniraju, izvršavaju bez root privilegija i sa minimalnim capabilities. Cron raspored nije bezbednosna kontrola: kompromitovan nalog ostaje kompromitovan i između termina.
+    </p>
+
+    <h3>Dijagnostika od kontrolera ka procesu</h3>
+    <p>
+      Dijagnostika počinje read-only dokazima i prati vlasnički lanac. Za DaemonSet se porede željeni, aktuelni, spremni i ažurirani Pod-ovi, zatim ciljni čvorovi, label/taint podudaranje, scheduler događaji i kontejnerski logovi. Za CronJob se proveravaju raspored, zona, last schedule time, active Job-ovi i događaji; zatim se otvara konkretan Job, njegovi conditions i Pod-ovi. Tek na kraju se menja konfiguracija.
+    </p>
+    <pre><code class="language-bash">kubectl get daemonset -n it-tutorijali
+kubectl describe daemonset node-observer -n it-tutorijali
+kubectl get pods -n it-tutorijali -l app.kubernetes.io/name=node-observer -o wide
+
+kubectl get cronjob inventory-report -n it-tutorijali
+kubectl describe cronjob inventory-report -n it-tutorijali
+kubectl get jobs -n it-tutorijali --sort-by=.metadata.creationTimestamp
+kubectl describe job JOB_NAME -n it-tutorijali
+kubectl get pods -n it-tutorijali -l job-name=JOB_NAME -o wide
+kubectl logs -n it-tutorijali job/JOB_NAME --all-containers=true
+kubectl get events -n it-tutorijali --sort-by=.metadata.creationTimestamp</code></pre>
+    <p>
+      Ako Job koristi <code>restartPolicy: OnFailure</code>, <code>kubectl logs POD -c CONTAINER --previous</code> čita prethodnu instancu restartovanog kontejnera. Ako je Pod zamenjen ili TTL već obrisao objekte, lokalni log više nije dostupan. U enterprise klasteru korelišu se centralni kontejnerski logovi, Kubernetes događaji, audit zapis kreiranja ili izmene, metrike stanja objekata i aplikacioni zapis rezultata. Događaji imaju ograničenu retenciju i nisu audit dnevnik.
+    </p>
+    <table>
+      <thead><tr><th>Simptom</th><th>Neposredni uzrok</th><th>Dokaz</th><th>Bezbedna korekcija</th></tr></thead>
+      <tbody>
+        <tr><td>DaemonSet nema Pod na jednom čvoru</td><td>Label, taint, resurs ili OS ne odgovara</td><td>Node labels/taints i Pod događaji</td><td>Ispraviti namerni kriterijum; ne uklanjati zaštitni taint naslepo</td></tr>
+        <tr><td>Job stalno ponavlja Pod</td><td>Proces vraća nenulti kod ili biva ubijen</td><td>Exit code, reason, prethodni log i događaji</td><td>Obustaviti retry oluju, sačuvati dokaz, popraviti uzrok</td></tr>
+        <tr><td>Job je Complete, rezultat nedostaje</td><td>Aplikacija vraća 0 pre potvrde upisa</td><td>Aplikacioni log i ciljni sistem</td><td>Ispraviti ugovor procesa i atomsku validaciju rezultata</td></tr>
+        <tr><td>CronJob nije kreirao Job</td><td>Suspenzija, deadline, pogrešan raspored ili mnogo propuštenih termina</td><td>CronJob spec, status i događaji</td><td>Ispraviti raspored/deadline i kontrolisano testirati ručni Job</td></tr>
+        <tr><td>Dva Job-a rade istovremeno</td><td><code>Allow</code>, retko duplo kreiranje ili ručni Job</td><td>Owner reference, scheduled timestamp i vreme kreiranja</td><td>Idempotency/locking; zatim odgovarajuća concurrency policy</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Integrisani praktikum: čvorski observer, završivi izvoz i planirani izveštaj</h3>
+    <p>
+      <strong>Kontekst i cilj.</strong> Platformski tim želi bezbedan laboratorijski dokaz tri modela: observer radi samo na označenim Linux čvorovima, izvoz se završava jednom uz kontrolisan retry i rok, a periodični izveštaj ne sme da se preklopi sa prethodnim izvršavanjem. Kriterijumi prihvatanja su jednak broj DaemonSet ready Pod-ova i ciljnih čvorova, Job sa uslovom <code>Complete</code>, ručno izveden Job iz CronJob šablona sa potvrđenim logom i uspešno dijagnostikovan kontrolisani kvar.
+    </p>
+    <p>
+      <strong>Topologija, prava i rizik.</strong> Potreban je funkcionalan laboratorijski klaster sa najmanje jednim schedulable Linux worker čvorom, <code>kubectl</code> i pravima nad Namespace, DaemonSet, Job, CronJob, Pod i ServiceAccount objektima u <code>it-tutorijali</code>, uz čitanje nodes i events. Label promena na čvoru utiče na raspoređivanje i u produkciji zahteva change odobrenje. Vežba ne koristi hostPath, privileged kontejner ni control-plane toleration.
+    </p>
+    <ol>
+      <li>
+        <strong>Potvrditi kontekst, verziju i ovlašćenja.</strong>
+        <pre><code class="language-bash">kubectl config current-context
+kubectl auth whoami
+kubectl version
+kubectl auth can-i create daemonsets.apps -n it-tutorijali
+kubectl auth can-i create jobs.batch -n it-tutorijali
+kubectl auth can-i create cronjobs.batch -n it-tutorijali
+kubectl auth can-i patch nodes
+kubectl get nodes -L kubernetes.io/os</code></pre>
+        <strong>Očekivanje i validacija:</strong> kontekst mora biti laboratorijski, tri namespace provere moraju vratiti <code>yes</code>, a najmanje jedan worker mora biti <code>Ready</code> i Linux. Ako patch nodes nije dozvoljen, label postavlja ovlašćeni administrator ili se koristi unapred označen laboratorijski čvor; prava se ne proširuju samo radi pogodnosti.
+      </li>
+      <li>
+        <strong>Kreirati namespace i označiti tačno jedan ciljni worker.</strong> Zameniti <code>WORKER_NAME</code> stvarnim imenom nakon read-only pregleda.
+        <pre><code class="language-bash">kubectl create namespace it-tutorijali --dry-run=client -o yaml | kubectl apply -f -
+kubectl get nodes
+kubectl label node WORKER_NAME training.tashizza.com/observer=enabled
+kubectl get nodes -L training.tashizza.com/observer</code></pre>
+        <strong>Rizik:</strong> <code>kubectl label</code> menja čvor. Ne koristiti <code>--overwrite</code> dok se ne proveri postojeća vrednost i vlasnik oznake. <strong>Validacija:</strong> tačno planirani worker prikazuje vrednost <code>enabled</code>.
+      </li>
+      <li>
+        <strong>Sačuvati manifeste.</strong> Kreirati direktorijum <code>~/vanilla-k8s/18-workloads</code> i u fajlove <code>daemonset.yaml</code>, <code>job.yaml</code> i <code>cronjob.yaml</code> prekopirati tri manifesta iz teorijskog dela. Dodati ServiceAccount objekt pre DaemonSet-a:
+        <pre><code class="language-yaml">apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-observer
+  namespace: it-tutorijali
+automountServiceAccountToken: false</code></pre>
+        <strong>Validacija pre promene:</strong>
+        <pre><code class="language-bash">kubectl apply --dry-run=server -f daemonset.yaml
+kubectl apply --dry-run=server -f job.yaml
+kubectl apply --dry-run=server -f cronjob.yaml
+kubectl diff -f daemonset.yaml
+kubectl diff -f job.yaml
+kubectl diff -f cronjob.yaml</code></pre>
+        Serverski dry-run mora proći. Izlazni kod <code>1</code> za očekivanu razliku iz <code>kubectl diff</code> nije isto što i schema ili admission greška. Ako <code>timeZone</code> nije prepoznat, proveriti verziju klastera; ne uklanjati polje bez dokumentovane odluke o zoni.
+      </li>
+      <li>
+        <strong>Primeniti i validirati DaemonSet.</strong>
+        <pre><code class="language-bash">kubectl apply -f daemonset.yaml
+kubectl rollout status daemonset/node-observer -n it-tutorijali --timeout=180s
+kubectl get daemonset node-observer -n it-tutorijali
+kubectl get pods -n it-tutorijali -l app.kubernetes.io/name=node-observer -o wide
+kubectl logs -n it-tutorijali -l app.kubernetes.io/name=node-observer --tail=5</code></pre>
+        <strong>Očekivanje:</strong> <code>DESIRED</code>, <code>CURRENT</code>, <code>READY</code> i <code>AVAILABLE</code> odgovaraju broju označenih odgovarajućih čvorova. Pod se nalazi na označenom worker-u, a log sadrži njegovo ime. Ako Pod ostane Pending, pregledati <code>kubectl describe pod</code> i čvorove; ne dodavati široku toleration pre potvrde uzroka.
+      </li>
+      <li>
+        <strong>Dokazati reconciliation bez kvara čvora.</strong> Snimiti ime Pod-a, obrisati samo taj laboratorijski Pod i posmatrati zamenu.
+        <pre><code class="language-bash">kubectl get pods -n it-tutorijali -l app.kubernetes.io/name=node-observer -o wide
+kubectl delete pod POD_NAME -n it-tutorijali
+kubectl rollout status daemonset/node-observer -n it-tutorijali --timeout=180s
+kubectl get pods -n it-tutorijali -l app.kubernetes.io/name=node-observer -o wide</code></pre>
+        <strong>Očekivanje:</strong> nastaje Pod sa novim imenom na istom ciljnom čvoru. Ovo je state-changing laboratorijski test, ne dokaz da aplikacija preživljava stvarni gubitak čvora.
+      </li>
+      <li>
+        <strong>Pokrenuti završivi Job i potvrditi poslovni ishod.</strong>
+        <pre><code class="language-bash">kubectl apply -f job.yaml
+kubectl wait --for=condition=complete job/inventory-export -n it-tutorijali --timeout=320s
+kubectl get job inventory-export -n it-tutorijali
+kubectl logs -n it-tutorijali job/inventory-export
+kubectl get pods -n it-tutorijali -l job-name=inventory-export</code></pre>
+        <strong>Validacija:</strong> Job ima <code>Complete=True</code>, Pod je <code>Completed</code>, log sadrži <code>export-complete</code>, a ciljni poslovni sistem bi u realnom scenariju morao potvrditi artefakt. Status bez provere rezultata nije dovoljan.
+      </li>
+      <li>
+        <strong>Simulirati kontrolisani neuspeh kao novi Job.</strong> Ime i Pod šablon postojećeg Job-a nisu pogodni za proizvoljnu izmenu, pa se pravi zaseban manifest <code>job-fail.yaml</code> sa imenom <code>inventory-export-fail</code>, <code>backoffLimit: 1</code> i argumentom <code>echo "configuration error"; exit 42</code>. Primeniti ga i prikupiti dokaz:
+        <pre><code class="language-bash">kubectl apply --dry-run=server -f job-fail.yaml
+kubectl apply -f job-fail.yaml
+kubectl wait --for=condition=failed job/inventory-export-fail -n it-tutorijali --timeout=180s
+kubectl describe job inventory-export-fail -n it-tutorijali
+kubectl get pods -n it-tutorijali -l job-name=inventory-export-fail
+kubectl logs -n it-tutorijali job/inventory-export-fail --all-containers=true</code></pre>
+        <strong>Dijagnostički nalaz:</strong> simptom je Failed Job; neposredni uzrok je exit 42; osnovni uzrok u scenariju je namerno neispravna konfiguracija. Privremena mera je obustavljanje daljih pokretanja, trajna korekcija je ispravan manifest i validacija ulaza. Ne povećavati <code>backoffLimit</code> za trajnu grešku.
+      </li>
+      <li>
+        <strong>Primeniti CronJob, a test izvršiti ručnim Job-om.</strong>
+        <pre><code class="language-bash">kubectl apply -f cronjob.yaml
+kubectl get cronjob inventory-report -n it-tutorijali
+kubectl create job --from=cronjob/inventory-report inventory-report-manual-001 -n it-tutorijali
+kubectl wait --for=condition=complete job/inventory-report-manual-001 -n it-tutorijali --timeout=240s
+kubectl logs -n it-tutorijali job/inventory-report-manual-001
+kubectl get job inventory-report-manual-001 -n it-tutorijali -o jsonpath='{.metadata.ownerReferences}'</code></pre>
+        <strong>Očekivanje:</strong> ručni Job kompletira i log sadrži <code>report-complete</code>. Owner reference je prazan jer je Job izveden iz šablona, ali ga CronJob nije kreirao. Time se razlikuje funkcionalni test šablona od dokaza scheduler-a; zakazano izvršavanje se potvrđuje kasnije pojavom Job-a čiji je vlasnik CronJob.
+      </li>
+      <li>
+        <strong>Testirati suspenziju bez prekidanja postojećih Job-ova.</strong>
+        <pre><code class="language-bash">kubectl patch cronjob inventory-report -n it-tutorijali --type=merge -p '{"spec":{"suspend":true}}'
+kubectl get cronjob inventory-report -n it-tutorijali
+kubectl get jobs -n it-tutorijali --sort-by=.metadata.creationTimestamp</code></pre>
+        <strong>Validacija:</strong> SUSPEND je <code>True</code>; postojeći Job-ovi nisu obrisani. Pre nastavka pregledati <code>startingDeadlineSeconds</code> i dužinu suspenzije. Za rollback primeniti izvorni <code>cronjob.yaml</code> sa <code>suspend: false</code> i potvrditi <code>SUSPEND=False</code>.
+      </li>
+      <li>
+        <strong>Očistiti laboratoriju i vratiti čvor.</strong> Pre brisanja pregledati tačne ciljeve. TTL može već ukloniti neke završene Job-ove.
+        <pre><code class="language-bash">kubectl get daemonset,job,cronjob,pods -n it-tutorijali
+kubectl delete -f cronjob.yaml
+kubectl delete -f job-fail.yaml --ignore-not-found
+kubectl delete -f job.yaml --ignore-not-found
+kubectl delete -f daemonset.yaml
+kubectl label node WORKER_NAME training.tashizza.com/observer-
+kubectl get all -n it-tutorijali
+kubectl get node WORKER_NAME --show-labels</code></pre>
+        <strong>Kriterijum završetka:</strong> nema objekata iz vežbe, nema zaostalog observer Pod-a, a laboratorijska node label je uklonjena. Namespace se briše samo ako je namenski napravljen za ovu vežbu i potvrđeno je da ne sadrži tuđe objekte.
+      </li>
+    </ol>
+
+    <h3>Incident response i recovery obrazac</h3>
+    <ol>
+      <li><strong>Simptom, obim i posledica:</strong> utvrditi koji DaemonSet čvorovi, koji Job ili koji termini CronJob-a su pogođeni i da li je poslovni rezultat nepotpun, dupliran ili zakašnjen.</li>
+      <li><strong>Dokazi pre promene:</strong> sačuvati spec/status, ownerReferences, Pod exit kodove, događaje, aktuelne i prethodne logove, audit zapis poslednje izmene, scheduled timestamp i stanje ciljnog sistema.</li>
+      <li><strong>Hipoteza i potvrda:</strong> odvojiti API/admission, kontroler, scheduler, image/runtime, resurse, mrežu/storage, autorizaciju i aplikacionu grešku. Jedna potvrđena činjenica vredi više od niza nasumičnih patch operacija.</li>
+      <li><strong>Containment:</strong> suspendovati CronJob ako proizvodi štetu, ograničiti paralelizam ili zaustaviti novi rollout. Suspenzija CronJob-a ne zaustavlja aktivne Job-ove; njihovo brisanje je posebna, potencijalno destruktivna odluka.</li>
+      <li><strong>Korekcija i recovery:</strong> popraviti verzionisani manifest, izvršiti serverski dry-run i kontrolisani ručni Job, zatim nastaviti raspored. Kod DaemonSet-a koristiti rollout i pratiti čvor po čvor.</li>
+      <li><strong>Validacija:</strong> potvrditi tehničko terminalno stanje, funkcionalni rezultat, odsustvo duplikata, očekivani broj čvorova i normalizovane metrike. Dokumentovati osnovni uzrok, workaround, trajnu meru i vlasnika akcije.</li>
+    </ol>
+
+    <h3>Administratorske prakse</h3>
+    <ul>
+      <li><strong>Projektovati idempotentnost.</strong> Svaki Job koristi poslovni ključ, transakciju ili evidenciju obrade; ponovni pokušaj i duplo zakazivanje testiraju se pre produkcije.</li>
+      <li><strong>Ograničiti domet DaemonSet-a.</strong> Stabilne node labels, OS/architecture kriterijumi i dokumentovane tolerations određuju skup čvorova. Privileged, hostNetwork, hostPID i hostPath koriste se samo uz dokazanu potrebu.</li>
+      <li><strong>Postaviti resursni budžet.</strong> Requests, limits, quota, paralelizam i deadline usklađuju se sa kapacitetom čvorova i zavisnih sistema. Batch ubrzanje ne sme izazvati incident u bazi ili API-ju.</li>
+      <li><strong>Razdvojiti retry od trajne greške.</strong> Exit kodovi, <code>podFailurePolicy</code>, <code>backoffLimit</code> i aplikacioni timeout čine jednu dokumentovanu politiku. Retry bez granice nije oporavak.</li>
+      <li><strong>Eksplicitno navesti vremensku zonu.</strong> UTC je podrazumevani operativni izbor; lokalna zona se koristi kada poslovni zahtev uključuje lokalni kalendar i DST posledice.</li>
+      <li><strong>Kontrolisati konkurentnost.</strong> <code>Forbid</code> sprečava preklapanje, ali može propustiti termin; <code>Replace</code> zahteva bezbedan prekid; <code>Allow</code> zahteva istinsku konkurentnu bezbednost.</li>
+      <li><strong>Sačuvati dokaze pre TTL-a.</strong> Logovi, terminalni conditions, trajanje, exit kod, scheduled timestamp i poslovni rezultat šalju se u centralni sistem pre automatskog čišćenja.</li>
+      <li><strong>Pratiti objektne metrike.</strong> Alarmirati na DaemonSet unavailable/misscheduled Pod-ove, Failed Job, predugo aktivan Job, neuspešan ili odsutan CronJob termin i rast missed schedules.</li>
+      <li><strong>Testirati oporavak.</strong> Ručni Job iz CronJob šablona, kontrolisani neuspeh, DaemonSet rollback i provera idempotentnosti deo su release i game-day procedure.</li>
+      <li><strong>Čuvati izvor istine.</strong> Imperativni patch u incidentu odmah se prenosi u odobreni Git/change zapis ili se eksplicitno vraća; inače naredni apply ili GitOps reconciliation poništava meru.</li>
+    </ul>
+
+    <h3>Završna kontrolna tačka</h3>
+    <ul>
+      <li>Učenik ume da izabere DaemonSet, Job ili CronJob prema kontrolnoj nameri, a ne prema površnoj sličnosti komande.</li>
+      <li>Može da dokaže koji čvorovi pripadaju DaemonSet skupu i zašto Pod nedostaje ili je misscheduled.</li>
+      <li>Razume uticaj taint/toleration, node selector/affinity, updateStrategy i bezbednosnog konteksta.</li>
+      <li>Može da razlikuje Job retry, Pod/container restart, completions, parallelism i Indexed model.</li>
+      <li>Pravilno koristi <code>backoffLimit</code>, <code>activeDeadlineSeconds</code>, TTL i, kada verzija podržava, failure/success policy.</li>
+      <li>Može da objasni zašto uspešan Job condition nije dovoljan bez validacije poslovnog rezultata.</li>
+      <li>Čita cron izraz, eksplicitnu vremensku zonu i posledice letnjeg računanja vremena.</li>
+      <li>Razlikuje <code>Allow</code>, <code>Forbid</code> i <code>Replace</code> i dokumentuje gubitak ili preklapanje termina.</li>
+      <li>Zna da suspenzija CronJob-a ne prekida već aktivne Job-ove i procenjuje catch-up pre nastavka.</li>
+      <li>Ručni Job iz CronJob šablona koristi za funkcionalni test bez menjanja produkcionog rasporeda.</li>
+      <li>Prikuplja status, conditions, događaje, ownerReferences, exit kod i logove pre state-changing korekcije.</li>
+      <li>Projektuje idempotentnost, minimalni RBAC, kontrolu resursa, centralnu retenciju dokaza i proverljiv rollback.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+    <p>
+      DaemonSet, Job i CronJob pokazuju da Kubernetes workload nije sinonim za trajno aktivnu aplikaciju. DaemonSet vezuje desired state za skup čvorova, Job za konačan broj uspešnih izvršavanja, a CronJob za raspored stvaranja Job objekata. Razumevanje njihovih kontrolnih petlji sprečava pogrešne obrasce kao što su Deployment za čvorski agent, beskonačni proces unutar Job-a ili cron raspored koji se tretira kao garancija exactly-once izvršenja.
+    </p>
+    <p>
+      Odgovoran administrator povezuje scheduling, retries, rokove, konkurentnost i retenciju sa posledicama po dostupnost, performanse, bezbednost i oporavak. Posebno štiti čvor od preširokih privilegija DaemonSet-a, zavisne sisteme od nekontrolisanog batch paralelizma i poslovne podatke od ponovljenog ili preklopljenog izvršavanja.
+    </p>
+    <p>
+      Praktična sposobnost meri se dokazima: očekivani Pod postoji na svakom ciljnom čvoru, Job ima terminalni uslov i potvrđen rezultat, CronJob stvara pravilan Job u očekivanom vremenskom prozoru, a neuspeh se može objasniti kroz conditions, događaje, exit kodove i logove. Tek tada su rollout, retry, ručno pokretanje, suspenzija, recovery i cleanup kontrolisane administratorske radnje, a ne niz komandi bez razumevanja posledica.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        Zvanična Kubernetes dokumentacija za DaemonSet, Job i CronJob kontrolere, njihove kontrolne petlje, raspoređivanje, ažuriranje, završetak i automatsko čišćenje; Kubernetes API referenca za <code>apps/v1</code> DaemonSet i <code>batch/v1</code> Job i CronJob objekte, statusne uslove, retry, deadline, failure i success politike, vremenske zone i konkurentnost; zvanična <code>kubectl</code> referenca za apply, diff, get, describe, logs, wait, create job, patch, rollout i label; zvanične bezbednosne, scheduling, resource management, logging, monitoring i troubleshooting smernice Kubernetes projekta.
+      </p>
+      <div class="footer-divider"><span>❋</span></div>
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        Vanilla Kubernetes
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+      <a class="close-btn" href="vanilla-k8s-17-replicaset-deployment.html">← Prethodna lekcija</a>
+      <a class="close-btn" href="vanilla-k8s.html">Povratak na sadržaj</a>
+      <a class="close-btn" href="vanilla-k8s-19-service-discovery.html">Sledeća lekcija →</a>
+    </div>
+  </main>
+  <script src="/js/syntax/prism.js"></script>
+</body>
+</html>

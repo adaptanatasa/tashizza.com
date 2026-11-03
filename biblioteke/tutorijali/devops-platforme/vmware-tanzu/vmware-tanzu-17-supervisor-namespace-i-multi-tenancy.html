@@ -1,0 +1,605 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-17-supervisor-namespace-i-multi-tenancy.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Namespace i resursi – organizacija aplikacija, timova i ograničenja | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Namespace i resursi u VMware Tanzu – organizacija aplikacija, razvojnih timova, pristupa, kvota i ograničenja u Kubernetes okruženju.">
+
+  <meta name="keywords"
+        content="Namespace, Kubernetes Namespace, VMware Tanzu, Kubernetes, ResourceQuota, LimitRange, vSphere with Tanzu, Workload Cluster, cloud native, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-17-supervisor-namespace-i-multi-tenancy.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Namespace i resursi – organizacija aplikacija, timova i ograničenja">
+
+  <meta property="og:description"
+        content="Deseta lekcija VMware & Tanzu tutorijala – organizacija Kubernetes okruženja pomoću namespace-ova, kvota resursa i kontrola pristupa.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-17-supervisor-namespace-i-multi-tenancy.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-17-namespace-i-resursi.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Namespace i resursi – organizacija aplikacija, timova i ograničenja">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware & Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-17-namespace-i-resursi.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-17-namespace-i-resursi.png"
+           alt="Namespace i resursi – organizacija aplikacija, timova i ograničenja">
+
+    </a>
+
+<div class="page-subtitle">
+  V. Namespace, identitet, politike i multi-tenancy
+</div>
+   <div class="page-subtitle">
+  17. Supervisor Namespace – organizacija timova, workload-a i granica odgovornosti
+</div>
+<p>U Tanzu okruženju namespace predstavlja administrativnu granicu unutar koje se timovima dodeljuju resursi, dozvole i servisi potrebni za rad. Njegova vrednost nije samo u grupisanju Kubernetes objekata. Dobro projektovan namespace povezuje organizacionu strukturu preduzeća sa infrastrukturnim kapacitetom, bezbednosnim pravilima, storage politikama, životnim ciklusom aplikacija i odgovornošću za troškove.</p>
+<p>Administrator zato namespace ne posmatra kao direktorijum u kojem se nalaze objekti, već kao kontrolisanu zonu potrošnje i upravljanja. U toj zoni mora biti jasno ko može da radi, koje resurse može da koristi, koliko ih može potrošiti, gde se podaci čuvaju, kako se aktivnosti nadziru i ko odobrava promene.</p>
+<p>U VMware vSphere i Tanzu arhitekturi izraz <em>namespace</em> može označavati dva povezana, ali različita nivoa. Njihovo mešanje jedna je od najčešćih konceptualnih grešaka pri projektovanju platforme.</p>
+<p><strong>Verzijska napomena.</strong> U vSphere 8 dokumentaciji workload klasteri se često nazivaju Tanzu Kubernetes Grid Service ili TKG Service klasteri. U novijem VMware Cloud Foundation 9.x portfoliju aktuelan naziv je <strong>VMware vSphere Kubernetes Service (VKS)</strong>, dok se platforma u delu dokumentacije naziva <strong>vSphere IaaS Control Plane</strong>. Koncept vSphere Namespace-a ostaje centralan, ali dostupne kartice, servisi, VM klase, mrežne mogućnosti i nazivi menija zavise od izdanja, licence i načina umrežavanja. Administrator zato postupak uvek usklađuje sa dokumentacijom tačno instalirane verzije, a ne samo sa terminologijom iz ranijeg izdanja.</p>
+
+<h3>vSphere Namespace i Kubernetes namespace nisu isti objekat</h3>
+<p><strong>vSphere Namespace</strong>, koji se u različitim izdanjima dokumentacije i korisničkog interfejsa može pojaviti i kao Supervisor Namespace, kreira se na Supervisor-u i predstavlja infrastrukturnu granicu kojom upravlja vSphere administrator. Za njega se vezuju dozvole korisnika i grupa, storage politike, ograničenja CPU-a, memorije i skladišnog prostora, klase virtuelnih mašina, Content Library sadržaj i drugi servisi dostupni u konkretnom izdanju platforme.</p>
+<p><strong>Kubernetes namespace</strong> je standardni Kubernetes API objekat unutar određenog klastera. Njime se grupišu namespaced objekti kao što su Pod, Deployment, Service, ConfigMap, Secret, Role, RoleBinding, ResourceQuota i PersistentVolumeClaim. Kubernetes namespace ne može biti ugnježden u drugi namespace, a resurs može pripadati samo jednom namespace-u.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Osobina</th>
+      <th>vSphere Namespace</th>
+      <th>Kubernetes namespace</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Mesto postojanja</td>
+      <td>Supervisor i vCenter inventar</td>
+      <td>Kubernetes klaster</td>
+    </tr>
+    <tr>
+      <td>Primarni administrator</td>
+      <td>vSphere ili platform administrator</td>
+      <td>Cluster ili namespace administrator</td>
+    </tr>
+    <tr>
+      <td>Glavna svrha</td>
+      <td>Dodela infrastrukturnih kapaciteta, politika i pristupa</td>
+      <td>Logičko razdvajanje Kubernetes objekata i politika</td>
+    </tr>
+    <tr>
+      <td>Tipične kontrole</td>
+      <td>CPU, memorija, storage, VM klase, korisnici i servisi</td>
+      <td>RBAC, ResourceQuota, LimitRange, mrežne i admission politike</td>
+    </tr>
+    <tr>
+      <td>Opseg imena</td>
+      <td>Supervisor</td>
+      <td>Jedan Kubernetes klaster</td>
+    </tr>
+  </tbody>
+</table>
+<p>U tipičnom enterprise modelu platform tim kreira vSphere Namespace za projekat ili tim i u njemu omogućava kreiranje jednog ili više VKS workload klastera. Unutar svakog workload klastera aplikacioni timovi koriste standardne Kubernetes namespace-ove za razvojna, testna ili produkciona opterećenja. Tako nastaju dva nivoa kontrole: infrastrukturni nivo u vSphere-u i aplikacioni nivo u Kubernetes-u.</p>
+<p>vSphere Namespace nije zamena za Kubernetes namespace, kao što ni Kubernetes ResourceQuota nije zamena za infrastrukturnu kontrolu kapaciteta u vCenter-u. Obe kontrole treba projektovati zajedno. Ako je kvota u Kubernetes-u velika, a vSphere Namespace nema dovoljno fizičkih ili virtuelnih resursa, workload neće moći da se rasporedi. Ako je vSphere kapacitet dovoljan, ali Kubernetes kvota stroga, API server će odbiti kreiranje objekta pre nego što scheduler pokuša njegovo raspoređivanje.</p>
+
+<h3>Namespace kao organizaciona i bezbednosna granica</h3>
+<p>Namespace se najčešće projektuje prema timu, aplikaciji, okruženju ili kombinaciji ovih kriterijuma. Nazivi kao što su <code>retail-app-dev</code>, <code>retail-app-test</code> i <code>retail-app-prod</code> neposredno pokazuju vlasnika, namenu i životni ciklus resursa. Nasuprot tome, generički nazivi poput <code>team1</code>, <code>test</code> ili <code>new-project</code> brzo postaju nejasni i otežavaju audit, obračun potrošnje i reagovanje na incidente.</p>
+<p>Namespace je koristan kada više timova koristi isti klaster, kada je potrebno odvojiti razvoj od produkcije, kada se različitim aplikacijama dodeljuju različite kvote ili kada se pristup mora ograničiti na određenu grupu. Nije dovoljan kao jedina izolaciona granica za opterećenja sa izrazito različitim nivoima poverenja, regulatornim zahtevima ili rizikom. Kubernetes namespace sam po sebi ne obezbeđuje fizičku izolaciju node-ova, odvojenu kontrolnu ravan niti potpunu mrežnu izolaciju.</p>
+<p>Za strogo regulisana ili međusobno nepoverljiva opterećenja administrator može zahtevati zaseban workload klaster, poseban vSphere Namespace, namenski resource pool, izdvojene mrežne segmente ili odvojene vCenter i Supervisor domene. Odluka zavisi od klasifikacije podataka, modela pretnji, zahteva za raspoloživost i odgovornosti organizacionih jedinica.</p>
+<p>Kreiranje Kubernetes namespace-a samo po sebi ne blokira saobraćaj između Pod-ova. Za L3/L4 segmentaciju potrebne su <code>NetworkPolicy</code> kontrole i mrežni dodatak koji ih zaista sprovodi; prihvatanje NetworkPolicy objekta u API-ju nije dokaz da je saobraćaj filtriran. Pod Security, admission politike, upravljanje tajnama i kontrola image izvora takođe su zasebni slojevi. Ova lekcija ih postavlja kao projektantske zavisnosti, dok se njihove detaljne politike obrađuju u odgovarajućim narednim lekcijama.</p>
+<p>Granice pristupa moraju se zasnivati na identitetskim grupama, a ne na pojedinačnim korisničkim nalozima, osim za privremeni i dokumentovani izuzetak. Grupa <code>GG-TANZU-RETAIL-DEV</code>, na primer, lakše se kontroliše i periodično recertifikuje od skupa direktnih dozvola dodeljenih pojedincima. Uklanjanje zaposlenog iz centralne grupe treba da ukine njegov pristup bez ručnog menjanja svakog namespace-a.</p>
+
+<h3>Model odgovornosti i izbor granice</h3>
+<table>
+  <thead>
+    <tr><th>Odluka ili operacija</th><th>Primarni vlasnik</th><th>Dokaz kontrole</th><th>Rizik pogrešne podele</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Kreiranje vSphere Namespace-a i dodela kapaciteta</td><td>VI/platform administrator</td><td>Odobren zahtev, vCenter Tasks/Events, stanje resource limita</td><td>Prevelika potrošnja ili nedovoljan kapacitet za oporavak</td></tr>
+    <tr><td>Dodela storage politika, VM klasa i namespace servisa</td><td>Platform i storage administrator</td><td>Lista dodeljenih politika i test dinamičkog provisioninga</td><td>Pogrešan placement, performanse ili zaštita podataka</td></tr>
+    <tr><td>Članstvo korisnika u identitetskoj grupi</td><td>IAM i vlasnik poslovne uloge</td><td>Odobrenje i periodična recertifikacija</td><td>Zastarela ili preširoka prava</td></tr>
+    <tr><td>Kubernetes RBAC, kvote i zaštitne politike</td><td>Cluster/platform administrator</td><td>Deklarativni manifesti, audit i <code>kubectl auth can-i</code></td><td>Eskalacija privilegija ili uskraćivanje usluge</td></tr>
+    <tr><td>Requests, limits, broj replika i aplikacioni manifesti</td><td>Aplikacioni tim uz platform guardrails</td><td>Git revizija, load test, metrike i SLO</td><td>Pending, throttling, OOM ili rasipanje kapaciteta</td></tr>
+    <tr><td>Zadržavanje, backup i brisanje podataka</td><td>Vlasnik podataka uz platform/backup tim</td><td>RPO/RTO, uspešan restore test i odobrenje brisanja</td><td>Nepovratan gubitak ili regulatorni prekršaj</td></tr>
+  </tbody>
+</table>
+<p>Praktično pravilo je da jedan namespace ne treba da spaja resurse sa različitim vlasnicima, životnim ciklusima ili pravilima brisanja samo zato što pripadaju istoj organizacionoj jedinici. Obrnuto, nekontrolisano kreiranje velikog broja namespace-ova povećava RBAC, policy, monitoring i backup opterećenje. Granularnost mora biti dovoljno fina za odgovornost i izolaciju, ali dovoljno stabilna za automatizaciju i operativno održavanje.</p>
+
+<h3>Resursi, requests i limits</h3>
+<p>Kubernetes scheduler koristi zahtevane resurse, odnosno <code>requests</code>, pri izboru node-a na kojem Pod može da se izvršava. CPU request predstavlja količinu procesorskog vremena potrebnu za planiranje, dok memory request predstavlja memoriju koja se uzima u obzir pri raspoređivanju. Limit određuje gornju granicu korišćenja resursa kontejnera kada je takva kontrola podržana za dati resurs.</p>
+<p>CPU je kompresibilan resurs. Kada kontejner pokuša da koristi više CPU-a od postavljenog limita, runtime može da ograniči njegovo procesorsko vreme. Memorija nije kompresibilna na isti način. Kada proces prekorači efektivno dostupnu memoriju, može biti prekinut i kontejner se često pojavljuje sa razlogom <code>OOMKilled</code>.</p>
+<p>Request ne treba automatski izjednačiti sa prosečnom potrošnjom. On predstavlja kapacitet koji platforma mora moći da obezbedi za planiranje workload-a. Previsoki requests smanjuju iskorišćenost klastera i mogu ostaviti Pod u stanju <code>Pending</code> iako metrike pokazuju slobodan kapacitet. Preniski requests omogućavaju preveliku koncentraciju workload-a na node-u i povećavaju rizik od degradacije ili eviction događaja.</p>
+<p>Za podešavanje vrednosti koriste se metrike iz reprezentativnog perioda, testovi opterećenja, zahtevi za odziv i tolerancija na vršna opterećenja. Razvojni namespace može imati skromnije granice, dok produkciona aplikacija zahteva kapacitet izračunat prema očekivanom saobraćaju, broju replika i strategiji oporavka nakon otkaza node-a.</p>
+
+<h3>ResourceQuota kao zbirna granica namespace-a</h3>
+<p>Objekat <code>ResourceQuota</code> ograničava zbirnu potrošnju resursa ili broj određenih Kubernetes objekata u jednom namespace-u. Može ograničiti ukupne CPU i memory requests, ukupne CPU i memory limits, broj Pod-ova, Services, Secrets, ConfigMaps, PersistentVolumeClaims i druge podržane resurse.</p>
+<p>Kvota se proverava prilikom prijema zahteva u Kubernetes API. Kada bi novi objekat prekoračio dozvoljenu vrednost, API server odbija zahtev porukom <code>Forbidden</code> i navodi kvotu koja bi bila premašena. To nije scheduler problem i neće se rešiti čekanjem. Administrator mora smanjiti zahtev, osloboditi postojeće resurse ili kroz kontrolisani proces promeniti kvotu.</p>
+<p>Ako kvota prati <code>requests.cpu</code>, <code>requests.memory</code>, <code>limits.cpu</code> ili <code>limits.memory</code>, svaki novi kontejner mora imati odgovarajuće vrednosti ili one moraju biti automatski dodeljene pomoću objekta <code>LimitRange</code>. U suprotnom kreiranje Pod-a može biti odbijeno jer sistem ne može izračunati njegov doprinos kvoti.</p>
+<p>Kvota nije rezervacija fizičkog kapaciteta. Dodela kvote od 20 CPU jedinica namespace-u ne garantuje da workload klaster trenutno ima 20 slobodnih CPU jedinica niti da ih drugi namespace ne koristi. Kvota određuje dozvoljeni maksimum u Kubernetes API sloju. Stvarnu mogućnost izvršavanja određuju raspoloživi node-ovi, requests, taints, affinity pravila, storage i druge scheduling zavisnosti.</p>
+
+<h3>LimitRange kao pravilo za pojedinačne objekte</h3>
+<p><code>LimitRange</code> definiše podrazumevane, minimalne i maksimalne vrednosti za pojedinačne kontejnere, Pod-ove ili PersistentVolumeClaims u namespace-u. Njime administrator može sprečiti kreiranje kontejnera bez granica, odbiti ekstremno velike zahteve i postaviti razumne podrazumevane vrednosti kada aplikacioni manifest ne sadrži resurse.</p>
+<p>ResourceQuota i LimitRange rešavaju različite probleme. ResourceQuota kaže koliko namespace ukupno može potrošiti, dok LimitRange određuje šta jedan objekat sme da zahteva i koje će vrednosti dobiti ako ih autor manifesta nije naveo. U višekorisničkom klasteru najčešće se koriste zajedno.</p>
+<p>Podrazumevane vrednosti nisu zamena za pravilno profilisanje aplikacije. Ako svaka aplikacija bez analize dobije isti CPU i memory limit, neke će nepotrebno rezervisati kapacitet, a druge će biti nestabilne. LimitRange treba da bude zaštitna ograda, dok vlasnik aplikacije i dalje odgovara za realne vrednosti u manifestu.</p>
+
+<h3>Storage politike i ograničenje trajnih podataka</h3>
+<p>Na nivou vSphere Namespace-a administrator određuje koje storage politike tim može da koristi. Te politike povezuju Kubernetes zahteve za trajnim volumenima sa karakteristikama vSphere skladišta, kao što su dostupnost, performanse, tip datastore-a i pravila zaštite podataka. Dostupnost određene StorageClass u workload klasteru zavisi od konfiguracije Supervisor-a, VKS klastera i CSI integracije.</p>
+<p>U Kubernetes namespace-u storage se dodatno kontroliše kvotama. Moguće je ograničiti ukupan zahtevani kapacitet, broj PersistentVolumeClaim objekata i potrošnju povezanu sa određenom StorageClass. To sprečava da razvojni tim slučajno zahteva veliki broj volumena ili potroši kapacitet namenjen drugim aplikacijama.</p>
+<p>Brisanje namespace-a može pokrenuti brisanje namespaced objekata, ali sudbina stvarnih podataka zavisi od PersistentVolume reclaim politike, storage integracije i procesa zaštite podataka. Administrator nikada ne sme pretpostaviti da je brisanje PVC-a bezopasno niti da je zadržavanje volumena automatski backup. Pre uklanjanja namespace-a moraju se proveriti poslovni vlasnik podataka, backup, snapshot ili aplikaciono konzistentan izvoz, kao i ponašanje StorageClass i PersistentVolume objekata.</p>
+
+<h3>Dozvole i podela odgovornosti</h3>
+<p>vSphere dozvole nad vSphere Namespace-om kontrolišu pristup infrastrukturnim funkcijama i načinu prijavljivanja na Supervisor. Kubernetes RBAC unutar workload klastera kontroliše operacije nad Kubernetes API resursima. Korisnik koji ima dozvolu da koristi vSphere Namespace ne mora automatski imati administratorska prava u svakom workload klasteru, a Kubernetes administrator aplikacionog namespace-a ne mora imati pravo da menja vSphere kvote ili storage politike.</p>
+<p>Standardne Kubernetes uloge <code>view</code>, <code>edit</code> i <code>admin</code> mogu se povezati sa korisnicima ili grupama pomoću RoleBinding objekata. Uloga <code>admin</code> u namespace opsegu daje široka prava nad namespaced resursima, uključujući upravljanje većinom uloga i RoleBinding objekata, ali ne treba je dodeljivati automatski svakom članu razvojnog tima. Često je bezbednije da razvojni tim dobije <code>edit</code>, a upravljanje pristupom zadrži platform tim.</p>
+<p>RoleBinding može da poveže namespaced Role ili ClusterRole sa subjektom samo u jednom namespace-u. ClusterRoleBinding daje prava u opsegu celog klastera i zato zahteva znatno strožu kontrolu. Greška kojom se umesto RoleBinding-a kreira ClusterRoleBinding može korisniku nenamerno omogućiti pristup svim namespace-ovima.</p>
+
+<h3>Životni ciklus i standard imenovanja</h3>
+<p>Svaki namespace treba da ima vlasnika, klasifikaciju okruženja, datum periodične provere, troškovni ili organizacioni identifikator i pravila zadržavanja. Kubernetes label-e su pogodne za mašinski čitljive podatke, dok anotacije mogu sadržati dodatne reference kao što su broj zahteva za promenu ili veza ka internom katalogu servisa.</p>
+<p>Preporučeni naziv treba da bude stabilan i nezavisan od imena pojedinca. Primer <code>retail-app-dev</code> obuhvata poslovnu aplikaciju i okruženje. Promena tima ne zahteva preimenovanje svih objekata. Preimenovanje Kubernetes namespace-a nije standardna operacija; u praksi se kreira novi namespace, migriraju resursi i podaci, a zatim se stari kontrolisano uklanja.</p>
+<p>Namespace-i kao što su <code>kube-system</code>, <code>kube-public</code>, <code>kube-node-lease</code> i <code>default</code> imaju posebnu ili sistemsku namenu. Aplikacione resurse ne treba postavljati u <code>kube-system</code>, dok korišćenje <code>default</code> namespace-a za produkcione aplikacije otežava kontrolu pristupa, kvota i vlasništva. Administrator treba da podesi eksplicitni namespace u manifestima i automatizaciji, umesto da zavisi od trenutnog kubectl konteksta.</p>
+
+<h3>Kako administrator proverava stanje</h3>
+<p>Provera počinje potvrdom identiteta klastera i aktivnog konteksta. Pogrešan kontekst može dovesti do promene u drugom klasteru, što je posebno opasno kada razvojno i produkciono okruženje imaju slične nazive objekata.</p>
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl auth whoami
+kubectl get namespaces
+kubectl get resourcequota,limitrange --all-namespaces</code></pre>
+<p>Sve navedene komande su <strong>read-only</strong>. Komanda <code>kubectl auth whoami</code> zavisi od podrške API servera i verzije klijenta; kada nije dostupna, identitet se potvrđuje načinom prijavljivanja i kontrolisanim <code>kubectl auth can-i</code> testom. Na vSphere sloju proveravaju se <strong>Workload Management</strong>, izabrani vSphere Namespace, kartice <strong>Summary</strong>, <strong>Permissions</strong>, <strong>Storage</strong>, <strong>Resource Limits</strong>, dostupne VM klase i servisi, kao i povezani Tasks i Events. Nazivi kartica mogu se razlikovati između vSphere 8 i VCF 9.x izdanja.</p>
+<p>Normalno stanje podrazumeva da namespace ima očekivane oznake, da je u fazi <code>Active</code>, da potrošnja neprekidno ne dostiže kvotu, da nema velikog broja Pod-ova u stanju <code>Pending</code> ili sa čestim restartovanjem i da RoleBinding objekti odgovaraju odobrenom modelu pristupa.</p>
+<p>Namespace u stanju <code>Terminating</code> nije nužno odmah problem. Brisanje može trajati dok kontroleri uklanjaju zavisne objekte i izvršavaju finalizere. Problem postoji kada stanje traje duže od dogovorenog operativnog praga, a događaji ili API objekti pokazuju nevažeći finalizer, nedostupan admission webhook, nedostupan API servis ili storage operaciju koja se ne završava. Prisilno uklanjanje finalizera je rizično jer može ostaviti spoljne resurse i podatke bez vlasnika.</p>
+
+<hr>
+
+<h3>Integrisani praktikum – kontrolisano razvojno okruženje za Retail tim</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Preduzeće uvodi novu aplikaciju za obradu maloprodajnih porudžbina. Platform tim je u Supervisor okruženju obezbedio vSphere Namespace <code>ns-retail-dev</code>, a u njemu VKS workload klaster <code>vks-retail-dev</code>. Razvojni tim treba da dobije sopstveni Kubernetes namespace, ograničen kapacitet i pravo da upravlja aplikacionim objektima bez administrativnih prava nad celim klasterom.</p>
+<p><strong>Cilj.</strong> Kreirati Kubernetes namespace <code>retail-app-dev</code>, označiti vlasništvo, primeniti ResourceQuota i LimitRange, dodeliti grupi <code>GG-TANZU-RETAIL-DEV</code> standardnu ulogu <code>edit</code>, proveriti dozvole i dokazati da se dozvoljeno opterećenje izvršava, a preveliki zahtev odbija.</p>
+<p><strong>Referentno okruženje.</strong> Supervisor sa vSphere Namespace-om <code>ns-retail-dev</code>; workload klaster <code>vks-retail-dev</code>; administratorska radna stanica sa instaliranim odgovarajućim vSphere Kubernetes CLI dodatkom i <code>kubectl</code> klijentom kompatibilnim sa klasterom; direktorijum <code>~/tanzu-lab/retail-app-dev</code>.</p>
+<p><strong>Preduslovi i prava.</strong> Platform administrator mora prethodno potvrditi da vSphere Namespace ima dovoljno CPU-a, memorije i storage kapaciteta i da je workload klaster zdrav. Operator praktikuma mora imati pravo da kreira namespace, ResourceQuota, LimitRange i RoleBinding objekte u klasteru. Za redovan rad ta prava treba automatizovati kroz odobreni platform proces, a ne trajno dodeliti aplikacionom timu.</p>
+
+<p><strong>Vežba A – validacija infrastrukturne granice u vSphere Client-u.</strong> Prijaviti se nalogom sa minimalnim pravima za upravljanje namespace-om, otvoriti <strong>Workload Management</strong>, izabrati Supervisor pa <code>ns-retail-dev</code>. Ako namespace tek treba kreirati, koristiti opciju <strong>New Namespace</strong>, izabrati tačan Supervisor i uneti odobreno ime; ovo je state-changing postupak i mora imati zapis promene. Zatim na karticama za permissions, storage, capacity/resource limits, VM classes i dostupne servise proveriti sledeće:</p>
+<ul>
+  <li>namespace pripada očekivanom Supervisor-u i nema konflikt vlasništva ili namene;</li>
+  <li>CPU, memorijski i storage limiti odgovaraju kapacitivnom planu, uključujući rezervu za skaliranje i oporavak;</li>
+  <li>dodeljene su samo odobrene storage politike, sa jasno poznatim placement-om, dostupnošću i klasom usluge;</li>
+  <li>identitetske grupe imaju samo predviđenu namespace ulogu; pojedinačne dozvole su dokumentovani izuzeci;</li>
+  <li>VKS servis, odgovarajuće VM klase i potrebni Supervisor servisi dostupni su samo ako su deo referentne arhitekture;</li>
+  <li>Recent Tasks i Events ne sadrže neuspešnu rekonfiguraciju, authorization grešku ili alarm kapaciteta.</li>
+</ul>
+<p><strong>Očekivani rezultat i dokaz.</strong> Summary prikazuje zdrav i pravilno imenovan namespace; dozvole, storage i resursi odgovaraju odobrenom dizajnu; nema neuspelih zadataka. Snimaju se tekstualni izvoz ili kontrolisani snimci ekrana bez tokena i tajni. Ako je pronađena razlika, ne „popravlja” se naslepo: beleži se prethodno stanje, uticaj na postojeće workload-e i plan rollback-a, pa se tek nakon odobrenja menja jedna kontrola i proveravaju Tasks, Events i workload zdravlje.</p>
+
+<p><strong>Vežba B – Kubernetes granica unutar VKS klastera.</strong> Sledeći koraci kreiraju aplikacioni namespace i njegove zaštitne ograde. Komande koje počinju sa <code>get</code>, <code>describe</code>, <code>cluster-info</code> i <code>auth can-i</code> čitaju stanje; <code>apply</code>, <code>run</code> i <code>delete</code> menjaju stanje. Serverski dry-run ne čuva objekat, ali aktivira API validaciju i admission lanac, pa je obavezna kontrola pre stvarnog apply postupka.</p>
+
+<ol>
+  <li>
+    <strong>Proveriti aktivni klaster i identitet.</strong>
+    Pre svake promene potvrđuje se da kubectl pokazuje na <code>vks-retail-dev</code>. Naziv konteksta zavisi od načina prijavljivanja i ne mora biti identičan nazivu klastera, pa se proveravaju i API endpoint i dostupni node-ovi.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl auth whoami
+kubectl get nodes -o wide</code></pre>
+    <strong>Validacija:</strong> API endpoint mora pripadati referentnom workload klasteru, svi očekivani node-ovi treba da budu u stanju <code>Ready</code>, a identitet mora biti administratorski nalog odobren za ovu promenu. Ako identitet ili endpoint nisu očekivani, postupak se prekida pre kreiranja bilo kog objekta.
+  </li>
+  <li>
+    <strong>Proveriti postojeće namespace-ove i konflikte imena.</strong>
+    Administrator potvrđuje da <code>retail-app-dev</code> već ne postoji i pregleda postojeći obrazac imenovanja i označavanja.
+    <pre><code class="language-bash">kubectl get namespace retail-app-dev
+kubectl get namespaces --show-labels</code></pre>
+    <strong>Očekivani rezultat:</strong> prva komanda treba da vrati <code>NotFound</code>. Ako namespace postoji, ne kreira se ponovo. Pregledaju se vlasnik, postojeće kvote, dozvole i razlog njegovog postojanja.
+  </li>
+  <li>
+    <strong>Kreirati radni direktorijum i manifest namespace-a.</strong>
+    Svi objekti biće sačuvani kao deklarativni fajlovi radi revizije, ponovljivosti i kasnijeg GitOps upravljanja.
+    <pre><code class="language-bash">mkdir -p ~/tanzu-lab/retail-app-dev
+cd ~/tanzu-lab/retail-app-dev
+
+cat &gt; 01-namespace.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: retail-app-dev
+  labels:
+    app.kubernetes.io/part-of: retail-platform
+    environment: dev
+    owner: retail-team
+    cost-center: cc-4100
+  annotations:
+    platform.example.com/change-record: CHG-2026-0710
+    platform.example.com/contact: retail-platform-team
+EOF
+
+kubectl apply --dry-run=server -f 01-namespace.yaml
+kubectl apply -f 01-namespace.yaml</code></pre> <strong>Objašnjenje:</strong> serverski dry-run šalje manifest API serveru radi validacije, ali ne čuva objekat. Time se proveravaju sintaksa, API pravila i admission politike. Tek nakon uspešne validacije izvršava se stvarni <code>apply</code>. <strong>Validacija:</strong> <pre><code class="language-bash">kubectl get namespace retail-app-dev --show-labels
+kubectl get namespace retail-app-dev -o jsonpath='{.status.phase}{"\n"}'</code></pre>
+Očekuje se faza <code>Active</code> i prisustvo svih definisanih labela.
+
+  </li>
+  <li>
+    <strong>Definisati podrazumevane i maksimalne resurse kontejnera.</strong>
+    LimitRange će kontejneru bez eksplicitnih vrednosti dodeliti request od 100 millicpu i 128 MiB memorije, odnosno limit od 500 millicpu i 512 MiB. Jedan kontejner ne može zahtevati više od 2 CPU jedinice i 2 GiB memorije.
+    <pre><code class="language-bash">cat &gt; 02-limit-range.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: retail-container-limits
+  namespace: retail-app-dev
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      min:
+        cpu: 25m
+        memory: 32Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+EOF
+
+kubectl apply --dry-run=server -f 02-limit-range.yaml
+kubectl apply -f 02-limit-range.yaml
+kubectl describe limitrange retail-container-limits -n retail-app-dev</code></pre> <strong>Validacija:</strong> izlaz mora prikazati minimalne, maksimalne i podrazumevane vrednosti tačno prema manifestu. Ako admission politika organizacije zahteva drugačije granice, manifest se usklađuje sa odobrenim standardom umesto zaobilaženja kontrole.
+
+  </li>
+  <li>
+    <strong>Postaviti zbirnu kvotu namespace-a.</strong>
+    Razvojnom okruženju dodeljuje se do 4 CPU jedinice u requests, 8 CPU jedinica u limits, 8 GiB zahtevanog i 16 GiB limitiranog memorijskog kapaciteta. Ograničava se i broj osnovnih objekata kako greška u automatizaciji ne bi nekontrolisano kreirala resurse.
+    <pre><code class="language-bash">cat &gt; 03-resource-quota.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: retail-dev-quota
+  namespace: retail-app-dev
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+    requests.storage: 200Gi
+    secrets: "30"
+    configmaps: "30"
+EOF
+
+kubectl apply --dry-run=server -f 03-resource-quota.yaml
+kubectl apply -f 03-resource-quota.yaml
+kubectl describe resourcequota retail-dev-quota -n retail-app-dev</code></pre> <strong>Validacija:</strong> kolona <code>Hard</code> mora prikazati zadate granice, dok će <code>Used</code> neposredno nakon kreiranja uglavnom biti nula. Kvota skladišta ograničava zbir zahteva, ali ne zamenjuje proveru fizičkog kapaciteta datastore-a.
+
+  </li>
+  <li>
+    <strong>Dodeliti razvojnoj grupi namespaced pristup.</strong>
+    Grupa dobija standardnu ClusterRole <code>edit</code> samo u namespace-u <code>retail-app-dev</code>. Ne koristi se ClusterRoleBinding jer bi prava važila šire od potrebnog opsega.
+    <pre><code class="language-bash">cat &gt; 04-role-binding.yaml &lt;&lt;'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: retail-developers-edit
+  namespace: retail-app-dev
+subjects:
+  - kind: Group
+    name: GG-TANZU-RETAIL-DEV
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: edit
+  apiGroup: rbac.authorization.k8s.io
+EOF
+
+kubectl apply --dry-run=server -f 04-role-binding.yaml
+kubectl apply -f 04-role-binding.yaml
+kubectl get rolebinding retail-developers-edit -n retail-app-dev -o yaml</code></pre> <strong>Validacija dozvola:</strong> <pre><code class="language-bash">kubectl auth can-i create deployments \
+  --namespace retail-app-dev \
+  --as=retail-test-user \
+  --as-group=GG-TANZU-RETAIL-DEV
+
+kubectl auth can-i delete namespaces \
+  --as=retail-test-user \
+  --as-group=GG-TANZU-RETAIL-DEV
+
+kubectl auth can-i create deployments \
+  --namespace kube-system \
+  --as=retail-test-user \
+  --as-group=GG-TANZU-RETAIL-DEV</code></pre>
+Prva provera treba da vrati <code>yes</code>, a druge dve <code>no</code>. Impersonacija pomoću <code>--as</code> i <code>--as-group</code> zahteva posebna prava; ako ih operator nema, validacija se radi kontrolisanim prijavljivanjem testnog korisnika iz grupe.
+
+  </li>
+  <li>
+    <strong>Implementirati dozvoljeno testno opterećenje.</strong>
+    Koristi se mali Deployment sa dve replike i eksplicitnim resursima. Primer služi proveri namespace politika, a ne predstavlja konačnu produkcionu konfiguraciju aplikacije.
+    <pre><code class="language-bash">cat &gt; 05-demo-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-web
+  namespace: retail-app-dev
+  labels:
+    app: retail-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: retail-web
+  template:
+    metadata:
+      labels:
+        app: retail-web
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retail-web
+  namespace: retail-app-dev
+spec:
+  selector:
+    app: retail-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+EOF
+
+kubectl apply --dry-run=server -f 05-demo-deployment.yaml
+kubectl apply -f 05-demo-deployment.yaml
+kubectl rollout status deployment/retail-web -n retail-app-dev --timeout=180s</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubectl get deployment,pods,service -n retail-app-dev -o wide
+kubectl describe resourcequota retail-dev-quota -n retail-app-dev
+kubectl get events -n retail-app-dev --sort-by=.metadata.creationTimestamp</code></pre>
+Deployment treba da ima dve dostupne replike, oba Pod-a treba da budu <code>Running</code> i <code>Ready</code>, a kvota treba da pokaže potrošnju od 200m CPU requests i 256Mi memory requests, uz odgovarajuće limite. Manje razlike mogu postojati ako admission kontrola dodaje sidecar kontejnere.
+
+  </li>
+  <li>
+    <strong>Izvršiti funkcionalnu proveru servisa.</strong>
+    Privremeni Pod pokreće se u istom namespace-u i pristupa Service DNS imenu. Opcija <code>--rm</code> uklanja testni Pod po završetku.
+    <pre><code class="language-bash">kubectl run retail-client \
+  --namespace retail-app-dev \
+  --image=busybox:1.36.1 \
+  --restart=Never \
+  --rm -i \
+  --command -- /bin/sh -c \
+  'wget -qO- http://retail-web/hostname'</code></pre>
+    <strong>Očekivani rezultat:</strong> komanda treba da vrati ime jednog od Pod-ova iza Service objekta. Time se potvrđuju DNS rezolucija, Service selektor, endpoint registracija i komunikacija unutar namespace-a.
+  </li>
+  <li>
+    <strong>Izvršiti negativni test maksimalnog limita.</strong>
+    Manifest namerno zahteva 3 CPU jedinice za jedan kontejner, što prelazi maksimalnu vrednost od 2 definisanu u LimitRange objektu.
+    <pre><code class="language-bash">cat &gt; 06-negative-test.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oversized-pod
+  namespace: retail-app-dev
+spec:
+  containers:
+    - name: test
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          cpu: "3"
+          memory: 128Mi
+        limits:
+          cpu: "3"
+          memory: 256Mi
+EOF
+
+kubectl apply -f 06-negative-test.yaml</code></pre> <strong>Očekivani rezultat:</strong> API server treba da odbije zahtev porukom koja pokazuje da maksimalni dozvoljeni CPU iznosi 2. Pod ne sme postojati. <pre><code class="language-bash">kubectl get pod oversized-pod -n retail-app-dev</code></pre>
+Očekuje se <code>NotFound</code>. Ako je Pod kreiran, proveravaju se aktivni LimitRange, namespace u manifestu i eventualna razlika u admission konfiguraciji klastera.
+
+  </li>
+  <li>
+    <strong>Proveriti relevantne događaje i tragove dijagnostike.</strong>
+    Greške kvote i LimitRange kontrole najčešće su vraćene direktno klijentu kao odgovor API servera i ne moraju proizvesti klasičan Pod događaj jer objekat nije ni sačuvan. Za prihvaćene objekte proveravaju se namespace događaji, opisi Pod-ova i status workload kontrolera.
+    <pre><code class="language-bash">kubectl get events -n retail-app-dev \
+  --sort-by=.metadata.creationTimestamp
+
+kubectl describe deployment retail-web -n retail-app-dev
+kubectl describe pods -n retail-app-dev
+kubectl get resourcequota,limitrange,rolebinding -n retail-app-dev</code></pre>
+Na Supervisor i vCenter nivou platform administrator dodatno proverava Recent Tasks, Events, stanje Supervisor-a, vSphere Namespace kapacitet i health prikaze workload klastera. Za dublju analizu API i kontrolne ravni koriste se podržani vCenter i Supervisor log paketi i Broadcom postupci za prikupljanje support bundle-a. Ručno menjanje sistemskih komponenti ili direktno uređivanje njihovih podataka nije prihvatljiv troubleshooting postupak.
+
+  </li>
+  <li>
+    <strong>Dokumentovati prihvatanje promene.</strong>
+    U zapisu <code>CHG-2026-0710</code> čuvaju se verzije manifesta, rezultat dry-run provera, aktivni kubectl kontekst, izlaz RBAC provera, stanje kvote i rezultat funkcionalnog testa. Tajne, kubeconfig sadržaj i pristupni tokeni ne smeju se unositi u zapis promene.
+    <pre><code class="language-bash">kubectl get namespace retail-app-dev -o yaml
+kubectl get resourcequota,limitrange,rolebinding \
+  -n retail-app-dev -o yaml
+kubectl get deployment,pods,service \
+  -n retail-app-dev -o wide</code></pre>
+    <strong>Merljivi kriterijumi prihvatanja:</strong> namespace je <code>Active</code>; dve replike Deployment-a su dostupne; Service ima endpoint-e; interni HTTP test uspeva; razvojna grupa može da kreira Deployment samo u odobrenom namespace-u; ne može da briše namespace niti da menja <code>kube-system</code>; zahtev iz negativnog testa je odbijen; potrošnja kvote je vidljiva i ispod granica.
+  </li>
+</ol>
+
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<ul>
+  <li><strong>Zahtev je odbijen sa <code>exceeded quota</code>.</strong> Objekat nije kreiran jer bi zbirna potrošnja prekoračila ResourceQuota. Proveravaju se <code>kubectl describe resourcequota</code>, postojeći workload-i i stvarna potreba za povećanjem kvote.</li>
+  <li><strong>Zahtev je odbijen zbog LimitRange pravila.</strong> Pojedinačni kontejner ili PVC zahteva vrednost izvan dozvoljenog minimuma ili maksimuma. Greška se pojavljuje odmah pri kreiranju i razlikuje se od nedostatka kapaciteta node-a.</li>
+  <li><strong>Pod je <code>Pending</code> iako je ispod kvote.</strong> Kvota dozvoljava objekat, ali scheduler ne nalazi odgovarajući node zbog nedovoljnog kapaciteta, taint-a, affinity pravila, nedostupnog volumena ili drugog scheduling uslova. Razlog se vidi u <code>kubectl describe pod</code>.</li>
+  <li><strong>Pod je <code>OOMKilled</code>.</strong> Memory limit ili raspoloživa memorija nisu dovoljni za ponašanje procesa. Pregledaju se prethodni status kontejnera, restart count, aplikacioni logovi i metrike, a limit se ne povećava bez analize curenja memorije i realne potrošnje.</li>
+  <li><strong>Korisnik dobija <code>Forbidden</code>.</strong> Proverava se stvarni identitet, članstvo u grupi, RoleBinding subject, roleRef i tačan namespace. Problem identiteta ne rešava se dodelom <code>cluster-admin</code> uloge.</li>
+  <li><strong>Namespace ostaje u stanju <code>Terminating</code>.</strong> Pregledaju se preostali objekti, finalizer-i, API servisi, admission webhook-i i storage resursi. Finalizer se ne uklanja prisilno dok nije utvrđeno koji kontroler treba da završi čišćenje i kakve bi spoljne resurse intervencija ostavila.</li>
+</ul>
+
+<p>Dijagnostika se vodi od najmanje invazivne provere ka promeni stanja. Sledeće mapiranje sprečava da se simptom proglasi osnovnim uzrokom:</p>
+<table>
+  <thead>
+    <tr><th>Simptom i obim</th><th>Neposredni uzrok</th><th>Osnovni uzrok koji treba potvrditi</th><th>Privremena mera</th><th>Trajna korekcija i validacija</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Samo novi Pod-ovi jednog namespace-a dobijaju <code>exceeded quota</code></td><td>Admission odbija prekoračenje hard granice</td><td>Neplanirano skaliranje, napušteni objekti ili pogrešna procena kapaciteta</td><td>Zaustaviti novi rollout ili bezbedno smanjiti nepotrebne replike</td><td>Profilisati workload, odobriti novu kvotu ili optimizovati resurse; ponoviti dry-run i proveriti <code>Used/Hard</code></td></tr>
+    <tr><td>Pod je prihvaćen, ali ostaje <code>Pending</code></td><td>Scheduler ne nalazi odgovarajući node ili volume</td><td>Nedovoljan allocatable kapacitet, taint/affinity konflikt, topologija ili storage zavisnost</td><td>Vratiti rollout na prethodnu veličinu ako SLO trpi</td><td>Ispraviti requests/topologiju ili planski povećati kapacitet; dokazati scheduling i stabilnost replika</td></tr>
+    <tr><td>Jedna grupa dobija <code>Forbidden</code> u očekivanom namespace-u</td><td>Efektivni RBAC ne dozvoljava glagol nad resursom</td><td>Pogrešno grupno članstvo, subject/roleRef ili zastareo login token</td><td>Koristiti odobren break-glass samo ako incident zahteva i sve se audituje</td><td>Ispraviti identitetsku grupu ili namespaced binding, ponovo se prijaviti i dokazati dozvoljene i zabranjene operacije</td></tr>
+    <tr><td>Namespace dugo ostaje <code>Terminating</code></td><td>Finalizer ili discovery/admission zavisnost ne završava čišćenje</td><td>Nedostupan kontroler, APIService, webhook, CSI ili spoljni resurs</td><td>Zaustaviti nova brisanja i zaštititi podatke; ne uklanjati finalizer naslepo</td><td>Oporaviti vlasnički kontroler ili podržano očistiti resurs; potvrditi odsustvo orphan objekata i zatvoriti incident</td></tr>
+  </tbody>
+</table>
+<p>Za svaki incident beleže se vreme prvog simptoma, pogođeni namespace-i i workload-i, poslednja promena, tačan API odgovor, relevantni Events i stanje vCenter Tasks/Events. Tek zatim se postavlja hipoteza. Privremena mera mora ograničiti uticaj bez proširenja privilegija ili rizika po podatke, a incident se zatvara tek kada je potvrđen oporavak i uklonjen osnovni uzrok.</p>
+
+<h3>Rollback i cleanup</h3>
+<p>Najbezbedniji rollback promene kvote, LimitRange ili RoleBinding objekta jeste ponovno primenjivanje prethodno odobrene verzije manifesta iz sistema za kontrolu verzija. Brisanje celog namespace-a nije prihvatljiv rollback za grešku u jednoj politici jer uklanja sve namespaced resurse i može pokrenuti brisanje aplikacionih podataka.</p>
+<p>Za uklanjanje samo demonstracionog workload-a koriste se sačuvani manifesti:</p>
+<pre><code class="language-bash">cd ~/tanzu-lab/retail-app-dev
+kubectl delete -f 05-demo-deployment.yaml
+kubectl get all -n retail-app-dev</code></pre>
+<p>Negativni test obično nije kreirao objekat, ali se cleanup može izvršiti bez greške:</p>
+<pre><code class="language-bash">kubectl delete -f 06-negative-test.yaml --ignore-not-found</code></pre>
+<p><strong>Upozorenje:</strong> sledeća operacija briše namespace i sve namespaced objekte u njemu. Ne izvršava se u produkciji niti nad namespace-om sa trajnim podacima bez odobrenog zahteva, potvrđenog backup-a, pregleda PersistentVolume reclaim politika i saglasnosti vlasnika aplikacije.</p>
+<pre><code class="language-bash">kubectl delete namespace retail-app-dev</code></pre>
+<p>Pre potpunog uklanjanja proveravaju se PVC i PV objekti, backup evidencija, eksterni DNS zapisi, load balancer resursi, sertifikati, cloud ili NSX objekti i integracije koje možda nisu automatski uklonjene. Uspešan cleanup podrazumeva da namespace više ne postoji, da nema napuštenih volumena ili mrežnih resursa i da je promena zatvorena u evidenciji.</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Praćenje potrošnje kvota.</strong> Najmanje dnevno i nakon većeg deployment-a proveravaju se <code>kubectl describe resourcequota</code> i platformske metrike. Reakcija je potrebna kada stabilna potrošnja pređe približno 80% granice ili kada rast odstupa od plana. Prvo se utvrđuje koji workload troši resurse, a zatim se optimizuje aplikacija ili pokreće odobren zahtev za kapacitet. Trend, uzrok i odluka beleže se u monitoring ili capacity-management sistemu. Uspeh se meri odsustvom neplaniranih odbijanja i tačnošću prognoze kapaciteta.</li>
+  <li><strong>Kontrola Pod-ova bez eksplicitnih resursa.</strong> Nakon svakog uvođenja aplikacije i periodično kroz policy alat proveravaju se manifestski requests i limits. <code>kubectl get pods -n retail-app-dev -o yaml</code> pokazuje efektivne vrednosti, ali se izvorni Git manifest mora posebno pregledati kako bi se razlikovale autorske od automatski dodatih vrednosti. Prva reakcija je zahtev vlasniku aplikacije da profilisanjem potvrdi odgovarajuće resurse.</li>
+  <li><strong>Recertifikacija pristupa.</strong> Najmanje kvartalno i nakon organizacione promene porede se RoleBinding i ClusterRoleBinding objekti sa centralnim grupama i odobrenjima. Komande <code>kubectl get rolebindings -A</code>, <code>kubectl get clusterrolebindings</code> i <code>kubectl auth can-i</code> koriste se za proveru. Svako direktno korisničko pravo, nepoznata grupa ili neočekivani cluster-wide pristup zahteva istragu. Rezultati se čuvaju u IAM ili GRC evidenciji, a uspeh se meri brojem uklonjenih zastarelih prava i odsustvom neodobrenih privilegija.</li>
+  <li><strong>Provera namespace-a bez vlasnika.</strong> Nedeljno ili kroz automatizovani inventar proveravaju se obavezne labele i anotacije. Namespace bez <code>owner</code>, <code>environment</code> ili internog identifikatora promene označava se kao neusaglašen. Prva reakcija je identifikovanje workload vlasnika pre bilo kakvog brisanja. Nalaz se evidentira u CMDB ili katalogu platformskih resursa.</li>
+  <li><strong>Praćenje <code>Pending</code>, eviction i OOM događaja.</strong> Monitoring treba da alarmira na dugotrajno <code>Pending</code> stanje, rast restart count vrednosti, <code>OOMKilled</code> i node memory ili disk pressure. Administrator prvo proverava događaje, Pod status, node kapacitet i aplikacione metrike. Uspeh se meri vremenom detekcije i oporavka, kao i smanjenjem ponovljenih incidenata sa istim uzrokom.</li>
+  <li><strong>Zaštita konfiguracije i podataka.</strong> Namespace YAML manifesti, RBAC, kvote, politike i aplikacione definicije čuvaju se u kontroli verzija pri svakoj odobrenoj promeni. Kubernetes backup rešenje mora čuvati potrebne API objekte i, kada je podržano, povezane volume podatke u izdvojenom i zaštićenom repozitorijumu. Raspored zavisi od RPO zahteva, a restore test se izvodi najmanje kvartalno u izolovanom okruženju. Backup je upotrebljiv tek kada se objekti obnove, aplikacija pokrene, podaci provere aplikacionim testom i rezultat dokumentuje.</li>
+  <li><strong>Kontrola promena vSphere Namespace-a.</strong> Promene CPU-a, memorije, storage politika, VM klasa i dozvola proveravaju se pre i posle izvršenja u vSphere Client-u, kroz Tasks, Events i odgovarajuće API ili automatizacione izveštaje. Svaka promena mora imati poslovni razlog, vlasnika, prethodno stanje i plan povratka. Uspeh se meri time da workload-i ostanu raspoloživi i da nova politika daje tačno odobreni kapacitet.</li>
+</ul>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Aktivni kubectl kontekst i API endpoint potvrđeni su kao <code>vks-retail-dev</code>.</li>
+  <li>Namespace <code>retail-app-dev</code> je u fazi <code>Active</code> i sadrži obavezne labele vlasnika, okruženja i troškovnog centra.</li>
+  <li><code>kubectl describe limitrange retail-container-limits -n retail-app-dev</code> prikazuje odobrene minimalne, maksimalne i podrazumevane vrednosti.</li>
+  <li><code>kubectl describe resourcequota retail-dev-quota -n retail-app-dev</code> prikazuje odobrene granice i potrošnju ispod njih.</li>
+  <li>RoleBinding povezuje grupu <code>GG-TANZU-RETAIL-DEV</code> sa ulogom <code>edit</code> samo u namespace-u <code>retail-app-dev</code>.</li>
+  <li>RBAC test potvrđuje da razvojna grupa može da kreira Deployment u svom namespace-u, ali ne može da briše namespace niti menja <code>kube-system</code>.</li>
+  <li>Deployment <code>retail-web</code> ima dve dostupne replike, a svi pripadajući Pod-ovi su <code>Ready</code>.</li>
+  <li>Funkcionalni test prema <code>http://retail-web/hostname</code> vraća odgovor aplikacionog Pod-a.</li>
+  <li>Negativni test sa zahtevom od 3 CPU jedinice odbijen je LimitRange pravilom i objekat <code>oversized-pod</code> ne postoji.</li>
+  <li>Manifesti, validacioni izlazi i rezultat promene sačuvani su u odobrenoj evidenciji bez kubeconfig sadržaja, tokena ili drugih tajni.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razlikuje vSphere Namespace kao infrastrukturnu granicu Supervisor okruženja od standardnog Kubernetes namespace-a unutar workload klastera. Mora razumeti da nijedan od ta dva nivoa samostalno ne rešava sve zahteve za izolaciju, kapacitet i bezbednost. Pouzdano enterprise rešenje nastaje kombinovanjem vSphere dozvola i infrastrukturnih politika sa Kubernetes RBAC, ResourceQuota, LimitRange, storage i drugim aplikacionim kontrolama.</p>
+<p>Praktična veština nije samo kreiranje namespace-a, već projektovanje njegovog vlasništva, kapaciteta i životnog ciklusa. Administrator mora umeti da validira manifest pre promene, proveri efektivne dozvole, razlikuje odbijanje kvote od scheduling problema, prepozna OOM i kapacitivne simptome, bezbedno vrati prethodnu politiku i dokumentuje dokaz da promena radi kako je odobreno.</p>
+<p>Produkcioni rizici nastaju kada se namespace tretira kao potpuna bezbednosna izolacija, kada se široka prava dodeljuju preko ClusterRoleBinding objekata, kada kvote nisu zasnovane na merenju, kada se storage briše bez provere reclaim politike ili kada se finalizer uklanja bez razumevanja spoljnog resursa koji štiti. Granica administratorskog ovlašćenja zato mora biti jasna: aplikacioni tim upravlja svojim workload-om, platform tim infrastrukturnim politikama, bezbednosni tim pravilima pristupa, a vlasnik podataka odlučuje o njihovom zadržavanju i uklanjanju.</p>
+<p>Eskalacija je potrebna kada problem zahteva promenu Supervisor kontrolne ravni, vCenter ili NSX konfiguracije, kada postoji sumnja na grešku CSI ili API integracije, kada namespace ostaje u stanju <code>Terminating</code> zbog nedostupnog sistemskog kontrolera, kada su ugroženi trajni podaci ili kada tražena promena prevazilazi odobreni kapacitet i bezbednosni model. Odgovoran administrator ne zaobilazi zaštitne mehanizme da bi privremeno uklonio simptom, već prikuplja dokaze, ograničava uticaj i uključuje vlasnika odgovarajućeg sloja platforme.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična VMware by Broadcom dokumentacija i administrativni vodiči za vSphere, Supervisor, vSphere Namespaces i VMware vSphere Kubernetes Service; zvanične vSphere Automation API, Namespace Management API i VKS API reference; zvanična Kubernetes dokumentacija za namespace objekte, upravljanje CPU i memorijskim resursima, ResourceQuota, LimitRange, RBAC, storage kvote, API validaciju i dijagnostiku; zvanične smernice za monitoring, audit, kontrolu pristupa, zaštitu trajnih podataka i oporavak Kubernetes workload-a.
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-18-identitet-rbac-i-pristup-platformi.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

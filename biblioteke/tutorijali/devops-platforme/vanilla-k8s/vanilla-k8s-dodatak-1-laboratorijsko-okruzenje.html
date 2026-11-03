@@ -1,0 +1,806 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Dodatak 1. Vanilla Kubernetes laboratorijsko okruženje za učenje i vežbu | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Laboratorijsko vanilla Kubernetes okruženje za učenje i vežbu obuhvata plan infrastrukture, virtuelne mašine, mrežu, skladištenje podataka i preporučenu organizaciju praktičnog rada.">
+
+  <meta name="keywords"
+        content="vanilla Kubernetes laboratorija, Kubernetes lab, Kubernetes okruženje za učenje, Kubernetes virtualne mašine, kubeadm lab, DevOps laboratorija, Kubernetes vežbe, enterprise lab, vanilla Kubernetes, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Dodatak 1. Vanilla Kubernetes laboratorijsko okruženje za učenje i vežbu">
+
+  <meta property="og:description"
+        content="Korak po korak priprema laboratorijskog vanilla Kubernetes okruženja za samostalno učenje, administraciju i izvođenje praktičnih vežbi.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Dodatak 1. Vanilla Kubernetes laboratorijsko okruženje za učenje i vežbu">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcione operacije, otpornost i enterprise integracije
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-dodatak-1-laboratorijsko-okruzenje.png"
+           alt="Dodatak 1. Vanilla Kubernetes laboratorijsko okruženje za učenje i vežbu">
+
+    </a>
+
+  <div class="page-subtitle">
+ XII. Laboratorijsko okruženje i integrisani projekti
+</div>
+   <div class="page-subtitle">
+  Dodatak 1. Izgradnja Vanilla Kubernetes laboratorije – mreža, čvorovi, kubeadm i početna validacija
+</div>
+<p>
+  Dobro projektovano laboratorijsko okruženje omogućava administratoru da istražuje Kubernetes arhitekturu, izvodi kontrolisane promene, izaziva kvarove i vežba oporavak bez rizika po produkcione sisteme. Cilj laboratorije nije samo da nekoliko podova dobije status <code>Running</code>, već da okruženje dovoljno verno predstavlja način na koji funkcioniše samostalno upravljan vanilla Kubernetes klaster: svaki čvor ima sopstveni operativni sistem, mrežni identitet, container runtime i kubelet, dok se control plane i radna opterećenja razdvajaju na različite virtuelne mašine.
+</p>
+<p>
+  U ovoj lekciji gradi se tročvorni klaster pomoću alata <code>kubeadm</code>, containerd runtime-a i Calico CNI dodatka. Referentno okruženje koristi jedan control plane čvor i dva worker čvora. Takva topologija nije visoko dostupna i ne predstavlja preporučenu produkcionu arhitekturu, ali je dovoljno realistična za učenje raspoređivanja podova, mrežne komunikacije, servisa, NetworkPolicy pravila, kvarova čvorova, upravljanja sertifikatima, nadogradnji i osnovnog oporavka.
+</p>
+<h3>Namena i granice laboratorijskog klastera</h3>
+<p>
+  Vanilla Kubernetes označava Kubernetes klaster koji nije vezan za upravljanu cloud uslugu ili komercijalnu distribuciju sa dodatnim kontrolnim slojem. Administrator sam obezbeđuje virtuelne ili fizičke servere, operativni sistem, mrežu, runtime, CNI, skladište, monitoring, backup i lifecycle postupke. Upravo zato laboratorija zasnovana na <code>kubeadm</code> pruža dobar uvid u komponente koje su na upravljanim platformama često skrivene.
+</p>
+<p>
+  <code>kubeadm</code> automatizuje bezbedno inicijalno podizanje minimalnog klastera. On generiše sertifikate, kubeconfig datoteke i statičke Pod manifeste za API server, scheduler, controller manager i lokalni etcd, ali ne kreira virtuelne mašine, ne bira CNI, ne obezbeđuje trajno skladište i ne instalira enterprise monitoring. Administrator zbog toga mora da razume granicu između bootstrap alata i kompletne platforme.
+</p>
+<p>
+  Referentna laboratorija pogodna je za vežbanje administracije resursa, RBAC-a, mrežnih politika, rollout-a, skaliranja, troubleshooting-a i nadogradnje. Nije odgovarajuća za merenje produkcionih performansi, testiranje visoke dostupnosti control plane-a, čuvanje važnih podataka ili objavljivanje servisa na Internetu. Jedan control plane predstavlja jedinstvenu tačku otkaza, lokalni diskovi nisu redundantni, a laboratorijski sertifikati i pristupni podaci obično nisu integrisani sa organizacionim PKI i IAM sistemima.
+</p>
+<h3>Referentna arhitektura</h3>
+<p>
+  Referentni dizajn koristi tri zasebne virtuelne mašine i administratorsku radnu stanicu. Sve adrese su laboratorijske i moraju se pre primene uporediti sa lokalnim LAN, VPN, hipervizorskim i drugim klasterskim rutama. Jedan control plane čvor je namerno pojednostavljenje za učenje: nema redundantnog API endpoint-a niti redundantnog etcd-a, pa njegov kvar zaustavlja upravljanje klasterom.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Čvor</th>
+      <th>Uloga</th>
+      <th>IP adresa</th>
+      <th>Interfejs</th>
+      <th>OS</th>
+      <th>Minimalni resursi</th>
+      <th>Preporučeni resursi</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>k8s-cp01</td>
+      <td>control plane i lokalni etcd</td>
+      <td>192.168.56.10</td>
+      <td>ens33 ili lokalni ekvivalent</td>
+      <td>Ubuntu Server 24.04 LTS</td>
+      <td>2 vCPU, 4 GB RAM, 40 GB</td>
+      <td>4 vCPU, 8 GB RAM, 60 GB</td>
+    </tr>
+    <tr>
+      <td>k8s-worker01</td>
+      <td>worker</td>
+      <td>192.168.56.11</td>
+      <td>ens33 ili lokalni ekvivalent</td>
+      <td>Ubuntu Server 24.04 LTS</td>
+      <td>2 vCPU, 4 GB RAM, 40 GB</td>
+      <td>4 vCPU, 8 GB RAM, 60 GB</td>
+    </tr>
+    <tr>
+      <td>k8s-worker02</td>
+      <td>worker</td>
+      <td>192.168.56.12</td>
+      <td>ens33 ili lokalni ekvivalent</td>
+      <td>Ubuntu Server 24.04 LTS</td>
+      <td>2 vCPU, 4 GB RAM, 40 GB</td>
+      <td>4 vCPU, 8 GB RAM, 60 GB</td>
+    </tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>Element</th><th>Referentna vrednost</th><th>Namena i dokaz</th></tr></thead>
+  <tbody>
+    <tr><td>Administratorska radna stanica</td><td>Linux Mint ili drugi SSH/kubectl host u 192.168.56.0/24</td><td>SSH ključ, pristup TCP 22 čvorovima i TCP 6443 API serveru; ne čuva nezaštićen <code>admin.conf</code></td></tr>
+    <tr><td>Host/Node mreža</td><td>192.168.56.0/24</td><td>Stabilne Node IP adrese; potvrda sa <code>ip route</code> i <code>kubectl get nodes -o wide</code></td></tr>
+    <tr><td>Pod CIDR</td><td>172.20.0.0/16</td><td>Calico IP pool; ne sme biti LAN, VPN ili Service ruta</td></tr>
+    <tr><td>Service CIDR</td><td>10.96.0.0/12</td><td>Virtuelne ClusterIP adrese; ne rutiraju se kao host mreža</td></tr>
+    <tr><td>LoadBalancer pool</td><td>192.168.56.200–192.168.56.219, rezervisano</td><td>Ne koristi se u ovom dodatku; ostavlja se za naredni projekat i isključuje iz DHCP pool-a</td></tr>
+    <tr><td>Laboratorijski DNS domen</td><td>lab.tashizza.internal</td><td>Host zapisi ili dosledan <code>/etc/hosts</code>; primer: <code>k8s-cp01.lab.tashizza.internal</code></td></tr>
+    <tr><td>Kubernetes cluster domain</td><td>cluster.local</td><td>Interni Service DNS; nije isto što i host DNS domen</td></tr>
+    <tr><td>Vreme</td><td>systemd-timesyncd ili organizacioni NTP</td><td><code>timedatectl show -p NTPSynchronized --value</code> vraća <code>yes</code></td></tr>
+    <tr><td>Repozitorijumi i registri</td><td>Ubuntu, pkgs.k8s.io, registry.k8s.io, ghcr.io/quay.io prema CNI-u</td><td>DNS, TLS i izlazni HTTPS rade sa svakog čvora</td></tr>
+  </tbody>
+</table>
+<h3>Promenljive laboratorije i verzijska odluka</h3>
+<table>
+  <thead><tr><th>Oznaka</th><th>Vrednost u ovoj laboratoriji</th><th>Pravilo</th></tr></thead>
+  <tbody>
+    <tr><td><code>CONTROL_PLANE_IP</code></td><td><code>192.168.56.10</code></td><td>Statička ili DHCP rezervisana adresa</td></tr>
+    <tr><td><code>WORKER1_IP</code> / <code>WORKER2_IP</code></td><td><code>192.168.56.11</code> / <code>192.168.56.12</code></td><td>Jedinstvene adrese u host mreži</td></tr>
+    <tr><td><code>POD_CIDR</code></td><td><code>172.20.0.0/16</code></td><td>Mora odgovarati kubeadm i Calico konfiguraciji</td></tr>
+    <tr><td><code>SERVICE_CIDR</code></td><td><code>10.96.0.0/12</code></td><td>Ne sme se preklapati ni sa jednom rutom</td></tr>
+    <tr><td><code>KUBERNETES_MINOR</code></td><td><code>v1.36</code></td><td>Namenski <code>pkgs.k8s.io</code> kanal; bira se konkretan patch iz tog kanala</td></tr>
+    <tr><td><code>KUBERNETES_VERSION</code></td><td><code>v1.36.0</code> u referentnoj konfiguraciji</td><td>Pre izvođenja uskladiti sa stvarno instaliranim <code>kubeadm</code> paketom; ne koristiti neprovereni <code>latest</code></td></tr>
+    <tr><td><code>CALICO_VERSION</code></td><td><code>v3.32.1</code></td><td>Manifest preuzeti iz zvaničnog, verzionisanog izvora i pregledati pre primene</td></tr>
+  </tbody>
+</table>
+<p>
+  Kubernetes 1.36 koristi <code>kubeadm.k8s.io/v1beta4</code>. Paketni kanal, <code>kubeadm</code>, kubelet, control plane image-i, CRI v1 podrška runtime-a i podržana Calico verzija proveravaju se ponovo neposredno pre izvođenja. Ubuntu 24.04 paket containerd-a može pripadati grani 1.7 ili novijoj, pa se putanja CRI plugin konfiguracije ne pretpostavlja: generiše se konfiguracija za stvarno instaliranu verziju, zatim proveravaju <code>containerd --version</code>, <code>containerd config dump</code> i <code>crictl info</code>. Kubernetes 1.36 može automatski preuzeti cgroup driver preko CRI RuntimeConfig kada runtime to podržava; eksplicitna vrednost <code>systemd</code> ipak ostaje dokumentovana zbog jasnog i kompatibilnog ponašanja.
+</p>
+<p>
+  Ako se vrednosti privremeno unesu kao shell promenljive, one važe samo u toj shell sesiji. Pre upotrebe obavezno se proveravaju pomoću <code>printf '%s\n' "$CONTROL_PLANE_IP" "$POD_CIDR"</code>. Prazna promenljiva ne sme se koristiti u komandi koja menja stanje, a destruktivne komande u završnoj fazi namerno koriste eksplicitne putanje, ne promenljive.
+</p>
+<p>
+  Svi čvorovi koriste Ubuntu Server 24.04 LTS, systemd, containerd, kubelet, kubeadm i kubectl iz repozitorijuma za Kubernetes 1.36. Pod mreža koristi opseg <code>172.20.0.0/16</code>, Service mreža podrazumevani opseg <code>10.96.0.0/12</code>, a mreža virtuelnih mašina <code>192.168.56.0/24</code>. Ovi opsezi ne smeju da se preklapaju sa fizičkom mrežom, VPN rutama, drugim laboratorijama ili mrežama koje koristi hipervizor.
+</p>
+<p>
+  Statičke ili rezervisane DHCP adrese su važne zato što kubelet, API server sertifikati i join postupak zavise od stabilne komunikacije među čvorovima. DNS imena moraju dosledno da se razrešavaju, lokalno preko DNS servera ili privremeno preko datoteke <code>/etc/hosts</code>. Promena hostname-a ili IP adrese nakon inicijalizacije može prekinuti TLS validaciju, pristup API serveru i komunikaciju između čvorova.
+</p>
+<p>
+  Laboratorijske virtuelne mašine treba povezati na mrežu koja omogućava međusobnu komunikaciju i pristup repozitorijumima. NAT mreža sa odvojenim internim segmentom često je bezbednija od direktnog bridged povezivanja. API server na portu TCP 6443 ne treba izlagati nepoverljivoj mreži. Administratorski SSH pristup ograničava se na upravljačku stanicu, a pristup korišćenjem lozinke treba zameniti SSH ključevima.
+</p>
+<h3>Operativni sistem, vreme i mrežni preduslovi</h3>
+<p>
+  Kubernetes zahteva da čvorovi imaju jedinstvena imena, MAC adrese i identifikatore proizvoda. Kloniranje virtuelne mašine bez regenerisanja identiteta može izazvati nejasne registracije čvorova. Pre instalacije proveravaju se hostname, IP konfiguracija, DNS, podrazumevana ruta, sinhronizacija vremena i dostupnost potrebnih portova. Vremensko odstupanje može uticati na validnost sertifikata, tokene i korelaciju logova.
+</p>
+<p>
+  Swap se tradicionalno isključuje zato što kubelet mora predvidivo da upravlja memorijskim pritiskom i eviction mehanizmima. Novije verzije Kubernetes-a podržavaju kontrolisanu upotrebu swap-a kroz eksplicitnu kubelet konfiguraciju, ali to nije podrazumevano laboratorijsko ponašanje. Za ovu laboratoriju swap se isključuje kako bi konfiguracija ostala jasna i kompatibilna sa standardnim kubeadm preduslovima.
+</p>
+<p>
+  Kernel mora prosleđivati bridged IPv4 saobraćaj kroz netfilter i dozvoliti IP forwarding. CNI dodatak zatim kreira interfejse, rute i pravila potrebna za Pod-to-Pod i Pod-to-Service komunikaciju. Ako su kernel moduli ili sysctl vrednosti pogrešni, podovi mogu biti kreirani, ali neće imati funkcionalnu mrežu. Takav simptom se razlikuje od problema scheduler-a: pod dobija čvor, ali ostaje u stanju <code>ContainerCreating</code> ili ne može da pristupi drugim adresama.
+</p>
+<h3>Container runtime i cgroup upravljanje</h3>
+<p>
+  Kubernetes više ne upravlja kontejnerima preko ugrađenog Docker interfejsa. Kubelet komunicira sa runtime-om preko Container Runtime Interface-a. U laboratoriji se koristi containerd sa aktivnim CRI dodatkom. Komanda <code>ctr</code> namenjena je niskom nivou rada sa containerd-om i ne prikazuje Kubernetes objekte na isti način kao CRI. Za dijagnostiku runtime-a administrator koristi <code>crictl</code>, dok za deklarativno upravljanje klasterom koristi <code>kubectl</code>.
+</p>
+<p>
+  Kubelet i runtime moraju dosledno koristiti cgroup upravljački program. Na savremenim systemd distribucijama preporučuje se <code>systemd</code> cgroup driver. Nepodudaranje može dovesti do nestabilnog upravljanja procesima, pogrešnog obračuna resursa ili neuspešnog pokretanja podova. Konfiguracija containerd-a zato eksplicitno uključuje <code>SystemdCgroup = true</code>, a kubeadm generiše odgovarajuću kubelet konfiguraciju.
+</p>
+<p>
+  Containerd konfiguracija se nalazi u <code>/etc/containerd/config.toml</code>. Posle svake izmene administrator proverava sintaksu posredno kroz uspešno ponovno pokretanje servisa, status CRI dodatka i runtime odgovor. Sam status <code>active (running)</code> nije dovoljan ako je CRI dodatak onemogućen; zato se dodatno koriste <code>ctr plugins ls</code> i <code>crictl info</code>.
+</p>
+<h3>Uloga kubeadm-a i tok inicijalizacije</h3>
+<p>
+  Na control plane čvoru <code>kubeadm init</code> izvršava preflight provere, generiše PKI materijal, kubeconfig datoteke i statičke manifeste u direktorijumu <code>/etc/kubernetes/manifests</code>. Kubelet posmatra taj direktorijum i preko containerd-a pokreće control plane komponente kao statičke podove. Njih ne kreira Deployment i njihov lifecycle nije isti kao kod običnih aplikacionih podova.
+</p>
+<p>
+  Podaci klastera čuvaju se u etcd-u, koji je u ovoj topologiji lokalni statički pod na <code>k8s-cp01</code>. Direktorijum <code>/var/lib/etcd</code> zato predstavlja kritičnu lokaciju. Gubitak tog direktorijuma bez upotrebljivog snapshot-a znači gubitak deklarativnog stanja klastera, iako datoteke aplikacija ili container image slojevi možda još postoje na worker čvorovima.
+</p>
+<p>
+  Worker se priključuje naredbom <code>kubeadm join</code>. Bootstrap token dokazuje da novi čvor ima pravo da započne proces, dok hash CA javnog ključa sprečava povezivanje sa lažnim control plane-om. Token je vremenski ograničen i ne treba ga čuvati u javnom repozitorijumu, shell istoriji ili dokumentaciji promene. Kada istekne, generiše se nova join komanda.
+</p>
+<h3>CNI i mrežni model laboratorije</h3>
+<p>
+  Kubernetes definiše mrežni model, ali ga sam kubeadm ne implementira. Svaki pod treba da dobije jedinstvenu IP adresu i da, u okviru pravila mrežne politike, može direktno da komunicira sa drugim podovima. CNI dodatak kreira potrebne interfejse i rute. Dok CNI nije instaliran, CoreDNS podovi obično ostaju u stanju <code>Pending</code>, a čvorovi mogu imati uslov <code>NetworkUnavailable</code>.
+</p>
+<p>
+  Calico u laboratoriji obezbeđuje CNI, upravljanje Pod adresama i podršku za Kubernetes NetworkPolicy. Operator pristup odvaja instalacionu logiku od korisničke konfiguracije. Pod mreža <code>172.20.0.0/16</code> mora odgovarati vrednosti zadatoj tokom <code>kubeadm init</code>. Ako se opsezi razlikuju, podovi mogu dobiti pogrešne adrese ili mrežne komponente neće postati spremne.
+</p>
+<p>
+  Mrežna politika nije automatski podrazumevano zabrani-sve mehanizam. Bez NetworkPolicy objekta, namespace obično dozvoljava saobraćaj u skladu sa standardnim Kubernetes modelom. Administrator mora eksplicitno definisati izolaciju i dozvoljene tokove. Negativni testovi su zato važni: nije dovoljno potvrditi da dozvoljena konekcija radi, već i da zabranjena konekcija zaista ne prolazi.
+</p>
+<h3>Administrativni pristup i zaštita laboratorije</h3>
+<p>
+  Datoteka <code>/etc/kubernetes/admin.conf</code> daje veoma široka administratorska prava i mora se tretirati kao tajna. Njeno kopiranje u korisnički direktorijum olakšava rad, ali ne smanjuje privilegije. Ne treba je slati elektronskom poštom, ugrađivati u skripte ili trajno koristiti na deljenim računarima. Za redovan rad realnije je kreirati posebne identitete i RBAC ovlašćenja, dok se <code>admin.conf</code> čuva za kontrolisane administratorske intervencije.
+</p>
+<p>
+  Snapshot virtuelne mašine koristan je za brzo vraćanje laboratorije, ali nije zamena za Kubernetes backup. Nekonzistentan snapshot uključenog control plane čvora može obuhvatiti disk dok etcd upis još traje. Za vežbu oporavka treba praviti etcd snapshot alatima koji razumeju etcd format, čuvati potrebne sertifikate i dokumentovati tačnu verziju klastera.
+</p>
+<h3>Integrisani praktikum: izgradnja tročvornog kubeadm klastera</h3>
+<h3>Mapa laboratorije</h3>
+<table>
+  <thead><tr><th>Faza</th><th>Mesto izvršavanja</th><th>Promena</th><th>Dokaz uspeha</th></tr></thead>
+  <tbody>
+    <tr><td>1–2. Topologija, verzije i VM</td><td>administratorska stanica i hipervizor</td><td>inventar i tri jedinstvena hosta</td><td>nema CIDR sukoba; resursi i identiteti provereni</td></tr>
+    <tr><td>3. Imena, DNS i vreme</td><td>svi čvorovi</td><td>stabilan identitet i vreme</td><td><code>getent</code> i <code>timedatectl</code></td></tr>
+    <tr><td>4–5. Mreža, kernel i swap</td><td>svi čvorovi, sudo</td><td>dozvoljeni tokovi, moduli i sysctl</td><td>rute/portovi, <code>lsmod</code>, <code>sysctl</code>, <code>swapon</code></td></tr>
+    <tr><td>6–7. Runtime i paketi</td><td>svi čvorovi, sudo</td><td>containerd CRI i verzionisani Kubernetes alati</td><td><code>crictl info</code>, verzije i package hold</td></tr>
+    <tr><td>8. Pre-flight</td><td>svi čvorovi; cp01 dodatno</td><td>sačuvano početno stanje i image-i</td><td>nema nerešenih pre-flight grešaka</td></tr>
+    <tr><td>9–10. Control plane i pristup</td><td>samo k8s-cp01</td><td>PKI, etcd, statički Podovi i kubeconfig</td><td>API dostupan; kubeconfig mode 600</td></tr>
+    <tr><td>11–12. CNI i worker-i</td><td>cp01, zatim worker-i</td><td>Pod mreža i priključenje čvorova</td><td>Calico spreman; sva tri čvora <code>Ready</code></td></tr>
+    <tr><td>13–14. Validacija i workload</td><td>k8s-cp01</td><td>test aplikacija, Service i politika</td><td>DNS, cross-node Pod tok, endpointi, HTTP i self-healing</td></tr>
+    <tr><td>15. Greške</td><td>ograničeni laboratorijski cilj</td><td>reverzibilan kvar</td><td>uzrok dokazan, korekcija i oporavak zabeleženi</td></tr>
+    <tr><td>16. Evidencija/odluka</td><td>administratorska stanica i čvorovi</td><td>checkpoint ili destruktivan reset</td><td>arhiva dokaza ili potvrđeno čisto stanje</td></tr>
+  </tbody>
+</table>
+<h3>Faze 1–2: projektovanje i priprema virtuelnih mašina</h3>
+<p>
+  <strong>Mesto, nalog i uticaj.</strong> Inventar se priprema na administratorskoj stanici bez promene čvorova; VM resursi i mrežni adapteri menjaju se u hipervizoru dok su VM-ovi isključeni. Na hostovima <code>labadmin</code> sa <code>sudo</code> samo čita inventar. Ne klonirati već inicijalizovan Kubernetes čvor. Ako se koristi template, identitet instance i SSH host ključevi regenerišu se prema pravilima distribucije pre uključivanja kopije u istu mrežu.
+</p>
+<pre><code class="language-bash"># Svi čvorovi; read-only inventar
+hostnamectl
+lscpu | sed -n '1,15p'
+free -h
+lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS
+ip -brief link
+cat /etc/machine-id
+sudo cat /sys/class/dmi/id/product_uuid</code></pre>
+<p>
+  Očekuju se jedinstveni hostname, MAC, <code>machine-id</code> i product UUID, najmanje resursi iz tabele i dovoljan slobodan disk. Duplirani identitet prekida fazu: VM se izoluje i ponovo priprema. Kontrolna tačka je dokumentovan inventar tri jedinstvena hosta i snapshot čistog, ugašenog OS-a pre klasterskog stanja.
+</p>
+<h3>Faze 3–16: sekvencijalno izvršavanje</h3>
+<p>
+  <strong>Poslovni i tehnički kontekst.</strong> Infrastrukturni tim priprema izolovanu laboratoriju u kojoj administratori treba da vežbaju instalaciju, mrežnu segmentaciju, raspoređivanje aplikacija i troubleshooting pre rada na produkcionim Kubernetes platformama. Cilj je podići ponovljiv tročvorni klaster, potvrditi komunikaciju između podova i servisa, dokazati sprovođenje NetworkPolicy pravila i dokumentovati postupak čišćenja.
+</p>
+<p>
+  <strong>Referentno okruženje i preduslovi.</strong> Tri sveže Ubuntu Server 24.04 virtuelne mašine imaju IP adrese i resurse iz prethodne tabele. Korisnik <code>labadmin</code> postoji na svim čvorovima, prijavljuje se SSH ključem i ima pravo <code>sudo</code>. Internet pristup je dozvoljen prema Ubuntu, Kubernetes i Calico repozitorijumima. Komande označene sa „svi čvorovi” izvršavaju se na sve tri virtuelne mašine.
+</p>
+<ol>
+  <li>
+    <strong>Provera identiteta, mreže i vremena na svim čvorovima.</strong>
+    Pre promene mora se potvrditi da svaki čvor ima očekivano ime i adresu, da se imena međusobno razrešavaju i da je sistemsko vreme sinhronizovano.
+    <pre><code class="language-bash">hostnamectl
+ip -brief address
+ip route
+timedatectl
+getent hosts k8s-cp01 k8s-worker01 k8s-worker02
+ping -c 2 192.168.56.10</code></pre>
+    Ako laboratorija nema DNS zapis, na sva tri čvora dodaje se ista kontrolisana mapa:
+    <pre><code class="language-bash">sudo tee -a /etc/hosts &gt;/dev/null &lt;&lt;'EOF'
+192.168.56.10 k8s-cp01
+192.168.56.11 k8s-worker01
+192.168.56.12 k8s-worker02
+EOF</code></pre>
+    <strong>Validacija:</strong> <code>getent hosts</code> mora vratiti tačno jednu očekivanu adresu za svaki naziv. Duplikati ili različiti odgovori moraju se ukloniti pre inicijalizacije.
+  </li>
+  <li>
+    <strong>Faza 4 – mrežna povezanost, portovi, firewall, MTU i rutiranje na svim čvorovima.</strong>
+    Sledeće komande naloga <code>labadmin</code> samo čitaju stanje. Pre inicijalizacije očekuje se da host mreža ne sadrži rutu koja obuhvata Pod ili Service CIDR i da svi čvorovi koriste kompatibilan MTU. Test TCP 6443 ima smisla tek kada API server sluša; pre toga očekivani <code>connection refused</code> dokazuje putanju do hosta, dok timeout upućuje na firewall ili rutu.
+    <pre><code class="language-bash">ip -4 route
+ip link show
+ping -c 2 192.168.56.10
+getent ahostsv4 k8s-cp01
+sudo ss -lntup
+curl -k --connect-timeout 3 https://192.168.56.10:6443/livez</code></pre>
+    <table>
+      <thead><tr><th>Odredište</th><th>Port/protokol</th><th>Ko treba da pristupa</th><th>Napomena</th></tr></thead>
+      <tbody>
+        <tr><td>API server</td><td>TCP 6443</td><td>svi čvorovi i administracija</td><td>ulaz na control plane; ne izlagati nepoverljivoj mreži</td></tr>
+        <tr><td>etcd</td><td>TCP 2379–2380</td><td>lokalne control plane komponente</td><td>u single-node stacked topologiji ne otvarati široko</td></tr>
+        <tr><td>kubelet API</td><td>TCP 10250</td><td>control plane ka svim čvorovima</td><td>potreban za logove, exec i metrike</td></tr>
+        <tr><td>scheduler/controller-manager</td><td>TCP 10259/10257</td><td>lokalni control plane</td><td>secure portovi; ne izlagati LAN-u</td></tr>
+        <tr><td>NodePort</td><td>TCP/UDP 30000–32767</td><td>samo ako se NodePort koristi</td><td>nije potreban za ClusterIP test u ovoj laboratoriji</td></tr>
+        <tr><td>Calico</td><td>zavisi od VXLAN/BGP izbora</td><td>među čvorovima</td><td>primeniti tačne zvanične zahteve iz izabrane Calico konfiguracije</td></tr>
+      </tbody>
+    </table>
+    <strong>Kontrolna tačka:</strong> dokumentovane su firewall zone i pravila; Node IP mreža, <code>172.20.0.0/16</code> i <code>10.96.0.0/12</code> ne preklapaju se; efektivni MTU je isti ili je CNI MTU svesno prilagođen tunelskom overhead-u. Ne gasiti firewall bez analize. Ako tok ne radi, sa oba kraja proveriti rutu, listener i pravilo, pa menjati samo pravilo za konkretan izvor, odredište i port.
+  </li>
+  <li>
+    <strong>Priprema kernel-a i isključivanje swap-a na svim čvorovima.</strong>
+    Moduli <code>overlay</code> i <code>br_netfilter</code> omogućavaju kontejnerski overlay filesystem i obradu bridged saobraćaja. IP forwarding je neophodan za rutiranje paketa između interfejsa.
+    <pre><code class="language-bash">sudo swapoff -a
+sudo sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+
+cat <<'EOF' | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+cat <<'EOF' | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sudo sysctl --system</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">swapon --show
+lsmod | grep -E 'overlay|br_netfilter'
+sysctl net.bridge.bridge-nf-call-iptables net.ipv4.ip_forward</code></pre> <code>swapon --show</code> ne treba da vrati uređaj, a obe sysctl vrednosti moraju biti <code>1</code>.
+
+  </li>
+  <li>
+    <strong>Instalacija i konfiguracija containerd-a na svim čvorovima.</strong>
+    Instalira se distribucioni paket, generiše početna konfiguracija i uključuje systemd cgroup driver.
+    <pre><code class="language-bash">sudo apt-get update
+sudo apt-get install -y containerd
+
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+sudo systemctl restart containerd
+sudo systemctl enable containerd</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">systemctl is-active containerd
+sudo ctr plugins ls | grep -E 'io.containerd.grpc.v1.cri|io.containerd.cri.v1.runtime'
+grep -n 'SystemdCgroup' /etc/containerd/config.toml</code></pre>
+Runtime mora biti aktivan, CRI dodatak u stanju <code>ok</code>, a relevantna konfiguracija mora prikazati <code>true</code>. Ako servis ne može da se pokrene, prva dijagnostika je <code>sudo journalctl -u containerd -b --no-pager</code>.
+
+  </li>
+  <li>
+    <strong>Instalacija Kubernetes paketa na svim čvorovima.</strong>
+    Za svaku Kubernetes minor verziju koristi se namenski <code>pkgs.k8s.io</code> repozitorijum. Paketi se zadržavaju kako nekontrolisani sistemski upgrade ne bi promenio verziju samo jednog čvora.
+    <pre><code class="language-bash">sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' \
+  | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl cri-tools
+sudo apt-mark hold kubelet kubeadm kubectl
+sudo systemctl enable kubelet</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubeadm version
+kubectl version --client
+kubelet --version
+apt-mark showhold | grep -E 'kubeadm|kubectl|kubelet'</code></pre>
+Sva tri Kubernetes paketa treba da pripadaju istoj minor verziji. Kubelet može periodično prijavljivati neuspeh pre <code>init</code> ili <code>join</code> postupka jer još nema konfiguraciju klastera; to je očekivano privremeno stanje.
+
+  </li>
+  <li>
+    <strong>Podešavanje CRI dijagnostičkog klijenta na svim čvorovima.</strong>
+    <code>crictl</code> se usmerava na containerd socket kako bi se izbeglo automatsko isprobavanje više endpoint-a.
+    <pre><code class="language-bash">cat &lt;&lt;'EOF' | sudo tee /etc/crictl.yaml
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+timeout: 10
+debug: false
+EOF
+
+sudo crictl info</code></pre> <strong>Validacija:</strong> izlaz mora sadržati runtime informacije bez poruke o nedostupnom endpoint-u. Greška <code>unknown service runtime.v1.RuntimeService</code> ukazuje na neaktivan ili pogrešno konfigurisan CRI dodatak.
+
+  </li>
+  <li>
+    <strong>Inicijalizacija control plane čvora.</strong>
+    Pre state-changing komande sačuvati početni dokaz i preuzeti potrebne image-e. Na <code>k8s-cp01</code> sledeće komande prvo čitaju stanje, a <code>kubeadm config images pull</code> menja lokalni runtime cache bez formiranja klastera:
+    <pre><code class="language-bash">mkdir -p ~/k8s-lab/evidence
+date -Is | tee ~/k8s-lab/evidence/start-time.txt
+containerd --version | tee ~/k8s-lab/evidence/containerd-version.txt
+kubeadm version -o short | tee ~/k8s-lab/evidence/kubeadm-version.txt
+sudo crictl info &gt; ~/k8s-lab/evidence/crictl-info.json
+sudo kubeadm config images list --kubernetes-version v1.36.0
+sudo kubeadm config images pull --kubernetes-version v1.36.0 \
+  --cri-socket unix:///run/containerd/containerd.sock
+sudo crictl images</code></pre>
+    Ako stvarni <code>kubeadm version -o short</code> nije <code>v1.36.0</code>, konfiguraciona vrednost i image komande uskladiti sa instaliranim podržanim patch izdanjem pre nastavka. Pre-flight upozorenje se klasifikuje i dokumentuje; greška se otklanja. Opcija <code>--ignore-preflight-errors=all</code> nije korektivna mera.
+    Ovaj korak izvršava se samo na <code>k8s-cp01</code>. Konfiguraciona datoteka se čuva radi ponovljivosti i revizije promene.
+    <pre><code class="language-bash">mkdir -p ~/k8s-lab
+cat &lt;&lt;'EOF' &gt; ~/k8s-lab/kubeadm-init.yaml
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.56.10
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: tashizza-lab
+kubernetesVersion: v1.36.0
+controlPlaneEndpoint: 192.168.56.10:6443
+networking:
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 172.20.0.0/16
+  dnsDomain: cluster.local
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+EOF
+
+sudo kubeadm config validate --config ~/k8s-lab/kubeadm-init.yaml
+sudo kubeadm init --config ~/k8s-lab/kubeadm-init.yaml \
+  | tee ~/k8s-lab/kubeadm-init-output.txt</code></pre> <strong>Validacija:</strong> završni izlaz mora navesti da je control plane uspešno inicijalizovan i prikazati join komandu. Pošto izlaz sadrži osetljivu bootstrap informaciju, datoteka se odmah štiti sa <code>chmod 600 ~/k8s-lab/kubeadm-init-output.txt</code> i ne commit-uje. Ako preflight provera prijavi zauzet port ili postojeći manifest, ne treba koristiti <code>--ignore-preflight-errors=all</code>; prvo se utvrđuje da li je čvor ranije delimično inicijalizovan.
+
+  </li>
+  <li>
+    <strong>Konfiguracija kubectl pristupa na control plane čvoru.</strong>
+    <pre><code class="language-bash">mkdir -p "$HOME/.kube"
+sudo cp /etc/kubernetes/admin.conf "$HOME/.kube/config"
+sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+chmod 600 "$HOME/.kube/config"
+
+kubectl cluster-info
+kubectl get nodes -o wide
+kubectl get pods -n kube-system -o wide</code></pre> <strong>Validacija:</strong> API server mora biti dostupan. Čvor u ovoj fazi može biti <code>NotReady</code>, a CoreDNS <code>Pending</code>, jer CNI još nije instaliran. To je normalno stanje, a ne razlog za ponavljanje <code>kubeadm init</code>.
+
+  </li>
+  <li>
+    <strong>Instalacija Calico CNI dodatka.</strong>
+    Na <code>k8s-cp01</code> preuzimaju se operator i referentni custom resources, a zatim se proverava i prilagođava Pod CIDR.
+    <pre><code class="language-bash">cd ~/k8s-lab
+curl -fsSLO https://raw.githubusercontent.com/projectcalico/calico/v3.32.1/manifests/tigera-operator.yaml
+curl -fsSLO https://raw.githubusercontent.com/projectcalico/calico/v3.32.1/manifests/custom-resources.yaml
+
+sed -i 's#cidr: 192.168.0.0/16#cidr: 172.20.0.0/16#' custom-resources.yaml
+grep -A8 -B4 'cidr:' custom-resources.yaml
+
+kubectl create -f tigera-operator.yaml
+kubectl create -f custom-resources.yaml</code></pre> <strong>Validacija:</strong> <pre><code class="language-bash">kubectl get tigerastatus
+kubectl get pods -n tigera-operator
+kubectl get pods -n calico-system -o wide
+kubectl get nodes</code></pre>
+Sačekati da Calico komponente postanu spremne, a <code>k8s-cp01</code> dobije status <code>Ready</code>. Ako operator pod radi, ali Calico čvor nije spreman, pregledaju se događaji i logovi: <code>kubectl describe pod -n calico-system POD</code> i <code>kubectl logs -n calico-system POD -c calico-node</code>.
+
+  </li>
+  <li>
+    <strong>Priključivanje worker čvorova.</strong>
+    Na <code>k8s-cp01</code> generiše se nova kratkotrajna join komanda. Njena vrednost se prenosi bezbednim administrativnim kanalom i izvršava posebno na svakom worker-u.
+    <pre><code class="language-bash">kubeadm token create --ttl 30m --print-join-command</code></pre>
+    Primer strukture komande, bez stvarnih vrednosti:
+    <pre><code class="language-bash">sudo kubeadm join 192.168.56.10:6443 \
+  --token &lt;BOOTSTRAP_TOKEN&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;CA_PUBLIC_KEY_HASH&gt;</code></pre>
+    <strong>Validacija:</strong> na svakom worker-u proveriti <code>sudo systemctl status kubelet</code> i <code>sudo crictl ps</code>. Na control plane čvoru:
+    <pre><code class="language-bash">kubectl get nodes -o wide
+kubectl wait --for=condition=Ready node/k8s-worker01 --timeout=180s
+kubectl wait --for=condition=Ready node/k8s-worker02 --timeout=180s</code></pre>
+    Sva tri čvora moraju imati status <code>Ready</code>, očekivane interne IP adrese i istu minor verziju kubelet-a.
+  </li>
+  <li>
+    <strong>Funkcionalni test raspoređivanja, DNS-a i servisa.</strong>
+    Kreira se namespace i jednostavna aplikacija sa dve replike. Podovi treba da budu raspoređeni na worker čvorove, a Service treba da obezbedi stabilan DNS naziv.
+    <pre><code class="language-bash">cat &lt;&lt;'EOF' &gt; ~/k8s-lab/lab-app.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: lab-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.29
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: lab-app
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 80
+EOF
+
+kubectl apply -f ~/k8s-lab/lab-app.yaml
+kubectl rollout status deployment/web -n lab-app --timeout=180s
+kubectl get pods -n lab-app -o wide
+kubectl get service,endpointslices -n lab-app</code></pre>
+Test klijent proverava DNS i HTTP odgovor: <pre><code class="language-bash">kubectl run test-client -n lab-app \
+--image=curlimages/curl:8.15.0 \
+--restart=Never --command -- sleep 3600
+
+kubectl wait --for=condition=Ready pod/test-client -n lab-app --timeout=120s
+kubectl exec -n lab-app test-client -- nslookup web.lab-app.svc.cluster.local
+kubectl exec -n lab-app test-client -- curl -fsS http://web</code></pre> <strong>Očekivani rezultat:</strong> DNS vraća ClusterIP servisa, a HTTP zahtev vraća početnu nginx stranicu. EndpointSlice mora sadržati adrese oba spremna web poda.
+
+    Za dokaz međučvorne Pod komunikacije nije dovoljno pretpostaviti da dve replike rade. Proveriti na kojim su čvorovima, izabrati IP replike na drugom čvoru od <code>test-client</code> i izvršiti direktan HTTP zahtev ka tom Pod IP-u. Ako scheduler smesti obe web replike na isti worker, privremeno primeniti <code>podAntiAffinity</code> ili skalirati na više replika; ne proglašavati cross-node test uspešnim bez dokaza iz kolone <code>NODE</code>.
+    <pre><code class="language-bash">kubectl get pods -n lab-app -o wide
+kubectl exec -n lab-app test-client -- curl -fsS http://&lt;REMOTE_POD_IP&gt;
+kubectl get endpointslices -n lab-app -l kubernetes.io/service-name=web -o wide</code></pre>
+    Zatim se dokazuje deklarisano samoisceljenje. Brisanje jednog aplikacionog Pod-a menja stanje samo u namespace-u <code>lab-app</code>; Deployment mora kreirati zamenu i vratiti dve dostupne replike.
+    <pre><code class="language-bash">kubectl get pods -n lab-app -l app=web
+kubectl delete pod -n lab-app &lt;ONE_WEB_POD_NAME&gt;
+kubectl rollout status deployment/web -n lab-app --timeout=180s
+kubectl get pods -n lab-app -l app=web -o wide
+kubectl get events -n lab-app --sort-by=.metadata.creationTimestamp | tail -n 20</code></pre>
+    <strong>Kontrolna tačka:</strong> novi Pod ima novi UID, Deployment ponovo ima dve dostupne replike, Service EndpointSlice pokazuje spremne endpoint-e, DNS i HTTP test i dalje prolaze. Ako ne prolaze, prvo se pregledaju Deployment uslovi, događaji novog Pod-a i image/CNI stanje; ne kreira se ručno zamenski Pod.
+
+  </li>
+  <li>
+    <strong>Negativni test NetworkPolicy kontrole.</strong>
+    Prvo se uvodi default-deny ingress politika. Nakon toga prethodno uspešan zahtev mora prestati da radi, što potvrđuje da CNI zaista sprovodi politiku.
+    <pre><code class="language-bash">cat &lt;&lt;'EOF' &gt; ~/k8s-lab/network-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: lab-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-client-to-web
+  namespace: lab-app
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          access: web
+    ports:
+    - protocol: TCP
+      port: 80
+EOF
+
+kubectl apply -f ~/k8s-lab/network-policy.yaml
+kubectl exec -n lab-app test-client -- \
+  curl --connect-timeout 3 -fsS http://web</code></pre> <strong>Validacija negativnog testa:</strong> zahtev bez odgovarajuće oznake treba da istekne ili bude odbijen. Zatim se dozvola dodeljuje oznakom: <pre><code class="language-bash">kubectl label pod test-client -n lab-app access=web
+kubectl exec -n lab-app test-client -- curl -fsS http://web</code></pre>
+Poslednji zahtev mora ponovo uspeti. Ako oba zahteva uspevaju, proveravaju se NetworkPolicy objekti, selektori i Calico status; ako oba ne uspevaju, proveravaju se oznaka poda, port i EndpointSlice.
+
+  </li>
+  <li>
+    <strong>Provera logova i osnovna dijagnostika.</strong>
+    Aplikacioni logovi čitaju se preko API-ja, dok se node servisi proveravaju kroz systemd journal. Statički control plane podovi pregledaju se pomoću <code>kubectl</code> ili <code>crictl</code> kada API nije dostupan.
+    <pre><code class="language-bash">kubectl logs -n lab-app deployment/web --tail=20
+kubectl get events -n lab-app --sort-by=.metadata.creationTimestamp
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 30
+
+sudo journalctl -u kubelet -b --no-pager | tail -n 50
+sudo journalctl -u containerd -b --no-pager | tail -n 50
+sudo crictl pods
+sudo crictl ps -a</code></pre> <strong>Tumačenje:</strong> <code>FailedScheduling</code> ukazuje na problem kapaciteta, taint-a ili selektora; <code>ErrImagePull</code> i <code>ImagePullBackOff</code> na image ili registry problem; <code>FailedCreatePodSandBox</code> često upućuje na CNI ili runtime; <code>CrashLoopBackOff</code> znači da je kontejner pokrenut, ali se ponavljano završava.
+
+  </li>
+  <li>
+    <strong>Cleanup aplikacije i bezbedan reset klastera.</strong>
+    <strong>Opcija A – očuvanje klastera.</strong> Ovo je preporučena odluka kada se laboratorija koristi kao osnova za naredne integrisane projekte. Ne brišu se <code>lab-app</code> i NetworkPolicy ako će služiti kao regression test; umesto toga beleže se verzije, čvorovi, CIDR-i i konačni dokaz, uklanjaju se ili opozivaju nepotrebni bootstrap tokeni i pravi kontrolisan checkpoint ugašenih VM-ova. Snapshot nije zamena za etcd backup i ne sme se predstavljati kao produkcioni DR.
+    <pre><code class="language-bash"># k8s-cp01; read-only evidencija
+kubectl get nodes -o wide &gt; ~/k8s-lab/evidence/final-nodes.txt
+kubectl get pods -A -o wide &gt; ~/k8s-lab/evidence/final-pods.txt
+kubectl get events -A --sort-by=.metadata.creationTimestamp \
+  &gt; ~/k8s-lab/evidence/final-events.txt
+kubeadm version -o short &gt; ~/k8s-lab/evidence/final-kubeadm-version.txt
+kubeadm token list
+sudo kubeadm certs check-expiration</code></pre>
+    Za ponovno korišćenje klastera dovoljno je ukloniti namespace:
+    <pre><code class="language-bash">kubectl delete namespace lab-app
+kubectl get namespace lab-app</code></pre>
+    <strong>Opcija B – potpuno resetovanje; destruktivan laboratorijski postupak.</strong> Koristi se samo kada se laboratorija namerno vraća u stanje pre kubeadm bootstrap-a. Pre toga kopirati inventar, kubeadm YAML, verzije, događaje i relevantne journal isečke na administratorsku stanicu, proveriti backup i tačno identifikovati sva tri ciljana čvora. Na control plane-u reset uklanja lokalnog stacked etcd člana i klastersko stanje te laboratorije. Najpre se koristi read-only dry-run, zatim se potvrđena naredba izvršava na worker čvorovima i na kraju na control plane čvoru.
+    <pre><code class="language-bash"># Svaki tačno identifikovan čvor; read-only pregled
+hostnamectl --static
+sudo kubeadm reset --dry-run --cri-socket unix:///run/containerd/containerd.sock
+
+# DESTRUKTIVNO; worker-i prvo, control plane poslednji
+sudo kubeadm reset --force \
+  --cri-socket unix:///run/containerd/containerd.sock
+
+# Dodatno čišćenje tek posle pregleda; eksplicitne putanje
+sudo ls -la /etc/cni/net.d
+sudo rm -rf /etc/cni/net.d
+ls -la "$HOME/.kube"
+rm -rf "$HOME/.kube"</code></pre>
+    <strong>Validacija:</strong> <code>sudo crictl ps -a</code> ne treba da prikazuje prethodne Kubernetes kontejnere, a <code>/etc/kubernetes/manifests</code> ne treba da sadrži statičke manifeste. <code>kubeadm reset</code> ne uklanja <code>/etc/cni/net.d</code>, korisnički kubeconfig, niti garantuje uklanjanje iptables, nftables ili IPVS pravila. CNI interfejsi, rute i pravila najpre se inventarišu; uklanjaju se samo zvaničnim cleanup postupkom odgovarajuće verzije CNI-a/kube-proxy-ja ili reprovision-om VM-a. Slepo izvršavanje <code>iptables -F</code> ili nftables flush komande nije prihvatljivo jer može prekinuti SSH i druge host servise.
+  </li>
+</ol>
+<p>
+  <strong>Kriterijumi prihvatanja laboratorije.</strong> Klaster je prihvaćen kada sva tri čvora najmanje deset minuta održavaju status <code>Ready</code>; svi sistemski podovi imaju očekivano stanje bez ponavljanih restartovanja; dve aplikacione replike rade na worker čvorovima; DNS ime <code>web.lab-app.svc.cluster.local</code> razrešava se iz test poda; Service vraća HTTP odgovor; default-deny politika blokira neoznačenog klijenta; oznaka <code>access=web</code> ponovo omogućava pristup; kubelet i containerd logovi nemaju ponavljane kritične greške; konfiguracione datoteke i rezultat validacije sačuvani su u dokumentaciji laboratorije.
+</p>
+<h3>Tipične greške i njihovo razlikovanje</h3>
+<p>
+  Faza 15 koristi isti obrazac za svaki incident: zabeležiti vreme i poslednju promenu; odrediti obim; prikupiti read-only dokaze; postaviti hipotezu; potvrditi neposredni i osnovni uzrok; primeniti najmanju reverzibilnu korekciju; ponoviti početni test; dokumentovati nalaz. Privremeni workaround se koristi samo ako ne prikriva uzrok. Eksperimenti se izvode jedan po jedan, nikada istovremeno.
+</p>
+<h4>Scenario A: zaustavljen kubelet na jednom worker čvoru</h4>
+<p>
+  <strong>Bezbedna granica:</strong> samo <code>k8s-worker02</code>, bez promene control plane-a, containerd-a ili mreže. Pre testa proveriti da su aplikacione replike raspoređene i da drugi worker ima kapacitet. Komanda <code>systemctl stop</code> menja stanje i zahteva <code>sudo</code>.
+</p>
+<pre><code class="language-bash"># k8s-worker02; state-changing laboratorijska simulacija
+sudo systemctl stop kubelet
+sudo systemctl is-active kubelet
+
+# k8s-cp01; read-only dokazi posle isteka Node lease/grace perioda
+kubectl get nodes
+kubectl describe node k8s-worker02
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 30
+
+# k8s-worker02; read-only lokalni dokaz, zatim korekcija
+sudo journalctl -u kubelet --since '-10 minutes' --no-pager
+sudo systemctl start kubelet
+sudo systemctl is-active kubelet
+
+# k8s-cp01; potvrda oporavka
+kubectl wait --for=condition=Ready node/k8s-worker02 --timeout=180s
+kubectl get pods -A -o wide
+kubectl exec -n lab-app test-client -- curl -fsS http://web</code></pre>
+<p>
+  Simptom je prelazak jednog Node objekta u <code>NotReady</code> posle dozvoljenog perioda, obim je jedan worker, neposredni uzrok je zaustavljen servis, a osnovni uzrok u realnom incidentu bila bi neovlašćena promena, kvar systemd jedinice ili hosta. Trajna mera je uklanjanje uzroka i kontrola promene, ne samo restart. Oporavak je potvrđen tek kada su Node, workload, DNS/Service test i novi događaji uredni.
+</p>
+<h4>Scenario B: istekla ili pogrešna join komanda</h4>
+<p>
+  <strong>Bezbedna granica:</strong> vežba se na još nepriključenom worker-u ili na svežoj VM kopiji, nikada na funkcionalnom članu. Ne unosi se proizvoljan CA hash i ne koristi <code>--discovery-token-unsafe-skip-ca-verification</code>. Greška <code>token id ... is invalid</code> ili nemogućnost pronalaska JWS potpisa potvrđuje bootstrap problem; timeout ka 6443 je mrežni problem, ne token.
+</p>
+<pre><code class="language-bash"># k8s-cp01; read-only spisak bez deljenja kompletne tajne
+kubeadm token list
+
+# k8s-cp01; state-changing: novi token sa kratkim TTL-om i puna join komanda
+kubeadm token create --ttl 30m --description tashizza-lab-worker-join \
+  --print-join-command
+
+# ciljni worker; izvršiti dobijenu komandu sa sudo, bez čuvanja u repozitorijumu
+sudo kubeadm join 192.168.56.10:6443 \
+  --token &lt;NEW_BOOTSTRAP_TOKEN&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;VERIFIED_CA_PUBLIC_KEY_HASH&gt;</code></pre>
+<p>
+  Podrazumevani token koji kreira <code>kubeadm init</code> važi 24 časa; u laboratoriji se namenski generiše token od 30 minuta. Ako je token dospeo u shell istoriju, uklanjanje jedne istorijske linije nije dovoljna zaštita: token se opoziva pomoću <code>kubeadm token delete &lt;TOKEN_ID&gt;</code>, a zatim se proverava <code>kubeadm token list</code>.
+</p>
+<h4>Scenario C: DNS/Service ili CNI simptom</h4>
+<p>
+  Bez menjanja host mreže prvo se razlikuju slojevi. <code>kubectl get endpointslices</code> bez endpoint-a upućuje na selector/readiness; uspešan direktan Pod IP zahtev uz neuspešan Service zahtev upućuje na Service proxy ili politiku; neuspeh direktnog cross-node Pod IP zahteva uz lokalno uspešan zahtev upućuje na CNI/rutu/MTU/firewall; neuspešan <code>nslookup</code> uz uspešan HTTP ka ClusterIP-u upućuje na CoreDNS ili Pod DNS konfiguraciju.
+</p>
+<pre><code class="language-bash">kubectl get pods -n kube-system -o wide
+kubectl get endpointslices -n lab-app -o yaml
+kubectl describe pod -n lab-app test-client
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 40
+kubectl get pods -n calico-system -o wide
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100</code></pre>
+<p>
+  Ne menja se Pod CIDR na živom klasteru kao brza korekcija. Neusklađen CIDR je dizajnerska greška koja u ovoj laboratoriji zahteva čuvanje dokaza, uklanjanje workload-a i kontrolisanu ponovnu izgradnju ili zvaničan, verzijski podržan migracioni postupak. Ručno brisanje nasumičnih ruta, CNI interfejsa ili firewall pravila bez atribucije može proširiti kvar na host.
+</p>
+<ul>
+  <li><strong>Čvor ostaje NotReady.</strong> Proveravaju se <code>kubectl describe node</code>, uslovi <code>Ready</code> i <code>NetworkUnavailable</code>, zatim kubelet journal. Poruka o nespremnom container runtime-u razlikuje se od nespremnog CNI-a.</li>
+  <li><strong>CoreDNS ostaje Pending.</strong> Ako nema CNI-a ili worker čvorova, scheduler i mreža nemaju uslove za normalan rad. Proveravaju se događaji poda, taint-i i stanje Calico komponenti.</li>
+  <li><strong>Join prijavljuje istekao token.</strong> Na control plane čvoru generiše se nova kratkotrajna join komanda. Ne isključuje se TLS provera i ne koristi se nasumičan hash.</li>
+  <li><strong>API server nije dostupan.</strong> Proveravaju se port 6443, statički manifest, containerd i kubelet. Kada <code>kubectl</code> ne radi, <code>sudo crictl ps -a</code> i <code>sudo crictl logs CONTAINER_ID</code> omogućavaju lokalnu dijagnostiku.</li>
+  <li><strong>Pod ima IP adresu, ali Service ne radi.</strong> Proveravaju se selektori servisa, EndpointSlice, readiness stanje i mrežna politika. Prazan EndpointSlice najčešće znači da oznake poda ne odgovaraju selektoru ili da pod nije spreman.</li>
+  <li><strong>ImagePullBackOff.</strong> Razlikuju se nepostojeći tag, nedostupan DNS, registry autentikacija i ograničenje izlaznog saobraćaja. Događaji poda obično sadrže konkretnu registry poruku.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola zdravlja klastera.</strong> Nakon svakog pokretanja laboratorije i svake infrastrukturne promene izvršavaju se <code>kubectl get nodes</code>, <code>kubectl get pods -A</code> i pregled događaja. Reakciju zahtevaju čvor koji je duže od pet minuta <code>NotReady</code>, sistemski pod sa ponavljanim restartima ili rast broja upozorenja. Prvo se čuva trenutno stanje, zatim proveravaju uslovi čvora i logovi. Rezultat se beleži u laboratorijski dnevnik sa datumom, uzrokom i korektivnom radnjom.</li>
+  <li><strong>Praćenje resursa virtuelnih mašina.</strong> Pre velikih vežbi proveravaju se <code>free -h</code>, <code>df -h</code>, <code>df -i</code> i <code>uptime</code>. Disk iznad 80% ili memorijski pritisak zahtevaju uklanjanje nepotrebnih image slojeva, logova ili povećanje kapaciteta nakon identifikovanja potrošača. Ne briše se nasumično sadržaj iz <code>/var/lib/containerd</code> ili <code>/var/lib/etcd</code>.</li>
+  <li><strong>Kontrola sertifikata.</strong> Najmanje mesečno i pre duže pauze laboratorije izvršava se <code>sudo kubeadm certs check-expiration</code>. Sertifikat koji ističe pre sledećeg planiranog održavanja zahteva planiranu obnovu i proveru svih kubeconfig datoteka. Datum isteka i sprovedena promena evidentiraju se u evidenciji klastera.</li>
+  <li><strong>Kontrola verzija.</strong> Pre nadogradnje proveravaju se <code>kubectl version</code>, <code>kubeadm version</code> i <code>kubectl get nodes</code>. Nadogradnje se izvode po jednu minor verziju, prvo control plane, zatim worker čvorovi. Uspeh se meri povratkom svih čvorova u <code>Ready</code>, prolaskom DNS i Service testa i odsustvom novih kritičnih događaja.</li>
+  <li><strong>Backup i probni oporavak.</strong> Pre promene control plane-a čuvaju se kubeadm konfiguracija, PKI materijal u zaštićenom backup-u i konzistentan etcd snapshot. Snapshot se pravi najmanje pre nadogradnje i posle značajnih promena stanja. Čuva se izvan control plane diska, uz kontrolnu sumu, verziju klastera i datum. Upotrebljivost se potvrđuje probnim restore-om u izolovanoj kopiji laboratorije i proverom da API prikazuje očekivane namespace-ove i objekte; sama uspešna komanda za kreiranje snapshot-a nije dokaz oporavljivosti.</li>
+  <li><strong>Upravljanje privilegijama.</strong> <code>admin.conf</code> koristi se samo za bootstrap i kontrolisane administrativne zadatke. Posle svake RBAC promene proverava se stvarno ovlašćenje komandom <code>kubectl auth can-i</code>, uključujući negativnu proveru zabranjenih operacija. Dodela, razlog, vlasnik i rok važenja beleže se u evidenciji pristupa.</li>
+  <li><strong>Dokumentovanje promena.</strong> Za svaku intervenciju beleže se početno stanje, komande, konfiguracione datoteke bez tajni, očekivani rezultat, stvarni rezultat, rollback i odstupanja. Uspešnost prakse meri se time da drugi administrator može da ponovi postupak na svežim virtuelnim mašinama bez oslanjanja na nedokumentovane korake.</li>
+</ul>
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Hostname i IP adrese sva tri čvora potvrđeni su komandama <code>hostnamectl</code> i <code>ip -brief address</code>.</li>
+  <li>Pod, Service i node mrežni opsezi dokumentovani su i potvrđeno je da se ne preklapaju.</li>
+  <li><code>swapon --show</code> ne vraća aktivan swap, a potrebne sysctl vrednosti iznose <code>1</code>.</li>
+  <li><code>systemctl is-active containerd</code> vraća <code>active</code>, CRI dodatak je aktivan i <code>SystemdCgroup</code> je uključen.</li>
+  <li>Kubelet, kubeadm i kubectl pripadaju istoj podržanoj minor verziji i zadržani su pomoću <code>apt-mark hold</code>.</li>
+  <li><code>kubectl get nodes</code> prikazuje <code>k8s-cp01</code>, <code>k8s-worker01</code> i <code>k8s-worker02</code> u stanju <code>Ready</code>.</li>
+  <li><code>kubectl get pods -A</code> ne prikazuje neočekivane <code>Pending</code>, <code>CrashLoopBackOff</code> ili <code>ImagePullBackOff</code> sistemske podove.</li>
+  <li>Test pod uspešno razrešava Service DNS ime i dobija HTTP odgovor od aplikacije.</li>
+  <li>Negativni NetworkPolicy test blokira neoznačenog klijenta, a dozvoljena oznaka ponovo uspostavlja pristup.</li>
+  <li>Pregledani su kubelet, containerd, aplikacioni i CNI logovi i dokumentovana su eventualna upozorenja.</li>
+  <li>Join tokeni i administratorski kubeconfig nisu sačuvani u javnim datotekama ili repozitorijumima.</li>
+  <li>Kubeadm konfiguracija, verzije komponenti, validacioni rezultati i cleanup postupak sačuvani su u laboratorijskoj dokumentaciji.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Administrator nakon ove lekcije treba da razume da funkcionalan Kubernetes klaster nastaje saradnjom operativnog sistema, kernel mrežnih funkcija, container runtime-a, kubelet-a, control plane komponenti i CNI dodatka. Kubeadm pojednostavljuje bootstrap, ali ne uklanja odgovornost za adresni plan, bezbednost hostova, izbor mreže, backup, nadogradnje i dijagnostiku.
+</p>
+<p>
+  Praktično znanje obuhvata pripremu čvorova, doslednu runtime i cgroup konfiguraciju, inicijalizaciju control plane-a, bezbedno priključivanje worker-a, instalaciju CNI-a i dokazivanje rada DNS-a, servisa i mrežnih politika. Jednako je važno umeti razlikovati normalno privremeno stanje, kao što je <code>NotReady</code> pre instalacije CNI-a, od stvarnog kvara runtime-a, mreže ili sertifikata.
+</p>
+<p>
+  Laboratorija omogućava kontrolisane greške, ali administrator i u njoj mora primenjivati produkcionu disciplinu: beležiti početno stanje, ograničiti privilegije, čuvati tajne, validirati svaku promenu i imati proverljiv rollback. Potpuni reset, brisanje mrežnih pravila ili manipulacija etcd podacima prelaze granicu rutinske intervencije i zahtevaju backup, jasan plan i razumevanje posledica.
+</p>
+<p>
+  Razlog za eskalaciju postoji kada problem uključuje nedostupnost ili korupciju etcd-a, neobjašnjive TLS greške, nekonzistentno stanje više čvorova, sumnju na kompromitovanje administratorskog identiteta, ponavljanu nestabilnost kernel-a ili runtime-a, kao i mrežne promene izvan ovlašćenja Kubernetes administratora. Odgovoran administrator ne prikriva simptom nasilnim resetom, već prikuplja događaje, logove, verzije i vremenski sled, štiti postojeće dokaze i uključuje vlasnike mreže, virtuelizacije, bezbednosti ili skladišta kada uzrok izlazi iz granica klastera.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za kubeadm instalaciju i bootstrap klastera, kubelet i kubectl CLI reference, vodiči za container runtime, cgroup upravljanje, mrežni model, logove, troubleshooting, sertifikate, nadogradnju i etcd backup, containerd CRI dokumentacija i zvanični Calico administrativni i instalacioni vodiči
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-50-priprema-za-kubernetes-distribucije.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-dodatak-2-mini-projekat-enterprise-okruzenje.html">
+        Dodatak 2 →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

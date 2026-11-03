@@ -1,0 +1,633 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-44-vcf-powercli-api-automatizacija.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>VCF PowerCLI i vSphere API – bezbedna, idempotentna i proverljiva automatizacija | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Automatizacija VMware infrastrukture pomoću VCF PowerCLI i vSphere API-ja uz idempotentnost, kontrolu grešaka, zaštitu tajni, audit trag i proveru rezultata.">
+
+  <meta name="keywords"
+        content="VCF PowerCLI, VMware PowerCLI, vSphere API, VMware automatizacija, idempotentnost, audit trag, PowerShell, vSphere, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-44-vcf-powercli-api-automatizacija.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="VCF PowerCLI i vSphere API – bezbedna, idempotentna i proverljiva automatizacija">
+
+  <meta property="og:description"
+        content="Automatizacija VMware infrastrukture pomoću VCF PowerCLI i vSphere API-ja uz idempotentnost, kontrolu grešaka, zaštitu tajni, audit trag i proveru rezultata.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-44-vcf-powercli-api-automatizacija.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-44-vcf-powercli-api-automatizacija.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="VCF PowerCLI i vSphere API – bezbedna, idempotentna i proverljiva automatizacija">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcione operacije, automatizacija i otpornost
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-44-vcf-powercli-api-automatizacija.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-44-vcf-powercli-api-automatizacija.png"
+           alt="VCF PowerCLI i vSphere API – bezbedna, idempotentna i proverljiva automatizacija">
+
+    </a>
+
+       <div class="page-subtitle">
+      XI. Automatizacija, kapacitet i kontrolisane promene
+    </div>
+
+    <div class="page-subtitle">
+      44. VCF PowerCLI i vSphere API – bezbedna, idempotentna i proverljiva automatizacija
+    </div>
+
+    <p>
+      Automatizacija vSphere okruženja nije zamena za administratorsko rasuđivanje, već način da se odobrena odluka izvrši ponovljivo, ograničeno i dokazivo. Ručno izvedena promena može biti tehnički ispravna, ali teško ponovljiva na stotinama objekata; loše projektovana skripta istu grešku može proširiti na celo okruženje za nekoliko sekundi. Zbog toga je produkcioni cilj više od „skripta je završila bez crvenog teksta”: potrebno je dokazati početno stanje, identitet izvršioca, obim promene, rezultat svake operacije i završno stanje.
+    </p>
+
+    <p>
+      Lekcije 39, 42 i 43 već su postavile inventar, tagove, RBAC, sertifikate i audit kao oslonce upravljanja. Ova lekcija ih pretvara u izvršni tok. Lekcije 45 i 46 potom koriste iste obrasce za planiranje kapaciteta i kontrolisano održavanje. Primeri su namenjeni prvenstveno vCenter Server okruženju; konkretna dostupnost cmdleta, parametra ili API operacije zavisi od verzije VCF PowerCLI-ja, vCenter Servera, API-ja, licence i privilegija dodeljenih nalogu.
+    </p>
+
+    <h3>44.1. Od administrativne skripte do kontrolisanog sistema automatizacije</h3>
+
+    <p>
+      Produkciona automatizacija ima najmanje šest slojeva: deklarisano željeno stanje, autentikaciju i autorizaciju, pronalaženje tačnog cilja, izračunavanje razlike, ograničenu promenu i nezavisnu validaciju. Ako skripta samo pozove <code>Set-VM</code> nad rezultatom širokog upita, ona nema ugrađenu zaštitu od pogrešnog obima. Ako proveri jedinstveni identitet objekta, očekivano trenutno stanje, odobreni prozor promene i rezultat zadatka, ona postaje deo upravljanog procesa.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Svojstvo</th><th>Slaba skripta</th><th>Produkcioni obrazac</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Ulaz</td><td>Vrednosti ugrađene u kod</td><td>Validirana konfiguracija, verzionisana uz šemu i vlasnika</td></tr>
+        <tr><td>Cilj</td><td>Ime ili širok wildcard</td><td>Jedinstveni MoRef/API ID, uz potvrdu imena, vCenter-a i foldera</td></tr>
+        <tr><td>Promena</td><td>Bez poređenja stanja</td><td>Menja samo utvrđenu razliku; podržava <code>-WhatIf</code> gde cmdlet to omogućava</td></tr>
+        <tr><td>Greška</td><td>Nastavlja ili skriva izuzetak</td><td>Prekida odgovarajući obim, čuva kontekst i razdvaja retryable od trajnih grešaka</td></tr>
+        <tr><td>Dokaz</td><td>Poruka „Done”</td><td>Pre/post stanje, task/event identifikator, strukturisan log i izlazni kod</td></tr>
+        <tr><td>Ponovljeno izvršavanje</td><td>Može duplirati ili ponovo menjati</td><td>Drugo izvršavanje daje <code>Compliant</code>/<code>NoChange</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>44.2. VCF PowerCLI: distribucija, moduli i verzijski okvir</h3>
+
+    <p>
+      Aktuelna distribucija naziva se <strong>VCF PowerCLI</strong> i instalira se iz PowerShell Gallery-ja metapaketom <code>VCF.PowerCLI</code>. Mnogi učitani moduli i cmdleti i dalje nose istorijska imena <code>VMware.VimAutomation.*</code>; to nije znak da je instalirana pogrešna generacija. Stariji priručnici navode metapaket <code>VMware.PowerCLI</code>. U novom radu treba dokumentovati tačnu instaliranu verziju i proveriti referencu koja odgovara toj verziji, a postojeće skripte migrirati tek nakon testa, ne prostom zamenom naziva.
+    </p>
+
+    <pre><code class="language-powershell"># Izvršava se u PowerShell 7 sesiji; ove komande menjaju lokalno stanje modula.
+Install-Module -Name VCF.PowerCLI -Scope CurrentUser
+
+# Read-only inventar instalacije.
+Get-Module -Name VCF.PowerCLI -ListAvailable |
+  Select-Object Name, Version, Path
+Get-Module -ListAvailable VMware.VimAutomation.* |
+  Sort-Object Name, Version |
+  Select-Object Name, Version, Path</code></pre>
+
+    <p>
+      U zaključanom ili odvojenom okruženju paket se preuzima na kontrolisanoj stanici, proverava, skenira i prenosi kroz interni repozitorijum. Ne treba dozvoliti da svaki automation runner samostalno preuzima „latest” pri svakom pokretanju. Verziju treba pinovati, zavisnosti evidentirati i nadogradnju provesti kao zasebnu promenu sa regresionim testom. <code>Update-Module</code> nije neutralna operacija: može promeniti ponašanje tipova, parametara i zavisnosti, pa ne pripada početku produkcione skripte.
+    </p>
+
+    <h4>Izbor nivoa apstrakcije</h4>
+
+    <table>
+      <thead><tr><th>Interfejs</th><th>Kada ga biramo</th><th>Glavni rizik</th><th>Dokaz</th></tr></thead>
+      <tbody>
+        <tr><td>PowerCLI cmdlet</td><td>Podržana česta administrativna radnja, čitljiv tok i PowerShell pipeline</td><td>Podrazumevani server ili implicitni izbor prošire obim</td><td>Vraćeni objekat, task, ponovni <code>Get-*</code></td></tr>
+        <tr><td><code>Get-View</code> / Web Services API</td><td>Potrebna svojstva ili metode nisu izloženi cmdletom; efikasno čitanje velikog inventara</td><td>Niskonivojski tipovi i verzijska vezanost</td><td>MoRef, <code>TaskInfo</code>, ponovni property read</td></tr>
+        <tr><td>vSphere Automation API</td><td>Integracija iz više jezika, REST/JSON, tagging, content library, appliance i noviji servisi</td><td>Mešanje endpointa, ID-jeva, sesija ili ugovora različitih verzija</td><td>HTTP status, response body, task i naknadni GET</td></tr>
+        <tr><td>GUI</td><td>Istraživanje, mala izuzetna promena i nezavisna vizuelna provera</td><td>Teška ponovljivost i ljudska greška</td><td>Recent Tasks, Events i stanje objekta</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Cmdlet nije uvek „sigurniji”, niti je REST automatski „moderniji”. Pravilan izbor je najviši podržani nivo koji potpuno izražava nameru, vraća dovoljan dokaz i ima stabilan ugovor za ciljnu verziju. Niskonivojski poziv treba izolovati u malu, testiranu funkciju, jer tako smanjujemo deo koda zavisan od internog modela objekata.
+    </p>
+
+    <h3>44.3. Veza, identitet, sertifikati i zaštita tajni</h3>
+
+    <p>
+      Automation nalog mora imati najmanji skup privilegija nad najnižim potrebnim objektom inventara. Poseban servisni identitet, odvojen od ličnog administratorskog naloga, olakšava audit i opoziv. Jedan nalog za sve skripte ruši atribuciju i povećava blast radius. Za svaki posao dokumentuju se vlasnik, namena, ciljni vCenter, uloga, propagacija privilegija, rok važenja i postupak rotacije tajne.
+    </p>
+
+    <pre><code class="language-powershell"># Session-scope sprečava trajnu promenu profila na deljenom runneru.
+Set-PowerCLIConfiguration -Scope Session `
+  -InvalidCertificateAction Fail `
+  -ParticipateInCEIP:$false `
+  -Confirm:$false
+
+$credential = Get-Credential -Message 'Automation nalog za vcsa01.example.test'
+$vi = Connect-VIServer -Server 'vcsa01.example.test' `
+  -Credential $credential -ErrorAction Stop
+
+# Eksplicitni -Server sprečava slučajno izvršavanje nad drugom aktivnom vezom.
+Get-Datacenter -Server $vi | Select-Object Name, Id
+
+Disconnect-VIServer -Server $vi -Confirm:$false</code></pre>
+
+    <p>
+      <code>InvalidCertificateAction Ignore</code> ne sme biti produkcioni „lek” za TLS problem: njime se gubi pouzdana autentikacija servera i otvara mogućnost presretanja veze. Ispravan tok je proveriti FQDN, vreme, lanac poverenja, SAN i thumbprint, uvesti odgovarajući CA sertifikat u trust store runnera i zadržati validaciju. <code>Prompt</code> može pomoći pri kontrolisanom prvom laboratorijskom povezivanju, ali je nepogodan za unattended posao. Ako se sertifikat neočekivano promenio, automatizacija treba da stane i incident se istraži.
+    </p>
+
+    <p>
+      Lozinka se ne upisuje u skriptu, CSV, komandnu liniju, transcript niti git. Produkciono rešenje koristi odobreni secrets vault ili mehanizam identiteta koji podržava konkretna platforma i runner. <code>Export-Clixml</code> sa <code>PSCredential</code> može biti ograničena lokalna pomoć na Windows-u jer je sadržaj vezan za korisnika i računar, ali nije prenosivi enterprise vault; na drugim platformama zaštita nije ekvivalentna. Tajna se učitava neposredno pred povezivanje, ne ispisuje i uklanja iz dugovečne sesije kada više nije potrebna.
+    </p>
+
+    <h4>Sesije vSphere Automation API-ja</h4>
+
+    <p>
+      Za REST tok klijent uspostavlja autentifikovanu sesiju, a dobijeni session ID šalje u zaglavlju <code>vmware-api-session-id</code>. To je bearer vrednost: ko je poseduje može delovati u okviru sesije i privilegija naloga. Ne beleži se u log, ne prosleđuje nepoverljivom procesu i sesija se briše na kraju čak i kada posao padne. Primer koristi PowerShell promenljive i pravi TLS trust; placeholderi se ne izvršavaju doslovno u produkciji.
+    </p>
+
+    <pre><code class="language-powershell">$baseUri = 'https://vcsa01.example.test'
+$pair = '{0}:{1}' -f $env:VC_USER, $env:VC_PASSWORD
+$basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+
+try {
+  $session = Invoke-RestMethod -Method Post `
+    -Uri "$baseUri/api/session" `
+    -Headers @{ Authorization = "Basic $basic" } `
+    -ErrorAction Stop
+
+  $headers = @{ 'vmware-api-session-id' = $session }
+  $vms = Invoke-RestMethod -Method Get `
+    -Uri "$baseUri/api/vcenter/vm" -Headers $headers -ErrorAction Stop
+  $vms | Select-Object vm, name, power_state
+}
+finally {
+  if ($session) {
+    Invoke-RestMethod -Method Delete -Uri "$baseUri/api/session" `
+      -Headers $headers -ErrorAction SilentlyContinue
+  }
+  $basic = $null
+}</code></pre>
+
+    <p>
+      U stvarnom pipeline-u korisničko ime i lozinka dolaze iz maskiranog secret provider-a, a ne iz trajno definisanih običnih environment promenljivih. HTTP <code>401</code> znači da identitet ili sesija nisu prihvaćeni; <code>403</code> da je identitet poznat, ali nema ovlašćenje; <code>404</code> može značiti pogrešan endpoint, verziju ili ID; <code>409</code> konflikt sa trenutnim stanjem; <code>429</code> potrebu za kontrolisanim backoff-om; <code>5xx</code> problem servisa koji nije dozvola za beskonačno ponavljanje state-changing zahteva.
+    </p>
+
+    <h3>44.4. Inventar, stabilni identifikatori i ograničavanje obima</h3>
+
+    <p>
+      Ime vSphere objekta nije univerzalno jedinstveno i može se promeniti. PowerCLI objekti imaju <code>Id</code>, Web Services API koristi Managed Object Reference (MoRef), dok Automation API vraća svoje identifikatore poput <code>vm-123</code>. Ti identifikatori nisu proizvoljno zamenljivi između različitih vCenter instanci i API porodica. CMDB zato uz ime čuva vCenter identitet, tip objekta, odgovarajući stabilni ID i poslednje vreme potvrde.
+    </p>
+
+    <pre><code class="language-powershell">$target = Get-VM -Server $vi -Name 'app01' -ErrorAction Stop
+if (@($target).Count -ne 1) {
+  throw "Očekivan je tačno jedan VM 'app01'; pronađeno: $(@($target).Count)."
+}
+
+$evidence = [pscustomobject]@{
+  TimestampUtc = (Get-Date).ToUniversalTime().ToString('o')
+  VCenter      = $vi.Name
+  Name         = $target.Name
+  Id           = $target.Id
+  Folder       = $target.Folder.Name
+  PowerState   = [string]$target.PowerState
+  NumCpu       = $target.NumCpu
+  MemoryGB     = $target.MemoryGB
+}
+$evidence | ConvertTo-Json -Depth 4</code></pre>
+
+    <p>
+      Pre mutacije primenjuju se guard rails: dozvoljena lista vCenter-a, eksplicitni datacenter/cluster/folder, obavezni tag za upravljanje, maksimalan broj objekata po izvršavanju, maintenance/change prozor i <code>ShouldProcess</code>. „Prazan rezultat” nije automatski uspeh, a „više rezultata” nije poziv da skripta izabere prvi. Oba su kontrolisani prekid koji zahteva proveru inventara.
+    </p>
+
+    <h3>44.5. Idempotentnost: željeno stanje, diff i konvergencija</h3>
+
+    <p>
+      Idempotentna automatizacija dovodi sistem u deklarisano željeno stanje, a ponovno izvršavanje nad već usklađenim sistemom ne proizvodi novu promenu. To ne znači da svaka pojedinačna API operacija ima matematičko idempotentno svojstvo. <code>POST</code> koji kreira objekat uglavnom nije bezbedno slepo ponavljati; klijent mora pre kreiranja pronaći postojeći objekat po pouzdanom ključu ili koristiti podržani token/idempotency mehanizam ako ga konkretan API dokumentuje.
+    </p>
+
+    <pre><code class="language-powershell">function Set-VmAnnotationDesiredState {
+  [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+  param(
+    [Parameter(Mandatory)] [VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine] $VM,
+    [Parameter(Mandatory)] [string] $Name,
+    [Parameter(Mandatory)] [string] $Value
+  )
+
+  $field = Get-CustomAttribute -Name $Name -TargetType VirtualMachine `
+    -Server $VM.VIServer -ErrorAction Stop
+  $current = Get-Annotation -Entity $VM -CustomAttribute $field `
+    -Server $VM.VIServer -ErrorAction Stop
+
+  if ([string]$current.Value -ceq $Value) {
+    return [pscustomobject]@{ VM=$VM.Name; Attribute=$Name; Status='Compliant'; Changed=$false }
+  }
+
+  if ($PSCmdlet.ShouldProcess($VM.Name, "Set annotation $Name='$Value'")) {
+    Set-Annotation -Entity $VM -CustomAttribute $field -Value $Value `
+      -Server $VM.VIServer -ErrorAction Stop | Out-Null
+    $after = Get-Annotation -Entity $VM -CustomAttribute $field `
+      -Server $VM.VIServer -ErrorAction Stop
+    if ([string]$after.Value -cne $Value) { throw 'Post-check nije potvrdio željenu vrednost.' }
+    return [pscustomobject]@{ VM=$VM.Name; Attribute=$Name; Status='Changed'; Changed=$true }
+  }
+}
+
+Set-VmAnnotationDesiredState -VM $target -Name 'Owner' -Value 'Platform-Team' -WhatIf</code></pre>
+
+    <p>
+      Funkcija prvo čita, zatim poredi, menja samo razliku i ponovo čita. <code>-WhatIf</code> je koristan pregled namere, ali nije transakcioni dry-run niti garancija da će stvarna operacija uspeti. Između pre-checka i promene drugi administrator može promeniti objekat; kod kritičnih tokova zato treba ponovo potvrditi precondition neposredno pre mutacije i koristiti API mehanizam za optimistic concurrency kada postoji.
+    </p>
+
+    <h4>Granice rollback-a</h4>
+
+    <p>
+      vSphere nije jedna ACID transakcija preko svih cmdleta. Ako treća od pet promena padne, automatsko vraćanje prve dve može biti opasnije od zaustavljanja, naročito kada se stanje u međuvremenu promenilo. Skripta unapred klasifikuje korake kao reverzibilne, kompenzacione ili nepovratne. Rollback koristi sačuvanu, validiranu početnu vrednost i sprovodi se samo ako precondition i dalje važi. Snapshot nije univerzalni rollback automatizacije konfiguracije i ne štiti vCenter inventar, mrežne ili RBAC promene.
+    </p>
+
+    <h3>44.6. Greške, zadaci, retry i kontrola paralelizma</h3>
+
+    <p>
+      PowerShell non-terminating greške mogu ostaviti utisak da je <code>try/catch</code> uhvatio sve, iako naredba nastavlja. Za kritične pozive koristi se <code>-ErrorAction Stop</code> ili pažljivo postavljen <code>$ErrorActionPreference = 'Stop'</code> u ograničenom opsegu. Izuzetak se ne svodi na jednu poruku: beleže se cilj, operacija, vreme, correlation/change ID, kategorija i bezbedno očišćen odgovor bez tajni.
+    </p>
+
+    <pre><code class="language-powershell">$runId = [guid]::NewGuid().ToString()
+try {
+  $task = Start-VM -VM $target -Server $vi -RunAsync -ErrorAction Stop
+  $done = Wait-Task -Task $task -ErrorAction Stop
+  [pscustomobject]@{
+    RunId=$runId; TargetId=$target.Id; TaskId=$task.Id
+    State=[string]$done.State; FinishedUtc=(Get-Date).ToUniversalTime().ToString('o')
+  } | ConvertTo-Json -Compress
+}
+catch {
+  [pscustomobject]@{
+    RunId=$runId; TargetId=$target.Id; Operation='Start-VM'
+    ErrorType=$_.Exception.GetType().FullName
+    Message=$_.Exception.Message
+  } | ConvertTo-Json -Compress | Write-Error
+  throw
+}</code></pre>
+
+    <p>
+      Retry se primenjuje samo kada je greška prolazna i kada je bezbedno utvrditi da prethodni pokušaj nije već izvršio promenu. Kod timeout-a odgovor može izostati iako je server prihvatio zadatak; pre ponavljanja proveravaju se Recent Tasks, stanje objekta i poznati task/correlation ID. Exponential backoff sa jitter-om štiti servis, ali ne rešava nevažeću privilegiju, pogrešan ID ili konflikt željenog stanja.
+    </p>
+
+    <p>
+      Paralelizam se ograničava. Masovni <code>ForEach-Object -Parallel</code> može preopteretiti vCenter, datastore ili mrežu i otežati atribuciju greške. Za promene se uvodi batch veličina, maksimalan broj istovremenih zadataka i failure threshold. PowerCLI konekcioni kontekst se ne podrazumeva u novom runspace-u; aktuelni VCF PowerCLI nudi <code>Get-PowerCLIContext</code> i <code>Use-PowerCLIContext</code>, ali deljenje konteksta i dalje zahteva kontrolu životnog ciklusa i testiranje.
+    </p>
+
+    <h3>44.7. vSphere Automation API i Web Services API u praksi</h3>
+
+    <p>
+      vSphere Automation API je REST/JSON površina grupisana po servisima. Web Services API je stariji, veoma obiman managed-object model na kome počiva veliki deo administracije i PowerCLI-ja. Nisu sve funkcije simetrično dostupne kroz oba interfejsa. Pre razvoja se u API changelog-u i referenci ciljne verzije proveravaju endpoint, minimalna verzija, privilegije, struktura zahteva, asinhroni odgovor i deprecation status.
+    </p>
+
+    <pre><code class="language-json">{
+  "spec": {
+    "name": "app01",
+    "guest_OS": "RHEL_9_64",
+    "placement": {
+      "folder": "group-v123",
+      "resource_pool": "resgroup-45",
+      "datastore": "datastore-67"
+    }
+  }
+}</code></pre>
+
+    <p>
+      Ovo je didaktički prikaz strukture, ne prenosivi produkcioni payload: tačna polja i enum vrednosti proveravaju se u referenci servera. Klijent ne sme pretpostaviti da HTTP <code>200</code> jedini označava uspeh; kreiranje može vratiti <code>201</code> ili <code>202</code>, brisanje <code>204</code>, a asinhrona operacija identifikator zadatka. Uspešan transport još ne dokazuje operativni ishod, zato sledi GET ili task polling i provera relevantnih svojstava.
+    </p>
+
+    <h4>Efikasno čitanje pomoću <code>Get-View</code></h4>
+
+    <pre><code class="language-powershell"># Read-only: server vraća samo tražena svojstva umesto punih objekata.
+$views = Get-View -Server $vi -ViewType VirtualMachine `
+  -Property Name,Runtime.PowerState,Config.Hardware.NumCPU,Config.Hardware.MemoryMB
+
+$views | ForEach-Object {
+  [pscustomobject]@{
+    MoRef     = $_.MoRef.Value
+    Name      = $_.Name
+    Power     = [string]$_.Runtime.PowerState
+    NumCpu    = $_.Config.Hardware.NumCPU
+    MemoryGB  = [math]::Round($_.Config.Hardware.MemoryMB / 1024, 2)
+  }
+}</code></pre>
+
+    <p>
+      <code>Get-View</code> može biti znatno efikasniji za veliki inventar kada se navede <code>-Property</code>. Pozivanje metode kao što je <code>ReconfigVM_Task()</code> jeste state-changing niskonivojska operacija: zahteva pažljivo konstruisan spec, verzijsku proveru, nadzor taska i post-check. Ako postoji podržan, jasan cmdlet, on je obično održiviji izbor.
+    </p>
+
+    <h3>44.8. Audit, logovi i dokaz usklađenosti</h3>
+
+    <p>
+      Dokaz se gradi na najmanje tri mesta. Automation runner čuva strukturisan zapis namere i rezultata; vCenter beleži Tasks and Events povezane sa korisnikom i objektom; konfiguracioni ili bezbednosni sistem čuva odobrenje, verziju koda i artefakte izvršavanja. Nijedan sloj sam nije dovoljan: lokalni log može tvrditi uspeh bez serverskog taska, a vCenter event ne objašnjava odobreni poslovni razlog.
+    </p>
+
+    <table>
+      <thead><tr><th>Dokaz</th><th>Šta obavezno sadrži</th><th>Šta ne sme sadržati</th></tr></thead>
+      <tbody>
+        <tr><td>Run manifest</td><td>Run/change ID, commit/verziju, modul, runner, cilj, vreme UTC</td><td>Lozinku, session ID, private key</td></tr>
+        <tr><td>Pre/post stanje</td><td>Stabilni ID, relevantna svojstva, hash/normalizovani diff</td><td>Nepotreban kompletan inventar i lične podatke</td></tr>
+        <tr><td>Task/event</td><td>Task ID, korisnika, objekat, status, server timestamp</td><td>Nekontrolisani masovni export bez retencije</td></tr>
+        <tr><td>Pipeline rezultat</td><td>Testove, approval, izlazni kod, artefakt i retention</td><td>Nemaskirane tajne iz debug izlaza</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code class="language-powershell">$since = (Get-Date).AddMinutes(-15)
+Get-VIEvent -Server $vi -Entity $target -Start $since -MaxSamples 200 |
+  Select-Object CreatedTime, UserName, FullFormattedMessage |
+  Sort-Object CreatedTime</code></pre>
+
+    <p>
+      Za dublju korelaciju koriste se vSphere Client Recent Tasks/Events i vCenter logovi. <code>/var/log/vmware/vpxd/vpxd.log</code> na VCSA beleži vCenter servisne operacije; <code>/var/log/vmware/vapi/endpoint/endpoint.log</code> pomaže kod vAPI endpoint problema. Pristup appliance shell-u je privilegovan i ne treba ga koristiti kao prvi korak. Najpre se sužava UTC vremenski prozor, korisnik, objekat, task/op ID i greška, pa tek onda pregleda odgovarajući log ili support bundle. Retencija lokalnih logova i centralnog syslog/SIEM sistema mora biti usklađena sa politikom i kapacitetom.
+    </p>
+
+    <h3>44.9. Projektovanje pipeline-a: test, approval i promotion</h3>
+
+    <p>
+      Kod, konfiguracija i tajne imaju odvojene životne cikluse. Pull request proverava sintaksu, PSScriptAnalyzer pravila, Pester testove i bezbednosne kontrole; test okruženje potvrđuje ugovor sa stvarnim API-jem; produkcioni stage zahteva odobrenje i koristi produkcioni identitet tek u tom stage-u. Isti verifikovani artefakt se promoviše, ne gradi ponovo. Runner mora biti zakrpljen, vremenski sinhronizovan, mrežno ograničen i dovoljno prolazan da ne akumulira kredencijale.
+    </p>
+
+    <pre><code class="language-powershell"># Primer ugovornog Pester testa: drugo izvršavanje ne poziva mutaciju.
+Describe 'Set-VmAnnotationDesiredState' {
+  It 'ne menja već usklađenu anotaciju' {
+    Mock Get-CustomAttribute { [pscustomobject]@{ Name='Owner' } }
+    Mock Get-Annotation { [pscustomobject]@{ Value='Platform-Team' } }
+    Mock Set-Annotation {}
+
+    $result = Set-VmAnnotationDesiredState -VM $script:FakeVm `
+      -Name 'Owner' -Value 'Platform-Team'
+
+    $result.Changed | Should -BeFalse
+    Should -Invoke Set-Annotation -Times 0
+  }
+}</code></pre>
+
+    <p>
+      Mock test dokazuje odluku funkcije, ali ne kompatibilnost sa konkretnim vCenterom. Potrebni su i integration testovi u laboratoriji: dovoljne i nedovoljne privilegije, nevažeći sertifikat, duplirano ime, nestala meta, timeout posle prihvaćenog taska i već usklađeno stanje. Test podaci ne smeju koristiti produkcione tajne.
+    </p>
+
+    <h3>44.10. Praktikum – bezbedna i dokaziva automatizacija metapodataka VM-a</h3>
+
+    <h4>Vežba 1: priprema laboratorije i read-only baseline</h4>
+
+    <p><strong>Cilj i topologija.</strong> Sa PowerShell 7 administratorske stanice povezuje se jedan laboratorijski vCenter <code>vcsa01.example.test</code> sa VM-om <code>app01</code>. Cilj je evidentirati alat, vezu i jedinstveni cilj bez promene infrastrukture.</p>
+
+    <p><strong>Preduslovi.</strong> DNS i vreme su ispravni; TLS lanac je poverljiv; VCF PowerCLI je instaliran iz kontrolisanog izvora; laboratorijski nalog ima read-only pristup ciljnom folderu. Rizik je nizak jer su inventarni pozivi read-only, ali izlaz može sadržati osetljivu topologiju i čuva se kontrolisano.</p>
+
+    <pre><code class="language-powershell">$ErrorActionPreference = 'Stop'
+$vcFqdn = 'vcsa01.example.test'
+
+Get-Module -Name VCF.PowerCLI -ListAvailable |
+  Select-Object Name, Version, Path
+Set-PowerCLIConfiguration -Scope Session -InvalidCertificateAction Fail `
+  -DefaultVIServerMode Single -ParticipateInCEIP:$false -Confirm:$false
+
+$cred = Get-Credential
+$vi = Connect-VIServer -Server $vcFqdn -Credential $cred
+$vm = @(Get-VM -Server $vi -Name 'app01')
+if ($vm.Count -ne 1) { throw "Očekivan jedan app01; pronađeno $($vm.Count)." }
+
+$baseline = [pscustomobject]@{
+  TimestampUtc=(Get-Date).ToUniversalTime().ToString('o')
+  VCenter=$vi.Name; Name=$vm[0].Name; Id=$vm[0].Id
+  Folder=$vm[0].Folder.Name; PowerState=[string]$vm[0].PowerState
+}
+$baseline | ConvertTo-Json -Depth 4</code></pre>
+
+    <p><strong>Očekivani rezultat i validacija.</strong> Tačno jedan objekat je pronađen, vCenter FQDN i VM ID su zabeleženi, a u Recent Tasks nema konfiguracione promene od ove vežbe. Ako je rezultat nula, proveriti vCenter, scope i privilegiju; ako je veći od jedan, ne birati prvi već dopuniti folder/cluster filter. TLS grešku ne zaobilaziti sa <code>Ignore</code>, već ispraviti trust.</p>
+
+    <h4>Vežba 2: idempotentna promena sa preview-om i post-checkom</h4>
+
+    <p><strong>Cilj.</strong> Postaviti postojeći custom attribute <code>Owner</code> na <code>Platform-Team</code>. Kreiranje same definicije atributa izostavljeno je jer menja globalniji konfiguracioni obim; administrator ga prethodno kreira kroz odobrenu promenu. Nalog dobija samo potrebne privilegije za čitanje i izmenu custom atributa nad laboratorijskim opsegom.</p>
+
+    <ol>
+      <li>Sačuvati početnu vrednost: <code>$before = Get-Annotation -Entity $vm[0] -CustomAttribute 'Owner'</code>.</li>
+      <li>Pokrenuti funkciju iz odeljka 44.5 sa <code>-WhatIf</code>; potvrditi da nije nastao task/event promene.</li>
+      <li>Pokrenuti bez <code>-WhatIf</code> u laboratorijskom change prozoru.</li>
+      <li>Ponovo pročitati anotaciju i sačuvati rezultat zajedno sa UTC vremenom i VM ID-jem.</li>
+      <li>Pokrenuti funkciju drugi put. Očekuje se <code>Status=Compliant</code> i <code>Changed=false</code>.</li>
+    </ol>
+
+    <pre><code class="language-powershell">$before = Get-Annotation -Entity $vm[0] -CustomAttribute 'Owner' -Server $vi
+$preview = Set-VmAnnotationDesiredState -VM $vm[0] -Name 'Owner' `
+  -Value 'Platform-Team' -WhatIf
+$first = Set-VmAnnotationDesiredState -VM $vm[0] -Name 'Owner' `
+  -Value 'Platform-Team'
+$second = Set-VmAnnotationDesiredState -VM $vm[0] -Name 'Owner' `
+  -Value 'Platform-Team'
+$after = Get-Annotation -Entity $vm[0] -CustomAttribute 'Owner' -Server $vi
+
+[pscustomobject]@{
+  Before=$before.Value; After=$after.Value
+  FirstChanged=$first.Changed; SecondChanged=$second.Changed
+} | Format-List</code></pre>
+
+    <p><strong>Kriterijum završetka.</strong> Završna vrednost je tačna; prvo izvršavanje menja samo ako je bilo potrebno; drugo ne poziva state-changing cmdlet; vCenter event prikazuje odgovarajući automation identitet. Ako post-check nije tačan, prekida se dalji batch, čuvaju dokazi i ne ponavlja se slepo.</p>
+
+    <p><strong>Rollback.</strong> Samo u laboratoriji i samo ako se potvrdi da vrednost od vežbe nije naknadno promenio drugi proces, vratiti sačuvanu vrednost:</p>
+
+    <pre><code class="language-powershell">$current = Get-Annotation -Entity $vm[0] -CustomAttribute 'Owner' -Server $vi
+if ($current.Value -ceq 'Platform-Team') {
+  Set-Annotation -Entity $vm[0] -CustomAttribute 'Owner' `
+    -Value ([string]$before.Value) -Server $vi -Confirm:$false
+} else {
+  throw 'Rollback precondition nije ispunjen; stanje je promenjeno nakon vežbe.'
+}</code></pre>
+
+    <h4>Vežba 3: REST read-only inventar, sesija i negativni test</h4>
+
+    <p><strong>Cilj.</strong> Potvrditi REST autentikaciju, eksplicitno zatvaranje sesije i tumačenje grešaka bez promene VM-a. Koristiti vault ili privremeno unete laboratorijske kredencijale; nikada ne snimati session header.</p>
+
+    <ol>
+      <li>Izvršiti REST primer iz 44.3 i pronaći <code>app01</code> u rezultatu.</li>
+      <li>Sačuvati samo bezbedna polja: UTC vreme, vCenter, VM ID, ime, power state i HTTP ishod.</li>
+      <li>Obrisati sesiju u <code>finally</code> bloku.</li>
+      <li>Pokušati read-only GET sa obrisanim session ID-jem; očekuje se kontrolisana autentikaciona greška.</li>
+    </ol>
+
+    <p><strong>Troubleshooting grane.</strong> Kod <code>401</code> proveriti životni vek i formiranje sesije; kod <code>403</code> Required Privileges u API referenci i scope uloge; kod <code>404</code> putanju i verziju; kod TLS greške CA/FQDN/vreme. Ne uključivati <code>SkipCertificateCheck</code> kao trajnu korekciju. Kriterijum završetka je uspešan read, zatvorena sesija i negativni test koji ne otkriva tajnu.</p>
+
+    <h4>Vežba 4: simulirani incident – timeout ne znači neuspeh</h4>
+
+    <p><strong>Scenario.</strong> State-changing posao prijavljuje timeout posle slanja zahteva. Posledica je nepoznat ishod, ne automatski neuspeh. Slepo ponavljanje može duplirati kreiranje ili proizvesti drugu promenu.</p>
+
+    <ol>
+      <li>Zaustaviti batch i zabeležiti UTC vreme, cilj, run ID i poslednji poznati odgovor.</li>
+      <li>Read-only proverom utvrditi trenutno stanje cilja.</li>
+      <li>U Recent Tasks/Events filtrirati automation korisnika, objekat i vremenski prozor; zatim, samo ako je potrebno, korelisati <code>vpxd.log</code> ili vAPI endpoint log.</li>
+      <li>Ako je željeno stanje već ostvareno, označiti oporavak kao <code>VerifiedAfterTimeout</code> i ne ponavljati mutaciju.</li>
+      <li>Ako task nije prihvaćen i stanje je staro, tek nakon potvrde ponoviti jedan kontrolisan pokušaj.</li>
+      <li>Ako je task aktivan ili ishod dvosmislen, eskalirati i nadzirati; ne pokretati konkurentsku promenu.</li>
+    </ol>
+
+    <p><strong>RCA razdvajanje.</strong> Simptom je timeout klijenta; obim je jedan run i konkretan cilj; neposredni uzrok može biti prekid veze ili istekao klijentski timeout; osnovni uzrok može biti zagušenje runnera, vCenter-a ili mreže. Privremeni workaround je serijska obrada/manji batch, a trajna mera odgovarajući timeout, task polling, backoff, observability i kapacitet. Završetak zahteva dokazano stanje i dokumentovanu odluku o retry-ju.</p>
+
+    <h4>Povratak laboratorije u početno stanje</h4>
+
+    <p>
+      Vratiti anotaciju samo uz rollback precondition iz vežbe 2, zatvoriti sve VI i REST sesije, ukloniti privremene lokalne artefakte koji sadrže inventar u skladu sa politikom i opozvati privremenu laboratorijsku tajnu ako je kreirana. Ne uklanjati module niti menjati sistemski execution policy kao deo cleanup-a ako to nije bilo unapred odobreno.
+    </p>
+
+    <pre><code class="language-powershell">Get-VIServer | Disconnect-VIServer -Confirm:$false
+$cred = $null
+$session = $null
+$headers = $null</code></pre>
+
+    <h3>44.11. Tipični kvarovi i dijagnostička matrica</h3>
+
+    <table>
+      <thead><tr><th>Simptom</th><th>Prva read-only provera</th><th>Verovatan uzrok</th><th>Bezbedna korekcija</th></tr></thead>
+      <tbody>
+        <tr><td><code>Invalid server certificate</code></td><td>FQDN, SAN, lanac, vreme i nedavna zamena</td><td>Nepoverljiv ili promenjen sertifikat</td><td>Validirati promenu i uvesti CA/obnoviti sertifikat; ne trajno <code>Ignore</code></td></tr>
+        <tr><td>Cmdlet ne postoji</td><td><code>Get-Module -ListAvailable</code>, <code>Get-Command</code></td><td>Modul nije instaliran/učitan ili verzija nema cmdlet</td><td>Pinovana podržana verzija i regresioni test</td></tr>
+        <tr><td>Radi ručno, ne radi u pipeline-u</td><td>Identitet, platforma, module path, proxy, trust store</td><td>Drugi kontekst ili interaktivna pretpostavka</td><td>Eksplicitna konfiguracija runnera i neinteraktivna autentikacija</td></tr>
+        <tr><td>Više objekata istog imena</td><td>Server, datacenter, folder, ID</td><td>Ime nije jedinstveni ključ</td><td>Prekinuti i koristiti složeni ključ/stabilni ID</td></tr>
+        <tr><td>Timeout posle mutacije</td><td>Stanje, task/event i correlation ID</td><td>Nepoznat ishod, spor servis ili mreža</td><td>Reconcile pre retry-ja</td></tr>
+        <tr><td>Drugo izvršavanje ponovo menja</td><td>Normalizacija tipa, case, jedinica i server-side default</td><td>Neispravan diff ili nekanonski izlaz</td><td>Kanonsko poređenje i test konvergencije</td></tr>
+        <tr><td><code>403 Forbidden</code></td><td>Identitet, scope i Required Privileges</td><td>Nedostajuća privilegija ili pogrešna propagacija</td><td>Korigovati minimalnu ulogu; ne dodeljivati Administrator napamet</td></tr>
+      </tbody>
+    </table>
+
+    <h3>44.12. Administratorske prakse</h3>
+
+    <ul>
+      <li>Pinuj verzije VCF PowerCLI-ja i zavisnosti; nadogradnju tretiraj kao kontrolisanu promenu.</li>
+      <li>Koristi poseban identitet po automatizaciji ili jasno razdvojenoj funkciji, uz najmanje privilegije i rotaciju tajni.</li>
+      <li>Zadrži TLS validaciju; neočekivana promena sertifikata je događaj za proveru, ne smetnja koju treba isključiti.</li>
+      <li>Svaki state-changing tok projektuj kao <em>discover → validate → diff → approve → change → verify → record</em>.</li>
+      <li>Eksplicitno navedi <code>-Server</code>, ciljaj stabilni ID i uvedi maksimalni dozvoljeni obim.</li>
+      <li>Testiraj nultu, jednu i višestruku metu, nedovoljnu privilegiju, timeout, parcijalni neuspeh i drugo izvršavanje.</li>
+      <li>Ne smatraj izlazni kod ili HTTP status dovoljnim: potvrdi server-side task/event i završno stanje.</li>
+      <li>Ne loguj tajne, session tokene ni cele objekte bez potrebe; koristi UTC, run ID i strukturisan format.</li>
+      <li>Retry ograniči na klasifikovane prolazne greške i uvek reconcile-uj nepoznat ishod mutacije.</li>
+      <li>Za svaki korak unapred definiši rollback, kompenzaciju ili jasan razlog zbog kog automatski rollback nije bezbedan.</li>
+    </ul>
+
+    <h3>44.13. Završna kontrolna tačka</h3>
+
+    <p>Administrator je završio lekciju kada može da demonstrira i dokaže da:</p>
+
+    <ul>
+      <li>razlikuje VCF PowerCLI distribuciju, module <code>VMware.VimAutomation.*</code>, Automation API i Web Services API;</li>
+      <li>bira najviši podržani interfejs koji potpuno pokriva zahtev i proverava verzijski API ugovor;</li>
+      <li>uspostavlja vezu bez isključivanja TLS validacije i bez otkrivanja tajni;</li>
+      <li>ograničava metu na tačno očekivani vCenter, objekat i scope;</li>
+      <li>implementira pre-check, kanonski diff, state-changing korak i nezavisni post-check;</li>
+      <li>drugim izvršavanjem dokazuje <code>NoChange</code>/<code>Compliant</code> rezultat;</li>
+      <li>razlikuje transportni uspeh, završetak taska i ostvareno željeno stanje;</li>
+      <li>kod timeout-a prvo utvrđuje ishod, pa tek onda odlučuje o retry-ju;</li>
+      <li>koreliše run ID, identitet, task/event, UTC vreme i pre/post dokaz;</li>
+      <li>bezbedno zaustavlja batch, vraća reverzibilnu laboratorijsku promenu i dokumentuje parcijalni neuspeh.</li>
+    </ul>
+
+    <h3>44.14. Zaključak</h3>
+
+    <p>
+      VCF PowerCLI i vSphere API pretvaraju vSphere administraciju u kod, ali kvalitet automatizacije ne meri se brojem uklonjenih klikova. Meri se time koliko precizno kod ograničava cilj, poštuje identitet i TLS poverenje, konvergira ka željenom stanju, zaustavlja se kada pretpostavke nisu ispunjene i ostavlja dokaz koji drugi administrator može nezavisno da proveri. Najvažnija produkciona veština zato nije brzo pisanje naredbi, već projektovanje bezbedne odluke oko svake naredbe.
+    </p>
+
+    <p>
+      Takav obrazac neposredno priprema sledeće lekcije: kapacitet se može pouzdano meriti samo iz kontrolisanog i verzionisanog prikupljanja podataka, a održavanje se može automatizovati samo kada postoje pre-check, ograničen blast radius, rollback i post-check. Automatizacija tada prestaje da bude lična skripta i postaje proverljiv deo operativnog sistema organizacije.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        Zvanična Broadcom dokumentacija za VCF PowerCLI i instalaciju modula; VCF PowerCLI cmdlet i module reference; vSphere Automation API i Web Services API reference sa autentikacijom, changelog-om, task i event modelom; zvanični vSphere bezbednosni, sertifikacioni, privilegijski i troubleshooting vodiči i relevantni Knowledge Base članci
+      </p>
+
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        VMware
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-43-hardening-enkripcija-audit.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-45-kapacitet-konfiguracioni-maksimumi.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

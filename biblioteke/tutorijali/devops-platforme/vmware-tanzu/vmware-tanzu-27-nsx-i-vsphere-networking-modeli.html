@@ -1,0 +1,711 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-27-nsx-i-vsphere-networking-modeli.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora mrežnog modela za Supervisor i VKS klastere.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, NSX, vSphere networking, Supervisor, VKS, mrežni modeli, mrežna arhitektura, kriterijumi izbora, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-27-nsx-i-vsphere-networking-modeli.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora">
+
+  <meta property="og:description"
+        content="Dvadeset sedma lekcija VMware &amp; Tanzu tutorijala – mogućnosti, razlike i kriterijumi izbora NSX i vSphere networking modela.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-27-nsx-i-vsphere-networking-modeli.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-27-nsx-i-vsphere-networking-modeli.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-27-nsx-i-vsphere-networking-modeli.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-27-nsx-i-vsphere-networking-modeli.png"
+           alt="NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora">
+
+    </a>
+
+    <div class="page-subtitle">
+  VII. Tanzu mrežna arhitektura i izlaganje servisa
+</div>
+
+<div class="page-subtitle">
+  27. NSX i vSphere networking modeli – mogućnosti, razlike i kriterijumi izbora
+</div>
+
+<p>
+  U prethodnoj lekciji razdvojeni su management, workload, Pod, Service i load balancer adresni prostori i praćen je tok saobraćaja između klijenta, virtuelne IP adrese, Kubernetes servisa i Pod-a. Sada se donosi arhitektonska odluka koja određuje ko te mrežne funkcije realizuje: <strong>NSX networking model</strong>, u kome NSX obezbeđuje logičko rutiranje, segmentaciju, load balancing i distribuirane bezbednosne kontrole, ili <strong>vSphere networking model</strong>, u kome se Supervisor i VKS oslanjaju na vSphere Distributed Switch, spolja routable VLAN mreže i zasebno integrisano rešenje za load balancing. Ovo nije samo izbor ekrana u čarobnjaku. Od njega zavise izolacija tenant-a, operativni model, potrebne licence i kompetencije, broj adresnih opsega, vidljivost saobraćaja, način rešavanja incidenata i budući put nadogradnje.
+</p>
+
+<p>
+  Terminologija se menjala kroz izdanja. U starijoj dokumentaciji sreću se nazivi <em>vSphere with Tanzu</em>, <em>Workload Management</em>, <em>TKG Service</em>, <em>Guest Cluster</em> i <em>NSX-T Data Center</em>. U aktuelnoj terminologiji koriste se <em>vSphere Supervisor</em>, <em>vSphere Kubernetes Service (VKS)</em>, <em>vSphere Cluster</em> i <em>NSX</em>. Stari termini ostaju važni pri pretrazi Knowledge Base članaka i logova, ali se arhitektonska odluka uvek proverava prema tačnoj verziji vCenter Server-a, ESXi-ja, Supervisor izdanja, NSX-a, load balancer-a i važećoj Broadcom interoperabilnoj i licencnoj matrici.
+</p>
+
+<h3>1. Granica odluke: fizička mreža, vDS i Kubernetes mrežni sloj</h3>
+
+<p>
+  Oba modela počinju istim fizičkim činjenicama: ESXi hostovi imaju uplink veze, VLAN-ove, MTU, routing, DNS, NTP i firewall zavisnosti. I NSX koristi vSphere Distributed Switch kao transportnu osnovu, ali iznad nje dodaje sopstveni kontrolni i podatkovni sloj. Zato poređenje „NSX ili vDS” ne znači da NSX uklanja vDS; znači da se bira da li će workload networking ostati pretežno VLAN/routable model na vDS-u ili će NSX izgraditi overlay, logičke gateway-e i distribuirane servise iznad transporta.
+</p>
+
+<ul>
+  <li><strong>Management network</strong> povezuje vCenter, ESXi i Supervisor control plane komponente. Njena stabilnost, DNS i NTP nisu opcioni, bez obzira na model.</li>
+  <li><strong>Workload ili primary workload network</strong> nosi interfejse VKS čvorova i druge workload objekte. U vDS modelu ona je neposredno vezana za port grupu i spoljašnji L3 dizajn; u NSX modelu može biti logički segment iza NSX gateway-a.</li>
+  <li><strong>Pod i Service CIDR</strong> predstavljaju Kubernetes adresne prostore. Njihova realizacija i vidljivost iz fizičke mreže zavise od CNI-ja, Supervisor verzije i izabranog networking stack-a.</li>
+  <li><strong>Ingress/load balancer network</strong> daje virtual IP adrese za Kubernetes servise tipa <code>LoadBalancer</code> i API endpoint-e VKS klastera. U vDS modelu servis obezbeđuje eksterni load balancer; u NSX modelu tu ulogu može imati NSX ili podržana integracija sa Avi Load Balancer-om.</li>
+</ul>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Sloj</th>
+        <th>NSX model</th>
+        <th>vSphere networking model</th>
+        <th>Dokaz koji administrator traži</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Switching</td>
+        <td>VDS transport uz NSX segmente i, zavisno od dizajna, overlay encapsulation</td>
+        <td>VDS port grupe i VLAN-backed mreže</td>
+        <td>Ispravan uplink, VLAN/TEP dostupnost, MTU i MAC učenje</td>
+      </tr>
+      <tr>
+        <td>Routing</td>
+        <td>NSX Tier-0/Tier-1 ili VPC povezivanje prema izdanju i projektu</td>
+        <td>Fizički ili virtuelni upstream router; workload subnet mora imati jasan gateway</td>
+        <td>Route table, povratna ruta i traceroute u oba smera</td>
+      </tr>
+      <tr>
+        <td>Load balancing</td>
+        <td>NSX Load Balancer ili podržana Avi integracija; mogućnosti zavise od izdanja</td>
+        <td>Avi/NSX Advanced Load Balancer, HAProxy u podržanim starijim kombinacijama ili drugo eksplicitno podržano rešenje</td>
+        <td>VIP, pool/member stanje, health monitor i konekcija do backend-a</td>
+      </tr>
+      <tr>
+        <td>Mikrosegmentacija</td>
+        <td>NSX Distributed Firewall i grupe, uz Kubernetes NetworkPolicy gde je podržano</td>
+        <td>Primarno Kubernetes NetworkPolicy/CNI i spoljašnji firewall; vDS sam nije distribuirani L7/L4 firewall</td>
+        <td>Efektivna pravila, hit count/log i kontrolisani test dozvoljenog i zabranjenog toka</td>
+      </tr>
+      <tr>
+        <td>Tenant izolacija</td>
+        <td>Napredna logička segmentacija; u novijim izdanjima NSX Projects/VPC mogu menjati operativni model</td>
+        <td>VLAN, port grupa, namespace politika i CNI granice; više oslanjanja na mrežni tim</td>
+        <td>Dokumentovana granica odgovornosti i odsustvo neželjenog east-west toka</td>
+      </tr>
+      <tr>
+        <td>Operativna složenost</td>
+        <td>Više komponenti i telemetrije, ali centralizovaniji mrežni i bezbednosni model</td>
+        <td>Manje platformskih komponenti, ali više spoljašnjih zavisnosti i ručnog IP/routing planiranja</td>
+        <td>Vlasnik svake komponente, monitoring, backup i eskalacioni put</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>2. NSX networking model: arhitektura i način rada</h3>
+
+<p>
+  NSX model uvodi programski definisanu mrežnu fabriku. ESXi hostovi postaju NSX transport nodes, transport zone određuje gde segment može postojati, a Tunnel Endpoint interfejsi (<abbr title="Tunnel Endpoint">TEP</abbr>) prenose overlay saobraćaj između hostova i Edge čvorova. Tier-0 gateway predstavlja north-south granicu prema fizičkoj mreži, dok Tier-1 gateway ili odgovarajući VPC gateway organizuje workload segmente i servise. NSX Manager/Local Manager drži upravljačko stanje; NSX control plane distribuira forwarding informacije; podatkovni sloj na hostovima i Edge čvorovima prosleđuje pakete.
+</p>
+
+<p>
+  Kontrolna i podatkovna ravan moraju se posmatrati odvojeno. Nedostupan NSX Manager može privremeno ostaviti već programirane tokove funkcionalnim, ali sprečava ili ugrožava nove promene i reconciliation. Kvar Edge čvora utiče na servise koji su na njemu centralizovani, kao što su određeni north-south tokovi, NAT ili load balancer. Kvar jednog hosta ne bi smeo da prekine distribuirano rutiranje između workload-a na drugim zdravim hostovima, pod uslovom da su transport, teaming i HA pravilno projektovani.
+</p>
+
+<h3>3. Ključne NSX komponente i zavisnosti</h3>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Komponenta</th>
+        <th>Uloga</th>
+        <th>Tipična posledica pogrešnog dizajna</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>NSX Manager cluster</td>
+        <td>Politike, inventar, API, lifecycle i nadzor NSX objekata</td>
+        <td>Nove mreže ili pravila se ne realizuju; operativni tim nema pouzdanu kontrolnu tačku</td>
+      </tr>
+      <tr>
+        <td>Transport zone i host transport nodes</td>
+        <td>Određuju obuhvat overlay/VLAN segmenata na ESXi hostovima</td>
+        <td>Workload ne može da se poveže posle migracije na host van obuhvata segmenta</td>
+      </tr>
+      <tr>
+        <td>TEP/IP pool</td>
+        <td>Adrese tunelskih krajeva i overlay prenos</td>
+        <td>Intermittent east-west prekidi, fragmentacija ili gubitak paketa zbog MTU neslaganja</td>
+      </tr>
+      <tr>
+        <td>Edge cluster</td>
+        <td>Centralizovani servisi, north-south routing, NAT i load balancing prema dizajnu</td>
+        <td>Jedna Edge instanca ili jedan failure domain postaje tačka otkaza i usko grlo</td>
+      </tr>
+      <tr>
+        <td>Tier-0/Tier-1 ili VPC povezivanje</td>
+        <td>Logička L3 hijerarhija i granica prema fizičkoj mreži</td>
+        <td>Asimetrično rutiranje, nepostojeća povratna ruta ili preklapanje CIDR-a</td>
+      </tr>
+      <tr>
+        <td>NCP i drugi integracioni kontroleri</td>
+        <td>Prevode Kubernetes željeno stanje u NSX objekte</td>
+        <td>Service ostaje bez VIP-a ili mrežni objekti ostaju u pending/reconciliation stanju</td>
+      </tr>
+      <tr>
+        <td>Distributed Firewall</td>
+        <td>Politike blizu workload vNIC-a i mikrosegmentacija</td>
+        <td>Preširoko pravilo povećava blast radius; preusko pravilo prekida DNS, registry, API ili health check tok</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  Produkcioni NSX dizajn zahteva redundantne NSX Manager i Edge komponente, razdvojene failure domain-e, plan kapaciteta za Edge datapath i load balancer, podržan BGP ili statički routing prema fizičkoj mreži, MTU koji bez fragmentacije prenosi encapsulated paket i rezervisane adresne opsege koji se ne preklapaju sa data-centre, VPN, cloud i udaljenim lokacijama. „Ping radi” nije dovoljan dokaz: treba proveriti maksimalnu veličinu paketa, oba smera toka, TCP port, health monitor i povratnu rutu.
+</p>
+
+<h3>4. vSphere networking model: jednostavniji stack, eksplicitne spoljašnje zavisnosti</h3>
+
+<p>
+  U vSphere networking modelu Supervisor koristi vSphere Distributed Switch i unapred pripremljene port grupe. Workload mreža mora imati odgovarajuću L2/L3 dostupnost, gateway, DNS i rute, dok eksterni load balancer dodeljuje VIP adrese Kubernetes API endpoint-ima i servisima tipa <code>LoadBalancer</code>. Ovaj model može biti veoma prikladan za organizacije sa zrelim VLAN/IPAM procesom, manjim brojem tenant-a i bez potrebe za NSX mikrosegmentacijom. On ipak nije „bez mrežnog kontrolnog sloja”: kontroleri poput AKO-a za Avi ili <code>lbapi</code> komponente za HAProxy usklađuju Kubernetes objekte sa load balancer-om.
+</p>
+
+<p>
+  Najčešća pogrešna pretpostavka jeste da je vDS model automatski jednostavan. Broj platformskih proizvoda jeste manji, ali odgovornost se pomera na fizički routing, firewall, IPAM, VLAN trunking, eksterni load balancer i koordinaciju timova. Ako nijedan tim nema vlasništvo nad celim tokom od VKS node IP adrese do VIP-a i klijenta, incidenti se pretvaraju u prebacivanje odgovornosti između vSphere, mrežnog i Kubernetes tima.
+</p>
+
+<h3>5. Load balancer nije dodatak, već deo control-plane dostupnosti</h3>
+
+<p>
+  VKS control plane endpoint je virtual IP adresa koja mora da prosledi TCP/6443 ka zdravom kube-apiserver-u. Ako je VIP nedostupan, klaster može izgledati kao compute problem: novi čvorovi ostaju u stanju <code>Provisioned</code>, brisanje se ne završava, <code>kubeadmcontrolplane</code> prijavljuje nedostupan control plane, a cloud-init ili kubelet ne mogu da završe bootstrap. Zato se load balancer projektuje sa HA, kapacitetom, stabilnom kontrolnom integracijom, health monitorima i rutama u oba smera.
+</p>
+
+<div class="alert alert-warning" role="alert">
+  <strong>Verzijska napomena:</strong> u vSphere Supervisor 8.0 model vDS + HAProxy ostaje podržan u odgovarajućim kombinacijama. Broadcom je za VCF 9.0 označio vDS + HAProxy kao <em>deprecated</em> i najavio uklanjanje u budućem glavnom izdanju; za nove VCF 9.0 implementacije preporučeni pravci su Avi Load Balancer, NSX Load Balancer ili Foundation Load Balancer, u skladu sa konkretnom matricom podrške. Deprecated ne znači odmah nepodržano, ali znači da novu arhitekturu ne treba vezivati za komponentu bez održivog migracionog plana.
+</div>
+
+<h3>6. Funkcionalno poređenje i kriterijumi izbora</h3>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Kriterijum</th>
+        <th>Prednost NSX modela</th>
+        <th>Prednost vDS modela</th>
+        <th>Pitanje za arhitektonsku radionicu</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Izolacija i multi-tenancy</td>
+        <td>Logički segmenti, DFW, centralne grupe i napredniji tenant modeli</td>
+        <td>Dovoljan za manji broj jasno razdvojenih VLAN domena</td>
+        <td>Da li namespace granica mora imati nezavisnu L3/bezbednosnu granicu?</td>
+      </tr>
+      <tr>
+        <td>Postojeće znanje i alati</td>
+        <td>Najbolji kada tim već operativno upravlja NSX-om</td>
+        <td>Brži kada su vDS, VLAN, IPAM i eksterni LB već standardizovani</td>
+        <td>Ko dežura u 03:00 i ima pristup svim potrebnim kontrolnim tačkama?</td>
+      </tr>
+      <tr>
+        <td>Bezbednost</td>
+        <td>Mikrosegmentacija i centralizovana politika uz bogatiju telemetriju</td>
+        <td>Manja platformska površina, ali zavisnost od CNI-ja i spoljnog firewall-a</td>
+        <td>Da li je potreban dokaz kontrole east-west toka na nivou workload-a?</td>
+      </tr>
+      <tr>
+        <td>Skaliranje</td>
+        <td>Programski kreirani segmenti i centralni routing model</td>
+        <td>Jednostavan za ograničen i predvidljiv broj mreža</td>
+        <td>Koliko klastera, namespace-a, VIP-ova i ruta postoji za tri godine?</td>
+      </tr>
+      <tr>
+        <td>Lifecycle</td>
+        <td>Više komponenti koje moraju biti interoperabilne i nadograđene redosledom</td>
+        <td>Manje NSX zavisnosti, ali zaseban lifecycle load balancer-a ostaje</td>
+        <td>Postoji li testirana matrica i rollback za vCenter, ESXi, Supervisor, NSX i LB?</td>
+      </tr>
+      <tr>
+        <td>Trošak</td>
+        <td>Opravdan kada se koriste njegove bezbednosne i mrežne mogućnosti</td>
+        <td>Može smanjiti složenost i licencni trošak za skromnije potrebe</td>
+        <td>Da li se poredi ukupan trošak vlasništva, uključujući operacije i incidente?</td>
+      </tr>
+      <tr>
+        <td>Disaster recovery</td>
+        <td>Politike i logički objekti zahtevaju usklađen NSX recovery plan</td>
+        <td>Tradicionalnije VLAN/routing zavisnosti mogu biti lakše za postojeći DR tim</td>
+        <td>Kako se ponovo uspostavljaju VIP, rute, certifikati i DNS nakon failover-a?</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  Ispravan izbor ne nastaje sabiranjem marketinških funkcija. Najpre se definišu obavezni zahtevi: broj failure domain-a, maksimalni prekid, tenant izolacija, regulatory kontrole, north-south kapacitet, potreban broj VIP-ova, integracija sa postojećim IPAM/DNS/firewall sistemima, RTO/RPO i operativno znanje. Zatim se eliminišu modeli koje tačna verzija i licenca ne podržavaju. Tek tada se porede cena, brzina implementacije i funkcionalna širina.
+</p>
+
+<h3>7. Matrica odluke: preporučeni scenariji i upozorenja</h3>
+
+<ul>
+  <li><strong>NSX je prirodan izbor</strong> kada organizacija već ima produkcioni NSX, zahteva mikrosegmentaciju, mnogo tenant-a ili automatizovano kreiranje izolovanih mrežnih domena, i raspolaže timom koji razume overlay, Edge, BGP i DFW.</li>
+  <li><strong>vDS je razuman izbor</strong> za manji broj klastera i workload mreža, kada je VLAN/L3 infrastruktura stabilna, podržan load balancer već postoji, a napredne NSX funkcije nisu poslovni zahtev.</li>
+  <li><strong>vDS nije dobar izbor</strong> ako bi eksplozija VLAN-ova, ručne promene firewall-a i koordinacija više timova postale kočnica za svaki novi namespace ili klaster.</li>
+  <li><strong>NSX nije dobar izbor</strong> ako se uvodi samo da bi čarobnjak bio završen, bez stručnog vlasnika, monitoringa, backup-a konfiguracije, lifecycle plana i kapaciteta Edge sloja.</li>
+  <li><strong>Postojeća implementacija nije automatski obrazac za novu.</strong> Podržan legacy dizajn može ostati operativan do planirane migracije, dok se za novu lokaciju bira održiviji stack.</li>
+</ul>
+
+<h3>8. Planiranje dostupnosti, performansi i kapaciteta</h3>
+
+<p>
+  High availability se ne dobija samo postavljanjem dva Edge čvora ili dve load balancer instance. Potrebno je dokazati da nisu u istom failure domain-u, da uplinkovi i ToR putanje nisu zajednička tačka otkaza, da BGP ili statičke rute konvergiraju, da health monitor ne šalje saobraćaj na nezdrav backend i da se session state ponaša kako aplikacija očekuje. Kod vDS modela isto važi za load balancer kontrolere i service engine-ove, kao i za mrežu koja ih povezuje sa workload port grupama.
+</p>
+
+<p>
+  Kapacitet se računa od stvarnog toka, ne od broja klastera. Posmatraju se ukupan i vršni throughput, broj novih konekcija u sekundi, simultane konekcije, TLS termination, veličina paketa, east-west prema north-south odnosu, broj VIP-ova i health check-ova. Overlay dodaje encapsulation overhead, pa MTU mora biti usklađen duž cele fizičke putanje. Jumbo frames nisu cilj sami po sebi; cilj je konzistentan MTU bez tihe fragmentacije ili drop-a.
+</p>
+
+<h3>9. Bezbednosni model i razdvajanje odgovornosti</h3>
+
+<p>
+  Kubernetes RBAC određuje ko može da menja Kubernetes objekte, ali sam po sebi ne ograničava mrežni tok. Kubernetes NetworkPolicy određuje dozvoljene Pod tokove samo ako ih izabrani CNI stvarno sprovodi. NSX DFW kontroliše tok na infrastrukturnom sloju, dok fizički firewall kontroliše granice data centra. Ove kontrole se dopunjuju; ne treba ih tretirati kao međusobne zamene. Za svaki tok mora se znati vlasnik pravila, izvor istine, redosled evaluacije i mesto logovanja.
+</p>
+
+<div class="alert alert-info" role="alert">
+  <strong>Princip najmanjih privilegija:</strong> VI administrator ne treba automatski da dobije puni NSX administratorski nalog, niti Kubernetes operator pristup fizičkom router-u. Za zajedničku dijagnostiku definišu se read-only uloge, vremenski ograničena elevacija, audit trag i zajednički runbook sa tačkama predaje incidenta.
+</div>
+
+<h3>10. Pre-deployment kontrolna lista</h3>
+
+<ul class="checklist">
+  <li>Potvrđene su tačne verzije, licence i interoperabilna matrica za vCenter, ESXi, Supervisor, NSX i load balancer.</li>
+  <li>CIDR-ovi za management, workload, Pod, Service, TEP i VIP ne preklapaju se međusobno niti sa korporativnim, cloud, VPN i DR mrežama.</li>
+  <li>DNS ima forward i, gde je potrebno, reverse zapise; NTP je dosledan na svim komponentama.</li>
+  <li>VLAN trunking, gateway, rute u oba smera i firewall portovi potvrđeni su dokazima, ne samo dokumentom dizajna.</li>
+  <li>MTU je testiran od kraja do kraja za najzahtevniji put, uključujući overlay ako se koristi.</li>
+  <li>Load balancer pool, VIP range, management pristup, certifikati, HA i kapacitet unapred su pripremljeni.</li>
+  <li>Za NSX su potvrđeni transport zone, TEP pool, Edge cluster, Tier-0/Tier-1 ili VPC dizajn i north-south routing.</li>
+  <li>Postoji RACI: ko upravlja vDS-om, NSX-om, IPAM-om, DNS-om, firewall-om, load balancer-om, Supervisor-om i VKS-om.</li>
+  <li>Monitoring, centralno logovanje, backup konfiguracije i support bundle postupak testirani su pre produkcije.</li>
+  <li>Promena ima plan validacije, kriterijume za prekid, rollback i termin bez konflikta sa drugim mrežnim promenama.</li>
+</ul>
+
+<h3>11. Praktikum: uporedna validacija postojećeg mrežnog modela</h3>
+
+<p>
+  <strong>Cilj:</strong> bez promene produkcionog stanja prikupiti dokaze o aktivnom Supervisor networking modelu, mapirati jedan VKS control plane VIP do backend endpoint-a i utvrditi gde bi se tražio kvar. Vežba je read-only sve do posebno označene laboratorijske simulacije.
+</p>
+
+<p>
+  <strong>Topologija:</strong> administratorska radna stanica sa pristupom vCenter-u i Supervisor API-ju; jedan Supervisor; jedan VKS klaster u test namespace-u; odgovarajući NSX Manager ako se koristi NSX ili administratorski pristup Avi/HAProxy kontrolnoj ravni ako se koristi vDS model. Potrebni su read-only vCenter/NSX/LB nalozi i Kubernetes nalog sa pravom <code>get</code>, <code>list</code> i <code>describe</code> nad relevantnim objektima.
+</p>
+
+<p>
+  <strong>Rizik:</strong> osnovni koraci su neinvazivni. Nemojte menjati port grupu, transport node, Tier gateway, health monitor, VIP pool ili Service selektor u produkciji radi simulacije kvara. Za to se koristi izolovani laboratorijski namespace i posebno odobren change.
+</p>
+
+<h3>Vežba 1 – identifikacija modela i inventar zavisnosti</h3>
+
+<ol>
+  <li>U vSphere Client-u otvorite <strong>Workload Management</strong> ili odgovarajući <strong>Supervisor Management</strong> prikaz za svoju verziju i zabeležite izabrani networking stack, vDS, workload mrežu i load balancer konfiguraciju.</li>
+  <li>Ako je model NSX, u NSX Manager-u read-only proverite odgovarajuće transport node profile, transport zone, Edge cluster, gateway-e i segmente. Nemojte pretpostaviti mapiranje samo iz naziva.</li>
+  <li>Ako je model vDS, u <strong>Networking</strong> inventaru proverite distributed port group, VLAN ID/trunk, teaming/failover i MTU. Zatim u load balancer kontrolnoj ravni pronađite objekat povezan sa Supervisor-om.</li>
+  <li>Napravite tabelu vlasništva: objekat, sistem, identifikator, failure domain, vlasnik, monitoring i backup postupak.</li>
+</ol>
+
+<p>
+  Sa radne stanice, u odgovarajućem Supervisor kontekstu, izvršite sledeće read-only komande. One prikazuju čvorove, servise, endpoint-e, VKS Cluster API objekte i podove integracionih kontrolera.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get nodes -o wide
+kubectl get svc -A -o wide
+kubectl get endpoints -A
+kubectl get cluster,kubeadmcontrolplane,machine -A -o wide
+kubectl get pods -A | egrep 'ncp|ako|lbapi'</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> model iz GUI-ja može da se poveže sa stvarnim kontrolerom: <code>ncp</code> ukazuje na NSX integraciju, <code>ako</code> na Avi/NSX Advanced Load Balancer integraciju, a <code>lbapi</code> na HAProxy integraciju. Naziv pod-a nije dovoljan dokaz podrške ili zdravlja; mora biti <code>Running</code>, bez ponavljanih restarta, a njegova verzija mora odgovarati matrici proizvoda.
+</p>
+
+<h3>Vežba 2 – praćenje VKS API VIP-a do backend-a</h3>
+
+<p>
+  Izaberite jedan test VKS klaster i zamenite vrednosti u uglastim zagradama. Prve četiri komande čitaju Kubernetes stanje. <code>curl -vk</code> uspostavlja TLS konekciju bez izmene servera; opcija <code>-k</code> zanemaruje validaciju sertifikata i zato je namenjena samo dijagnostici, ne normalnoj administraciji.
+</p>
+
+<pre><code class="language-bash">NAMESPACE='[vks-namespace]'
+CLUSTER='[vks-cluster]'
+
+kubectl get cluster -n "$NAMESPACE" "$CLUSTER" -o wide
+kubectl describe cluster -n "$NAMESPACE" "$CLUSTER"
+kubectl get svc -n "$NAMESPACE" | grep control-plane
+kubectl get endpoints -n "$NAMESPACE"
+
+curl -vk --connect-timeout 5 'https://[vks-api-vip]:6443/readyz'</code></pre>
+
+<p>
+  HTTP odgovor <code>200</code> i telo <code>ok</code> predstavljaju jak dokaz da VIP, load balancer i najmanje jedan kube-apiserver rade. Odgovor <code>401</code> ili <code>403</code> takođe potvrđuje mrežnu i TLS dostupnost, ali ne i autorizaciju. Timeout ukazuje na routing, firewall, MTU ili load balancer problem; <em>connection refused</em> češće ukazuje na dostupan host/VIP bez procesa koji sluša ili bez zdravog backend-a. Sertifikatska greška potvrđuje da je TCP/TLS put makar delimično uspostavljen i rešava se odvojeno od routinga.
+</p>
+
+<p>
+  U NSX/Avi/HAProxy kontrolnoj ravni pronađite isti VIP i proverite pool members, port 6443, health monitor, poslednju promenu i alarm. Backend IP adrese treba da odgovaraju control plane endpoint-ima koje prikazuje Kubernetes. Svako neslaganje dokumentujte pre korekcije; ručno prepravljanje automatski upravljanog pool-a obično nije trajno rešenje jer ga kontroler može vratiti u željeno stanje.
+</p>
+
+<h3>Vežba 3 – routing, DNS i MTU bez promene stanja</h3>
+
+<p>
+  Sa odobrene dijagnostičke tačke proverite rezoluciju, putanju i port. Linux komande su read-only u odnosu na infrastrukturu; <code>tracepath</code> ili <code>traceroute</code> mogu biti filtrirani, pa njihov izostanak odgovora nije sam po sebi dokaz kvara.
+</p>
+
+<pre><code class="language-bash">getent ahosts '[supervisor-or-vks-fqdn]'
+ip route get '[vip-address]'
+tracepath '[vip-address]'
+nc -vz -w 5 '[vip-address]' 6443
+
+# Laboratorijski MTU test; prilagodite veličinu očekivanom putu.
+ping -c 4 -M do -s 1472 '[destination-ip]'</code></pre>
+
+<p>
+  Za standardni IPv4 Ethernet MTU 1500, ICMP payload 1472 zajedno sa IP i ICMP zaglavljima daje paket od 1500 bajtova. Kod overlay putanje potrebna je veća fizička MTU vrednost zbog encapsulation overhead-a; tačna vrednost se preuzima iz podržanog NSX dizajna, a ne pogađa. Ako mali ping prolazi, a veliki sa <code>DF</code> ne prolazi, istražuju se MTU i ICMP „fragmentation needed” pravila pre promene aplikacije.
+</p>
+
+<h3>Vežba 4 – laboratorijska simulacija i bezbedan rollback</h3>
+
+<div class="alert alert-danger" role="alert">
+  <strong>Samo izolovana laboratorija:</strong> simulaciju izvodite na test servisu bez korisnika. Ne gasite Edge, uplink, produkcioni health monitor ili VKS control plane. Najbezbednija simulacija jeste Service sa namerno pogrešnim selektorom, jer menja samo test Kubernetes objekat i ima jasan rollback.
+</div>
+
+<p>
+  Kreirajte privremeni namespace, mali web deployment i Service tipa <code>LoadBalancer</code>. Zatim promenite selektor servisa na vrednost koja ne odgovara nijednom Pod-u. Time VIP može ostati dodeljen, ali lista endpoint-a postaje prazna, što bezbedno demonstrira razliku između postojanja VIP-a i zdravog backend-a.
+</p>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: netmodel-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: netmodel-lab
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: netmodel-lab
+spec:
+  type: LoadBalancer
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80</code></pre>
+
+<pre><code class="language-bash">kubectl apply -f netmodel-lab.yaml
+kubectl -n netmodel-lab rollout status deployment/web
+kubectl -n netmodel-lab get pods,svc,endpoints -o wide
+
+# State-changing, samo u laboratoriji: uvodi namerno pogrešan selektor.
+kubectl -n netmodel-lab patch service web-lb \
+  --type merge -p '{"spec":{"selector":{"app":"does-not-exist"}}}'
+
+kubectl -n netmodel-lab get svc,endpoints web-lb -o wide
+kubectl -n netmodel-lab describe service web-lb
+
+# Rollback: vraća originalni selektor.
+kubectl -n netmodel-lab patch service web-lb \
+  --type merge -p '{"spec":{"selector":{"app":"web"}}}'
+
+kubectl -n netmodel-lab get endpoints web-lb -w</code></pre>
+
+<p>
+  <strong>Očekivani rezultat:</strong> posle pogrešnog selektora Service postoji i može zadržati external IP, ali endpoint-i nestaju, health monitor označava backend nezdravim, a zahtev ka VIP-u ne dobija ispravan odgovor. Posle rollback-a endpoint-i se ponovo pojavljuju i health stanje se oporavlja nakon intervala provere. Kriterijum završetka nije samo vraćen endpoint: potrebno je potvrditi uspešan HTTP odgovor kroz VIP i odsustvo novih alarma.
+</p>
+
+<p>
+  Po završetku laboratorije uklonite samo objekat koji ste kreirali. Sledeća komanda je state-changing i briše ceo test namespace; pre izvršavanja proverite tačno ime.
+</p>
+
+<pre><code class="language-bash">kubectl get namespace netmodel-lab
+kubectl delete namespace netmodel-lab
+kubectl get namespace netmodel-lab</code></pre>
+
+<h3>12. Sistematični troubleshooting: od simptoma do osnovnog uzroka</h3>
+
+<p>
+  Dijagnostika počinje definisanjem simptoma, obima i vremena: da li je pogođen jedan Service, jedan VKS klaster, ceo namespace, svi workload-i na jednom ESXi hostu ili ceo Supervisor. Zatim se proveravaju poslednje promene, alarmi i zavisnosti. Tek nakon prikupljanja dokaza postavlja se hipoteza. Nasumično restartovanje kontrolera može ukloniti trag, izazvati reconciliation i proširiti incident.
+</p>
+
+<div class="table-responsive">
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Simptom</th>
+        <th>Prva bezbedna provera</th>
+        <th>Verovatne grane</th>
+        <th>Trajna korektivna mera</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Service ostaje <code>Pending</code> bez external IP</td>
+        <td><code>kubectl describe svc</code>, događaji i stanje NCP/AKO/lbapi pod-a</td>
+        <td>VIP pool iscrpljen, kontroler ne radi, RBAC/certifikat/API greška</td>
+        <td>Vratiti kapacitet ili ispraviti integraciju; ne unositi nasumičan external IP</td>
+      </tr>
+      <tr>
+        <td>VIP postoji, ali nema odgovora</td>
+        <td>Endpoint-i, pool members, health monitor i TCP/port test</td>
+        <td>Prazan selektor, nezdrav backend, firewall, routing ili MTU</td>
+        <td>Ispraviti osnovni uzrok i potvrditi oba smera toka</td>
+      </tr>
+      <tr>
+        <td>Samo workload-i na jednom hostu gube mrežu</td>
+        <td>Host alarms, pNIC/uplink, transport node i VDS port status</td>
+        <td>Uplink/VLAN, TEP, teaming ili host transport konfiguracija</td>
+        <td>Vratiti konzistentan host profile/transport node i proveriti migraciju</td>
+      </tr>
+      <tr>
+        <td>Novi VKS čvorovi ostaju <code>Provisioned</code></td>
+        <td>Machine/KCP stanje, VKS VIP:6443 i cloud-init log</td>
+        <td>VIP routing, API backend, DNS/NTP, bootstrap ili certifikat</td>
+        <td>Oporaviti control plane put; tek zatim dozvoliti reconciliation</td>
+      </tr>
+      <tr>
+        <td>Mali paketi rade, veće sesije pucaju</td>
+        <td>DF ping/tracepath i drop counters duž putanje</td>
+        <td>Nedosledan MTU, PMTUD blokiran ili overlay overhead</td>
+        <td>Uskladiti MTU end-to-end i dozvoliti potrebne ICMP poruke</td>
+      </tr>
+      <tr>
+        <td>Samo north-south tok ne radi</td>
+        <td>Gateway/Edge ili eksterni LB, BGP/rute i upstream firewall</td>
+        <td>Edge servis, route advertisement, NAT, asymmetric routing</td>
+        <td>Vratiti podržanu HA/routing politiku i dokumentovati putanju</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>13. Logovi, događaji i korelacija</h3>
+
+<ul>
+  <li><strong>Kubernetes događaji:</strong> <code>kubectl get events -A --sort-by=.metadata.creationTimestamp</code> povezuje vreme greške sa Service, Cluster API i Machine objektima. Događaji imaju ograničeno zadržavanje, pa ih treba prikupiti rano.</li>
+  <li><strong>Integracioni kontroleri:</strong> <code>kubectl logs</code> nad NCP, AKO ili lbapi pod-om otkriva odbijeni API poziv, problem sertifikata, iscrpljen pool ili reconciliation grešku. Najpre se utvrđuju namespace, pod i kontejner; ne koristi se slepo <code>--all-containers</code> nad celim klasterom u dužem periodu.</li>
+  <li><strong>vCenter:</strong> Tasks, Events, Alarms i Supervisor status povezuju mrežni simptom sa lifecycle operacijom. Za dublju analizu relevantni su WCP i vCenter servisi, ali se support bundle preferira nad nekontrolisanim ručnim izmenama appliance-a.</li>
+  <li><strong>NSX:</strong> alarmi, transport node/Edge status, traceflow, port statistics, routing/BGP stanje i DFW logovi koriste se zajedno. Traceflow je dijagnostički alat, ne zamena za realan packet capture.</li>
+  <li><strong>Load balancer:</strong> control-plane audit, virtual service, pool, service engine i health-monitor logovi moraju se vremenski korelisati sa Kubernetes događajem i backend stanjem.</li>
+  <li><strong>VKS čvor:</strong> <code>/var/log/cloud-init-output.log</code>, <code>journalctl -u kubelet</code> i container runtime logovi pomažu tek kada je pristup čvoru odobren i kada su spoljne mrežne provere već suzile uzrok.</li>
+</ul>
+
+<pre><code class="language-bash">kubectl get events -A --sort-by=.metadata.creationTimestamp
+kubectl -n '[controller-namespace]' logs '[controller-pod]' \
+  --since=30m --timestamps
+kubectl -n '[controller-namespace]' describe pod '[controller-pod]'</code></pre>
+
+<p>
+  Karakteristični obrasci su <code>timeout</code>, <code>context deadline exceeded</code>, <code>no available IP</code>, <code>certificate</code>, <code>unauthorized</code>, <code>no route to host</code> i ponovljeni reconciliation. Nijedan obrazac nije samostalna dijagnoza. Na primer, timeout može nastati na DNS-u, firewall-u, routingu, health monitoru ili backend aplikaciji; zato se uvek povezuje sa tačnim odredištem, portom, vremenom i packet/flow dokazom.
+</p>
+
+<h3>14. Incident response, privremeno rešenje i recovery</h3>
+
+<ol>
+  <li><strong>Stabilizujte obim:</strong> zaustavite povezane promene i sačuvajte vreme početka, pogođene namespace-e, klastere, VIP-ove i hostove.</li>
+  <li><strong>Prikupite dokaze:</strong> Kubernetes YAML/status, događaje, LB pool stanje, NSX/vDS alarm, route table i relevantne logove. Izbegnite tajne iz kubeconfig-a i support bundle-a u tiketima bez zaštićenog kanala.</li>
+  <li><strong>Postavite hipotezu:</strong> odvojite control-plane problem od data-plane problema i lokalni kvar od sistemskog.</li>
+  <li><strong>Primeni najmanju korekciju:</strong> vratite poslednju potvrđenu konfiguraciju, oslobodite VIP pool ili popravite određenu rutu. Ručni unos u automatski upravljani NSX/LB objekat koristi se samo po zvaničnom runbook-u ili uz podršku proizvođača.</li>
+  <li><strong>Validirajte recovery:</strong> proverite API <code>/readyz</code>, endpoint-e, health monitor, realan zahtev kroz VIP, nove Machine operacije i odsustvo ponovljenih alarma.</li>
+  <li><strong>Utvrdi osnovni uzrok:</strong> privremeni failover ili restart nije root cause. Trajna mera može biti proširen VIP pool, korekcija MTU-a, uklanjanje preklopljenog CIDR-a, HA redizajn ili promena lifecycle procedure.</li>
+</ol>
+
+<h3>15. Migracija između modela: tretirati kao novu mrežnu arhitekturu</h3>
+
+<p>
+  Prelazak sa vDS na NSX ili obrnuto ne treba tretirati kao zamenu jedne opcije na postojećem Supervisor-u. Mogućnost in-place promene zavisi od konkretnog izdanja i podržanog workflow-a; u mnogim realnim okruženjima bezbedniji obrazac je novi Supervisor ili novi workload domain, paralelna validacija, migracija workload-a i kontrolisano gašenje starog okruženja. Razlozi su promena CNI/integracionog kontrolera, adresnih opsega, VIP implementacije, routing granica, security policy-ja i vlasništva nad objektima.
+</p>
+
+<p>
+  Plan migracije mora sadržati mapiranje DNS-a i certifikata, kompatibilnost aplikacija sa promenom source IP/NAT ponašanja, ponovno kreiranje Service VIP-ova, NetworkPolicy/DFW ekvivalenciju, storage i backup zavisnosti, redosled migracije namespace-a, test povratka i jasno definisanu tačku posle koje rollback više nije prost. Kubernetes manifesti se mogu ponovo primeniti, ali stanje aplikacije, external IP adrese i infrastrukturne politike nisu automatski prenosivi.
+</p>
+
+<h3>16. Administratorske prakse</h3>
+
+<ul>
+  <li>Vodite verzionisani dijagram stvarnog toka sa CIDR-ovima, gateway-ima, VLAN/segment identifikatorima, VIP pool-ovima, portovima i vlasnicima.</li>
+  <li>Svaki novi adresni opseg proverite centralnim IPAM-om i rutama svih povezanih lokacija pre enablement-a Supervisor-a.</li>
+  <li>Razdvojite read-only dijagnostiku od state-changing korekcije i zabeležite svaku ručnu intervenciju nad automatski upravljanim objektom.</li>
+  <li>Testirajte kvar jedne Edge/LB instance, uplinka i backend-a u laboratoriji ili kontrolisanom pre-production okruženju.</li>
+  <li>Pratite iskorišćenje VIP i TEP pool-ova, Edge/service-engine kapacitet, BGP stanje, drop counters, health monitor i restart integracionih kontrolera.</li>
+  <li>Pre svake nadogradnje proverite ne samo kompatibilnost proizvoda već i deprecation napomene, redosled nadogradnje i poznate probleme za konkretan build.</li>
+  <li>Ne proglašavajte incident rešenim dok se ne potvrde control-plane i data-plane tok, nova reconciliation operacija i normalno ponašanje monitoringa.</li>
+</ul>
+
+<h3>17. Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je savladana kada administrator može da:
+</p>
+
+<ul class="checklist">
+  <li>objasni zašto NSX model i vDS model dele fizičku/vDS osnovu, ali imaju različit logički i operativni sloj;</li>
+  <li>nacrta putanju od VKS API VIP-a do kube-apiserver backend-a i navede kontrolnu tačku za svaki hop;</li>
+  <li>razlikuje uloge NCP, AKO i lbapi integracionih komponenti bez poistovećivanja proizvoda;</li>
+  <li>izabere model na osnovu tenant izolacije, bezbednosti, skaliranja, kompetencija, lifecycle-a i ukupnog troška;</li>
+  <li>prepozna verzijski rizik vDS + HAProxy dizajna u VCF 9.0 i zahteva aktuelnu matricu pre odluke;</li>
+  <li>read-only komandama proveri Service VIP, endpoint-e, Cluster API stanje, DNS, routing, TCP port i MTU;</li>
+  <li>razdvoji simptom, neposredni uzrok, osnovni uzrok, privremeno rešenje i trajnu korektivnu meru;</li>
+  <li>izvede bezbednu laboratorijsku simulaciju praznog backend pool-a, rollback i potpunu validaciju oporavka;</li>
+  <li>objasni zašto migracija networking modela zahteva projektni plan, a ne improvizovanu izmenu aktivnog Supervisor-a.</li>
+</ul>
+
+<h3>18. Zaključak</h3>
+
+<p>
+  NSX i vSphere networking modeli mogu obezbediti pouzdanu osnovu za Supervisor i VKS, ali rešavaju problem različitim rasporedom funkcija i odgovornosti. NSX donosi programsku logičku mrežu, distribuiranu bezbednost i bogat tenant model, uz veću komponentnu i lifecycle složenost. vDS model koristi poznat VLAN/routing pristup i eksterni load balancer, uz manje NSX zavisnosti, ali zahteva disciplinovan IPAM, jasne spoljašnje rute, dovoljno skalabilan LB i snažnu saradnju infrastrukturnih timova.
+</p>
+
+<p>
+  Odgovoran administrator ne bira prema najkraćem čarobnjaku niti prema najvećem broju funkcija. On prvo definiše poslovne i tehničke zahteve, potvrđuje podršku za tačan build, projektuje failure domain-e i adresne prostore, dokazuje tok paketa i obezbeđuje monitoring, rollback i vlasništvo. Ta odluka priprema osnovu za naredne lekcije o CNI-ju, Pod i Service mrežama, load balancer servisima i kontrolisanom izlaganju aplikacija.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Supervisor i VKS arhitektonska i administrativna dokumentacija; NSX instalacioni, routing, switching, load balancing i bezbednosni vodiči; Avi Load Balancer integracione reference; vSphere Automation API dokumentacija; zvanični Knowledge Base članci za Supervisor networking, VIP dijagnostiku i podršku networking modela; interoperabilne, lifecycle i release-note matrice
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-26-mrezni-model-supervisor-i-vks.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-28-cni-pod-i-service-mreze.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

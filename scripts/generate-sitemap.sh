@@ -13,8 +13,8 @@ cd "$(dirname "$0")/.."
 
   find . -type f -name "*.html" \
     ! -path "./404.html" \
-    ! -path "./biblioteke/caskanje/ljubavno-pismo-ucenju/og-galerija.html" \
-    ! -path "./temp/*" \
+    ! -name "og-galerija.html" \
+    ! -path "*/temp/*" \
     ! -path "./.git/*" \
     ! -name "*copy*" \
     | sort \
@@ -28,14 +28,9 @@ cd "$(dirname "$0")/.."
             loc="${SITE_URL}/${clean_path}"
         fi
 
-        lastmod=$(date -r "$file" +"%Y-%m-%d")
-
         cat <<EOF
   <url>
     <loc>${loc}</loc>
-    <lastmod>${lastmod}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
   </url>
 EOF
 

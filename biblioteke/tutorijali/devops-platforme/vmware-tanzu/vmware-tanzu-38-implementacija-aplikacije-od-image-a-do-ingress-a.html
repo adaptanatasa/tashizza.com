@@ -1,0 +1,693 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Deploy aplikacije – od image-a do rada aplikacije u Tanzu klasteru | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Deploy aplikacije u VMware Tanzu okruženju – put od container image-a i Kubernetes manifesta do pokretanja, provere i dostupnosti aplikacije u Tanzu klasteru.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, deploy aplikacije, deployment, container image, Kubernetes manifest, kubectl, rollout, Pod, Service, TKG, cloud native, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Deploy aplikacije – od image-a do rada aplikacije u Tanzu klasteru">
+
+  <meta property="og:description"
+        content="Dvadeset četvrta lekcija VMware & Tanzu tutorijala – od container image-a i Kubernetes deklaracije do pokrenute i dostupne aplikacije u Tanzu klasteru.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Deploy aplikacije – od image-a do rada aplikacije u Tanzu klasteru">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-38-implementacija-aplikacije-od-image-a-do-ingress-a.png"
+           alt="Deploy aplikacije – od image-a do rada aplikacije u Tanzu klasteru">
+
+    </a>
+
+
+   <div class="page-subtitle">
+ IX. Registry, paketi, platform services i implementacija aplikacija
+</div>
+    <div class="page-subtitle">
+38. Implementacija aplikacije – od image-a, konfiguracije i tajni do servisa i Ingress-a
+</div>
+<h3>Od kontejnerskog image-a do aktivne aplikacije</h3>
+<p>Deploy aplikacije u Tanzu klaster nije jedna komanda kojom se image „pokreće”, već kontrolisana promena željenog stanja Kubernetes resursa. Administrator ili automatizovani sistem predaje Kubernetes API serveru deklaraciju koja opisuje image, broj replika, mrežni port, konfiguraciju, resurse, zdravstvene provere i bezbednosna ograničenja. Kontroleri zatim pokušavaju da stvarno stanje klastera usklade sa tom deklaracijom: Deployment kreira ReplicaSet, ReplicaSet zahteva odgovarajući broj Pod-ova, scheduler bira node-ove, a kubelet na izabranim node-ovima preuzima image iz registry-ja i pokreće kontejnere.</p>
+<p>U Tanzu okruženju aplikacija se može izvršavati u workload klasteru kojim upravlja vSphere Kubernetes Service, u klasteru koji je formiran kroz Tanzu Kubernetes Grid ili u drugom podržanom Kubernetes modelu. Konkretan način dobijanja pristupa klasteru razlikuje se između izdanja, ali je aplikativni deploy nakon pravilnog postavljanja kubeconfig konteksta zasnovan na standardnom Kubernetes API-ju. Zato administrator mora da razlikuje dve ravni odgovornosti: Tanzu i vSphere obezbeđuju klaster, node-ove, mrežu, skladište i životni ciklus platforme, dok Kubernetes workload objekti određuju kako se aplikacija izvršava unutar klastera.</p>
+<p>Najvažniji rezultat deploy procesa nije stanje <code>Running</code> samo po sebi. Pod može biti pokrenut, a da aplikacija nije spremna za saobraćaj, da ne može da pristupi zavisnom servisu, da koristi pogrešnu konfiguraciju ili da ne zadovoljava poslovnu funkciju. Uspešan deploy zato mora potvrditi najmanje četiri nivoa: Kubernetes objekti su prihvaćeni, kontejneri su pokrenuti, aplikacija je spremna prema readiness proveri i funkcionalni zahtev daje očekivani odgovor.</p>
+<h3>Preduslovi i zavisnosti deploy procesa</h3>
+<p>Pre promene administrator mora da potvrdi da se nalazi na pravom klasteru i u pravom namespace-u. Pogrešan kubeconfig kontekst može dovesti do implementacije testne verzije u produkciju, dok pogrešan namespace može zaobići očekivane kvote, politike i pristupne kontrole. Provera identiteta i odredišta mora prethoditi svakom <code>kubectl apply</code> postupku.</p>
+<ul>
+  <li><strong>Pristup Kubernetes API-ju:</strong> važeći kubeconfig, pouzdan API endpoint i korisnik ili automatizovani identitet sa najmanjim potrebnim RBAC pravima.</li>
+  <li><strong>Postojeći namespace:</strong> sa odgovarajućim ResourceQuota, LimitRange, Pod Security pravilima i mrežnim politikama, kada se koriste.</li>
+  <li><strong>Dostupan image:</strong> image mora postojati u registry-ju, odgovarati arhitekturi node-ova i biti označen nepromenljivim tagom ili, još pouzdanije, digest vrednošću.</li>
+  <li><strong>Registry poverenje:</strong> node-ovi moraju verovati TLS sertifikatu registry-ja, a Pod mora imati odgovarajuće credentials ako repozitorijum nije javan.</li>
+  <li><strong>Raspoloživi resursi:</strong> scheduler mora pronaći node sa dovoljnim CPU i memorijskim kapacitetom koji ispunjava taint, toleration, affinity i topology uslove.</li>
+  <li><strong>Aplikativne zavisnosti:</strong> DNS, baze, redovi poruka, konfiguracioni servisi i drugi endpoint-i moraju biti dostupni iz namespace-a aplikacije.</li>
+</ul>
+<p>Za ručni administrativni deploy najčešće su potrebna prava za čitanje i kreiranje objekata kao što su Deployment, ReplicaSet, Pod, Service, ConfigMap, Secret, ServiceAccount i Event u jednom namespace-u. Pravo za čitanje Secret objekata ne treba automatski davati samo zato što korisnik može da kreira Deployment. U produkciji se odvajaju uloge osobe koja priprema manifest, automatizacije koja ga primenjuje i platformskog administratora koji upravlja klasterom i politikama.</p>
+<h3>Deklarativni manifest kao zapis željenog stanja</h3>
+<p>Produkcioni deploy treba da bude zasnovan na verzionisanom manifestu, Helm paketu, Kustomize konfiguraciji ili GitOps resursu, a ne na nizu neponovljivih interaktivnih komandi. Deklarativni zapis omogućava pregled promene, audit, poređenje okruženja i ponovnu implementaciju. Komanda <code>kubectl apply</code> šalje željeno stanje API serveru, ali sama po sebi ne dokazuje da je rollout uspeo; zbog toga se uvek kombinuje sa proverom generisanih objekata, događaja i aplikativne funkcije.</p>
+<p>Deployment manifest mora precizno povezati selektor i oznake Pod šablona. Vrednosti u <code>spec.selector.matchLabels</code> moraju odgovarati oznakama u <code>spec.template.metadata.labels</code>. Selektor Deployment-a je praktično nepromenljiv nakon kreiranja; pogrešan selektor se najčešće rešava kreiranjem novog Deployment objekta ili pažljivo planiranim uklanjanjem i ponovnim kreiranjem, a ne improvizovanom izmenom u produkciji.</p>
+<p>Image se navodi zajedno sa registry hostom, projektom, repozitorijumom i verzijom. Tag <code>latest</code> nije pogodan za kontrolisani deploy jer ne govori koji je sadržaj stvarno pokrenut. Čak i semantički tag može biti prepisan ako registry to dozvoljava. Digest, na primer <code>registry.infra.example.com/apps/orders-api@sha256:...</code>, kriptografski identifikuje sadržaj image-a i omogućava pouzdan audit. Kada organizacija još koristi verzijske tagove, registry treba da zabrani njihovo prepisivanje, a deploy evidencija treba da zabeleži i resolved digest.</p>
+<h3>Šta se događa unutar klastera</h3>
+<p>Nakon prihvatanja manifestа Deployment kontroler formira ili ažurira ReplicaSet. Scheduler obrađuje nove Pod-ove koji nemaju dodeljen node, procenjuje zahteve za resurse i pravila raspoređivanja, a zatim upisuje izabrani node. Kubelet na tom node-u priprema mrežni sandbox, prosleđuje registry credentials kontejnerskom runtime-u, preuzima slojeve image-a koji nedostaju i pokreće definisane kontejnere.</p>
+<p>Ako image ne postoji, registry odbije pristup ili TLS lanac nije pouzdan, Pod obično ostaje u stanju <code>Pending</code>, <code>ErrImagePull</code> ili <code>ImagePullBackOff</code>. Ako se proces u kontejneru pokrene pa završi greškom, stanje prelazi u <code>CrashLoopBackOff</code> uz rast broja restartovanja. Ako je aplikacija pokrenuta, ali readiness proba ne prolazi, Pod može imati fazu <code>Running</code>, ali neće biti <code>Ready</code> i Service ga neće koristiti kao spreman endpoint. Ove razlike su osnova pravilne dijagnostike.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Najverovatniji sloj problema</th>
+      <th>Prva provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pod je dugo Pending</td>
+      <td>Scheduler, kvote, resursi, taint ili affinity</td>
+      <td><code>kubectl describe pod</code> i Events</td>
+    </tr>
+    <tr>
+      <td>ImagePullBackOff</td>
+      <td>Registry, naziv image-a, credentials ili TLS</td>
+      <td>Pod Events i postojanje imagePullSecret-a</td>
+    </tr>
+    <tr>
+      <td>CrashLoopBackOff</td>
+      <td>Proces aplikacije, konfiguracija ili zavisnost</td>
+      <td><code>kubectl logs</code> i <code>kubectl logs --previous</code></td>
+    </tr>
+    <tr>
+      <td>Running, ali 0/1 Ready</td>
+      <td>Readiness proba ili aplikativna zavisnost</td>
+      <td>Opis Pod-a i rezultat readiness endpoint-a</td>
+    </tr>
+    <tr>
+      <td>Service nema endpoint-e</td>
+      <td>Pod nije Ready ili selector ne odgovara labelama</td>
+      <td><code>kubectl get endpointslice</code> i labele Pod-a</td>
+    </tr>
+    <tr>
+      <td>Rollout ne završava</td>
+      <td>Nove replike nisu dostupne</td>
+      <td><code>kubectl rollout status</code>, ReplicaSet i Events</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Resursi, probe i kontrolisani rollout</h3>
+<p>CPU i memorijski zahtevi nisu samo optimizacija. Scheduler koristi <code>requests</code> da odluči gde Pod može biti postavljen, dok <code>limits</code> ograničavaju potrošnju. Prenizak memorijski limit može izazvati <code>OOMKilled</code>, a nepostojanje zahteva može dovesti do nepredvidivog raspoređivanja i lošeg ponašanja pri opterećenju. Vrednosti se ne biraju nasumično: početna procena se zasniva na testiranju, a kasnije se koriguje prema metrikama iz realnog rada.</p>
+<p>Startup, readiness i liveness probe imaju različite uloge. Startup proba štiti sporo pokretanje aplikacije od prerane liveness intervencije. Readiness određuje kada Pod sme da prima saobraćaj, dok liveness proverava da li proces treba ponovo pokrenuti jer se više ne može oporaviti. Liveness ne treba da proverava svaku spoljašnju zavisnost: nedostupna baza ne treba automatski da izazove restart svih Pod-ova i dodatno pogorša incident. Readiness može privremeno ukloniti instancu iz saobraćaja, dok liveness treba da bude usmerena na unutrašnju sposobnost procesa da nastavi rad.</p>
+<p>Strategija <code>RollingUpdate</code> postepeno zamenjuje stare Pod-ove novim. Parametar <code>maxUnavailable</code> određuje koliko replika sme privremeno biti nedostupno, a <code>maxSurge</code> koliko dodatnih Pod-ova može biti formirano iznad željenog broja. Vrednosti utiču i na raspoloživost i na privremenu potrošnju kapaciteta. Klaster koji ima resurse za tri replike možda nema kapacitet za četvrtu surge repliku, pa rollout može zastati iako je postojeća aplikacija zdrava.</p>
+<p><code>progressDeadlineSeconds</code> omogućava da Deployment označi nedostatak napretka, ali ne vraća automatski prethodnu verziju. Produkcioni proces mora eksplicitno definisati ko donosi odluku o rollback-u i na osnovu kojih tehničkih i poslovnih kriterijuma. Detaljan rollback je predmet naredne lekcije; ovde je važno da deploy čuva reviziju i da administrator ne briše staru ReplicaSet istoriju pre završetka validacije.</p>
+<h3>Konfiguracija, tajne i identitet aplikacije</h3>
+<p>Konfiguracija koja se razlikuje između okruženja ne treba da bude ugrađena u image. ConfigMap može sadržati nepoverljive vrednosti, dok Secret služi za poverljive podatke, ali osnovni Kubernetes Secret nije sam po sebi eksterni trezor niti garancija šifrovanja u svim slojevima. Pristup Secret objektima mora biti ograničen RBAC pravilima, šifrovanje podataka u etcd-u mora biti deo platformskog dizajna, a ozbiljna produkciona okruženja često koriste integraciju sa namenskim sistemom za upravljanje tajnama.</p>
+<p>Registry credentials imaju posebnu namenu. Secret tipa <code>kubernetes.io/dockerconfigjson</code> prosleđuje kubeletu podatke potrebne za preuzimanje privatnog image-a. On mora postojati u istom namespace-u kao Pod koji ga koristi. Praktičnije je povezati ga sa namenskim ServiceAccount objektom nego ponavljati <code>imagePullSecrets</code> u svakom Deployment-u, ali takav ServiceAccount treba koristiti samo za aplikacije kojima je pristup konkretnom registry projektu stvarno potreban.</p>
+<p>Aplikativni ServiceAccount ne treba automatski da dobije pristup Kubernetes API-ju. Kada aplikacija ne komunicira sa API serverom, <code>automountServiceAccountToken: false</code> smanjuje nepotrebno izlaganje tokena. Ako je API pristup potreban, dodeljuje se poseban Role i RoleBinding sa preciznim operacijama i resursima, bez administratorskih privilegija.</p>
+<h3>Bezbednosni i operativni kriterijumi</h3>
+<p>Produkcioni manifest treba da spreči privilegovano izvršavanje kad god aplikacija to ne zahteva. Tipične mere uključuju rad kao ne-root korisnik, zabranu eskalacije privilegija, uklanjanje Linux capabilities, read-only root filesystem i seccomp profil <code>RuntimeDefault</code>. Ove kontrole mogu otkriti loše pripremljen image koji pokušava da piše u sistemske direktorijume ili zahteva root bez opravdanog razloga. Rešenje nije automatsko popuštanje politike, već promena image-a ili dokumentovana procena stvarne potrebe.</p>
+<p>Deploy nije odgovarajuća tačka za improvizovano rešavanje infrastrukturnih problema. Ako nema slobodnog kapaciteta, administrator aplikacije ne treba bez odobrenja da smanjuje resursne zahteve ispod bezbednih vrednosti. Ako registry sertifikat nije pouzdan, ne treba uključiti nesiguran HTTP ili preskočiti TLS proveru. Ako Pod Security pravilo odbije manifest, zahtev treba uskladiti sa politikom ili eskalirati vlasniku platforme, a ne tražiti široko izuzeće bez procene rizika.</p>
+<p>Pre promene se dokumentuju image verzija i digest, ciljni klaster i namespace, broj replika, vlasnik promene, očekivani period implementacije, zavisnosti, kriterijumi uspeha i plan povratka. Nakon promene se čuvaju rezultat rollout-a, broj spremnih replika, funkcionalni test, relevantni događaji i eventualna odstupanja. Time deploy postaje proverljiva administrativna promena, a ne samo trenutna aktivnost u terminalu.</p>
+<h3>Service, EndpointSlice i Ingress: put korisničkog zahteva</h3>
+<p>Deployment upravlja Pod-ovima, ali njihove IP adrese nisu stabilan aplikativni interfejs. Service tipa <code>ClusterIP</code> obezbeđuje stabilno ime i virtuelnu adresu, a njegov selector bira Pod-ove. Kontrolna ravan zatim održava EndpointSlice objekte sa adresama backend-a. Pod koji ne prolazi readiness proveru ostaje izvan skupa spremnih endpoint-a; zato lanac <code>Ingress → Service → EndpointSlice → Ready Pod</code> treba proveravati redom, bez preskakanja slojeva.</p>
+<p>Ingress je standardni Kubernetes API objekat za HTTP/HTTPS pravila, ali sam objekat ne prosleđuje saobraćaj. U klasteru mora postojati operativan Ingress controller i odgovarajući <code>IngressClass</code>. U Tanzu okruženjima to može biti Contour sa Envoy-em, drugi podržani kontroler ili platformski servis koji je organizacija standardizovala. Dostupnost kontrolera, način dodele spoljne IP adrese i integracija sa NSX-om ili drugim load balancer-om zavise od verzije i topologije platforme; aplikativni tim zato ne sme pretpostaviti naziv klase niti instalirati paralelni kontroler bez odluke platformskog tima.</p>
+<table>
+  <thead><tr><th>Sloj</th><th>Odgovornost</th><th>Dokaz ispravnosti</th></tr></thead>
+  <tbody>
+    <tr><td>DNS</td><td>Ime hosta pokazuje na spoljašnju adresu Ingress ulaza</td><td><code>dig +short orders.apps.example.com</code></td></tr>
+    <tr><td>Load balancer / Envoy</td><td>Prima TCP 80/443 i prosleđuje kontroleru</td><td>Status servisa kontrolera i test konekcije</td></tr>
+    <tr><td>IngressClass i Ingress</td><td>Kontroler prihvata host/path pravilo</td><td><code>kubectl describe ingress</code>, status i događaji</td></tr>
+    <tr><td>Service</td><td>Mapira port 80 na imenovani port kontejnera</td><td>Service selector i portovi</td></tr>
+    <tr><td>EndpointSlice</td><td>Objavljuje spremne backend adrese</td><td>Najmanje jedna adresa sa <code>ready=true</code></td></tr>
+    <tr><td>Aplikacija</td><td>Vraća očekivani sadržaj i poslovni rezultat</td><td>HTTP test sa hostom, TLS-om i očekivanim telom</td></tr>
+  </tbody>
+</table>
+<p>Za novo projektovanje treba razmotriti i Kubernetes Gateway API, koji razdvaja infrastrukturnu i aplikativnu odgovornost bogatije od Ingress API-ja. Ipak, Ingress ostaje stabilan i široko podržan API; izbor se zasniva na mogućnostima instaliranog kontrolera, platformskom standardu i podržanoj verziji, a ne samo na postojanju CRD objekata.</p>
+<h3>TLS, DNS i tajne aplikacije</h3>
+<p>HTTPS Ingress referencira TLS Secret tipa <code>kubernetes.io/tls</code> u istom namespace-u. Sertifikat mora pokrivati host iz Ingress pravila, sadržati ispravan lanac i biti rotiran pre isteka. Privatni ključ se ne čuva u Git repozitorijumu niti se prikazuje kroz dijagnostički izlaz. Poželjno je da životnim ciklusom sertifikata upravlja odobreni certificate controller ili platformski PKI tok; ručno kreiranje u praktikumu služi samo da pokaže API vezu.</p>
+<p>Aplikativne tajne i registry credentials imaju različite potrošače. <code>imagePullSecret</code> koristi kubelet za preuzimanje image-a, dok aplikativni Secret čita kontejner kao promenljivu ili datoteku. Promena ConfigMap ili Secret objekta ne mora automatski restartovati postojeće Pod-ove: vrednosti injektovane kroz environment promenljive čitaju se pri pokretanju, dok se projektovani volume sadržaj ažurira eventualno, uz kašnjenje, ali aplikacija i dalje mora umeti da ga ponovo učita. Kontrolisani rollout ili alat koji u Pod template unosi checksum konfiguracije daju predvidljiviju aktivaciju promene.</p>
+<hr>
+<h3>Integrisani praktikum: produkcioni deploy servisa orders-api</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Razvojni tim je objavio verziju <code>1.4.2</code> internog HTTP servisa <code>orders-api</code> u privatnom registry-ju <code>registry.infra.example.com</code>. Aplikacija treba da bude implementirana u namespace <code>prod-orders</code> workload klastera <code>tkg-prod-01</code>, prvo proverena interno, a zatim objavljena kao <code>https://orders.apps.example.com</code> kroz već odobren Ingress controller.</p>
+<p><strong>Cilj.</strong> Kreirati namenski ServiceAccount i registry Secret, primeniti ConfigMap, aplikativni Secret, Deployment i ClusterIP Service, proveriti rollout, dodati TLS Ingress, izvesti interne i spoljne funkcionalne i negativne testove, pregledati logove i ostaviti proverljivu evidenciju promene.</p>
+<p><strong>Referentno okruženje.</strong> Administratorska stanica ima kompatibilan <code>kubectl</code>, kubeconfig pristup klasteru <code>tkg-prod-01</code> i direktorijum <code>/opt/tanzu-lab/orders-api</code>. Registry sadrži image <code>registry.infra.example.com/apps/orders-api:1.4.2</code>. Aplikacija sluša na TCP portu 8080 i izlaže endpoint-e <code>/startup</code>, <code>/ready</code>, <code>/health</code> i <code>/api/v1/status</code>.</p>
+<p><strong>Potrebna prava.</strong> Operator mora imati pravo <code>get</code>, <code>list</code>, <code>watch</code>, <code>create</code>, <code>patch</code>, <code>update</code> i, za cleanup, <code>delete</code> nad korišćenim namespaced objektima. Nisu potrebna cluster-admin prava niti pristup drugim namespace-ovima.</p>
+<p><strong>Preduslovi.</strong> Namespace <code>prod-orders</code> već postoji i platformski tim je primenio njegove kvote i bezbednosna pravila. Korisničko ime registry-ja dostupno je kroz odobreni nalog <code>orders-deployer</code>, a lozinka se preuzima iz organizacionog sistema za tajne i neće biti upisana u manifest ili istoriju komandi.</p>
+<ol>
+  <li>
+    <strong>Potvrditi klaster, identitet i namespace.</strong> Pre bilo kakve promene proverava se aktivni kontekst, server kome se pristupa, identitet i stvarna ovlašćenja. Ne nastavljati ako naziv ili API endpoint ne odgovaraju odobrenoj promeni.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl auth whoami
+kubectl get namespace prod-orders
+kubectl auth can-i create deployments.apps -n prod-orders
+kubectl auth can-i create services -n prod-orders
+kubectl auth can-i create secrets -n prod-orders</code></pre>
+    <strong>Validacija:</strong> aktivni kontekst mora pripadati klasteru <code>tkg-prod-01</code>, namespace mora imati status <code>Active</code>, a tri RBAC upita moraju vratiti <code>yes</code>. Ako <code>kubectl auth whoami</code> nije podržan verzijom klijenta ili servera, identitet se proverava iz odobrenog kubeconfig izvora i audit evidencije platforme.
+  </li>
+  <li>
+    <strong>Snimiti početno stanje i proveriti kapacitet namespace-a.</strong> Ovim se utvrđuje da li već postoje objekti istog imena i da li kvote mogu prihvatiti tri nove replike.
+    <pre><code class="language-bash">mkdir -p /opt/tanzu-lab/orders-api
+cd /opt/tanzu-lab/orders-api
+
+kubectl get deployment,replicaset,pod,service,configmap,serviceaccount \
+  -n prod-orders \
+  -l app.kubernetes.io/name=orders-api -o wide
+
+kubectl get resourcequota,limitrange -n prod-orders
+kubectl describe resourcequota -n prod-orders</code></pre> <strong>Validacija:</strong> ne sme postojati nepoznat Deployment sa imenom <code>orders-api</code>. Kvote moraju omogućiti najmanje 750 milicore zahtevanog CPU-a i 768 MiB zahtevane memorije za tri replike, uz prostor za privremenu surge repliku ako je kvota obračunava. Ako objekat već postoji, promena se tretira kao ažuriranje i pre primene se izvozi postojeće stanje. <pre><code class="language-bash">kubectl get deployment orders-api -n prod-orders -o yaml \
+  &gt; orders-api-before-change.yaml 2&gt;/dev/null || true</code></pre>
+
+  </li>
+  <li>
+    <strong>Kreirati registry Secret bez upisivanja lozinke u manifest.</strong> Lozinka se unosi skriveno u promenljivu trenutne shell sesije. Komanda koristi klijentsko generisanje YAML-a i prosleđuje ga API serveru. U strogo kontrolisanoj produkciji ovaj korak izvršava secret operator ili CI/CD integracija sa trezorom.
+    <pre><code class="language-bash">export REGISTRY_SERVER='registry.infra.example.com'
+export REGISTRY_USERNAME='orders-deployer'
+read -r -s -p 'Registry password: ' REGISTRY_PASSWORD
+echo
+
+kubectl create secret docker-registry orders-registry-pull \
+  --namespace prod-orders \
+  --docker-server="${REGISTRY_SERVER}" \
+  --docker-username="${REGISTRY_USERNAME}" \
+  --docker-password="${REGISTRY_PASSWORD}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+unset REGISTRY_PASSWORD</code></pre> <strong>Validacija:</strong> proverava se samo tip i metadata, bez prikazivanja dekodiranog sadržaja. Secret mora biti tipa <code>kubernetes.io/dockerconfigjson</code>. <pre><code class="language-bash">kubectl get secret orders-registry-pull -n prod-orders \
+  -o custom-columns='NAME:.metadata.name,TYPE:.type,CREATED:.metadata.creationTimestamp'</code></pre>
+
+  </li>
+  <li>
+    <strong>Kreirati aplikativni Secret bez čuvanja vrednosti u fajlu.</strong> Primer simulira API ključ za obaveznu zavisnost. U produkciji vrednost isporučuje odobreni trezor ili secrets operator; ručni unos je laboratorijski postupak.
+    <pre><code class="language-bash">read -r -s -p 'Orders backend API key: ' ORDERS_BACKEND_API_KEY
+echo
+
+kubectl create secret generic orders-api-runtime \
+  --namespace prod-orders \
+  --from-literal=BACKEND_API_KEY="${ORDERS_BACKEND_API_KEY}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+unset ORDERS_BACKEND_API_KEY
+kubectl get secret orders-api-runtime -n prod-orders \
+  -o custom-columns='NAME:.metadata.name,TYPE:.type,CREATED:.metadata.creationTimestamp'
+</code></pre>
+    <strong>Validacija:</strong> objekat mora postojati, ali se vrednost ne dekodira niti kopira u tiket. Proveravaju se samo naziv, tip i vreme kreiranja.
+  </li>
+  <li>
+    <strong>Pripremiti jedinstveni manifest aplikacije.</strong> Manifest kreira ConfigMap, ServiceAccount, Service i Deployment. Primer koristi verzijski tag radi čitljivosti; u produkcionom change zapisu tag treba povezati sa digestom potvrđenim u registry-ju.
+    <pre><code class="language-bash">cat &gt; orders-api.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-config
+  namespace: prod-orders
+  labels:
+    app.kubernetes.io/name: orders-api
+    app.kubernetes.io/part-of: orders-platform
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orders-api
+  namespace: prod-orders
+  labels:
+    app.kubernetes.io/name: orders-api
+imagePullSecrets:
+  - name: orders-registry-pull
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: prod-orders
+  labels:
+    app.kubernetes.io/name: orders-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orders-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: prod-orders
+  labels:
+    app.kubernetes.io/name: orders-api
+    app.kubernetes.io/part-of: orders-platform
+    app.kubernetes.io/version: "1.4.2"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 300
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orders-api
+        app.kubernetes.io/part-of: orders-platform
+        app.kubernetes.io/version: "1.4.2"
+    spec:
+      serviceAccountName: orders-api
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: orders-api
+          image: registry.infra.example.com/apps/orders-api:1.4.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: orders-api-config
+          env:
+            - name: BACKEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orders-api-runtime
+                  key: BACKEND_API_KEY
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            runAsUser: 10001
+            runAsGroup: 10001
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+EOF</code></pre>
+    <strong>Validacija:</strong> klijentska provera otkriva osnovne probleme sa strukturom i tipovima polja, dok serverski dry-run proverava manifest prema API šemi, admission pravilima i ovlašćenjima bez trajnog kreiranja objekata.
+    <pre><code class="language-bash">kubectl apply --dry-run=client -f orders-api.yaml
+kubectl apply --server-side --dry-run=server -f orders-api.yaml</code></pre>
+    Obe komande moraju završiti bez greške. Odbijanje zbog Pod Security politike, kvote ili admission kontrole ne sme se zaobići; manifest se ispravlja ili se zahtev eskalira vlasniku politike.
+  </li>
+  <li>
+    <strong>Primeniti manifest i pratiti rollout.</strong> Server-side apply olakšava evidenciju vlasništva nad poljima. Field manager jasno označava da promenu izvodi administrativni postupak ovog praktikuma.
+    <pre><code class="language-bash">kubectl apply --server-side \
+  --field-manager=tashizza-admin \
+  -f orders-api.yaml
+
+kubectl rollout status deployment/orders-api \
+  -n prod-orders \
+  --timeout=5m</code></pre> <strong>Validacija:</strong> očekivani rezultat je poruka da je Deployment uspešno rollout-ovan. Ako komanda istekne, ne ponavljati <code>apply</code> naslepo, već odmah pregledati Deployment, ReplicaSet, Pod-ove i događaje. <pre><code class="language-bash">kubectl get deployment orders-api -n prod-orders
+kubectl get replicaset -n prod-orders \
+  -l app.kubernetes.io/name=orders-api
+kubectl get pods -n prod-orders \
+  -l app.kubernetes.io/name=orders-api -o wide
+kubectl get events -n prod-orders \
+  --sort-by=.metadata.creationTimestamp | tail -n 30</code></pre>
+Deployment mora prikazati <code>3/3</code> spremne replike, a sva tri Pod-a moraju imati <code>READY 1/1</code> i stabilan broj restartovanja.
+
+  </li>
+  <li>
+    <strong>Potvrditi konfiguraciju, image i bezbednosna svojstva.</strong> Provera ne otkriva sadržaj tajne, već potvrđuje da Pod koristi očekivani ServiceAccount, image i konfiguracione vrednosti.
+    <pre><code class="language-bash">kubectl get deployment orders-api -n prod-orders \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}{"\n"}{.spec.template.spec.containers[0].image}{"\n"}'
+
+kubectl get pods -n prod-orders \
+  -l app.kubernetes.io/name=orders-api \
+  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[0].image,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,NODE:.spec.nodeName'
+
+POD_NAME="$(kubectl get pods -n prod-orders \
+  -l app.kubernetes.io/name=orders-api \
+  -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl exec -n prod-orders "${POD_NAME}" -- \
+  sh -c 'printf "APP_ENV=%s\nLOG_LEVEL=%s\n" "$APP_ENV" "$LOG_LEVEL"'</code></pre> <strong>Validacija:</strong> ServiceAccount mora biti <code>orders-api</code>, image mora imati verziju <code>1.4.2</code>, svi Pod-ovi moraju biti spremni, a aplikacija mora videti <code>APP_ENV=production</code> i <code>LOG_LEVEL=info</code>. Ako image nema shell, poslednja komanda može opravdano biti nedostupna; konfiguracija se tada proverava kroz aplikativni dijagnostički endpoint ili observability sistem, bez dodavanja shell alata u produkcioni image samo radi administracije.
+
+  </li>
+  <li>
+    <strong>Proveriti Service i endpoint-e.</strong> Service selector mora izabrati spremne Pod-ove. Savremena dijagnostika koristi EndpointSlice objekte, dok se klasični Endpoints prikaz može koristiti kao dopunska provera.
+    <pre><code class="language-bash">kubectl get service orders-api -n prod-orders -o wide
+kubectl get endpointslice -n prod-orders \
+  -l kubernetes.io/service-name=orders-api -o wide
+kubectl get pods -n prod-orders \
+  -l app.kubernetes.io/name=orders-api --show-labels</code></pre>
+    <strong>Validacija:</strong> Service mora imati ClusterIP i port <code>80/TCP</code>. EndpointSlice treba da sadrži tri spremne adrese. Nula endpoint-a uz tri Running Pod-a najčešće znači da Pod-ovi nisu Ready ili da selector ne odgovara njihovim labelama.
+  </li>
+  <li>
+    <strong>Izvesti završni funkcionalni test.</strong> Port-forward je privremeni administrativni tunel do Service objekta i nije produkcioni način izlaganja aplikacije. Pokreće se u posebnoj terminal sesiji i prekida nakon testa.
+    <pre><code class="language-bash">kubectl port-forward -n prod-orders service/orders-api 18080:80</code></pre>
+    U drugoj terminal sesiji izvršava se zahtev:
+    <pre><code class="language-bash">curl --fail --silent --show-error \
+  http://127.0.0.1:18080/api/v1/status</code></pre>
+    <strong>Validacija:</strong> očekuje se HTTP uspeh i aplikativni odgovor koji potvrđuje servis <code>orders-api</code>, okruženje <code>production</code> i verziju <code>1.4.2</code>. Nakon provere port-forward se prekida kombinacijom <code>Ctrl+C</code>. Status 200 bez očekivanog sadržaja nije dovoljan kriterijum ako je endpoint mogao vratiti generičku stranicu ili odgovor pogrešne verzije.
+  </li>
+  <li>
+    <strong>Izvesti negativni test bez promene produkcionog Deployment-a.</strong> Proverava se da Service ne izlaže nepostojeću putanju i da aplikacija ne vraća lažno pozitivan odgovor.
+    <pre><code class="language-bash">kubectl port-forward -n prod-orders service/orders-api 18080:80</code></pre>
+    U drugoj sesiji:
+    <pre><code class="language-bash">curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  http://127.0.0.1:18080/api/v1/does-not-exist</code></pre>
+    <strong>Validacija:</strong> očekuje se <code>404</code> ili drugi unapred dokumentovan klijentski status, a ne <code>200</code> i ne prekid veze. Ako nepostojeća putanja vraća 200, rezultat se prijavljuje timu aplikacije jer može prikriti greške u monitoringu i integracionim testovima.
+  </li>
+  <li>
+    <strong>Potvrditi platformski Ingress preduslov.</strong> Sledeće komande su read-only. Naziv klase <code>contour</code> je referentni primer i mora se zameniti stvarnom klasom koju je platformski tim odobrio.
+    <pre><code class="language-bash">kubectl get ingressclass
+kubectl get service -A \
+  -l app.kubernetes.io/name=envoy -o wide
+kubectl auth can-i create ingresses.networking.k8s.io -n prod-orders
+</code></pre>
+    <strong>Validacija:</strong> najmanje jedna odgovarajuća IngressClass mora imati operativan controller; spoljašnja adresa njegovog proxy servisa ne sme biti trajno <code>&lt;pending&gt;</code>; RBAC provera mora vratiti <code>yes</code>. Ako kontroler ili load balancer nisu spremni, aplikativni Ingress se ne kreira kao zamena za platformski popravak.
+  </li>
+  <li>
+    <strong>Kreirati TLS Secret i Ingress.</strong> Sertifikat i ključ se prethodno izdaju za <code>orders.apps.example.com</code> i privremeno nalaze u zaštićenom radnom direktorijumu sa ograničenim dozvolama. Ne koristiti samopotpisani sertifikat u produkciji. State-changing komande su <code>create secret</code> i <code>apply</code>.
+    <pre><code class="language-bash">test -r ./tls/orders.apps.example.com.crt
+test -r ./tls/orders.apps.example.com.key
+
+kubectl create secret tls orders-api-tls \
+  --namespace prod-orders \
+  --cert=./tls/orders.apps.example.com.crt \
+  --key=./tls/orders.apps.example.com.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+cat &gt; orders-api-ingress.yaml &lt;&lt;'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orders-api
+  namespace: prod-orders
+  labels:
+    app.kubernetes.io/name: orders-api
+spec:
+  ingressClassName: contour
+  tls:
+    - hosts:
+        - orders.apps.example.com
+      secretName: orders-api-tls
+  rules:
+    - host: orders.apps.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: orders-api
+                port:
+                  number: 80
+EOF
+
+kubectl apply --server-side --dry-run=server -f orders-api-ingress.yaml
+kubectl diff -f orders-api-ingress.yaml || true
+kubectl apply --server-side \
+  --field-manager=tashizza-admin \
+  -f orders-api-ingress.yaml
+</code></pre>
+    <strong>Validacija:</strong> serverski dry-run mora potvrditi API šemu i admission pravila. <code>kubectl diff</code> standardno vraća izlazni kod 1 kada postoje razlike, pa se njegov prikaz mora pregledati; <code>|| true</code> ovde sprečava prekid laboratorijskog niza, ali CI/CD treba eksplicitno da tumači izlazne kodove. Posle primene proveravaju se status i događaji:
+    <pre><code class="language-bash">kubectl get ingress orders-api -n prod-orders -o wide
+kubectl describe ingress orders-api -n prod-orders
+kubectl get secret orders-api-tls -n prod-orders \
+  -o custom-columns='NAME:.metadata.name,TYPE:.type'
+</code></pre>
+  </li>
+  <li>
+    <strong>Validirati DNS, TLS i spoljnu putanju.</strong> Pre propagacije DNS-a može se koristiti <code>curl --resolve</code>, koji menja razrešenje samo za jedan zahtev i ne zahteva izmenu <code>/etc/hosts</code>. Promenljiva <code>INGRESS_IP</code> mora sadržati odobrenu spoljnu adresu kontrolera.
+    <pre><code class="language-bash">dig +short orders.apps.example.com
+
+export INGRESS_IP='192.0.2.80'
+curl --fail --silent --show-error \
+  --resolve "orders.apps.example.com:443:${INGRESS_IP}" \
+  https://orders.apps.example.com/api/v1/status
+
+openssl s_client \
+  -connect "${INGRESS_IP}:443" \
+  -servername orders.apps.example.com \
+  -verify_return_error &lt;/dev/null
+</code></pre>
+    <strong>Validacija:</strong> DNS treba da razreši očekivanu adresu kada je promena objavljena; HTTP odgovor mora potvrditi servis i verziju <code>1.4.2</code>; TLS provera mora vratiti uspešnu validaciju lanca i sertifikat za zahtevani host. Opcije <code>-k</code> ili <code>--insecure</code> nisu prihvatljiva validacija. Kod 404 sa odgovarajućeg kontrolera često znači nepodudaranje hosta ili putanje; 503 obično usmerava proveru na Service i EndpointSlice.
+  </li>
+  <li>
+    <strong>Pregledati logove i završne događaje.</strong> Standardni izlaz i greške kontejnera dostupni su kroz Kubernetes logging interfejs. Na node-u ih kontejnerski runtime i kubelet vode u odgovarajuće datoteke, ali aplikativni administrator prvenstveno koristi <code>kubectl logs</code> ili centralni logging sistem.
+    <pre><code class="language-bash">kubectl logs -n prod-orders \
+  -l app.kubernetes.io/name=orders-api \
+  --all-containers=true \
+  --prefix=true \
+  --since=10m
+
+kubectl get events -n prod-orders \
+  --field-selector type=Warning \
+  --sort-by=.metadata.creationTimestamp
+
+kubectl rollout history deployment/orders-api -n prod-orders</code></pre> <strong>Validacija:</strong> logovi ne smeju sadržati ponavljane fatalne greške, odbijene konekcije ka obaveznim zavisnostima ili beskonačne restart cikluse. Warning događaji vezani za trenutni rollout moraju biti objašnjeni. Kubelet logovi se na Linux node-u obično pregledaju kroz sistemski dnevnik, na primer <code>journalctl -u kubelet</code>, ali pristup node-u pripada platformskom timu i koristi se tek kada namespaced podaci nisu dovoljni. Audit log Kubernetes API-ja, ako je uključen, služi da potvrdi ko je i kada promenio objekat.
+
+  </li>
+  <li>
+    <strong>Sačuvati merljivu evidenciju implementacije.</strong> Evidencija se može priložiti change tiketu ili sistemu za upravljanje konfiguracijom.
+    <pre><code class="language-bash">kubectl get deployment orders-api -n prod-orders -o yaml \
+  &gt; orders-api-deployed.yaml
+
+kubectl get pods -n prod-orders \
+  -l app.kubernetes.io/name=orders-api -o wide \
+  &gt; orders-api-pods.txt
+
+kubectl get endpointslice -n prod-orders \
+  -l kubernetes.io/service-name=orders-api -o yaml \
+  &gt; orders-api-endpointslices.yaml
+
+kubectl rollout history deployment/orders-api -n prod-orders \
+  &gt; orders-api-rollout-history.txt</code></pre> <strong>Kriterijumi prihvatanja:</strong> Deployment ima tri dostupne replike; svi Pod-ovi su <code>1/1 Ready</code>; broj restartovanja ostaje nula tokom kontrolnog perioda; Service ima tri spremna endpoint-a; status endpoint vraća očekivanu verziju <code>1.4.2</code>; negativni test vraća dokumentovani neuspešni HTTP status; nema neobjašnjenih Warning događaja; manifest i dokaz validacije priloženi su zapisu promene.
+
+  </li>
+</ol>
+<h3>Rollback, recovery i povratak laboratorije</h3>
+<p><strong>Rollback neuspešnog izlaganja.</strong> Ako je aplikacija interno zdrava, a problem je nastao tek posle Ingress promene, najmanji bezbedan povratak je uklanjanje ili vraćanje samo Ingress pravila, ne restartovanje Deployment-a. Pre promene se čuvaju <code>describe</code>, događaji i manifest živog objekta. U GitOps okruženju rollback se izvodi vraćanjem odobrenog commit-a; direktno brisanje bi kontroler mogao ponovo poništiti.</p>
+<pre><code class="language-bash">kubectl get ingress orders-api -n prod-orders -o yaml \
+  &gt; orders-api-ingress-before-rollback.yaml
+
+kubectl delete -f orders-api-ingress.yaml
+kubectl get ingress orders-api -n prod-orders
+</code></pre>
+<p>Brisanje Ingress-a zaustavlja novu spoljnu putanju, ali ostavlja ClusterIP Service i aplikaciju aktivnim. DNS zapis se uklanja ili vraća samo kroz odobreni DNS postupak, uz uvažavanje TTL-a. TLS Secret se ne briše dok se ne potvrdi da ga drugi resurs ne koristi i dok retention politika ne dozvoli uklanjanje.</p>
+<p><strong>Rollback aplikacije.</strong> Ako je uzrok u novom Pod template-u, najpre se proveravaju istorija i kompatibilnost prethodne verzije sa trenutnom konfiguracijom i podacima. <code>kubectl rollout undo</code> vraća samo Deployment Pod template; ne vraća zasebno menjane ConfigMap, Secret, Ingress, bazu ili spoljne API ugovore.</p>
+<pre><code class="language-bash">kubectl rollout history deployment/orders-api -n prod-orders
+kubectl rollout undo deployment/orders-api -n prod-orders
+kubectl rollout status deployment/orders-api \
+  -n prod-orders --timeout=5m
+</code></pre>
+<p><strong>Cleanup laboratorijskog deploy-a.</strong> U stvarnoj produkciji objekti se ne uklanjaju samo zato što je praktikum završen. Sledeće komande su destruktivne i izvršavaju se samo u laboratorijskom namespace-u ili uz formalno odobrenje.</p>
+<pre><code class="language-bash">kubectl delete -f orders-api-ingress.yaml --ignore-not-found
+kubectl delete -f orders-api.yaml --ignore-not-found
+kubectl delete secret \
+  orders-api-tls \
+  orders-api-runtime \
+  orders-registry-pull \
+  -n prod-orders \
+  --ignore-not-found
+</code></pre>
+<p>Bezbednija alternativa u produkciji je zadržavanje stabilne verzije, primena odobrenog rollback postupka ili korekcija manifesta kroz isti verzionisani tok kojim je promena uvedena. Nakon cleanup-a proverava se da nema preostalih objekata sa labelom aplikacije:</p>
+<pre><code class="language-bash">kubectl get all,configmap,serviceaccount,secret -n prod-orders \
+  -l app.kubernetes.io/name=orders-api</code></pre>
+<h3>Tipične greške i način razlikovanja</h3>
+<ul>
+  <li><strong>Pogrešan image ili tag:</strong> Events prikazuje <code>manifest unknown</code> ili sličnu registry poruku. Proveravaju se pun naziv repozitorijuma, verzija i digest, bez promene registry bezbednosnih pravila.</li>
+  <li><strong>Neispravan registry Secret:</strong> događaji sadrže <code>unauthorized</code> ili <code>denied</code>. Potvrđuju se namespace, tip Secret-a, ServiceAccount veza i prava registry naloga. Secret se ne dekodira u change tiket ili javni terminal zapis.</li>
+  <li><strong>Nepouzdan registry sertifikat:</strong> kubelet ili runtime prijavljuje grešku validacije sertifikata. Ispravno rešenje je dodavanje korporativnog CA lanca prema podržanom Tanzu postupku, a ne korišćenje nesigurnog registry-ja.</li>
+  <li><strong>Unschedulable Pod:</strong> <code>kubectl describe pod</code> prikazuje nedovoljan CPU ili memoriju, taint bez toleration-a, neuspešan affinity ili kvotu. Prvo se utvrđuje da li je problem aplikativni zahtev ili kapacitet platforme.</li>
+  <li><strong>CrashLoopBackOff:</strong> pregledaju se trenutni i prethodni logovi komandom <code>kubectl logs --previous</code>, exit code, razlog završetka i konfiguracija. Restartovanje Deployment-a bez razumevanja uzroka samo briše vreme između pokušaja.</li>
+  <li><strong>Readiness neuspeh:</strong> aplikacija je Running, ali nije endpoint Service-a. Proveravaju se putanja, port, timeout, početno vreme i stvarna dostupnost zavisnosti. Ne uklanjati readiness probu da bi rollout formalno postao zelen.</li>
+  <li><strong>OOMKilled:</strong> u statusu prethodnog kontejnera vidi se razlog <code>OOMKilled</code>. Pregledaju se memorijske metrike, limit i ponašanje aplikacije. Povećanje limita bez analize curenja memorije može samo odložiti incident.</li>
+  <li><strong>Ingress nema ADDRESS:</strong> proveravaju se izabrana IngressClass, kontroler, njegov Service i integracija sa load balancer-om. To nije dokaz da je aplikativni Deployment neispravan.</li>
+  <li><strong>HTTP 404 na spoljnom hostu:</strong> utvrđuje se da li odgovor daje Ingress controller ili aplikacija, zatim se proveravaju Host zaglavlje, path, <code>pathType</code> i pravilo. Korelacija se radi sa access logom kontrolera.</li>
+  <li><strong>HTTP 503:</strong> proveravaju se Service port/targetPort, EndpointSlice i readiness. Prazan skup spremnih endpoint-a rešava se na backend sloju, a ne promenom DNS-a.</li>
+  <li><strong>TLS greška:</strong> proveravaju se SNI host, SAN vrednosti, rok važenja, kompletan CA lanac i Secret koji Ingress referencira. <code>curl -k</code> može samo prikriti kvar i ne predstavlja korekciju.</li>
+</ul>
+<h3>Administratorske prakse</h3>
+<p><strong>Kontrola deploy odredišta.</strong> Pre svakog ručnog deploy-a proveravaju se <code>kubectl config current-context</code>, <code>kubectl cluster-info</code> i ciljni namespace. Svako odstupanje od change zahteva prekida postupak. U tiket se beleže kontekst, API endpoint, namespace, identitet operatora i vreme promene. Uspešnost prakse meri se odsustvom deploy-a u pogrešan klaster ili namespace.</p>
+<p><strong>Praćenje rollout-a.</strong> Posle svake promene image-a, konfiguracije, resursa ili probe izvršavaju se <code>kubectl rollout status</code>, pregled Deployment uslova, novih ReplicaSet-ova i Warning događaja. Rollout koji ne napreduje do definisanog roka zahteva zaustavljanje daljih promena i dijagnostiku. Dokumentuju se revizija, trajanje rollout-a, broj spremnih replika i razlog svakog kašnjenja. Stabilno ili kraće vreme rollout-a bez povećanja grešaka predstavlja poboljšanje.</p>
+<p><strong>Kontrola zdravlja Pod-ova.</strong> Nakon deploy-a i posle svakog incidenta prate se readiness, broj restartovanja, CPU, memorija, throttling i razlozi prethodnog završetka. Koriste se <code>kubectl get pods</code>, <code>kubectl describe pod</code>, metrics sistem i centralni monitoring. Novi restart, <code>OOMKilled</code>, trajno visok CPU throttling ili Pod koji nije Ready duže od odobrenog perioda zahtevaju reakciju. Prva reakcija je očuvanje podataka za dijagnostiku, pregled logova i poređenje sa prethodnom verzijom.</p>
+<p><strong>Kontrola image porekla.</strong> Za svaki produkcioni deploy proveravaju se registry projekat, verzija, digest, rezultat bezbednosnog skeniranja i status odobrenja image-a. Provera se obavlja pri svakom novom build-u i pre promocije između okruženja. Nepodudaranje digest-a, kritična ranjivost iznad organizacionog praga ili image bez potvrđenog porekla zaustavljaju implementaciju. U sistemu za artefakte i change zapisu čuvaju se digest, rezultat skeniranja i datum promocije.</p>
+<p><strong>Kontrola registry credentials.</strong> Važenje i obim naloga proveravaju se prema politici organizacije i nakon svake promene registry pristupa. Rotacija se obavlja pre isteka, a zatim se testira kontrolisanim preuzimanjem image-a. <code>ImagePullBackOff</code> sa porukom o autorizaciji zahteva proveru Secret-a i registry naloga, ne restart klastera. Dokumentuju se vlasnik naloga, projekti kojima pristupa i datum rotacije, ali nikada sama tajna.</p>
+<p><strong>Pregled događaja i logova.</strong> Warning događaji proveravaju se tokom rollout-a i neposredno posle njega, dok se centralni logovi i aplikativne greške prate kontinuirano. Ponavljanje iste greške, povećanje stope HTTP 5xx, rast latencije ili gubitak logova zahteva reakciju. Prvo se određuje da li je problem nastao u aplikaciji, konfiguraciji, mreži, registry-ju ili platformi. Incident zapis mora povezati vreme, verziju image-a, Pod, node i relevantni correlation ID.</p>
+<p><strong>Čuvanje i oporavak deploy definicija.</strong> Izvor istine treba da bude verzionisani Git repozitorijum sa manifestima, Helm vrednostima ili GitOps konfiguracijom. Kubernetes YAML iz živog klastera može biti dopunski dokaz, ali nije zamena za kontrolisani izvor. Posle svake odobrene promene proverava se da je commit označen, pregledan i povezan sa change zahtevom. Probni oporavak periodično primenjuje istu verziju u izolovanom namespace-u ili recovery klasteru; backup je upotrebljiv tek kada objekti nastanu, Pod-ovi postanu Ready i funkcionalni test prođe.</p>
+<p>Za stateful aplikacije nije dovoljno sačuvati Deployment manifest. Potrebni su backup aplikativnih podataka, PersistentVolume sadržaja i konfiguracije povezanih servisa, u skladu sa platformskim rešenjem za backup i oporavak. Ova lekcija koristi stateless servis, pa se njegov oporavak zasniva na dostupnom image-u, verzionisanom manifestu, konfiguraciji i ponovljivom procesu deploy-a.</p>
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Aktivni kubeconfig kontekst i API endpoint odgovaraju odobrenom Tanzu workload klasteru.</li>
+  <li>Namespace <code>prod-orders</code> ima status <code>Active</code>, a RBAC provere vraćaju potrebna namespaced prava.</li>
+  <li>Registry Secret postoji u istom namespace-u, pravilnog je tipa i povezan je sa ServiceAccount objektom.</li>
+  <li>Serverski dry-run prihvata manifest bez greške admission politike, kvote ili API šeme.</li>
+  <li>Deployment prikazuje tri željene, ažurirane i dostupne replike.</li>
+  <li>Sva tri Pod-a imaju <code>READY 1/1</code>, koriste image <code>1.4.2</code> i nemaju neočekivane restartove.</li>
+  <li>EndpointSlice sadrži tri spremne adrese koje odgovaraju Pod-ovima aplikacije.</li>
+  <li>Ingress koristi stvarno instaliranu i odobrenu IngressClass, a njegov status i događaji ne pokazuju grešku kontrolera.</li>
+  <li>TLS Secret je pravilnog tipa, sertifikat pokriva host, lanac je pouzdan i rok važenja je prihvatljiv.</li>
+  <li>DNS host pokazuje na odobrenu spoljnu adresu, uz dokumentovan TTL i vlasništvo nad zapisom.</li>
+  <li>Spoljni HTTPS test prolazi bez isključivanja provere sertifikata i vraća očekivanu verziju aplikacije.</li>
+  <li>Funkcionalni endpoint vraća očekivani servis, okruženje i verziju aplikacije.</li>
+  <li>Negativni test nepostojeće putanje vraća dokumentovani neuspešni HTTP status.</li>
+  <li>Nema neobjašnjenih Warning događaja, fatalnih logova, <code>ImagePullBackOff</code>, <code>CrashLoopBackOff</code> ili <code>OOMKilled</code> stanja.</li>
+  <li>Manifest, rollout istorija, rezultat funkcionalnog testa i identifikator promene sačuvani su u odobrenom sistemu evidencije.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razume da deploy nije neposredno pokretanje image-a, već proces usklađivanja deklarisanog i stvarnog stanja kroz Kubernetes API, kontrolere, scheduler, kubelet, kontejnerski runtime i registry. Mora umeti da pripremi ponovljiv manifest, poveže privatni registry, ServiceAccount, konfiguraciju, resurse, zdravstvene provere i bezbednosni kontekst, a zatim da implementaciju prati do stvarno funkcionalne aplikacije.</p>
+<p>Operativna odgovornost obuhvata proveru klastera i namespace-a pre promene, razlikovanje Pending, ImagePullBackOff, CrashLoopBackOff i readiness problema, pregled događaja i logova, proveru Service endpoint-a i dokumentovanje tačne verzije image-a. Uspeh se ne meri samo zelenim statusom Deployment-a, već dostupnošću očekivanog broja replika, prolaskom funkcionalnog testa, odsustvom neobjašnjenih grešaka i postojanjem pouzdanog zapisa o promeni.</p>
+<p>Granice ovlašćenja moraju ostati jasne. Aplikativni administrator ne menja samostalno klasterske bezbednosne politike, registry TLS poverenje, node konfiguraciju ili kapacitet infrastrukture samo da bi deploy prošao. Problemi sa admission kontrolama, nedostatkom resursa, kubeletom, CNI mrežom, registry CA lancem ili platformskim servisima eskaliraju se odgovornom Tanzu ili vSphere timu uz priložene događaje, logove i vreme nastanka. Takva disciplina omogućava da se aplikacija menja brzo, ali bez gubitka kontrole, bezbednosti i odgovornosti u produkcionom okruženju.</p>
+<p>Kompletna implementacija završava se tek kada je dokazan čitav put: tačan i odobren image, pravilno injektovana konfiguracija bez izlaganja tajni, spremne i bezbedno raspoređene replike, Service sa odgovarajućim EndpointSlice adresama, Ingress koji je prihvatio stvarni kontroler, pouzdan TLS i DNS, kao i funkcionalni odgovor kroz istu putanju kojom pristupa korisnik. Administrator je odgovoran i za najmanji bezbedan rollback: vraća samo sloj koji je promena oštetila, čuva dokaze i ne prikriva osnovni uzrok širokim infrastrukturnim intervencijama.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za Deployment i ReplicaSet kontrolere, ConfigMap i Secret objekte, ServiceAccount i privatne registry credentials, resource management, zdravstvene probe, security context, Service i EndpointSlice, Ingress i IngressClass, TLS, DNS dijagnostiku, deklarativni apply, rollout, Events, logging i debugging; zvanična VMware by Broadcom dokumentacija za VMware vSphere Kubernetes Service i Tanzu workload klastere, VKS Standard Packages, Contour i Envoy ingress, load balancer integraciju, pristup klasterima, workload bezbednost i troubleshooting.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-37-platform-services-i-gitops.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-39-viseslojni-bezbednosni-model.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

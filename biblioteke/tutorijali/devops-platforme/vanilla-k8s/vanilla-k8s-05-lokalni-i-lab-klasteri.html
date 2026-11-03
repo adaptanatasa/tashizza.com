@@ -1,0 +1,548 @@
+<!-- biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-05-lokalni-i-lab-klasteri.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>klasteri – kind, minikube i izbor okruženja za učenje | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Lokalni i lab klasteri – upoznajte kind, minikube i kubeadm kao najvažnije alate za kreiranje Kubernetes okruženja za učenje, razvoj, testiranje i laboratorijske vežbe.">
+
+  <meta name="keywords"
+        content="kind, minikube, kubeadm, lokalni Kubernetes, lab klaster, Kubernetes laboratorija, Kubernetes razvoj, Kubernetes testiranje, vanilla Kubernetes, DevOps, cloud native, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-05-lokalni-i-lab-klasteri.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Lokalni i lab klasteri – kind, minikube, kubeadm i praktično okruženje za učenje">
+
+  <meta property="og:description"
+        content="Naučite kako da pripremite sopstveno Kubernetes okruženje za učenje pomoću alata kind, minikube i kubeadm i razumete kada se koji alat koristi.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vanilla-k8s/vanilla-k8s-05-lokalni-i-lab-klasteri.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-05-lokalni-i-lab-klasteri.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Lokalni i lab klasteri – kind, minikube, kubeadm i praktično okruženje za učenje">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>Vanilla Kubernetes</h1>
+
+    <div class="page-subtitle">
+     Prvi deo: Temelji, arhitektura i izgradnja klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vanilla-k8s-05-lokalni-i-lab-klasteri.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vanilla-k8s/og/og-vanilla-k8s-05-lokalni-i-lab-klasteri.png"
+           alt="Lokalni i lab klasteri – kind, minikube, kubeadm i praktično okruženje za učenje">
+
+    </a>
+  <div class="page-subtitle">
+  II. Topologija, komponente i život klastera
+</div>
+
+<div class="page-subtitle">
+  5. Lokalni, razvojni i laboratorijski klasteri – kind, minikube i izbor okruženja za učenje
+</div>
+
+<p>
+  Učenje Kubernetes administracije zahteva okruženje u kojem administrator može bezbedno da kreira i uklanja klastere, menja konfiguraciju, izaziva kontrolisane kvarove, analizira događaje i logove i ponavlja postupke bez uticaja na produkcione servise. Takvo okruženje može biti kratkotrajan klaster čiji su čvorovi kontejneri, lokalni razvojni klaster u virtuelnoj mašini ili kontejneru, odnosno višemašinska laboratorija na unapred pripremljenim Linux čvorovima.
+</p>
+<p>
+  <strong>kind</strong> (<em>Kubernetes IN Docker</em>) i <strong>minikube</strong> rešavaju srodne, ali ne iste probleme. kind je naročito pogodan za brze, deklarativne i automatizovane klastere, uključujući CI testove. minikube objedinjuje lokalni životni ciklus klastera, profile, izbor drajvera, više čvorova i laboratorijske dodatke. <strong>kubeadm</strong>, koji se detaljno obrađuje u sledećoj lekciji, nije treća varijanta istog lokalnog omotača: on na već pripremljenim Linux čvorovima pokreće standardni bootstrap Kubernetes klastera, ali ne obezbeđuje virtuelne mašine, operativni sistem, load balancer, CNI, CSI, monitoring ni backup.
+</p>
+<p>
+  Izbor se zato ne pravi pitanjem „koji je alat najbolji”, već pitanjima: <em>koju hipotezu proveravamo, koji sloj mora biti stvaran, koji kvar želimo da reprodukujemo i koji dokaz prihvatamo kao uspeh</em>. Klaster koji savršeno proverava manifest i rollout može biti potpuno neadekvatan za test kvara fizičkog čvora, mrežne redundanse ili trajnog skladišta.
+</p>
+
+<h3>Namena lokalnog i laboratorijskog klastera</h3>
+<p>
+  Lokalni klaster služi za obrazovanje, razvoj, proveru manifesta, testiranje verzija aplikacije i automatizovane integracione testove. On nije produkciono okruženje samo zato što izlaže isti Kubernetes API. Produkciona pouzdanost zavisi i od dostupnosti kontrolne ravni, quorum-a etcd-a, redundantne mreže, pouzdanog storage-a, kontrole pristupa, centralizovanog observability-ja, upravljanja sertifikatima, backup-a i dokazanih procedura oporavka.
+</p>
+<p>
+  Dobar lab omogućava i neuspeh: pogrešan kontekst, nedostupan worker, neispravan image tag, nedovoljni resursi, neuspešan readiness probe ili zauzet host port. Međutim, simulacija mora odgovarati cilju. Zaustavljanje kind kontejnera može pokazati ponašanje scheduler-a i kontrolera kada čvor postane nedostupan, ali ne dokazuje ponašanje nezavisnih napajanja, hipervizora ili mrežnih putanja.
+</p>
+<p>
+  Svaki ozbiljan laboratorijski test treba da ostavi zapis: verzije alata i Kubernetes-a, topologiju, početno stanje, konfiguraciju, izvršene promene, očekivani i stvarni rezultat, događaje i logove, poznata odstupanja i cleanup ili rollback. Najvredniji artefakti kratkotrajnog klastera nisu njegovi diskovi, već ponovljiva konfiguracija, manifesti, testovi i dokazi.
+</p>
+
+<h3>kind – Kubernetes čvorovi kao kontejneri</h3>
+<p>
+  kind kreira jedan ili više „node” kontejnera. U njima se pokreću kubelet, containerd i Kubernetes komponente, dok kontejnerski sistem hosta obezbeđuje spoljašnji životni ciklus čvorova. Projekat je prvenstveno nastao za testiranje Kubernetes-a, ali je veoma koristan za lokalni razvoj i CI. Klaster se brzo kreira, proverava i uklanja, a konfiguracija se može čuvati uz izvorni kod testa.
+</p>
+<p>
+  Aktuelna zvanična dokumentacija navodi Docker, Podman i nerdctl kao moguće host alate, ali podrška i ponašanje nisu jednaki u svakoj kombinaciji operativnog sistema, rootless režima i mrežne konfiguracije. kind čvorovi interno koriste containerd; Podman podrška i rootless rad zahtevaju proveru aktuelnih ograničenja. Administrator pre izbora evidentira verzije <code>kind</code> i host runtime-a, cgroup režim, raspoložive resurse, slobodne portove i inotify limite.
+</p>
+<pre><code class="language-bash">kind version
+docker version
+docker info
+free -h
+df -h
+sysctl fs.inotify.max_user_watches fs.inotify.max_user_instances</code></pre>
+<p>
+  Sve komande su read-only. Ako se koristi Podman, odgovarajuće provere su <code>podman version</code> i <code>podman info</code>. Niski inotify limiti mogu naročito pogoditi veće lokalne klastere i ingress kontrolere; promena kernel parametara je host-wide promena i ne treba je praviti bez dokazanog simptoma i odobrenja vlasnika radne stanice.
+</p>
+<p>
+  Sledeća deklaracija opisuje jedan control plane i dva worker čvora. Host port <code>8080</code> mapira se na port <code>30080</code> control plane kontejnera, što omogućava kasniji laboratorijski NodePort test. Mapiranje se definiše pri kreiranju klastera; naknadna izmena zahteva ponovno kreiranje čvora odnosno klastera.
+</p>
+<pre><code class="language-yaml">kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: tashizza-kind
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+  - role: worker</code></pre>
+<p>
+  Vezivanje za <code>127.0.0.1</code> ograničava izlaganje na lokalni host i bezbednije je od nenamernog slušanja na svim interfejsima. Višečvorni kind klaster ipak deli procesor, memoriju, disk, kernel i host runtime jedne mašine. On je odličan za raspoređivanje, rollout, API ponašanje i CI, ali nije dokaz infrastrukturne redundanse ni performansi produkcionog storage-a i mreže.
+</p>
+
+<h3>minikube – lokalno razvojno i obrazovno okruženje</h3>
+<p>
+  minikube kreira lokalni Kubernetes klaster pomoću izabranog drajvera. Zavisno od host sistema i drajvera, čvor može biti VM, kontejner ili neposredno host okruženje. Profili predstavljaju međusobno odvojene minikube instance; više profila nije isto što i više čvorova u jednom klasteru. Za višečvorni klaster koristi se podržana multi-node mogućnost, uz proveru ograničenja konkretnog drajvera.
+</p>
+<p>
+  Pre starta ne treba naslepo prihvatiti automatski izabran drajver. VM drajver daje jaču izolaciju i realističniji gostujući sistem, ali troši više resursa. Kontejnerski drajver je brz, ali deli kernel hosta i može imati posebna ograničenja pristupa servisima, naročito na macOS-u, Windows-u i WSL-u. Drajver <code>none</code> menja Linux host uz povišena prava i ne treba ga koristiti na svakodnevnoj radnoj stanici; namenski VM ili drugi izolovani drajver je bezbedniji.
+</p>
+<pre><code class="language-bash">minikube version
+minikube config view
+minikube profile list
+minikube start \
+  --profile tashizza-minikube \
+  --driver=docker \
+  --cpus=4 \
+  --memory=6144 \
+  --disk-size=30g
+
+minikube status --profile tashizza-minikube
+kubectl config current-context
+kubectl get nodes -o wide</code></pre>
+<p>
+  Komanda <code>start</code> menja stanje i kreira klaster; ostale prikazane komande čitaju stanje. Za veoma mali klaster mogu biti dovoljna dva CPU jezgra i približno 2 GB slobodne memorije, ali monitoring, ingress, više aplikacija i kontrolisani kvarovi realno zahtevaju više. Navedene vrednosti su laboratorijski budžet, ne univerzalni minimum.
+</p>
+<p>
+  Add-on mehanizam olakšava vežbe, ali jedna komanda ne zamenjuje razumevanje objekata, privilegija, portova i životnog ciklusa dodatka. Posebno je važno da podrazumevani host-path provisioner u višečvornom minikube klasteru ne predstavlja deljeno produkciono skladište; za testove koji zavise od pristupa volumenu sa različitih čvorova bira se odgovarajući CSI model i dokumentuju njegova ograničenja.
+</p>
+
+<h3>kubeadm – granica prema realističnoj višemašinskoj laboratoriji</h3>
+<p>
+  kubeadm je ovde važan kao kriterijum izbora, dok se njegov bootstrap, endpoint kontrolne ravni i topologija detaljno obrađuju u lekciji 6. Ako cilj zahteva direktan rad sa <code>systemd</code> servisima, instalacijom containerd-a, kubelet journal-om, PKI materijalom, CNI instalacijom, <code>kubeadm join</code> procesom ili kvarom zasebne VM, kind i minikube više nisu dovoljan dokaz.
+</p>
+<p>
+  Referentna sledeća etapa može koristiti tri izolovane Linux VM: <code>k8s-cp01</code> (<code>10.20.30.11</code>), <code>k8s-wk01</code> (<code>10.20.30.21</code>) i <code>k8s-wk02</code> (<code>10.20.30.22</code>). Pod CIDR <code>10.244.0.0/16</code> i Service CIDR <code>10.96.0.0/12</code> ne smeju se preklapati sa mrežom čvorova, VPN-om ili drugim rutiranim opsezima. Jedan control plane je prihvatljiv za učenje, ali nije visoko dostupan.
+</p>
+<p>
+  Za takvu laboratoriju unapred se pripremaju stabilna imena i adrese, sinhronizovano vreme, jedinstvena MAC/IP konfiguracija klonova, podržani Linux release, identične minor verzije Kubernetes paketa, odgovarajući container runtime, pravila komunikacije i snapshot čistih VM pre bootstrap-a. Snapshot je pomoć za reset laboratorije, ne zamena za backup produkcionog klastera.
+</p>
+
+<h3>Izbor odgovarajućeg alata</h3>
+<table>
+  <thead>
+    <tr><th>Kriterijum</th><th>kind</th><th>minikube</th><th>kubeadm na VM/hostovima</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Primarna namena</td><td>Brzi lokalni i CI testovi</td><td>Lokalni razvoj i učenje</td><td>Bootstrap realističnog klastera</td></tr>
+    <tr><td>Model čvorova</td><td>Kontejneri host runtime-a</td><td>VM, kontejner ili poseban Linux režim</td><td>Zasebni fizički ili virtuelni Linux čvorovi</td></tr>
+    <tr><td>Više čvorova</td><td>Jednostavno i deklarativno</td><td>Podržano uz odgovarajući drajver i resurse</td><td>Svaki čvor se priprema i pridružuje</td></tr>
+    <tr><td>systemd, kubelet i runtime na čvoru</td><td>Ograničeno i unutar node kontejnera</td><td>Zavisi od drajvera</td><td>Direktno dostupno na svakom čvoru</td></tr>
+    <tr><td>CI ponovljivost</td><td>Veoma visoka</td><td>Srednja do visoka</td><td>Zahteva dodatnu infrastrukturnu automatizaciju</td></tr>
+    <tr><td>Storage realizam</td><td>Lokalni/testni</td><td>Lokalni; multi-node zahteva poseban oprez</td><td>Zavisi od stvarnog CSI/storage dizajna</td></tr>
+    <tr><td>Kvar nezavisnog hosta</td><td>Ne simulira</td><td>Samo ako topologija zaista koristi odvojene hostove</td><td>Može se realno vežbati</td></tr>
+    <tr><td>Produkciona osnova</td><td>Ne</td><td>Ne</td><td>Može biti deo rešenja uz HA, mrežu, storage, bezbednost i operacije</td></tr>
+    <tr><td>Cleanup</td><td>Brz: brisanje klastera</td><td>Stop čuva stanje; delete uklanja profil</td><td>Reset plus infrastrukturni cleanup ili povratak snapshot-a</td></tr>
+  </tbody>
+</table>
+<p>
+  Praktičan obrazovni redosled je: kind za ponovljiv API i CI scenario, minikube za profile, drajvere i lokalne dodatke, pa kubeadm na VM za operativni sloj čvora. Nije obavezno koristiti sva tri za svaku vežbu. Dobar administrator bira najmanje složeno okruženje koje verno predstavlja sloj pod testom.
+</p>
+
+<h3>Projektovanje praktičnog okruženja za učenje</h3>
+<ul>
+  <li><strong>Izolacija:</strong> laboratorija nema kredencijale za produkcione registre, cloud naloge, vCenter, DNS ili mrežne uređaje; host portovi se izlažu samo koliko test zahteva.</li>
+  <li><strong>Kapacitet:</strong> unapred se određuje budžet CPU-a, memorije, diska, broja klastera i image cache-a. Paralelni lokalni klasteri mogu iscrpeti host i proizvesti lažne Kubernetes simptome.</li>
+  <li><strong>Verzije:</strong> beleže se verzije kind/minikube, Kubernetes node image-a, kubectl-a, runtime-a i dodataka. U julu 2026. podržane upstream minor grane su 1.36, 1.35 i 1.34; koristi se aktuelni patch odabrane podržane grane, ne neodređeno <code>latest</code>.</li>
+  <li><strong>Mreža:</strong> proveravaju se sukobi host portova, VPN ruta, proxy-ja, DNS-a i CIDR opsega. Dostupnost NodePort-a i LoadBalancer-a zavisi od drajvera i host operativnog sistema.</li>
+  <li><strong>Podaci:</strong> testni podaci su sintetički. Manifesti i dokazi čuvaju se izvan kratkotrajnog klastera; lokalni volume nije automatski prenosiv ni redundantan.</li>
+  <li><strong>Identitet:</strong> pre svake state-changing komande proveravaju se aktivni kontekst i namespace. Kubeconfig se štiti dozvolama i ne objavljuje.</li>
+  <li><strong>Ponovljivost:</strong> klaster mora moći da se napravi iz deklaracije i validira automatizovanim proverama. Ručna, nezabeležena intervencija je konfiguracioni drift.</li>
+</ul>
+
+<hr>
+
+<h3>Integrisani praktikum – isti workload na kind i minikube klasteru</h3>
+<p><strong>Kontekst i cilj.</strong> Tim želi da utvrdi koje lokalno okruženje je pogodnije za ponovljive CI testove, a koje za interaktivnu obuku. Kreiraće se odvojeni kind i minikube klaster, primeniti isti workload, izvršiti funkcionalni i negativni test, prikupiti dokazi i bezbedno ukloniti okruženja.</p>
+<p><strong>Preduslovi i rizik.</strong> Potrebni su <code>kubectl</code>, kind, minikube i funkcionalan Docker drajver, najmanje 4 CPU jezgra, 8–12 GB slobodne memorije i dovoljno diska. Komande se izvršavaju kao običan lokalni korisnik koji ima odobren pristup runtime-u. Članstvo u Docker grupi praktično daje veoma visoka prava nad hostom; nije bezbednosno ekvivalentno običnom neprivilegovanom nalogu. Ne koristiti produkcioni kubeconfig niti port 8080 ako ga koristi drugi servis.</p>
+
+<ol>
+  <li>
+    <strong>Sačuvati početno stanje i proveriti identitet alata.</strong>
+    <pre><code class="language-bash">mkdir -p "$PWD/lab-evidence"
+kind version | tee "$PWD/lab-evidence/kind-version.txt"
+minikube version | tee "$PWD/lab-evidence/minikube-version.txt"
+kubectl version --client -o yaml | tee "$PWD/lab-evidence/kubectl-version.yaml"
+docker version | tee "$PWD/lab-evidence/docker-version.txt"
+kubectl config get-contexts | tee "$PWD/lab-evidence/contexts-before.txt"
+ss -lnt | grep ':8080 ' || true</code></pre>
+    <p><strong>Validacija:</strong> svi alati vraćaju verziju, runtime je dostupan, a port 8080 nije zauzet. Ove komande ne menjaju klaster; <code>mkdir</code> samo kreira lokalni direktorijum za dokaze.</p>
+  </li>
+  <li>
+    <strong>Kreirati deklaraciju i kind klaster.</strong>
+    <pre><code class="language-bash">cat &gt; "$PWD/kind-lab.yaml" &lt;&lt;'EOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: tashizza-kind
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+  - role: worker
+EOF
+
+kind create cluster --config "$PWD/kind-lab.yaml" --wait 120s
+kubectl config current-context
+kubectl get nodes -o wide</code></pre>
+    <p><strong>Očekivani rezultat:</strong> kontekst je <code>kind-tashizza-kind</code>, a tri čvora su <code>Ready</code>. Ako kreiranje ne uspe, prvo se pregledaju host resursi, runtime i <code>kind export logs</code>; klaster se ne kreira naslepo preko delimičnog stanja.</p>
+  </li>
+  <li>
+    <strong>Kreirati minikube profil i potvrditi izolaciju konteksta.</strong>
+    <pre><code class="language-bash">minikube start \
+  --profile tashizza-minikube \
+  --driver=docker \
+  --nodes=2 \
+  --cpus=2 \
+  --memory=3072 \
+  --disk-size=20g
+
+minikube status --profile tashizza-minikube
+kubectl config get-contexts
+kubectl config current-context
+kubectl get nodes -o wide</code></pre>
+    <p><strong>Validacija:</strong> aktivni kontekst pripada minikube profilu i oba čvora su <code>Ready</code>. Vrednosti CPU-a i memorije primenjuju se po modelu koji implementira konkretan drajver; stvarnu alokaciju potvrditi izlazom čvorova i runtime-a, ne pretpostavkom.</p>
+  </li>
+  <li>
+    <strong>Napraviti zajednički manifest sa eksplicitnim resursima i health proverom.</strong>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-web
+  namespace: lab-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: lab-web
+  template:
+    metadata:
+      labels:
+        app: lab-web
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: lab-web
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab-web
+  namespace: lab-app
+spec:
+  type: NodePort
+  selector:
+    app: lab-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30080</code></pre>
+    <p>Manifest sačuvati kao <code>lab-web.yaml</code>. Fiksni NodePort služi mapiranju u kind-u; pre produkcione primene ovakav izbor mora proći politiku portova i mrežnog izlaganja.</p>
+  </li>
+  <li>
+    <strong>Primeniti i validirati workload na kind-u.</strong>
+    <pre><code class="language-bash">kubectl config use-context kind-tashizza-kind
+kubectl diff -f "$PWD/lab-web.yaml" || test $? -eq 1
+kubectl apply -f "$PWD/lab-web.yaml"
+kubectl rollout status deployment/lab-web -n lab-app --timeout=120s
+kubectl get pods,service,endpointslices -n lab-app -o wide
+curl -fsS http://127.0.0.1:8080/ &gt;/dev/null
+curl -fsS http://127.0.0.1:8080/ -o "$PWD/lab-evidence/kind-http.html"</code></pre>
+    <p><strong>Validacija:</strong> Deployment ima tri dostupne replike, Service ima spremne EndpointSlice adrese, a oba HTTP zahteva završavaju kodom 0. <code>kubectl diff</code> koristi izlazni kod 1 kada razlika postoji; prikazana zaštita prihvata samo očekivanu razliku, ne i druge greške.</p>
+  </li>
+  <li>
+    <strong>Primeniti isti workload na minikube-u i testirati pristup na način drajvera.</strong>
+    <pre><code class="language-bash">kubectl config use-context tashizza-minikube
+kubectl apply -f "$PWD/lab-web.yaml"
+kubectl rollout status deployment/lab-web -n lab-app --timeout=120s
+kubectl get pods,service,endpointslices -n lab-app -o wide
+minikube service lab-web \
+  --profile tashizza-minikube \
+  --namespace lab-app \
+  --url</code></pre>
+    <p><strong>Validacija:</strong> rollout je uspešan i komanda vraća URL. Na nekim host/drajver kombinacijama komanda održava tunel dok proces radi; URL se testira u drugom terminalu komandom <code>curl -fsS &lt;URL&gt;</code>. Ne zaključivati da Node IP mora biti direktno rutabilan sa hosta.</p>
+  </li>
+  <li>
+    <strong>Izazvati bezbedan scheduler kvar i razlikovati ga od runtime kvara.</strong>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: lab-unschedulable
+  namespace: lab-app
+spec:
+  containers:
+    - name: pause
+      image: registry.k8s.io/pause:3.10
+      resources:
+        requests:
+          memory: 1000Gi</code></pre>
+    <p>Manifest sačuvati kao <code>lab-unschedulable.yaml</code>, zatim primeniti na jednom od laboratorijskih konteksta:</p>
+    <pre><code class="language-bash">kubectl apply -f "$PWD/lab-unschedulable.yaml"
+kubectl get pod lab-unschedulable -n lab-app -o wide
+kubectl describe pod lab-unschedulable -n lab-app
+kubectl get events -n lab-app \
+  --field-selector involvedObject.name=lab-unschedulable \
+  --sort-by=.metadata.creationTimestamp
+kubectl delete pod lab-unschedulable -n lab-app</code></pre>
+    <p><strong>Očekivani rezultat:</strong> Pod ostaje <code>Pending</code>, nema dodeljen čvor, a događaj ukazuje na nedovoljnu memoriju. Kod <code>ImagePullBackOff</code> čvor je već izabran; to je druga grana dijagnostike. Brisanje testnog Poda je bezbedna korektivna akcija.</p>
+  </li>
+  <li>
+    <strong>Simulirati nedostupan kind worker i prikupiti dokaze pre korekcije.</strong>
+    <p><strong>Laboratorijsko upozorenje:</strong> sledeća komanda zaustavlja samo node kontejner tačno imenovanog kind klastera. Najpre potvrditi identitet.</p>
+    <pre><code class="language-bash">kubectl config use-context kind-tashizza-kind
+docker ps --filter label=io.x-k8s.kind.cluster=tashizza-kind
+docker stop tashizza-kind-worker2
+kubectl get nodes -w</code></pre>
+    <p>Kada čvor postane <code>NotReady</code>, prikupiti stanje i vratiti ga:</p>
+    <pre><code class="language-bash">kubectl describe node tashizza-kind-worker2 \
+  &gt; "$PWD/lab-evidence/kind-worker2-notready.txt"
+kubectl get events -A --sort-by=.metadata.creationTimestamp \
+  &gt; "$PWD/lab-evidence/kind-events.txt"
+docker start tashizza-kind-worker2
+kubectl wait --for=condition=Ready node/tashizza-kind-worker2 --timeout=180s
+kubectl get pods -n lab-app -o wide</code></pre>
+    <p><strong>Tumačenje:</strong> simptom je <code>NotReady</code>; neposredni uzrok je zaustavljen node kontejner; osnovni uzrok je namerna laboratorijska promena. Privremeno rešenje i rollback su ponovno pokretanje istog kontejnera. Test ne dokazuje HA fizičke infrastrukture.</p>
+  </li>
+  <li>
+    <strong>Prikupiti završne dokaze i izvršiti cleanup.</strong>
+    <pre><code class="language-bash">for context in kind-tashizza-kind tashizza-minikube; do
+  kubectl --context "$context" get nodes -o wide \
+    &gt; "$PWD/lab-evidence/${context}-nodes.txt"
+  kubectl --context "$context" get pods -A -o wide \
+    &gt; "$PWD/lab-evidence/${context}-pods.txt"
+done
+
+tar -czf "$PWD/tashizza-local-lab-evidence.tar.gz" lab-evidence
+sha256sum "$PWD/tashizza-local-lab-evidence.tar.gz"
+
+kind delete cluster --name tashizza-kind
+minikube delete --profile tashizza-minikube
+kubectl config get-contexts</code></pre>
+    <p><strong>Kriterijum završetka:</strong> arhiva i kontrolna suma postoje; oba laboratorijska klastera su uklonjena; njihovi konteksti više nisu aktivni. Pre brisanja mora se potvrditi da u klasterima nema jedine kopije manifesta, slika ili testnih podataka. Ako se vežba nastavlja kasnije, <code>minikube stop --profile tashizza-minikube</code> čuva stanje i nije isto što i <code>delete</code>.</p>
+  </li>
+</ol>
+
+<h3>Logovi i razlikovanje tipičnih problema</h3>
+<table>
+  <thead><tr><th>Simptom</th><th>Prvi dokaz</th><th>Verovatni sloj</th><th>Bezbedna sledeća provera</th></tr></thead>
+  <tbody>
+    <tr><td>Klaster se ne kreira</td><td>kind/minikube izlaz i verzije</td><td>Host resursi, runtime, drajver, port</td><td><code>docker info</code>, slobodan disk, zauzeti portovi; zatim <code>kind export logs</code> ili <code>minikube logs</code></td></tr>
+    <tr><td>Pod je <code>Pending</code> bez čvora</td><td><code>kubectl describe pod</code> i Events</td><td>Scheduler, resursi, affinity/taints</td><td>Uporediti zahteve Poda sa allocatable resursima i pravilima raspoređivanja</td></tr>
+    <tr><td><code>ContainerCreating</code></td><td>Pod Events</td><td>CNI, volume, sandbox ili runtime</td><td>Pregled događaja, node stanja i runtime/CNI logova</td></tr>
+    <tr><td><code>ImagePullBackOff</code></td><td>Pod Events</td><td>Ime slike, registry, mreža ili autentikacija</td><td>Proveriti puni image reference, registry pristup i imagePullSecret bez ispisivanja tajne</td></tr>
+    <tr><td><code>CrashLoopBackOff</code></td><td><code>kubectl logs --previous</code></td><td>Aplikacioni proces ili konfiguracija</td><td>Uporediti exit code, probe, argumente i prethodne logove</td></tr>
+    <tr><td>Čvor je <code>NotReady</code></td><td><code>kubectl describe node</code></td><td>Kubelet, runtime, CNI ili host</td><td>Utvrditi da li je node kontejner/VM aktivan; zatim ciljano pregledati logove</td></tr>
+    <tr><td>Service nema odgovor</td><td>Service i EndpointSlice</td><td>Selector, readiness, mreža ili način izlaganja</td><td>Najpre test unutar klastera, zatim driver-specifičan host pristup</td></tr>
+  </tbody>
+</table>
+<pre><code class="language-bash">kubectl describe pod &lt;POD&gt; -n &lt;NAMESPACE&gt;
+kubectl logs &lt;POD&gt; -n &lt;NAMESPACE&gt; --all-containers
+kubectl logs &lt;POD&gt; -n &lt;NAMESPACE&gt; --previous
+kubectl describe node &lt;NODE&gt;
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+
+kind export logs "$PWD/kind-logs" --name tashizza-kind
+minikube logs --profile tashizza-minikube --last-start-only</code></pre>
+<p>
+  Redosled je važan: potvrditi aktivni kontekst, obim i vreme incidenta; prikupiti događaje i stanje; postaviti hipotezu; tek zatim menjati stanje. Nasumični restart svih komponenti uništava dokaze i može privremeno sakriti osnovni uzrok. Normalno stanje nije odsustvo svih upozorenja: kratki događaji tokom bootstrap-a i image pull-a mogu biti očekivani, ali trajanje izvan kriterijuma, rast restartovanja ili gubitak funkcije zahteva reakciju.
+</p>
+
+<h3>Rollback i cleanup laboratorije</h3>
+<p>
+  Aplikacioni rollback i uklanjanje klastera nisu isto. Manifest se uklanja komandom <code>kubectl delete -f lab-web.yaml</code>; kind klaster komandom <code>kind delete cluster --name tashizza-kind</code>; minikube profil komandom <code>minikube delete --profile tashizza-minikube</code>. <code>minikube stop</code> samo zaustavlja VM ili kontejner i čuva stanje za kasniji start.
+</p>
+<p>
+  Ručno brisanje runtime volumena, mreža ili celog image cache-a nije standardni prvi cleanup. Takve host-wide komande mogu pogoditi druge projekte. Ako deklarativno brisanje ne uspe, najpre se potvrđuju vlasništvo objekata, label-e klastera i preostali procesi, a zatim se primenjuje ciljano dokumentovan postupak iz troubleshooting reference konkretnog alata.
+</p>
+<p>
+  Za buduću kubeadm VM laboratoriju bezbedniji povratak često je provereni snapshot napravljen pre <code>kubeadm init</code>. <code>kubeadm reset</code> jeste destruktivna čvorovska operacija i ne mora ukloniti sve CNI interfejse, firewall pravila, kubeconfig datoteke ili storage podatke; njegov kompletan postupak pripada narednoj lekciji.
+</p>
+
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Biraj okruženje prema dokazu.</strong> Manifest i API test ne zahtevaju tri VM; kvar nezavisnog čvora i systemd dijagnostika zahtevaju realističniji sloj.</li>
+  <li><strong>Verzioniši konfiguraciju.</strong> kind konfiguracije, manifesti, verzije alata i test skripte pripadaju kontrolisanom repozitorijumu; tokeni i kubeconfig kredencijali ne pripadaju.</li>
+  <li><strong>Proveri kontekst pre promene.</strong> Koristi <code>kubectl config current-context</code> ili eksplicitni <code>--context</code>. Nazivi lab klastera moraju biti jasno različiti od produkcionih.</li>
+  <li><strong>Ograniči izlaganje.</strong> Host portove veži za loopback kad spoljni pristup nije potreban; ne uključuj dodatke i tunele bez razumevanja pravila koja stvaraju.</li>
+  <li><strong>Prati kapacitet hosta.</strong> Pre paralelnog rada proveri RAM, disk, CPU, inotify i runtime cache. Ne briši slike i volumene bez potvrde vlasništva.</li>
+  <li><strong>Prikupi dokaz pre restarta.</strong> Sačuvaj stanje, događaje i logove za relevantan vremenski period; korekcija mora potvrditi ili odbaciti postavljenu hipotezu.</li>
+  <li><strong>Odvoji stop, delete i rollback.</strong> Zaustavljanje čuva stanje; delete uklanja klaster; rollback vraća poznatu verziju konfiguracije ili snapshot. Svaka radnja ima različit cilj i rizik.</li>
+  <li><strong>Ponovo kreiraj laboratoriju periodično.</strong> Uspeh nije „još radi”, već mogućnost da drugi administrator od čistog stanja dobije isti rezultat i dokaze.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Umeš da obrazložiš kada kind, minikube ili kubeadm VM laboratorija daju valjan dokaz, a kada ne.</li>
+  <li>Razlikuješ više minikube profila od više čvorova jednog klastera.</li>
+  <li>Možeš deklarativno kreirati višečvorni kind klaster i bezbedno izložiti testni NodePort samo na loopback adresi.</li>
+  <li>Možeš kreirati minikube profil sa eksplicitnim drajverom i resursima i validirati aktivni kontekst.</li>
+  <li>Isti manifest uspešno primenjuješ i funkcionalno proveravaš na oba lokalna okruženja.</li>
+  <li>Događajima dokazuješ zašto Pod ostaje <code>Pending</code> i razlikuješ scheduler, image pull i crash simptom.</li>
+  <li>Kontrolisano simuliraš i vraćaš nedostupan kind worker bez tvrdnje da je time dokazana infrastrukturna HA.</li>
+  <li>Prikupljaš verzije, stanje, događaje i logove pre promene i čuvaš arhivu sa kontrolnom sumom.</li>
+  <li>Razlikuješ aplikacioni cleanup, <code>minikube stop</code>, brisanje klastera i infrastrukturni rollback.</li>
+  <li>Možeš da definišeš preduslove za sledeću kubeadm laboratoriju bez prerane improvizacije na produkcionoj infrastrukturi.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>
+  Lokalni i laboratorijski klasteri nisu umanjena produkcija, već instrumenti za različite vrste dokaza. kind pruža brz, deklarativan i automatizaciji pogodan klaster sa kontejnerskim čvorovima. minikube pruža bogato lokalno razvojno okruženje sa profilima, drajverima, multi-node mogućnošću i laboratorijskim dodacima. kubeadm na zasebnim čvorovima postaje pravi izbor tek kada cilj zahteva operativni sloj Linux hosta, kubeleta, runtime-a, PKI-ja, CNI-ja i topologije kontrolne ravni.
+</p>
+<p>
+  Ključna administratorska veština nije samo pokretanje komande, već pravilno određivanje granice zaključka. Uspešan rollout u kind-u dokazuje ponašanje Kubernetes objekata u tom testu; ne dokazuje redundantnu mrežu, enterprise storage ni oporavak od fizičkog kvara. Uspešan minikube add-on dokazuje funkcionalnost lokalne implementacije; ne predstavlja automatski odobren produkcioni dizajn.
+</p>
+<p>
+  Posle ove lekcije čitalac ume da izabere okruženje, dokumentuje početno stanje, podigne dva različita lokalna klastera, primeni isti workload, proveri saobraćaj, izazove bezbedan kvar, dijagnostikuje ga dokazima i izvrši kontrolisan cleanup. Time je pripremljen za lekciju 6, u kojoj lokalna pogodnost ustupa mesto eksplicitnoj odgovornosti za kubeadm bootstrap i topologiju klastera.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Kubernetes dokumentacija za izbor modela instalacije, podržane release grane, kubectl kontekste, događaje i debugging; zvanične kind korisničke, konfiguracione, rootless i troubleshooting reference; zvanična minikube dokumentacija za profile, drajvere, multi-node klastere, pristup servisima, add-on komponente, logove, stop i delete životni ciklus; zvanične kubeadm arhitektonske i instalacione reference korišćene za razgraničenje lokalnog i višemašinskog laboratorijskog modela.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    Vanilla Kubernetes
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vanilla-k8s-04-kubernetes-ekosistem.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vanilla-k8s-06-kubeadm-i-topologija-klastera.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

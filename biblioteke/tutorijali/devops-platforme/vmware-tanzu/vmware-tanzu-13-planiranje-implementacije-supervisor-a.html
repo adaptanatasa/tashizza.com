@@ -1,0 +1,481 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-13-planiranje-implementacije-supervisor-a.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Planiranje Supervisor implementacije – klaster, zone, mreža, storage i upravljačke adrese | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Planiranje vSphere Supervisor implementacije – izbor klastera i zona, mrežna i storage arhitektura, kapacitet i upravljačke adrese.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, vSphere Supervisor, planiranje implementacije, klaster, zone, mreža, storage, upravljačke adrese, VKS, Kubernetes, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-13-planiranje-implementacije-supervisor-a.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Planiranje Supervisor implementacije – klaster, zone, mreža, storage i upravljačke adrese">
+
+  <meta property="og:description"
+        content="Trinaesta lekcija VMware &amp; Tanzu tutorijala – planiranje klastera, zona, mreže, storage-a i upravljačkih adresa Supervisor-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-13-planiranje-implementacije-supervisor-a.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-13-planiranje-implementacije-supervisor-a.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Planiranje Supervisor implementacije – klaster, zone, mreža, storage i upravljačke adrese">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-13-planiranje-implementacije-supervisor-a.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-13-planiranje-implementacije-supervisor-a.png"
+           alt="Planiranje Supervisor implementacije – klaster, zone, mreža, storage i upravljačke adrese">
+
+    </a>
+
+   <div class="page-subtitle">
+  IV. Omogućavanje i početna validacija Supervisor-a
+</div>
+
+<div class="page-subtitle">
+  13. Planiranje Supervisor implementacije – klaster, zone, mreža, storage i upravljačke adrese
+</div>
+
+<p>Prethodna lekcija pretvorila je readiness assessment u odluku da li organizacija sme da započne implementaciju. Ova lekcija tu odluku prevodi u izvršiv i proverljiv dizajn: bira se vSphere klaster ili skup zona, određuju se failure domain-i, rezervišu resursi i IP adrese, potvrđuju mrežni putevi i load balancer, mapiraju storage politike i definišu kriterijumi za zaustavljanje promene. Tek kada su te stavke dokumentovane i nezavisno proverene, administrator treba da pređe na omogućavanje Supervisor-a iz naredne lekcije.</p>
+
+<p>Plan nije snimak ekrana popunjenog čarobnjaka. On je ugovor između platformskog, vSphere, mrežnog, storage, bezbednosnog i aplikacionog tima: za svako polje mora postojati vlasnik, izvor istine, dokaz da je vrednost slobodna i podržana, posledica eventualne promene i način oporavka. Posebno treba razlikovati <strong>one-zone Supervisor</strong>, koji koristi jedan vSphere klaster, od <strong>three-zone Supervisor</strong> topologije, u kojoj su tri vSphere klastera mapirana na tri vSphere Zone objekta. Zona je planski failure domain; nije sinonim za VLAN, rack, datastore niti Kubernetes namespace.</p>
+
+<h3>Ciljevi lekcije i granica odgovornosti</h3>
+
+<p>Po završetku lekcije administrator treba da ume da izradi odobren Supervisor deployment workbook, dokaže usklađenost izabranih resursa sa aktuelnom Broadcom Compatibility Guide i dokumentacijom za tačan vSphere/VCF build, obrazloži izbor mrežnog modela i topologije, izračuna IP kapacitet bez preklapanja, potvrdi SPBM kompatibilnost i definiše rollback granicu. Ova lekcija ne aktivira Workload Management, ne kreira produkcione namespace-e i ne iscrpljuje kasnije teme VKS mreže, storage-a i životnog ciklusa.</p>
+
+<div class="note">
+  <strong>Verzijska napomena:</strong> nazivi proizvoda, dostupni load balancer-i, podržane topologije, licence, minimalni build-ovi i polja čarobnjaka menjali su se kroz vSphere 7, vSphere 8 i VCF 9 dokumentaciju. Istorijski nazivi <em>vSphere with Tanzu</em>, <em>Supervisor Cluster</em>, <em>TKG Service</em> i <em>TKGS</em> mogu se pojaviti u starijim KB člancima i logovima. U aktuelnom projektu koristimo termine <strong>vSphere Supervisor</strong> i <strong>vSphere Kubernetes Service (VKS)</strong>, ali matricu podrške uvek zaključavamo za stvarni build, licencu i izabrani networking model.
+</div>
+
+<h3>Od poslovnog zahteva do arhitektonske odluke</h3>
+
+<p>Najpre se definišu workload profili: broj očekivanih VKS klastera, najveći broj control plane i worker VM-ova, potrebni Kubernetes servisi tipa <code>LoadBalancer</code>, očekivani broj namespace-a, vrste persistent volume-a, zahtevi za enkripciju, RPO/RTO, zone dostupnosti i rast u narednih 12–24 meseca. Bez ovih podataka izbor veličine Supervisor control plane-a, adresnih opsega i storage politika ostaje nagađanje.</p>
+
+<table>
+  <thead>
+    <tr><th>Odluka</th><th>Dokaz pre implementacije</th><th>Posledica pogrešnog izbora</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>One-zone ili three-zone</td><td>Mapirani failure domain-i, kapacitet tokom održavanja i podržana topologija</td><td>Lažan osećaj dostupnosti ili prevelika operativna složenost</td></tr>
+    <tr><td>NSX ili vSphere networking</td><td>Podržani build-ovi, load balancer, routability, firewall i operativna znanja</td><td>Nedostupni servisi, preklapanje opsega ili dizajn koji se teško menja</td></tr>
+    <tr><td>Control plane veličina</td><td>Workload profil, zvanične sizing vrednosti i slobodan HA kapacitet</td><td>Throttling i nestabilnost ili nepotrebno rezervisani resursi</td></tr>
+    <tr><td>Management i workload IP plan</td><td>IPAM rezervacija, DNS/NTP testovi, ruta i firewall matrica</td><td>Implementacija ostaje u stanju <code>Configuring</code> ili dolazi do konflikta adresa</td></tr>
+    <tr><td>SPBM politike</td><td>Kompatibilni datastore-i, fault tolerance, kapacitet i performanse</td><td>Control plane ili workload diskovi ne mogu da se postave ili ostanu non-compliant</td></tr>
+  </tbody>
+</table>
+
+<h3>Izbor klastera, zona i failure domain-a</h3>
+
+<p>Izabrani vSphere klaster mora biti zdrav, podržan, licenciran i konfigurisan tako da HA i DRS mogu da održavaju Supervisor control plane VM-ove tokom kvara i planiranog održavanja. DRS ne treba posmatrati samo kao optimizator performansi: on je deo mehanizma placement-a. Broadcom zahtevi za zonalne topologije traže odgovarajući DRS režim, a konkretne vrednosti i minimalan broj hostova proveravaju se za ciljnu verziju. Produkcioni dizajn mora imati dovoljno slobodnog kapaciteta da preživi definisani failure domain i istovremeno omogući maintenance mode bez gašenja platforme.</p>
+
+<p>Three-zone Supervisor nije jednostavno „veći klaster”. Tri odvojena vSphere klastera predstavljaju tri zone, sa nezavisnim resursima i pažljivo projektovanim mrežnim i storage zavisnostima. Zvanična dokumentacija za vSphere 8 zonalne topologije preporučuje najmanje tri hosta po zoni; za vSAN se u relevantnim konfiguracijama zahteva ili preporučuje dodatni host radi održavanja i quorum-a. Tačan minimum ne prepisuje se iz ove lekcije u change record, već se potvrđuje za stvarnu kombinaciju vSphere, vSAN, NSX/Avi i hardvera.</p>
+
+<ul>
+  <li><strong>One-zone</strong> je razuman izbor za laboratoriju, manju platformu ili kada aplikaciona dostupnost postoji iznad infrastrukturnog sloja, ali kvar celog vSphere klastera ostaje zajednički failure domain.</li>
+  <li><strong>Three-zone</strong> povećava otpornost na kvar zone, ali zahteva simetrično planiranje kapaciteta, mreže, storage-a, operacija i testiranja. Ne rešava automatski backup, aplikacionu replikaciju ni katastrofu vCenter domena.</li>
+  <li><strong>vSAN stretched cluster</strong> i three-zone Supervisor nisu ista topologija. Stretched cluster ima sopstvena pravila fault domain-a, witness-a, storage politike i failure scenarije; ne sme se modelovati kao tri nezavisne zone bez eksplicitne podrške.</li>
+</ul>
+
+<h4>Kontrola kapaciteta i placement-a</h4>
+
+<p>Plan kapaciteta obuhvata Supervisor control plane VM-ove, VKS node VM-ove, platform services, load balancer komponente, image/content library saobraćaj, persistent volume-e i rezervu za oporavak. Prosečna iskorišćenost nije dovoljan podatak. Potrebno je dokazati scenario <em>N+1</em> ili stroži poslovni cilj: nakon gubitka najvećeg hosta ili cele zone, preostali resursi moraju da prime kritične workload-e bez kršenja HA admission control politike.</p>
+
+<p>Veličina Supervisor control plane-a bira se iz zvanično ponuđenih sizing profila za izdanje. Na primer, vSphere 8 dokumentacija za određene three-zone postupke prikazuje profile Tiny, Small, Medium i Large, ali njihove CPU/RAM vrednosti i granice nisu univerzalna konstanta. Zabeležiti izabrani profil, razlog, procenjeni broj objekata i datum ponovne procene. Promena profila posle aktivacije može biti podržana, ali nije zamena za početno planiranje.</p>
+
+<h3>Mrežni model: NSX ili vSphere networking</h3>
+
+<p>Mrežni model je jedna od najteže promenljivih odluka. <strong>NSX networking</strong> obezbeđuje integrisan overlay, rutiranje, segmentaciju i automatizaciju mreža za Kubernetes objekte, uz zavisnost od ispravno projektovanog NSX transportnog i edge sloja. <strong>vSphere networking</strong> koristi vSphere Distributed Switch port grupe i spoljašnji load balancer podržan za izdanje; jednostavniji je tamo gde NSX nije uveden, ali zahteva eksplicitnije IPAM, VLAN, rutiranje i adresne pool-ove. Izbor se ne svodi na licencu: procenjuju se bezbednosni model, broj tenant-a, operativne veštine, troubleshooting granice i budući rast.</p>
+
+<table>
+  <thead>
+    <tr><th>Oblast</th><th>NSX model</th><th>vSphere networking model</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Osnovni dataplane</td><td>NSX transport nodes, overlay/VLAN segmenti i Edge funkcije</td><td>vSphere Distributed Switch i distributed port groups</td></tr>
+    <tr><td>Load balancing</td><td>Zavisi od podržane NSX/Avi integracije za izdanje</td><td>Spoljašnji load balancer, istorijski i HAProxy u podržanim vSphere 7/8 scenarijima; aktuelnu matricu obavezno proveriti</td></tr>
+    <tr><td>Segmentacija</td><td>Dublja integracija sa NSX politikama i topologijom</td><td>VLAN/routed segmentacija i kontrole van Kubernetes sloja</td></tr>
+    <tr><td>Operativni rizik</td><td>Više međuzavisnih NSX komponenti i logova</td><td>Veća zavisnost od ručnog IPAM-a, ruta i tačne konfiguracije port grupa</td></tr>
+    <tr><td>Pre-change dokaz</td><td>Transport node, TEP, Edge, Tier-0/Tier-1 i routing zdravlje</td><td>vDS članstvo, VLAN reachability, MTU, load balancer API/data plane i pool kapacitet</td></tr>
+  </tbody>
+</table>
+
+<div class="warning">
+  <strong>Važno:</strong> stari PowerCLI primeri i dokumenti mogu pominjati <code>NCP</code>, <code>NSX-T</code> ili HAProxy parametre koji nisu preporučeni ili dostupni u svim aktuelnim izdanjima. Ne kopirati istorijski <code>Enable-WMCluster</code> primer bez poređenja sa sintaksom instaliranog VCF PowerCLI modula i dokumentacijom ciljnog build-a.
+</div>
+
+<h3>Mrežne ravni i adresni plan</h3>
+
+<p>Plan mora razdvojiti najmanje management mrežu Supervisor control plane-a, workload/node mreže, Kubernetes Pod CIDR, Service CIDR, ingress/load-balancer opsege i egress/SNAT opsege kada ih model koristi. Ove ravni mogu fizički deliti infrastrukturu u malom laboratorijskom okruženju, ali moraju ostati logički dokumentovane. U produkciji treba težiti jasnim sigurnosnim zonama, routability pravilima i vlasništvu nad svakim opsegom.</p>
+
+<table>
+  <thead>
+    <tr><th>Opseg ili mreža</th><th>Namena</th><th>Ključna provera</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Management network</td><td>Interfejsi Supervisor control plane VM-ova i floating/VIP adresa</td><td>Rezervisan blok, gateway, DNS, NTP, MTU i bidirekcioni putevi ka vCenter/ESXi zavisnostima</td></tr>
+    <tr><td>Workload/node network</td><td>VKS node VM-ovi i/ili namespace mreže</td><td>VLAN/segment, DHCP ili statički pool, ruta, DNS i bezbednosna pravila</td></tr>
+    <tr><td>Pod CIDR</td><td>Adrese Pod-ova u modelima koji ih eksplicitno dodeljuju</td><td>Bez preklapanja sa data-centar, VPN, Service, ingress i egress mrežama</td></tr>
+    <tr><td>Service CIDR</td><td>Virtuelne <code>ClusterIP</code> adrese Kubernetes servisa</td><td>Jedinstven i dovoljan opseg; promena kasnije može biti veoma invazivna</td></tr>
+    <tr><td>Ingress/LB pool</td><td>Virtuelne adrese servisa tipa <code>LoadBalancer</code> i ingress-a</td><td>Routability, IPAM vlasništvo, ARP/BGP način oglašavanja i rezervni kapacitet</td></tr>
+    <tr><td>Egress/SNAT pool</td><td>Izvorne adrese odlaznog saobraćaja</td><td>Firewall identitet, NAT kapacitet i bez preklapanja</td></tr>
+  </tbody>
+</table>
+
+<h4>Pet upravljačkih adresa nisu pet proizvoljnih unosa</h4>
+
+<p>Za statički management način relevantni Supervisor postupci rezervišu blok od <strong>pet uzastopnih IP adresa</strong>: adrese za tri control plane VM-a, floating adresu Kubernetes API-ja i adresu koja se koristi tokom rolling update/određenih životnih ciklusa. Čarobnjak obično traži početnu adresu i veličinu opsega, ali IPAM mora rezervisati ceo blok. Adrese ne smeju biti u DHCP pool-u, već korišćene, NAT-ovane na neočekivan način ili filtrirane između control plane-a, vCenter-a i administratorskih klijenata.</p>
+
+<pre><code class="language-none">Primer planske rezervacije — ne predstavlja univerzalnu adresaciju
+Management VLAN:       10.40.13.0/24
+Gateway:               10.40.13.1
+Rezervisani blok:      10.40.13.50–10.40.13.54
+DNS A zapis API-ja:    supervisor-api.lab.example → 10.40.13.53
+Vlasnik rezervacije:   IPAM-REQ-2026-013</code></pre>
+
+<p>Ne pretpostavljati koja će tačno pozicija u bloku biti VIP bez provere čarobnjaka i verzijske dokumentacije. DNS zapis se kreira tek kada je potvrđena stvarno dodeljena floating adresa. Forward i reverse rezolucija, dozvoljeni karakteri FQDN-a, sertifikati i NTP izvori moraju biti usklađeni pre promene.</p>
+
+<h4>Izračunavanje kapaciteta i preklapanja</h4>
+
+<p>Za svaki pool zapisati mrežu, masku/prefix, prvi i poslednji upotrebljivi host, rezervisane adrese, očekivanu potrošnju, prag upozorenja i proceduru proširenja. CIDR vizuelno sličan drugom nije dokaz da se ne preklapa. Provera se može obaviti lokalnim Python-om; komanda je read-only i ne kontaktira infrastrukturu:</p>
+
+<pre><code class="language-python">from ipaddress import ip_network
+
+networks = {
+    "service": ip_network("10.96.0.0/24"),
+    "pods": ip_network("10.244.0.0/21"),
+    "ingress": ip_network("10.40.20.0/27"),
+    "egress": ip_network("10.40.21.0/27"),
+}
+
+names = list(networks)
+for index, left_name in enumerate(names):
+    for right_name in names[index + 1:]:
+        left = networks[left_name]
+        right = networks[right_name]
+        print(f"{left_name:8} / {right_name:8}: {left.overlaps(right)}")</code></pre>
+
+<p>Očekivani rezultat je <code>False</code> za svaki par. To ipak nije kompletna validacija: iste mreže treba uporediti sa korporativnim LAN/WAN rutama, VPN pool-ovima, drugim Kubernetes klasterima, cloud VPC/VNet mrežama i planiranim akvizicijama. IPAM ili mrežni source of truth ima prednost nad lokalnom tabelom.</p>
+
+<h3>DNS, NTP, MTU, routing i firewall kao zavisnosti plana</h3>
+
+<p>Lekcija 11 objasnila je zašto DNS i NTP nisu pomoćni servisi. Ovde ih vezujemo za konkretan deployment plan. Supervisor control plane, vCenter, ESXi hostovi, NSX/Avi ili drugi podržani load balancer i administratorski klijenti moraju imati konzistentnu rezoluciju i vreme. Vremenski pomak može oboriti SAML/token razmenu i proizvesti naizgled mrežni <code>bad gateway</code> simptom; zato se NTP meri, a ne samo navodi kao konfigurisan.</p>
+
+<p>Firewall matrica se pravi po izvoru, odredištu, protokolu, portu, smeru, poslovnoj nameni i vlasniku pravila. Ne otvara se široko „any-any za Kubernetes” kao trajno rešenje. Portovi se preuzimaju iz zvanične port reference za ciljnu verziju i mrežni model. Test <code>ping</code> ne dokazuje TCP dostupnost, DNS, MTU ni povratnu rutu.</p>
+
+<pre><code class="language-bash"># Read-only testovi sa odobrene administratorske Linux stanice
+dig +short supervisor-api.lab.example A
+dig +short -x 10.40.13.53
+nc -vz supervisor-api.lab.example 6443
+tracepath supervisor-api.lab.example</code></pre>
+
+<p>Pre aktivacije API adresa možda još ne sluša na portu <code>6443</code>; tada je očekivano da TCP test ne uspe. U planu se unapred zapisuje kada test postaje važeći. <code>tracepath</code> može ukazati na PMTU problem, ali rezultat zavisi od ICMP politike. MTU mora biti konzistentan duž celog relevantnog puta, naročito kod overlay mreža; jumbo frame vrednost na vDS-u sama po sebi nije dokaz end-to-end funkcionalnosti.</p>
+
+<h3>Load balancer i sever–jug saobraćaj</h3>
+
+<p>Load balancer nije samo appliance koji „radi”. Plan mora obuhvatiti management/API dostupnost, data plane mrežu, virtual service pool, način oglašavanja VIP adresa, sertifikat i trust chain, health monitore, SNAT ponašanje, logove, HA topologiju i operativnog vlasnika. Proverava se kompatibilnost tačne verzije load balancer-a sa vSphere build-om i izabranim networking modelom.</p>
+
+<ul>
+  <li>Rezervisati dovoljno VIP adresa za Supervisor i očekivane VKS servise, uz rast i servisne rezerve.</li>
+  <li>Dokazati put od klijenta do VIP-a i od load balancer data plane-a do backend mreža.</li>
+  <li>Dokumentovati ko rotira sertifikate i koliko ranije se alarmira istek.</li>
+  <li>Razdvojiti privremeni laboratorijski HAProxy scenario od produkcionog dizajna; istorijska podrška ne znači da je isti izbor preporučen za novo izdanje.</li>
+</ul>
+
+<h3>Storage arhitektura i SPBM politike</h3>
+
+<p>Supervisor ne bira datastore po nazivu iz administratorske beleške, već koristi <strong>vSphere Storage Policy Based Management (SPBM)</strong>. Politika opisuje zahtev, a vCenter izračunava kompatibilne datastore-e. Pre aktivacije kreiraju se i validiraju politike potrebne za Supervisor control plane i druge kategorije koje konkretno izdanje prikazuje, kao što su ephemeral i image storage. Politike koje će se dodeljivati namespace-ima i VKS klasterima planiraju se odvojeno prema workload zahtevima.</p>
+
+<table>
+  <thead>
+    <tr><th>Namena politike</th><th>Šta se proverava</th><th>Operativna posledica</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Supervisor control plane</td><td>Dostupnost svim potrebnim hostovima/zonama, failure tolerance, latencija, kapacitet</td><td>Direktno utiče na dostupnost upravljačke ravni</td></tr>
+    <tr><td>Ephemeral storage</td><td>Performanse i kapacitet za privremene diskove prema izdanju</td><td>Pritisak na storage može destabilizovati platform services</td></tr>
+    <tr><td>Image storage/content</td><td>Kapacitet, throughput i lifecycle slika</td><td>Sporo povlačenje ili nedostupnost slika produžava provisioning</td></tr>
+    <tr><td>Namespace/VKS persistent storage</td><td>CSI podrška, topology awareness, binding mode, backup i RPO/RTO</td><td>Pogrešna politika može vezati volumen za pogrešnu zonu ili dati nedovoljnu otpornost</td></tr>
+  </tbody>
+</table>
+
+<p>Kod three-zone Supervisor-a zonal storage znači da je datastore dostupan svim hostovima unutar jedne zone, uz politiku koja omogućava pravilno topology-aware postavljanje. Datastore koji je slučajno vidljiv hostu nije dovoljan dokaz. Treba potvrditi da su politika, tagovi/capability pravila, CSI topologija i failure ponašanje usklađeni. Replicirani storage preko zona može biti potreban za određene workload-e, ali to je odluka storage proizvoda i aplikacionog RPO/RTO dizajna, ne automatsko svojstvo Kubernetes PVC-a.</p>
+
+<h4>Read-only PowerCLI inventar pre promene</h4>
+
+<p>Sledeći primer se izvršava sa administratorske radne stanice na kojoj je instaliran modul VMware/VCF PowerCLI. Koristi nalog sa pravima čitanja inventara, DRS/HA, mreže i SPBM politika. Komande ne menjaju stanje; izlaz treba sačuvati kao vremenski označen deployment dokaz.</p>
+
+<pre><code class="language-powershell">$vCenter = "vcsa.lab.example"
+$ClusterName = "Compute-01"
+$VdsName = "VDS-Workload"
+
+Connect-VIServer -Server $vCenter
+
+$cluster = Get-Cluster -Name $ClusterName
+$cluster | Select-Object Name, HAEnabled, DrsEnabled, DrsAutomationLevel
+
+Get-VMHost -Location $cluster |
+  Select-Object Name, ConnectionState, PowerState, Version, Build,
+    @{N="CpuFreeGHz";E={[math]::Round($_.CpuTotalMhz / 1000 - $_.CpuUsageMhz / 1000, 1)}},
+    @{N="MemoryFreeGB";E={[math]::Round($_.MemoryTotalGB - $_.MemoryUsageGB, 1)}}
+
+Get-VDSwitch -Name $VdsName | Select-Object Name, Version, Mtu
+Get-VDPortgroup -VDSwitch $VdsName |
+  Select-Object Name, VLanConfiguration, NumPorts
+
+Get-SpbmStoragePolicy -Requirement |
+  Select-Object Name, Description
+
+Disconnect-VIServer -Server $vCenter -Confirm:$false</code></pre>
+
+<p>Izlaz nije automatska potvrda podrške. Na primer, <code>HAEnabled=True</code> ne dokazuje ispravan admission control, a naziv storage politike ne dokazuje kompatibilnost. Za svaku planiranu politiku u vSphere Client-u proveriti <em>Storage Compatibility</em>, slobodan kapacitet, alarme, resync/rebuild stanje i očekivano ponašanje pri gubitku hosta ili zone.</p>
+
+<h3>Content Library, slike, sertifikati i identitet</h3>
+
+<p>Plan uključuje pretplaćenu ili lokalnu Content Library koja sadrži podržane VKS/Kubernetes release slike za ciljnu verziju. Proveravaju se sync status, pristup URL-u, proxy, sertifikat izdavača, datastore kapacitet i vlasništvo nad ažuriranjem. „Library postoji” nije dokaz da sadrži kompatibilnu sliku ili da svi potrebni endpoint-i mogu da joj pristupe.</p>
+
+<p>Identitet i sertifikati se projektuju pre instalacije: administratorske i servisne uloge, najmanji potreban skup privilegija, SSO/identity provider integracija, FQDN-ovi u SAN poljima, trust chain, datum isteka i procedura rotacije. Privremeno prihvatanje nepouzdanog sertifikata može biti laboratorijska dijagnostika, ali nije produkcioni završetak.</p>
+
+<h3>Deployment workbook i odluka go/no-go</h3>
+
+<p>Jedan kontrolisani workbook predstavlja source of truth. Svaka vrednost ima status <code>Planned</code>, <code>Reserved</code>, <code>Validated</code> ili <code>Blocked</code>; samo poslednja odobrena verzija ulazi u change record. Minimalna polja su:</p>
+
+<ul>
+  <li>vCenter FQDN, SSO domen, verzija/build i licenca;</li>
+  <li>nazivi klastera, hostovi, zone, HA/DRS i failure-domain cilj;</li>
+  <li>Supervisor sizing profil i kapacitet posle simuliranog kvara;</li>
+  <li>networking model, vDS/NSX objekti, VLAN/segmenti, MTU i uplink redundansa;</li>
+  <li>management blok od pet adresa, gateway, DNS/NTP i svi workload/Pod/Service/ingress/egress opsezi;</li>
+  <li>load balancer verzija, management/data plane adrese, pool-ovi, route advertisement i sertifikati;</li>
+  <li>SPBM politike, kompatibilni datastore-i, kapacitet, performanse i topology pravila;</li>
+  <li>Content Library, image registry/proxy zavisnosti i kompatibilne slike;</li>
+  <li>firewall matrica, vlasnici, odobrenja, change window, komunikacija i rollback granica.</li>
+</ul>
+
+<div class="warning">
+  <strong>No-go uslovi:</strong> ne započinjati aktivaciju ako postoji makar jedno neodobreno preklapanje CIDR-a, nepotvrđen management/VIP blok, host u neispravnom stanju, DRS/HA odstupanje, nekompatibilna storage politika, neusaglašen NTP, nepotvrđena ruta/firewall zavisnost, nepodržana verzijska kombinacija ili nejasan vlasnik rollback odluke.
+</div>
+
+<h3>Praktikum: izrada i tehnička odbrana Supervisor deployment plana</h3>
+
+<h4>Scenario, cilj i topologija</h4>
+
+<p>Tim priprema one-zone Supervisor na klasteru <code>Compute-01</code> sa vSphere Distributed Switch mrežom i podržanim spoljašnjim load balancer-om. Cilj nije aktivacija, već dokaz da je dizajn spreman za change advisory review. Napredna varijanta proširuje isti workbook na tri zone <code>zone-a</code>, <code>zone-b</code> i <code>zone-c</code> bez pretpostavke da su resursi simetrični.</p>
+
+<h4>Preduslovi, privilegije i rizik</h4>
+
+<ul>
+  <li>vSphere Client pristup i read-only PowerCLI nalog; poseban nalog za buduću implementaciju ne koristi se u ovoj vežbi;</li>
+  <li>pristup IPAM-u, DNS-u, firewall dokumentaciji, storage kapacitetu i Compatibility Guide-u;</li>
+  <li>odobren naziv i FQDN standard, ciljna vSphere/VCF verzija i networking model;</li>
+  <li>nema promene stanja u produkciji; jedini rizik je pogrešan zaključak, pa svaki nalaz mora imati izvor i vreme prikupljanja.</li>
+</ul>
+
+<h4>Vežba 1 – snimanje početnog stanja klastera</h4>
+
+<ol>
+  <li>U vSphere Client-u otvoriti klaster, proveriti <em>Summary</em>, <em>Monitor → Issues and Alarms</em>, HA/DRS konfiguraciju, host connection state i aktivne maintenance operacije.</li>
+  <li>Pokrenuti read-only PowerCLI inventar iz prethodnog odeljka i sačuvati izlaz sa UTC vremenom, vCenter build-om i identitetom izvršioca.</li>
+  <li>Izračunati preostali CPU/RAM posle gubitka najvećeg hosta. Posebno evidentirati rezervu za tri Supervisor control plane VM-a i planirane VKS node VM-ove.</li>
+  <li>Za three-zone varijantu ponoviti korake po zoni. Razlika veća od dogovorenog praga postaje rizik; prosek preko tri zone ne prikriva slabu zonu.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> svi hostovi su povezani i podržani, nema kritičnih alarma, HA/DRS su u zahtevanom režimu i kapacitet zadovoljava failure scenario. <strong>Validacija:</strong> GUI i PowerCLI podaci se slažu, a svako odstupanje ima vlasnika i rok. Ako rezultat nije zadovoljen, ne uključivati HA/DRS u ovoj vežbi bez odobrenja; otvoriti infrastrukturni remediation zadatak.</p>
+
+<h4>Vežba 2 – IPAM, DNS i mrežna matrica</h4>
+
+<ol>
+  <li>Rezervisati pet uzastopnih management adresa kao jedan atomski IPAM zahtev. Dokumentovati gateway, prefix, VLAN/segment i owner-a.</li>
+  <li>Uneti Pod, Service, ingress i egress opsege koje zahteva izabrani model. Pokrenuti Python proveru preklapanja i zatim zahtevati mrežnu proveru prema globalnoj routing tabeli.</li>
+  <li>Proveriti forward/reverse DNS za postojeće zavisnosti i NTP izvore. Budući API FQDN označiti kao <code>Reserved—not active</code> dok VIP nije dodeljen.</li>
+  <li>Izraditi firewall tabelu i potvrditi svaki put pomoću odgovarajućeg TCP/DNS testa sa relevantnog izvora. Ne smatrati test sa administratorskog laptopa dokazom za ESXi ili load balancer subnet.</li>
+  <li>Za overlay model potvrditi MTU na svim hop-ovima i NSX/Edge zdravlje; za vSphere networking potvrditi vDS članstvo svih hostova, VLAN trunk i load balancer data plane put.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> nema preklapanja, sve rezervacije imaju ticket, putevi i portovi imaju dokaz, a IP kapacitet uključuje rast. <strong>Bezbedna korekcija:</strong> ako je opseg pogrešan, promeniti workbook i IPAM rezervaciju pre implementacije. Ne pokušavati NAT ili privremeni host route da bi se prikrio loš dizajn.</p>
+
+<h4>Vežba 3 – dokaz SPBM kompatibilnosti i failure ponašanja</h4>
+
+<ol>
+  <li>U <em>Policies and Profiles → VM Storage Policies</em> otvoriti planiranu Supervisor politiku i pregledati pravila, kompatibilne datastore-e i compliance.</li>
+  <li>Za svaki kompatibilni datastore zabeležiti tip, ukupni/slobodni kapacitet, latenciju/alarme, pristup hostova i aktivne resync/rebuild operacije.</li>
+  <li>Za zonalni dizajn dokazati koja politika pripada kojoj zoni i kako CSI placement sprečava pogrešno postavljanje volumena.</li>
+  <li>Uporediti zaštitu politike sa poslovnim RPO/RTO. RAID/FTT nije backup; planirati zasebnu zaštitu konfiguracije i podataka u kasnijim lekcijama.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> politika vraća očekivane kompatibilne datastore-e i ostavlja dovoljno prostora posle planiranog rasta i kvara. <strong>Rollback:</strong> pošto je vežba read-only, nema infrastrukturnog rollback-a. Ako je radi laboratorije kreirana probna politika, ukloniti je tek nakon provere da nije dodeljena nijednom objektu; u produkciji to zahteva poseban change.</p>
+
+<h4>Vežba 4 – tabletop greška i troubleshooting grane</h4>
+
+<p>Reviewer namerno menja jedan podatak u kopiji workbook-a: management blok se preklapa sa DHCP pool-om, jedna zona nema pristup planiranom datastore-u ili NTP server nije dostupan iz control plane mreže. Tim ne zna unapred koja je greška.</p>
+
+<ol>
+  <li><strong>Simptom:</strong> definisati šta bi čarobnjak, task ili kasniji servis mogao prikazati, bez proglašavanja uzroka.</li>
+  <li><strong>Obim i posledica:</strong> utvrditi da li je pogođena jedna adresa, control plane, jedna zona ili ceo deployment.</li>
+  <li><strong>Dokazi:</strong> uporediti poslednju odobrenu verziju, IPAM/DHCP lease-ove, DNS/NTP testove, vCenter događaje, datastore connectivity i load balancer alarme.</li>
+  <li><strong>Hipoteza:</strong> formulisati proverljivu tvrdnju, na primer: „Adresa <code>10.40.13.52</code> je izdata DHCP klijentu pre rezervacije.”</li>
+  <li><strong>Korekcija:</strong> u planskoj fazi izabrati čist blok ili ispravnu politiku; ne gasiti tuđi workload i ne širiti firewall bez vlasnika.</li>
+  <li><strong>Validacija:</strong> ponoviti tačno isti test, proveriti susedne zavisnosti i ažurirati decision log.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr><th>Simptom</th><th>Neposredni uzrok</th><th>Osnovni uzrok</th><th>Privremeno rešenje</th><th>Trajna mera</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>IP konflikt tokom inicijalizacije</td><td>Adresa već odgovara/ima lease</td><td>IPAM i DHCP granice nisu usaglašene</td><td>Zaustaviti change pre aktivacije</td><td>Atomska rezervacija bloka i nezavisna pre-check provera</td></tr>
+    <tr><td>Zona nema kompatibilan datastore</td><td>Politika ne mapira dostupan storage</td><td>Pogrešan tag/capability ili asimetričan dizajn</td><td>Ne koristiti zonu</td><td>Ispraviti storage arhitekturu i ponoviti compliance test</td></tr>
+    <tr><td>Token ili login greška posle aktivacije</td><td>Vreme nije sinhronizovano</td><td>Različiti ili nedostupni NTP izvori</td><td>Kontrolisano resinkronizovati pogođenu komponentu</td><td>Jedinstveni redundantni NTP dizajn, monitoring i alarm</td></tr>
+  </tbody>
+</table>
+
+<h4>Vežba 5 – change paket, rollback granica i kriterijum završetka</h4>
+
+<p>Change paket treba da sadrži odobren workbook, eksport read-only dokaza, Compatibility Guide rezultat, firewall/IPAM/DNS tikete, storage compliance snimak, komunikacioni plan i preciznu stop tačku. Pre pokretanja aktivacije rollback je uglavnom jednostavan: ne započeti task i ispraviti plan. Kada Workload Management počne da kreira control plane VM-ove i mrežne objekte, rollback više nije ručno brisanje pojedinačnih komponenti. Koristi se dokumentovana procedura za ciljno izdanje i eskalacija prema Broadcom podršci ako je stanje delimično konfigurisano.</p>
+
+<p><strong>Kriterijum završetka praktikuma:</strong> drugi administrator, koji nije učestvovao u izradi, može samo iz change paketa da pronađe svaki cilj, proveri svaku rezervaciju, ponovi read-only testove, objasni failure ponašanje i donese istu go/no-go odluku. Sama uredno popunjena tabela bez ponovljivih dokaza nije prolaz.</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Zaključati verziju dokumentacije uz stvarni product build; ne planirati prema generičkom „vSphere 8”.</li>
+  <li>Držati IPAM, DNS, CMDB i deployment workbook usklađene; jedan sistem mora biti autoritativan za svaku vrstu podatka.</li>
+  <li>Odvojiti read-only pre-check nalog od privilegovanog naloga kojim se izvršava promena.</li>
+  <li>Kapacitet dokazivati pod kvarom i tokom održavanja, ne samo u normalnom stanju.</li>
+  <li>Ne menjati CIDR, networking model ili zonalnu topologiju kao „sitnu korekciju” tokom čarobnjaka; vratiti odluku na arhitektonski review.</li>
+  <li>Čuvati UTC vremenske oznake i korelisati vCenter taskove, NSX/load balancer događaje, DNS/NTP nalaze i storage alarme.</li>
+  <li>Automatizaciju tretirati kao kontrolisanu implementaciju verzionisanog dizajna, a ne kao način da se zaobiđu pre-check provere.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Lekcija je uspešno savladana kada administrator može da:</p>
+
+<ul>
+  <li>obrazloži one-zone ili three-zone izbor i nacrta stvarne failure domain-e;</li>
+  <li>dokaže HA/DRS, host, kapacitet i maintenance rezervu za svaki izabrani klaster;</li>
+  <li>razlikuje management, workload, Pod, Service, ingress i egress adresne prostore i potvrdi da se ne preklapaju;</li>
+  <li>objasni namenu bloka od pet management IP adresa i dokaže IPAM rezervaciju;</li>
+  <li>uporedi NSX i vSphere networking prema podršci, bezbednosti, operacijama i rastu;</li>
+  <li>poveže SPBM pravila sa kompatibilnim datastore-ima, zonama i failure ponašanjem;</li>
+  <li>izvede read-only PowerCLI pre-check, protumači ograničenja rezultata i ne pomeša inventar sa potvrdom kompatibilnosti;</li>
+  <li>prepozna no-go uslov, zaustavi change bez improvizacije i dokumentuje trajnu korektivnu meru.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Dobra Supervisor implementacija počinje pre prvog klika na <em>Enable</em>. Klaster, zona, mreža, load balancer, storage politika i upravljačka adresa nisu nezavisna polja, već delovi jedne upravljačke ravni čija dostupnost zavisi od najslabije veze. Administrator zato ne potvrđuje spremnost osećajem, već dokazima: kompatibilnim build-ovima, failure-domain analizom, IPAM rezervacijama, ponovljivim mrežnim testovima, SPBM compliance-om, kapacitetom pod kvarom i jasnom rollback granicom.</p>
+
+<p>Sa odobrenim deployment workbook-om sledeća lekcija može bezbedno da pređe na omogućavanje vSphere Supervisor-a. Tamo će svaki izbor iz ove lekcije postati stvarni vCenter, mrežni i storage objekat, a kvalitet plana biće vidljiv kroz brzinu inicijalizacije, jasnoću dijagnostike i sposobnost tima da kontrolisano zaustavi ili oporavi promenu.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom TechDocs vodiči za koncepte, planiranje, preduslove i instalaciju vSphere Supervisor-a; zvanični zahtevi za one-zone i three-zone topologije sa NSX i vSphere networking modelima; vodiči za Supervisor storage i SPBM politike; Broadcom Compatibility Guide i Knowledge Base članci za DNS, NTP i inicijalizaciju; VMware/VCF PowerCLI reference za Workload Management, klastere, vDS i SPBM
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-12-readiness-assessment-i-plan-implementacije.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-14-omogucavanje-vsphere-supervisor-a.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

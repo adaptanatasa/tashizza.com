@@ -1,0 +1,614 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Validacija Supervisor-a – pre-check, post-check i troubleshooting neuspele inicijalizacije | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="Validacija Supervisor-a – pre-check, post-check i sistematski troubleshooting neuspele inicijalizacije vSphere Supervisor platforme.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, validacija Supervisor-a, pre-check, post-check, troubleshooting inicijalizacije, vSphere Supervisor, VKS, Kubernetes, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Validacija Supervisor-a – pre-check, post-check i troubleshooting neuspele inicijalizacije">
+
+  <meta property="og:description"
+        content="Šesnaesta lekcija VMware &amp; Tanzu tutorijala – pre-check, post-check i troubleshooting neuspele inicijalizacije Supervisor-a.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Validacija Supervisor-a – pre-check, post-check i troubleshooting neuspele inicijalizacije">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-16-validacija-i-troubleshooting-inicijalizacije.png"
+           alt="Validacija Supervisor-a – pre-check, post-check i troubleshooting neuspele inicijalizacije">
+
+    </a>
+
+    <div class="page-subtitle">
+  Drugi deo: Implementacija Supervisor-a i VKS klastera
+</div>
+
+<div class="page-subtitle">
+  16. Validacija Supervisor-a – pre-check, post-check i troubleshooting neuspele inicijalizacije
+</div>
+
+<p>
+  Omogućavanje Supervisor-a nije završeno kada se čarobnjak zatvori bez neposredne greške niti kada se u vSphere Client-u pojavi oznaka <em>Running</em>. Implementacija je završena tek kada su preduslovi dokazano ispunjeni, kontrolne ravni stabilne, Kubernetes API i zavisni servisi dostupni, mrežni i storage tokovi provereni, a administrator poseduje skup dokaza na osnovu kojih može da razlikuje prolazno usaglašavanje od trajnog kvara. Ova lekcija zato pretvara plan iz lekcije 13, postupak iz lekcije 14 i model zdravlja iz lekcije 15 u ponovljiv proces prihvatanja platforme.
+</p>
+
+<p>
+  Termin <strong>pre-check</strong> ovde ima dva nivoa. Prvi je provera koju proizvod izvršava pre aktivacije i koja otkriva deo nepodržanih ili nedostupnih preduslova. Drugi je šira administratorska validacija: DNS, NTP, IP opsezi, rutiranje, MTU, firewall, sertifikati, storage policy, resursi, licence i operativno vlasništvo. Ugrađeni pre-check je važna zaštitna ograda, ali nije zamena za dizajn i testiranje. <strong>Post-check</strong> je skup funkcionalnih proba posle aktivacije. <strong>Troubleshooting</strong> nije nasumično ponavljanje čarobnjaka, već kontrolisan tok: prikupi dokaze, odredi obim, postavi hipotezu, potvrdi uzrok, primeni najmanje invazivnu korekciju, ponovo validiraj i dokumentuj rezultat.
+</p>
+
+<h3>Ciljevi lekcije i kriterijum uspeha</h3>
+
+<p>Po završetku lekcije administrator treba da ume da:</p>
+
+<ul>
+  <li>izvede i protumači pre-check pre promene stanja klastera;</li>
+  <li>napravi baznu liniju i sačuva dokaze o konfiguraciji i zavisnostima;</li>
+  <li>razlikuje status implementacije, zdravlje control plane VM-ova i funkcionalnu spremnost Kubernetes platforme;</li>
+  <li>validira upravljačku mrežu, workload mrežu, DNS, NTP, storage i Kubernetes API;</li>
+  <li>korelira vCenter zadatke i događaje sa alarmima, stanjem VM-ova, servisima i logovima;</li>
+  <li>izabere između čekanja, bezbednog retry-ja, korektivne promene i kontrolisanog uklanjanja neuspele implementacije;</li>
+  <li>izradi tehnički zapis incidenta koji omogućava ponovljiv oporavak i kvalitetnu eskalaciju podršci.</li>
+</ul>
+
+<h3>Verzije, nazivi proizvoda i granice postupka</h3>
+
+<p>
+  Nazivi ekrana i pojedini statusi razlikuju se između vSphere 7, vSphere 8 i novijih izdanja VMware Cloud Foundation-a. Raniji materijali koriste nazive <em>vSphere with Tanzu</em>, <em>Workload Management</em> i <em>Supervisor Cluster</em>; aktuelna dokumentacija češće koristi <em>vSphere Supervisor</em>, <em>Supervisor</em> i <em>vSphere Kubernetes Service</em> (VKS). U starijim izdanjima za Tanzu Kubernetes Grid Service sreće se skraćenica TKG Service. Administrator mora za tačan build proveriti Release Notes, Product Interoperability Matrix, Configuration Maximums i odgovarajući vodič za izabrani mrežni model.
+</p>
+
+<p>
+  Ova lekcija ne pretpostavlja da je jedan postupak univerzalan za Supervisor sa vSphere Distributed Switch mrežom, NSX mrežom ili funkcijama dostupnim u VCF 9.x. Pre-check i dokazni tok su zajednički, ali portovi, load balancer, objekti mreže, način dodele IP adresa, licence i dostupne mogućnosti nisu isti. Ne kopirati komande za menjanje stanja iz druge verzije i ne koristiti procedure za NSX nad vDS implementacijom, ili obrnuto. Pre svake korekcije zabeležiti vCenter, ESXi, NSX i Supervisor verziju, build i mrežni model.
+</p>
+
+<h3>Validacija kao niz kontrolnih kapija</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kapija</th>
+      <th>Ključno pitanje</th>
+      <th>Minimalni dokaz</th>
+      <th>Odluka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>G0 – promena odobrena</td>
+      <td>Da li su obim, vlasnici, maintenance window i rollback dogovoreni?</td>
+      <td>Change zapis, topologija, rezervisani resursi i kontakti</td>
+      <td>Go / no-go pre pre-check-a</td>
+    </tr>
+    <tr>
+      <td>G1 – preduslovi</td>
+      <td>Da li proizvod i administrator potvrđuju kompatibilnost i zavisnosti?</td>
+      <td>Pre-check bez blokirajućih grešaka i popunjena matrica preduslova</td>
+      <td>Aktiviraj ili koriguj dizajn</td>
+    </tr>
+    <tr>
+      <td>G2 – implementacija</td>
+      <td>Da li su control plane VM-ovi kreirani i stabilni?</td>
+      <td>Uspešni vCenter zadaci, bez kritičnih alarma, očekivan broj VM-ova</td>
+      <td>Nastavi post-check ili dijagnostikuj</td>
+    </tr>
+    <tr>
+      <td>G3 – platforma</td>
+      <td>Da li API, sistemski čvorovi i servisi rade kao celina?</td>
+      <td><code>readyz</code>, stanje čvorova, sistemski podovi i događaji</td>
+      <td>Prihvati tehničku spremnost ili otvori incident</td>
+    </tr>
+    <tr>
+      <td>G4 – operativna spremnost</td>
+      <td>Da li monitoring, logovi, pristup i runbook omogućavaju održavanje?</td>
+      <td>Alarmi, centralni logovi, test pristupa i potpisan acceptance zapis</td>
+      <td>Predaja u rad ili uslovno prihvatanje</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Pre-check: provera pre aktivacije</h3>
+
+<p>
+  Pre-check pokrenuti iz vSphere Client-a neposredno pre aktivacije i ponoviti ga posle svake izmene relevantnog preduslova. Tačna putanja zavisi od verzije, ali se nalazi u prikazu za <em>Workload Management</em> odnosno <em>Supervisor Management</em>, pri izboru ciljnog klastera i pokretanju konfiguracije. Rezultat sačuvati kao snimak ekrana ili izvoz zadataka i događaja. Upozorenje ne treba automatski prihvatiti: za svako upozorenje navesti vlasnika rizika, obrazloženje i uslov pod kojim je prihvatljivo.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Oblast</th>
+      <th>Šta proveriti</th>
+      <th>Tipičan dokaz</th>
+      <th>Posledica propusta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Kompatibilnost i licenca</td>
+      <td>Podržani build-ovi vCenter-a, ESXi-ja i NSX-a, edition/licenca i ograničenja izdanja</td>
+      <td>Inventar verzija i rezultat matrice interoperabilnosti</td>
+      <td>Funkcija nije ponuđena, aktivacija se zaustavlja ili nastaje nepodržano stanje</td>
+    </tr>
+    <tr>
+      <td>Klaster i resursi</td>
+      <td>DRS/HA zahtevi za izdanje, zdravi hostovi, kompatibilan CPU, slobodni CPU, RAM i datastore kapacitet</td>
+      <td>Cluster summary, capacity izveštaj i aktivni alarmi</td>
+      <td>Control plane VM ne može da se kreira, uključi ili premesti</td>
+    </tr>
+    <tr>
+      <td>Storage</td>
+      <td>Storage policy postoji, kompatibilna je i ima dovoljan kapacitet; datastore-i su dostupni svim potrebnim hostovima</td>
+      <td>Policy compliance i datastore accessibility</td>
+      <td>Neuspešan clone, attach ili kasnija degradacija</td>
+    </tr>
+    <tr>
+      <td>DNS i NTP</td>
+      <td>Forward i reverse rezolucija gde je zahtevana, isti vremenski izvori i prihvatljiv clock skew</td>
+      <td><code>dig</code>/<code>nslookup</code>, stanje NTP-a i vremenske oznake</td>
+      <td>TLS, autentikacija i registracija servisa otkazuju naizgled nepovezano</td>
+    </tr>
+    <tr>
+      <td>IP plan i mreža</td>
+      <td>Nezavisni, nepreklopljeni opsezi; gateway, ruta, VLAN, MTU i slobodne adrese; API/VIP dostupnost</td>
+      <td>IPAM izvod, test ruta i firewall matrica</td>
+      <td>VM postoji, ali API ili interni servisi nisu dostupni</td>
+    </tr>
+    <tr>
+      <td>Bezbednost</td>
+      <td>Potrebni portovi i smerovi, validni sertifikati, privilegije naloga i pouzdan lanac CA</td>
+      <td>Firewall potvrda, RBAC zapis i TLS proba</td>
+      <td>Timeout, zabrana pristupa ili TLS greška tokom bootstrap-a</td>
+    </tr>
+    <tr>
+      <td>Operativna spremnost</td>
+      <td>Monitoring, centralni logovi, backup zavisnih sistema, eskalacija i change freeze</td>
+      <td>Runbook i vlasnici servisa</td>
+      <td>Kvar se kasno otkriva, a dokazi nestaju ili nisu korelisani</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Sa administratorske radne stanice proveriti rezoluciju i TLS putanju prema planiranom ili dodeljenom API FQDN-u. Sledeće komande su <strong>read-only</strong>. <code>dig</code> proverava odgovor DNS-a, <code>nc</code> samo TCP dostupnost porta, a <code>openssl</code> prikazuje sertifikat koji endpoint zaista isporučuje. Uspešan TCP handshake nije dokaz da je Kubernetes API zdrav; on samo sužava problem.
+</p>
+
+<pre><code class="language-bash">dig +short supervisor-api.lab.example
+dig -x 192.0.2.40 +short
+nc -vz supervisor-api.lab.example 6443
+openssl s_client -connect supervisor-api.lab.example:6443 \
+  -servername supervisor-api.lab.example -showcerts &lt; /dev/null</code></pre>
+
+<p>
+  Očekuje se konzistentna adresa, uspešna TCP veza i sertifikat čiji period važenja, SAN imena i issuer odgovaraju dizajnu. <code>-k</code> u narednim <code>curl</code> probama sme služiti samo za dijagnostiku: zaobilaženje provere poverenja nije trajna korekcija. Ako klijent ne veruje CA lancu, ispraviti trust store ili sertifikat, a ne navikavati operatere na ignorisanje TLS greške.
+</p>
+
+<h3>Šta sačuvati pre klika na Enable</h3>
+
+<ul>
+  <li>vCenter, ESXi i NSX build-ove, tip mreže i izabrane licence;</li>
+  <li>ime klastera, hostove, resource pool, storage policy i datastore kandidata;</li>
+  <li>management, workload, ingress/egress i service CIDR/opsege prema konkretnom modelu;</li>
+  <li>DNS zapise, NTP izvore, gateway, VLAN/segment, MTU i firewall pravila;</li>
+  <li>rezultat pre-check-a, otvorene alarme i baznu liniju resursa;</li>
+  <li>tačno vreme početka, operatora, change broj i poslednju promenu infrastrukture.</li>
+</ul>
+
+<p>
+  Ova evidencija nije birokratija. Vremenska oznaka omogućava filtriranje logova; popis poslednjih promena često odmah otkriva uzrok; bazna linija sprečava da se postojeći alarm pogrešno pripiše Supervisor-u. Lozinke, privatne ključeve, kubeconfig tokene i kompletne sertifikate ne stavljati u tiket ili zajedničku belešku.
+</p>
+
+<h3>Post-check: od statusa do funkcionalnog dokaza</h3>
+
+<p>
+  Post-check se izvodi slojevito. Najpre posmatrati vCenter zadatke i događaje, zatim control plane VM-ove i njihove alarme, potom endpoint i Kubernetes API, a tek onda sistemske resurse i operativne integracije. Time se izbegava zaključak da je „Kubernetes pokvaren” kada je stvarni uzrok nedostupan datastore, neispravna ruta ili iscrpljen IP pool.
+</p>
+
+<ol>
+  <li><strong>vCenter sloj:</strong> Supervisor status je stabilan, nema neuspelih ili zaglavljenih zadataka, a alarmi su objašnjeni.</li>
+  <li><strong>VM sloj:</strong> očekivani control plane VM-ovi postoje, uključeni su, nemaju boot loop i raspoređeni su u skladu sa pravilima dostupnosti.</li>
+  <li><strong>Mrežni sloj:</strong> API FQDN/VIP se pravilno razrešava, TCP/TLS veza radi sa odobrenih mreža, a gateway, MTU i rute odgovaraju dizajnu.</li>
+  <li><strong>Kubernetes sloj:</strong> API odgovara, <code>/readyz</code> je uspešan, čvorovi i kritični sistemski podovi su spremni, a događaji ne pokazuju ponavljajuće greške.</li>
+  <li><strong>Storage sloj:</strong> policy je usaglašena, datastore-i dostupni, nema attach/mount grešaka i planirani kapacitet ostaje raspoloživ.</li>
+  <li><strong>Operativni sloj:</strong> privilegovani i ograničeni pristup rade prema RBAC modelu, logovi i alarmi stižu u nadzor, a dokumentacija je ažurirana.</li>
+</ol>
+
+<p>
+  Sledeće Kubernetes komande izvršava administrator sa radne stanice na kojoj je instaliran kompatibilan VMware distribuirani <code>kubectl</code> paket i gde je aktivan Supervisor kontekst dobijen podržanim postupkom prijave za konkretnu verziju. Sve komande su <strong>read-only</strong>, ali izlaz može sadržati interne adrese, imena i osetljive metapodatke, pa ga zaštititi kao operativni dokaz.
+</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl cluster-info
+kubectl get --raw='/readyz?verbose'
+kubectl get nodes -o wide
+kubectl get pods -A -o wide
+kubectl get events -A --sort-by='.metadata.creationTimestamp'</code></pre>
+
+<p>
+  Uspešan <code>readyz</code> znači da su prijavljene interne provere API servera spremne; to nije dokaz da su svi dodatni servisi, mrežni tokovi ili budući VKS workload-i funkcionalni. Kod podova posmatrati <code>READY</code>, <code>STATUS</code>, broj restartovanja i starost. Jednokratni restart tokom inicijalizacije nije isto što i rastući brojač restartovanja. Događaji imaju ograničeno zadržavanje: prikupiti ih rano i korelisati sa UTC vremenskim intervalom incidenta.
+</p>
+
+<p>
+  Ako RBAC ne dozvoljava pregled svih namespace-ova, to samo po sebi nije kvar. Zabeležiti identitet i očekivanu ulogu, pa proveriti autorizaciju ciljanim upitom. Komanda je read-only i vraća <code>yes</code> ili <code>no</code>:
+</p>
+
+<pre><code class="language-bash">kubectl auth can-i get nodes
+kubectl auth can-i list pods --all-namespaces
+kubectl auth can-i --list</code></pre>
+
+<h3>Dokazi, logovi i korelacija vremena</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Izvor</th>
+      <th>Šta tražimo</th>
+      <th>Kako tumačimo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vSphere Client Tasks &amp; Events</td>
+      <td>Prvi neuspešan zadatak, objekat, korisnik, vreme i lanac zavisnih zadataka</td>
+      <td>Prva greška je obično vrednija od kasnijih kaskadnih poruka</td>
+    </tr>
+    <tr>
+      <td>Alarmi klastera, hosta, VM-a i datastore-a</td>
+      <td>Resursni pritisak, HA/DRS, mreža, storage i dostupnost hosta</td>
+      <td>Utvrđuje da li je kvar lokalizovan ili infrastrukturni</td>
+    </tr>
+    <tr>
+      <td>vCenter servisni logovi</td>
+      <td>Poruke servisa koji orkestrira Workload Management/Supervisor, autentikaciju i zadatke</td>
+      <td>Koristiti zvaničnu lokaciju i bundle za tačan build; ne pretpostavljati isto ime fajla kroz sve verzije</td>
+    </tr>
+    <tr>
+      <td>ESXi <code>hostd</code>, <code>vpxa</code>, VM i mrežni logovi</td>
+      <td>Power-on, placement, datastore, port group, vNIC i komunikacija sa vCenter-om</td>
+      <td>Relevantno kada VM nije kreiran, pokrenut ili povezan</td>
+    </tr>
+    <tr>
+      <td>NSX Manager/Edge logovi i alarmi</td>
+      <td>Segment, T1/T0, load balancer, SNAT, routing i realizacija objekata</td>
+      <td>Primena samo kod NSX mrežnog modela; proveriti i data plane, ne samo objekat u UI-ju</td>
+    </tr>
+    <tr>
+      <td>Supervisor control plane i Kubernetes događaji</td>
+      <td>Bootstrap, sertifikati, API, etcd, CNI, CSI, DNS i ponavljajući reconciliation</td>
+      <td>Prikupljati podržanim UI/bundle ili forwarding postupkom; ne menjati appliance ručno</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Za vCenter Support Bundle koristiti podržani vSphere Client postupak ili <code>vc-support</code> prema zvaničnoj proceduri za konkretan build. Bundle može sadržati inventar, IP adrese, korisnička imena, sertifikate i druge poverljive podatke. Čuvati ga u kontrolisanom repozitorijumu, ograničiti pristup i rok zadržavanja, a podršci slati samo odobrenim kanalom. Direktno menjanje datoteka, systemd jedinica ili Kubernetes statičkih manifesta na upravljanim control plane appliance-ima nije podržan prvi korak i može uništiti dokaze ili pogoršati stanje.
+</p>
+
+<h3>Sistematičan troubleshooting neuspele inicijalizacije</h3>
+
+<p>Svaki incident razložiti na šest odvojenih polja:</p>
+
+<ul>
+  <li><strong>simptom:</strong> tačna poruka ili merljivo ponašanje, bez pretpostavljenog uzroka;</li>
+  <li><strong>obim i posledica:</strong> jedan VM, host, klaster, API ili čitava platforma; šta korisnik ne može da uradi;</li>
+  <li><strong>neposredni uzrok:</strong> komponenta koja je trenutno blokirala korak, na primer TLS odbijanje ili nedostupan datastore;</li>
+  <li><strong>osnovni uzrok:</strong> zašto je neposredni uzrok nastao, na primer pogrešan SAN, zatvoren smer firewall-a ili neusklađen IPAM proces;</li>
+  <li><strong>workaround:</strong> privremena, odobrena mera koja vraća deo usluge bez prikrivanja rizika;</li>
+  <li><strong>trajna korekcija:</strong> promena dizajna, konfiguracije ili procesa koja sprečava ponavljanje.</li>
+</ul>
+
+<ol>
+  <li>Zamrznuti dodatne promene i zapisati početak incidenta, verzije, operatora i poslednju poznatu dobru tačku.</li>
+  <li>Sačuvati tačnu grešku, task ID ako je prikazan, događaje, alarme i trenutno stanje; ne kliknuti odmah <em>Retry</em>.</li>
+  <li>Odrediti najniži neuspešan sloj: kompatibilnost/resursi, vCenter orkestracija, VM, storage, mreža, TLS/identitet ili Kubernetes servis.</li>
+  <li>Postaviti jednu proverljivu hipotezu i izvršiti read-only proveru najmanjeg obima.</li>
+  <li>Ispraviti osnovni uzrok kroz podržani interfejs. Menjati jednu relevantnu stvar odjednom i zabeležiti je.</li>
+  <li>Ponoviti samo podržani korak ili retry kada dokumentacija/status to dozvoljava; pratiti nove događaje u realnom vremenu.</li>
+  <li>Izvesti ceo post-check, ne samo proveru da je poruka nestala.</li>
+  <li>Dokumentovati uzrok, korekciju, preostali rizik i preventivnu meru; po potrebi otvoriti podršku sa bundle-om i preciznom vremenskom linijom.</li>
+</ol>
+
+<h3>Matrica simptoma i dijagnostičkih grana</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prve read-only provere</th>
+      <th>Česti uzroci</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pre-check je blokiran</td>
+      <td>Pročitati punu poruku, proveriti objekat, verzije, licence, klaster i alarme</td>
+      <td>Nepodržan build, nedostajuća funkcija, nezdrav host ili neispunjen zahtev klastera</td>
+      <td>Otkloniti prijavljeni preduslov; ne zaobilaziti proveru nedokumentovanim API pozivom</td>
+    </tr>
+    <tr>
+      <td>Control plane VM nije kreiran ili se ne uključuje</td>
+      <td>Tasks &amp; Events, DRS/HA, slobodni resursi, datastore i port group/segment</td>
+      <td>Nema kapaciteta, policy nije kompatibilna, datastore nije dostupan hostu, placement ili mrežna greška</td>
+      <td>Vratiti kapacitet/dostupnost i koristiti podržani retry; ne kreirati ili klonirati upravljani VM ručno</td>
+    </tr>
+    <tr>
+      <td>VM radi, ali API/VIP nije dostupan</td>
+      <td>DNS, ARP/ruta, firewall smerovi, <code>nc</code>, TLS, load balancer i MTU</td>
+      <td>Pogrešan zapis, preklopljen opseg, zatvoren port, nerealizovan LB ili MTU black hole</td>
+      <td>Ispraviti izvorni DNS/mrežni objekat i potvrditi tok sa obe strane</td>
+    </tr>
+    <tr>
+      <td>TLS ili prijava ne uspeva</td>
+      <td>Vreme, SAN/issuer/expiry, CA lanac, identitet i RBAC</td>
+      <td>Clock skew, pogrešan FQDN, nepotpun trust chain, istek sertifikata ili pogrešna uloga</td>
+      <td>Sinhronizovati vreme, izdati/isporučiti podržan sertifikat ili ispraviti RBAC; ne trajno koristiti <code>-k</code></td>
+    </tr>
+    <tr>
+      <td>Status dugo ostaje Configuring/Degraded</td>
+      <td>Da li napredak postoji, koji task se ponavlja, stanje VM-ova, događaji i resursni pritisak</td>
+      <td>Reconciliation čeka zavisnost, IP pool je iscrpljen, DNS/NTP/storage povremeno otkazuju</td>
+      <td>Ispraviti zavisnost i pratiti podržani reconciliation; eskalirati ako nema napretka u dokumentovanom roku</td>
+    </tr>
+    <tr>
+      <td>Čvor NotReady ili sistemski pod CrashLoopBackOff/Pending</td>
+      <td><code>describe</code>, događaji, CNI/CSI/DNS stanje, resursi i broj restartovanja</td>
+      <td>Mrežni plugin, storage attach, image pull, certifikat, pritisak resursa ili nedostupna zavisnost</td>
+      <td>Korigovati dokazani infrastrukturni uzrok; ne brisati nasumično sistemske podove</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Kada je ciljano potrebno više detalja, sledeće read-only komande prikazuju opis objekta i prethodni log kontejnera koji se restartovao. Ime namespace-a, poda i kontejnera uzeti iz stvarnog izlaza; ne pretpostavljati sistemske nazive između verzija.
+</p>
+
+<pre><code class="language-bash">kubectl describe node &lt;ime-cvora&gt;
+kubectl describe pod -n &lt;namespace&gt; &lt;ime-poda&gt;
+kubectl logs -n &lt;namespace&gt; &lt;ime-poda&gt; -c &lt;kontejner&gt; --since=30m
+kubectl logs -n &lt;namespace&gt; &lt;ime-poda&gt; -c &lt;kontejner&gt; --previous --since=30m</code></pre>
+
+<p>
+  Log poruka je dokaz simptoma, ne uvek osnovnog uzroka. Na primer, <code>context deadline exceeded</code> može nastati zbog DNS-a, firewall-a, MTU-a, preopterećenja ili nedostupne udaljene usluge. Zato uz poruku uvek zabeležiti izvorni pod/servis, cilj, smer komunikacije, vremenski period i paralelne događaje infrastrukture.
+</p>
+
+<h3>Retry, recovery i rollback</h3>
+
+<p>
+  <strong>Retry</strong> je opravdan kada je uzrok identifikovan i otklonjen, prethodni zadatak više ne menja stanje i proizvod nudi dokumentovanu radnju za nastavak. Ponavljanje bez uzroka može napraviti nove događaje, zamagliti prvi kvar i produžiti incident. <strong>Recovery</strong> vraća željeno stanje postojeće implementacije podržanim reconciliation ili repair postupkom. <strong>Rollback</strong> u ovom kontekstu često znači kontrolisano onemogućavanje/uklanjanje neuspele Supervisor konfiguracije i vraćanje rezervisanih zavisnosti, a ne vraćanje snapshot-a vCenter-a ili ručno brisanje control plane VM-ova.
+</p>
+
+<p>
+  Onemogućavanje Supervisor-a je <strong>state-changing i potencijalno destruktivno</strong>. U produkciji ga ne pokretati samo zato što aktivacija traje duže od očekivanog. Pre odluke potvrditi da nema namespace-a, workload-a, persistentnih podataka ili drugih zavisnosti koje treba sačuvati; prikupiti support bundle; proveriti zvaničan postupak za tačan build; pribaviti odobrenje i po potrebi uključiti Broadcom podršku. Ručno brisanje upravljanih VM-ova, NSX objekata, vCenter ekstenzija ili zapisa iz interne baze nije rollback.
+</p>
+
+<h3>Praktikum: validacija i kontrolisana dijagnostika</h3>
+
+<p>
+  <strong>Cilj:</strong> izvesti acceptance test sveže omogućenog Supervisor-a, zatim bezbedno analizirati jednu simuliranu grešku klijentskog pristupa bez prekida rada control plane-a. Poslovni kontekst je predaja platforme operativnom timu pre kreiranja prvog Supervisor Namespace-a i VKS klastera.
+</p>
+
+<p>
+  <strong>Topologija:</strong> jedan vSphere klaster sa omogućenim Supervisor-om, odgovarajući vDS ili NSX mrežni model, DNS/NTP servisi, storage policy i administratorska Linux radna stanica. Vežba se prilagođava stvarnim imenima i adresama; vrednosti <code>lab.example</code> i <code>192.0.2.0/24</code> su dokumentacioni primeri, ne produkcione adrese.
+</p>
+
+<p>
+  <strong>Preduslovi i privilegije:</strong> aktivacija iz lekcije 14 je završena ili se nalazi u kontrolisanoj laboratorijskoj fazi; postoji read-only pristup infrastrukturi i ovlašćen Supervisor administratorski kontekst; instalirani su <code>dig</code>, <code>nc</code>, <code>openssl</code> i kompatibilni <code>kubectl</code alati. Za menjanje DNS testa nije potreban pristup produkcionom DNS-u. Rizik standardne validacije je nizak; simulacija se izvodi samo lokalnom promenom imena endpointa ili izolovanim testom, nikada gašenjem DNS/NTP servisa ili blokiranjem produkcionog firewall-a.
+</p>
+
+<h4>Vežba 1 – acceptance zapis</h4>
+
+<ol>
+  <li>Otvoriti change zapis i uneti verzije, mrežni model, vreme početka i rezultat pre-check-a.</li>
+  <li>U vSphere Client-u proveriti Supervisor status, control plane VM-ove, Tasks &amp; Events i aktivne alarme. Filtrirati interval od početka implementacije.</li>
+  <li>Potvrditi da storage policy ostaje kompatibilna i da datastore ima planiranu rezervu kapaciteta.</li>
+  <li>Sa radne stanice izvršiti DNS, TCP i TLS provere iz pre-check odeljka.</li>
+  <li>Aktivirati odobreni Supervisor kubeconfig/kontekst i izvršiti <code>cluster-info</code>, <code>readyz</code>, pregled čvorova, sistemskih podova i događaja.</li>
+  <li>Zabeležiti svako odstupanje kao <em>pass</em>, <em>pass with risk</em> ili <em>fail</em>; za rizik navesti vlasnika i rok.</li>
+</ol>
+
+<p>
+  <strong>Očekivani rezultat:</strong> API endpoint se pravilno razrešava, TCP/TLS i autentikovani Kubernetes upiti uspevaju, <code>readyz</code> ne prijavljuje neuspelu kritičnu proveru, čvorovi su spremni, kritični sistemski podovi stabilni, a događaji i alarmi ne pokazuju ponavljajući kvar. Kriterijum završetka nije odsustvo crvene boje u UI-ju, već kompletan dokazni paket bez neobjašnjenog <em>fail</em> nalaza.
+</p>
+
+<h4>Vežba 2 – bezbedna simulacija greške DNS imena</h4>
+
+<p>
+  Simulirati pogrešno ime samo u promenljivoj lokalnog shell-a. Ovo ne menja DNS, Supervisor ni mrežu i ne zahteva rollback platforme.
+</p>
+
+<pre><code class="language-bash">SUPERVISOR_TEST_FQDN='pogresno-ime.lab.example'
+dig +short "$SUPERVISOR_TEST_FQDN"
+nc -vz "$SUPERVISOR_TEST_FQDN" 6443</code></pre>
+
+<ol>
+  <li>Zabeležiti simptom: nema DNS odgovora ili klijent prijavljuje da ime nije poznato.</li>
+  <li>Odrediti obim: stvarni API FQDN i postojeći <code>kubectl</code kontekst i dalje rade; kvar je ograničen na pogrešan klijentski unos.</li>
+  <li>Postaviti hipotezu da je uzrok ime, ne control plane. Uporediti promenljivu sa dokumentovanim FQDN-om i <code>kubectl config view --minify</code izlazom, bez deljenja tokena.</li>
+  <li>Korigovati samo promenljivu na odobreni FQDN i ponoviti <code>dig</code>, <code>nc</code> i TLS proveru.</li>
+  <li>Potvrditi <code>readyz</code> autentikovanim <code>kubectl</code upitom i zatvoriti nalaz kao klijentsku konfiguracionu grešku.</li>
+</ol>
+
+<pre><code class="language-bash">SUPERVISOR_TEST_FQDN='supervisor-api.lab.example'
+dig +short "$SUPERVISOR_TEST_FQDN"
+nc -vz "$SUPERVISOR_TEST_FQDN" 6443
+kubectl get --raw='/readyz?verbose'</code></pre>
+
+<p>
+  <strong>Rollback:</strong> ukloniti samo lokalnu promenljivu komandom <code>unset SUPERVISOR_TEST_FQDN</code>. Nema promene stanja platforme. Ako stvarni FQDN ne radi, vežba prestaje da bude simulacija: zamrznuti promene, otvoriti incident i pratiti dijagnostički tok iz lekcije.
+</p>
+
+<h4>Vežba 3 – incident scenario: API timeout posle aktivacije</h4>
+
+<p>
+  Scenario se analizira bez namernog izazivanja prekida. Simptom je timeout sa administratorske mreže, dok control plane VM-ovi deluju uključeno. Najpre proveriti da li je problem jednog klijenta ili svih izvora, zatim DNS, TCP/TLS i putanju. Kod NSX modela proveriti realizaciju load balancer-a i rute; kod vDS modela proveriti komponente tačno propisane za izabranu verziju i load balancer integraciju. Ne pretpostavljati isti data plane.
+</p>
+
+<ol>
+  <li>Sačuvati vreme, punu klijentsku grešku i izvorni IP.</li>
+  <li>Uporediti DNS odgovor sa odobrenim IP planom i proveriti da li više odobrenih izvora vidi isti simptom.</li>
+  <li>Izvršiti <code>nc</code> i <code>openssl</code>. Ako TCP ne radi, ostati na mrežnom sloju; ako TLS radi, preći na autentikaciju/API.</li>
+  <li>U vSphere Client-u korelisati Tasks &amp; Events, alarme i stanje VM-ova u istom vremenskom prozoru.</li>
+  <li>Proveriti firewall logove i mrežnu realizaciju sa vlasnikom mreže; tražiti dokaz o smeru i povratnoj ruti.</li>
+  <li>Tek po potvrđenom uzroku sprovesti odobrenu korekciju, zatim ponoviti kompletan post-check.</li>
+</ol>
+
+<p>
+  <strong>Kriterijum oporavka:</strong> endpoint radi sa svih odobrenih administrativnih mreža, sertifikat se pravilno proverava, <code>readyz</code> i Kubernetes upiti uspevaju, nema novog kritičnog alarma, a mrežni i vCenter događaji potvrđuju stabilno stanje. Privremeno otvaranje pristupa sa svih mreža nije prihvatljiv workaround jer povećava bezbednosni rizik i prikriva pogrešnu firewall matricu.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Pre svake promene sačuvati dokaz, a posle nje ponoviti istu proveru radi uporedivosti.</li>
+  <li>Koristiti UTC ili jasno označenu vremensku zonu u incidentima i korelisati clock skew pre poređenja logova.</li>
+  <li>Razdvojiti platform owner-a, vSphere, mrežni, storage, DNS/PKI i security tim, ali održavati jednu zajedničku vremensku liniju.</li>
+  <li>Ne tretirati upozorenje kao uspeh bez vlasnika rizika i roka; ne tretirati <em>Running</em> kao acceptance bez funkcionalnih proba.</li>
+  <li>Ne restartovati servise, ne brisati sistemske podove i ne menjati upravljane appliance VM-ove bez dokazanog uzroka i podržane procedure.</li>
+  <li>Redovno slati Supervisor logove u centralni sistem kada izdanje to podržava; lokalni log može nestati tokom zamene control plane VM-a.</li>
+  <li>Posle svakog incidenta dopuniti runbook prepoznatljivim simptomom, dokazom uzroka, bezbednom korekcijom i preventivnom kontrolom.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Lekcija je završena kada administrator može dokazivo da:</p>
+
+<ul>
+  <li>objasni razliku između ugrađenog pre-check-a, administratorskog pre-check-a, statusa i funkcionalnog post-check-a;</li>
+  <li>formira G0–G4 acceptance zapis sa konkretnim dokazima i kriterijumom go/no-go;</li>
+  <li>proveri DNS, TCP, TLS, API readiness, čvorove, sistemske podove, događaje, storage i alarme bez menjanja stanja;</li>
+  <li>odredi najniži neuspešan sloj i napiše proverljivu hipotezu umesto da nasumično menja konfiguraciju;</li>
+  <li>razdvoji simptom, neposredni i osnovni uzrok, workaround i trajnu korekciju;</li>
+  <li>prepozna kada je retry bezbedan, kada je potrebna podrška i zašto ručno brisanje upravljanih objekata nije rollback;</li>
+  <li>zaštiti kubeconfig, tokene, support bundle i druge operativne dokaze;</li>
+  <li>preda Supervisor narednoj lekciji kao validiranu osnovu za Supervisor Namespace, identitet, kvote i kasnije VKS klastere.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+  Pouzdan Supervisor ne nastaje jednim uspešnim čarobnjakom, već disciplinovanim zatvaranjem niza zavisnosti. Pre-check sprečava poznate greške pre promene; post-check dokazuje da control plane, API, mreža, storage i bezbednosni tokovi rade zajedno; troubleshooting čuva dokaze i vodi od simptoma do osnovnog uzroka. Najvažnija veština nije poznavanje najvećeg broja komandi, već sposobnost da se svaka komanda veže za hipotezu, očekivani rezultat, rizik i sledeću odluku.
+</p>
+
+<p>
+  Tek kada je acceptance zapis potpun, incidentne grane proverene i operativno vlasništvo jasno, platforma je spremna da primi Supervisor Namespace-e i VKS klastere. Time administrator preuzima odgovornost ne samo za to da sistem danas pokazuje zelen status, već i za to da se sutrašnja degradacija rano prepozna, bezbedno dijagnostikuje i dokazivo otkloni.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Supervisor administrativna i troubleshooting dokumentacija; vSphere Supervisor 8.0 Release Notes i VMware Cloud Foundation 9.x dokumentacija; Product Interoperability Matrix i Configuration Maximums; Knowledge Base članci za Supervisor enablement i control plane; vSphere, ESXi, NSX, Kubernetes CLI, sertifikatske, logging i support bundle reference
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-15-supervisor-control-plane-i-status.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-17-supervisor-namespace-i-multi-tenancy.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
+

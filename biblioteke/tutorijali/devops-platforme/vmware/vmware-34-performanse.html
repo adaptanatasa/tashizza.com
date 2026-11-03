@@ -1,0 +1,3468 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-34-performanse.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Performanse – CPU, memorija, disk i mreža u virtuelnom okruženju | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte ključne pokazatelje VMware performansi i naučite kako CPU, memorija, disk i mreža utiču na rad virtuelnih mašina i ESXi hostova.">
+
+  <meta name="keywords"
+        content="VMware performanse, performanse virtuelnih mašina, CPU, memorija, disk, mreža, ESXi performanse, vSphere performance, CPU ready, memory ballooning, swapping, storage latency, network latency, monitoring VMware, vCenter, VMware administracija, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-34-performanse.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Performanse – CPU, memorija, disk i mreža u virtuelnom okruženju">
+
+  <meta property="og:description"
+        content="Saznajte kako se prate CPU, memorija, disk i mreža u VMware okruženju i kako se prepoznaju najčešća uska grla u radu virtuelnih mašina.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-34-performanse.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-34-performanse.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Performanse – CPU, memorija, disk i mreža u virtuelnom okruženju">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-34-performanse.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-34-performanse.png"
+           alt="Performanse – CPU, memorija, disk i mreža u virtuelnom okruženju">
+
+    </a>
+
+  <div class="page-subtitle">
+ VII. Klasteri, dostupnost, performanse i bezbednosna osnova
+</div>
+
+<div class="page-subtitle">
+ 34. Performanse – CPU, memorija, disk i mreža bez pogrešnog tumačenja metrika
+</div>
+
+<p><strong>Napredni tutorijal i praktikum</strong></p>
+
+<p>Performanse VMware okruženja nisu rezultat samo brzine procesora ili storage sistema. One predstavljaju zbir rada VMkernel planera, raspoloživih fizičkih resursa, pravilnog dizajna infrastrukture, raspoređivanja opterećenja pomoću DRS-a, karakteristika storage sistema, mrežne arhitekture i samog operativnog sistema koji radi unutar virtuelne mašine.</p>
+
+<p>Jedna od najčešćih grešaka novih administratora jeste pretpostavka da će dodavanje više vCPU ili više memorije automatski ubrzati virtuelnu mašinu. U praksi je veoma često upravo suprotno — pogrešno dimenzionisana VM može stvarati dodatno opterećenje scheduleru, povećavati CPU Ready vreme, otežavati DRS balansiranje i usporavati ceo klaster. Zvanične smernice za performanse zato insistiraju na <em>rightsizing-u</em>: dodeli onoliko resursa koliko workload dokazano zahteva, uz rezervu koja odgovara njegovom SLA-u i obrascu rasta.</p>
+
+<p>Ova lekcija se neposredno nadovezuje na DRS: DRS može da premesti VM kada proceni da bi drugo mesto poboljšalo ravnotežu klastera, ali ne može da popravi loš SQL plan, pogrešan VM limit, neusklađen MTU ili zasićen storage niz. U narednim lekcijama monitoring, alarmi i sistematičan troubleshooting biće obrađeni kao širi operativni proces; ovde je fokus na tačnom značenju performance metrika i dokazivanju sloja u kome nastaje čekanje.</p>
+
+<p>Administrator zato mora razumeti kako VMkernel raspoređuje CPU vreme, upravlja memorijom, obrađuje disk I/O i mrežni saobraćaj pre nego što uopšte počne optimizaciju performansi.</p>
+
+<hr>
+
+<p><strong>Performanse kao lanac međusobno povezanih komponenti</strong></p>
+
+<p>Svaki zahtev aplikacije prolazi kroz više slojeva:</p>
+
+<ul>
+<li>operativni sistem gosta;</li>
+<li>VMware Tools (kada su potrebni određeni servisi);</li>
+<li>virtuelni hardver;</li>
+<li>VMkernel;</li>
+<li>CPU scheduler;</li>
+<li>memory manager;</li>
+<li>storage stack;</li>
+<li>network stack;</li>
+<li>fizički hardver.</li>
+</ul>
+
+<p>Problem može nastati u bilo kom od ovih slojeva. Na primer:</p>
+
+<ul>
+<li>spor SQL upit nije nužno CPU problem;</li>
+<li>visok CPU može biti posledica storage čekanja;</li>
+<li>velika memorija može prikrivati storage bottleneck;</li>
+<li>mrežni timeout može biti izazvan CPU Ready vremenom.</li>
+</ul>
+
+<p>Zbog toga VMware troubleshooting gotovo nikada ne počinje pretpostavkom već merenjem.</p>
+
+<hr>
+
+<p><strong>CPU performanse</strong></p>
+
+<p>VMkernel koristi napredni CPU scheduler koji raspoređuje vCPU jezgra virtuelnih mašina na fizička jezgra hosta.</p>
+
+<p>Scheduler mora obezbediti:</p>
+
+<ul>
+<li>fer raspodelu CPU vremena;</li>
+<li>poštovanje rezervacija;</li>
+<li>ograničenja (Limits);</li>
+<li>Shares prioritete;</li>
+<li>NUMA lokalnost;</li>
+<li>koordinaciju više vCPU iste VM.</li>
+</ul>
+
+<p>Za razliku od fizičkog servera, virtuelna mašina ne dobija trajno određeno jezgro.</p>
+
+<p>Scheduler neprestano odlučuje:</p>
+
+<ul>
+<li>ko dobija CPU;</li>
+<li>koliko dugo;</li>
+<li>na kom jezgru;</li>
+<li>da li je bolje izvršavanje premestiti na drugo jezgro.</li>
+</ul>
+
+<hr>
+
+<p><strong>Najvažnije CPU metrike</strong></p>
+
+<table>
+<tr>
+<th>Metrika</th>
+<th>Značenje</th>
+<th>Na šta ukazuje</th>
+</tr>
+
+<tr>
+<td>Usage</td>
+<td>stvarna iskorišćenost CPU</td>
+<td>koliko VM zaista koristi CPU</td>
+</tr>
+
+<tr>
+<td>Demand</td>
+<td>koliko CPU VM želi</td>
+<td>potencijalna potreba</td>
+</tr>
+
+<tr>
+<td>Ready</td>
+<td>čekanje na fizički CPU</td>
+<td>konkurencija za fizički CPU, limit ili nepovoljan raspored</td>
+</tr>
+
+<tr>
+<td>Co-stop</td>
+<td>sinhronizacija više vCPU</td>
+<td>teškoće istovremenog napredovanja više vCPU; proveriti veličinu VM-a</td>
+</tr>
+
+<tr>
+<td>Latency</td>
+<td>ukupno kašnjenje raspoređivanja</td>
+<td>scheduler ili resursni problem</td>
+</tr>
+
+</table>
+
+<p>Posebno treba pratiti CPU Ready vreme. Ono označava period kada je virtuelna mašina spremna za izvršavanje, ali VMkernel ne može odmah da joj dodeli fizičko jezgro zbog konkurencije za resurse. Dugotrajno povećanje CPU Ready vremena često ukazuje na prevelik broj vCPU ili preopterećen host.</p>
+
+<hr>
+
+<p><strong>CPU Ready nije isto što i visok CPU Usage</strong></p>
+
+<p>Ovo je jedna od najvažnijih administratorskih lekcija.</p>
+
+<p>Moguće su sledeće situacije:</p>
+
+<table>
+<tr>
+<th>CPU Usage</th>
+<th>CPU Ready</th>
+<th>Tumačenje</th>
+</tr>
+
+<tr>
+<td>visok</td>
+<td>nizak</td>
+<td>VM zaista radi intenzivno</td>
+</tr>
+
+<tr>
+<td>nizak</td>
+<td>visok</td>
+<td>VM čeka CPU</td>
+</tr>
+
+<tr>
+<td>visok</td>
+<td>visok</td>
+<td>VM ima koristan rad, ali istovremeno čeka; proveriti host, limit, vCPU veličinu i NUMA</td>
+</tr>
+
+<tr>
+<td>nizak</td>
+<td>nizak</td>
+<td>nema dokaza o CPU contention-u u posmatranom intervalu; uzrok može biti u drugom sloju</td>
+</tr>
+
+</table>
+
+<hr>
+
+<p><strong>NUMA i lokalnost memorije</strong></p>
+
+<p>Na serverima sa više CPU socket-a memorija nije jednako udaljena od svih procesora.</p>
+
+<p>NUMA (Non-Uniform Memory Access) omogućava da VM koristi memoriju koja je fizički najbliža procesoru na kome se izvršava.</p>
+
+<p>Ako velika VM prelazi NUMA granice:</p>
+
+<ul>
+<li>raste memorijska latencija;</li>
+<li>scheduler ima manje slobode;</li>
+<li>performanse mogu opasti.</li>
+</ul>
+
+<p>Zbog toga nije preporučljivo dodeljivati veliki broj vCPU bez stvarne potrebe.</p>
+
+<hr>
+
+<p><strong>Virtualizacija memorije</strong></p>
+
+<p>ESXi koristi više tehnika upravljanja memorijom kako bi omogućio stabilan rad i kada fizička memorija postane ograničen resurs.</p>
+
+<p>Najvažnije tehnike su:</p>
+
+<ul>
+<li>Transparent Page Sharing (TPS) — danas ograničen zbog bezbednosnih razloga i primenjuje se drugačije nego u starijim verzijama;</li>
+<li>Memory Ballooning;</li>
+<li>Memory Compression;</li>
+<li>Host Swapping.</li>
+</ul>
+
+<p>VMkernel ove mehanizme koristi postepeno. Cilj je da swapping bude poslednja opcija, jer ima najveći negativan uticaj na performanse.</p>
+
+<hr>
+
+<p><strong>Balloon Driver</strong></p>
+
+<p>Balloon driver je deo VMware Tools paketa.</p>
+
+<p>Kada host ostane bez slobodne memorije:</p>
+
+<ol>
+<li>VMkernel aktivira balloon driver.</li>
+<li>Driver "zauzima" memoriju unutar gosta.</li>
+<li>Gost sam odlučuje koje stranice može osloboditi.</li>
+<li>Host preuzima oslobođenu memoriju.</li>
+</ol>
+
+<p>Ovaj postupak je znatno efikasniji od direktnog host swapping-a.</p>
+
+<p>Ako VMware Tools nisu instalirani ili nisu funkcionalni, host nema mogućnost ballooning-a i ranije prelazi na swapping.</p>
+
+<hr>
+
+<p><strong>Memory Compression</strong></p>
+
+<p>Kada ballooning nije dovoljan, VMkernel pokušava da kompresuje stranice memorije.</p>
+
+<p>Kompresovana memorija:</p>
+
+<ul>
+<li>ostaje u RAM-u;</li>
+<li>brža je od swap-a;</li>
+<li>smanjuje disk I/O.</li>
+</ul>
+
+<hr>
+
+<p><strong>Host Swapping</strong></p>
+
+<p>Host swapping predstavlja poslednju zaštitu od potpunog nedostatka memorije.</p>
+
+<p>VMkernel zapisuje stranice memorije na swap fajl.</p>
+
+<p>Posledice:</p>
+
+<ul>
+<li>veliko povećanje latencije;</li>
+<li>spor odziv aplikacija;</li>
+<li>pad performansi baze podataka;</li>
+<li>spor rad web servera;</li>
+<li>spor rad Active Directory servisa.</li>
+</ul>
+
+<p>Zbog toga trajni rast swap-in/swap-out aktivnosti nije normalan način rada, već dokaz koji zahteva istragu. Uzrok može biti globalni memory pressure, ali i limit konkretne VM; sama činjenica da je swap prostor nekada korišćen nije dovoljna bez stope promene, vremenskog intervala i korelacije sa odzivom.</p>
+
+<hr>
+
+<p><strong>Storage performanse</strong></p>
+
+<p>Kod storage sistema administrator prvenstveno prati latenciju, a ne samo propusni opseg.</p>
+
+<p>Najvažnije komponente storage puta su:</p>
+
+<ul>
+<li>VM;</li>
+<li>virtuelni SCSI kontroler;</li>
+<li>VMkernel storage stack;</li>
+<li>HBA ili softverski adapter;</li>
+<li>SAN ili NAS mreža;</li>
+<li>storage kontroler;</li>
+<li>diskovi ili SSD/NVMe uređaji.</li>
+</ul>
+
+<p>Kašnjenje u bilo kom segmentu povećava ukupno vreme odgovora aplikacije. Broadcom preporučuje analizu latencije po slojevima korišćenjem Performance Charts i esxtop alata.</p>
+
+<hr>
+
+<p><strong>Storage latencije</strong></p>
+
+<p>U esxtop-u se često analiziraju:</p>
+
+<ul>
+<li>DAVG — Device Latency;</li>
+<li>KAVG — VMkernel Latency;</li>
+<li>GAVG — ukupna latencija.</li>
+</ul>
+
+<pre><code class="language-none">GAVG/cmd ≈ DAVG/cmd + KAVG/cmd</code></pre>
+
+<p>Vrednosti su proseci za izabrani interval i sloj storage steka. Zato kratki pik, percentil latencije aplikacije i prosek u <code>esxtop</code>-u nisu ista stvar. Aktuelni Broadcom KB kao signal za istragu navodi održane vrednosti iznad približno 10 ms, ali to nije univerzalni SLA: prihvatljivost zavisi od medijuma, protokola, workload-a i zahteva aplikacije. Važniji su odstupanje od bazne linije, trajanje, redovi i greške nego jedan izolovan broj.</p>
+
+<p>Ako je:</p>
+
+<ul>
+<li>DAVG visok → problem je uglavnom na storage uređaju;</li>
+<li>KAVG visok → VMkernel ili adapter predstavlja usko grlo;</li>
+<li>GAVG visok → aplikacija oseća veliko ukupno kašnjenje.</li>
+</ul>
+
+<hr>
+
+<p><strong>Thin i Thick diskovi sa aspekta performansi</strong></p>
+
+<p>Kod modernih storage sistema razlike su uglavnom manje nego ranije, ali administrator mora razumeti način rada.</p>
+
+<ul>
+<li>Thin provisioning štedi prostor, ali zahteva pažljivo praćenje slobodnog kapaciteta.</li>
+<li>Lazy Zeroed Thick unapred rezerviše prostor.</li>
+<li>Eager Zeroed Thick unapred rezerviše i inicijalizuje blokove, zbog čega je obavezan za određene funkcije poput VMware Fault Tolerance.</li>
+</ul>
+
+<p>Izbor tipa diska treba da bude rezultat zahteva aplikacije, a ne pretpostavke da je jedan format univerzalno najbrži.</p>
+
+<hr>
+
+<p><strong>Mrežne performanse</strong></p>
+
+<p>Virtuelni mrežni saobraćaj prolazi kroz:</p>
+
+<ul>
+<li>virtuelni adapter;</li>
+<li>vSwitch ili vDS;</li>
+<li>VMkernel;</li>
+<li>fizički NIC;</li>
+<li>switch infrastrukturu.</li>
+</ul>
+
+<p>Problemi mogu nastati zbog:</p>
+
+<ul>
+<li>pogrešnog MTU;</li>
+<li>preopterećenog uplink-a;</li>
+<li>neodgovarajuće Load Balancing politike;</li>
+<li>Queue zagušenja;</li>
+<li>packet drop događaja;</li>
+<li>sporog storage over Ethernet saobraćaja.</li>
+</ul>
+
+<hr>
+
+<p><strong>Praćenje performansi u vSphere Client-u</strong></p>
+
+<p>Administrator ne treba odmah da koristi esxtop.</p>
+
+<p>Prvi korak je analiza Performance Charts.</p>
+
+<p>Najčešće se proveravaju:</p>
+
+<ul>
+<li>CPU Usage;</li>
+<li>CPU Ready;</li>
+<li>Memory Active;</li>
+<li>Consumed Memory;</li>
+<li>Balloon;</li>
+<li>Swap;</li>
+<li>Disk Latency;</li>
+<li>Datastore Latency;</li>
+<li>Network Throughput;</li>
+<li>Packet Loss.</li>
+</ul>
+
+<p>Napredni grafici i dostupne metrike mogu se razlikovati u zavisnosti od verzije vSphere-a, nivoa prikupljanja statistike i licence.</p>
+
+<hr>
+
+<p><strong>ESXCLI i komandna linija</strong></p>
+
+<p>ESXCLI nije primarni alat za analizu performansi, ali je važan za proveru konfiguracije.</p>
+
+<pre><code class="language-bash">esxcli hardware cpu list</code></pre>
+
+<p>Izvršava se na ESXi hostu.</p>
+
+<p>Prikazuje:</p>
+
+<ul>
+<li>fizička jezgra;</li>
+<li>socket-e;</li>
+<li>NUMA raspored;</li>
+<li>CPU karakteristike.</li>
+</ul>
+
+<p>Komanda je potpuno bezbedna i ne menja stanje sistema.</p>
+
+<pre><code class="language-bash">esxcli network nic list</code></pre>
+
+<p>Prikazuje:</p>
+
+<ul>
+<li>link status;</li>
+<li>brzinu;</li>
+<li>duplex;</li>
+<li>driver;</li>
+<li>firmware.</li>
+</ul>
+
+<p>Koristi se pri dijagnostici mrežnih performansi i potvrdi da fizički adapter radi očekivanom brzinom.</p>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<p>Prikazuje detaljne informacije o storage uređajima, uključujući tip uređaja, putanje i karakteristike. Ne menja konfiguraciju i bezbedna je za izvršavanje u produkciji.</p>
+
+<hr>
+
+<p><strong>esxtop – osnovni alat za performanse</strong></p>
+
+<p>Za ozbiljnu dijagnostiku Broadcom i dalje preporučuje <strong>esxtop</strong>, odnosno <strong>resxtop</strong> za udaljeno prikupljanje podataka.</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Pokreće se direktno na ESXi Shell-u ili preko SSH sesije.</p>
+
+<p>Najvažnije prečice:</p>
+
+<ul>
+<li><strong>c</strong> — CPU;</li>
+<li><strong>m</strong> — Memory;</li>
+<li><strong>d</strong> — Disk Device;</li>
+<li><strong>u</strong> — Disk VM;</li>
+<li><strong>n</strong> — Network.</li>
+</ul>
+
+<p>Sam alat ne menja resursnu konfiguraciju već prikazuje statistiku u realnom vremenu. Administrator po potrebi uključuje ili isključuje kolone pomoću tastera <strong>f</strong>, a za vremenski ograničenu analizu može prikupljati podatke u batch režimu radi kasnijeg pregleda. Ipak, prikupljanje ima CPU i diskovni trošak, pa interval i broj uzoraka moraju biti ograničeni.</p>
+
+<p><strong>Drugi deo – Praktikum, prvi deo</strong></p>
+
+<p><strong>Operativni cilj praktikuma</strong></p>
+
+<p>U ovom delu praktikuma administrator uspostavlja ponovljivu metodologiju za merenje performansi, zatim dijagnostikuje CPU i memorijska uska grla bez oslanjanja na jednu metriku ili unapred formiranu pretpostavku. Vežbe su usmerene na razlikovanje stvarnog nedostatka fizičkih resursa od problema koje izazivaju pogrešno dimenzionisana virtuelna mašina, neodgovarajući resursni limit, NUMA raspored, aplikaciono ponašanje ili kratkotrajni skok opterećenja.</p>
+
+<p>Broadcom preporučuje da se problem performansi posmatra kroz CPU, memoriju, storage i mrežu, jer slab odziv virtuelne mašine može nastati u bilo kom od tih slojeva. Zbog toga je cilj prve vežbe prikupljanje baznog stanja, a ne trenutno menjanje konfiguracije.</p>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Predložena konfiguracija</th>
+      <th>Namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vCenter Server</td>
+      <td>vCenter Server 8.x ili odgovarajuće podržano izdanje</td>
+      <td>Centralno upravljanje, istorijske metrike, događaji i alarmi</td>
+    </tr>
+    <tr>
+      <td>ESXi hostovi</td>
+      <td>Najmanje dva hosta u klasteru; vežbe su moguće i na jednom laboratorijskom hostu</td>
+      <td>Poređenje opterećenja i bezbedno premeštanje VM-a kada postoji klaster</td>
+    </tr>
+    <tr>
+      <td>Klaster</td>
+      <td>DRS u Manual ili Partially Automated režimu, ako je dostupan</td>
+      <td>Kontrolisano posmatranje preporuka bez nekontrolisanog menjanja smeštaja VM-a</td>
+    </tr>
+    <tr>
+      <td>TEST-PERF-01</td>
+      <td>Linux VM, 2 vCPU, 4 GB RAM, VMware Tools ili open-vm-tools</td>
+      <td>Kontrolisano CPU i memorijsko opterećenje</td>
+    </tr>
+    <tr>
+      <td>TEST-PERF-02</td>
+      <td>Linux ili Windows VM, 4 vCPU, 8 GB RAM</td>
+      <td>Poređenje i simulacija pogrešnog dimenzionisanja</td>
+    </tr>
+    <tr>
+      <td>Administratorska stanica</td>
+      <td>PowerShell 7 i aktuelni VCF PowerCLI moduli</td>
+      <td>Prikupljanje i poređenje istorijskih statistika</td>
+    </tr>
+    <tr>
+      <td>Monitoring interval</td>
+      <td>Najmanje 15–30 minuta za laboratoriju; u produkciji reprezentativan poslovni period</td>
+      <td>Razlikovanje kratkog skoka od trajnog problema</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Komande u praktikumu koriste generičke nazive objekata. Pre izvršavanja zameniti nazive kao što su <code>vcsa.lab.local</code>, <code>esxi01.lab.local</code>, <code>CLUSTER-PROD</code> i <code>TEST-PERF-01</code> stvarnim laboratorijskim vrednostima.</p>
+
+<p><strong>Verzijske i licencne napomene</strong></p>
+
+<ul>
+  <li>Osnovni Performance Charts, esxtop, ESXCLI i pregled resursa dostupni su nezavisno od DRS automatizacije, ali napredna automatizacija raspoređivanja i pojedine klasterske funkcije zavise od izdanja, pretplate i licenci koje organizacija poseduje.</li>
+  <li>Nazivi menija, statističkih brojača i dostupni vremenski intervali mogu se razlikovati između vSphere 7, vSphere 8, novijih izdanja i različitih nivoa statističkog prikupljanja u vCenter Serveru.</li>
+  <li>U novijim Broadcom distribucijama PowerCLI se na portalu može pojaviti pod nazivom VCF PowerCLI. Konkretni vSphere cmdlet-i, uključujući <code>Get-Stat</code>, i dalje se koriste za automatizaciju vSphere okruženja.</li>
+  <li>ESXi 8.0 može automatski izgraditi virtuelnu CPU topologiju. Ručno menjanje broja cores per socket ne treba koristiti kao univerzalnu optimizaciju niti kao način zaobilaženja licenciranja aplikacije. Dimenzionisanje mora poštovati zahteve gosta, NUMA raspored i licencne uslove proizvođača aplikacije.</li>
+</ul>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 1 – Uspostavljanje baznog stanja performansi</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator napravi dokumentovano početno stanje hosta i virtuelnih mašina pre bilo kakve izmene. Bazno stanje služi za poređenje tokom incidenta, nakon nadogradnje, promene resursa, migracije, izmene storage politike ili promene aplikacionog opterećenja.</p>
+
+<p>Bez baznog stanja izraz „sistem je sporiji nego ranije” nije tehnički dokaz. Administrator mora moći da odgovori:</p>
+
+<ul>
+  <li>koji objekat je spor: aplikacija, jedna VM, grupa VM-ova, host, klaster ili datastore;</li>
+  <li>u kom periodu se problem pojavljuje;</li>
+  <li>da li je promenjen CPU zahtev, memorijski pritisak, storage latencija ili mrežni saobraćaj;</li>
+  <li>da li je ponašanje novo ili predstavlja normalan dnevni obrazac;</li>
+  <li>koja promena prethodi pojavi simptoma.</li>
+</ul>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Administratorski nalog sa pravom čitanja konfiguracije i statistike.</li>
+  <li>Ispravno vreme i NTP sinhronizacija na vCenter Serveru, ESXi hostovima i gostujućim sistemima.</li>
+  <li>Instalirani i funkcionalni VMware Tools ili open-vm-tools u testnim VM-ovima.</li>
+  <li>Poznat period normalnog opterećenja.</li>
+  <li>Omogućen SSH samo ako će se koristiti esxtop preko udaljene sesije.</li>
+  <li>PowerCLI sesija sa pristupom vCenter Serveru.</li>
+</ul>
+
+<p><strong>Početno stanje</strong></p>
+
+<p>Virtuelne mašine rade bez namerno izazvanog opterećenja. Resursne rezervacije, limiti i shares nisu menjani radi vežbe. DRS, ako postoji, ne sme automatski premeštati testnu VM tokom kratkog mernog intervala bez dokumentovanja migracije, jer bi promena hosta prekinula poređenje host-level brojača.</p>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Ova vežba je nedestruktivna. Ipak, uključivanje SSH servisa povećava administrativnu napadnu površinu. U produkciji ga omogućiti samo privremeno, ograničiti pristup upravljačkoj mreži i isključiti nakon prikupljanja podataka. Samo posmatranje statistike ne zahteva restart hosta, VM-a ili servisa.</p>
+
+<p><strong>Korak 1 – Zabeležiti administrativni kontekst</strong></p>
+
+<p>Pre otvaranja grafikona zabeležiti:</p>
+
+<ul>
+  <li>datum, vreme i vremensku zonu;</li>
+  <li>prijavljeni simptom;</li>
+  <li>početak i trajanje problema;</li>
+  <li>pogođene korisnike i aplikacije;</li>
+  <li>naziv VM-a, hosta, klastera i datastore-a;</li>
+  <li>nedavne promene;</li>
+  <li>da li se problem može ponoviti;</li>
+  <li>koji poslovni proces je ugrožen.</li>
+</ul>
+
+<p>Ovaj korak sprečava čestu grešku u kojoj administrator odmah traži visoku metriku, a ne zna kada se problem dogodio niti da li posmatra odgovarajući objekat.</p>
+
+<p><strong>Korak 2 – Proveriti opšte stanje VM-a kroz vSphere Client</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">Menu
+→ VMs and Templates
+→ TEST-PERF-01
+→ Summary</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>Power State;</li>
+  <li>Host na kome VM trenutno radi;</li>
+  <li>Guest OS i VMware Tools status;</li>
+  <li>dodeljeni vCPU i memoriju;</li>
+  <li>alarme i upozorenja;</li>
+  <li>trenutni CPU Usage i Memory Usage;</li>
+  <li>postoje li snapshot-i;</li>
+  <li>datastore na kome se nalaze konfiguracija i VMDK fajlovi.</li>
+</ul>
+
+<p>Početni Summary ekran nije dovoljan za zaključak o performansama. On služi da se brzo prepoznaju očigledni problemi: isključeni VMware Tools, aktivan alarm, neočekivani host, neplanirana promena resursa ili dug lanac snapshot-a.</p>
+
+<p><strong>Korak 3 – Pregledati događaje i nedavne promene</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Monitor
+→ Tasks and Events
+→ Events</code></pre>
+
+<p>Filtrirati period koji obuhvata pojavu problema. Tražiti:</p>
+
+<ul>
+  <li>vMotion ili DRS migraciju;</li>
+  <li>promenu CPU ili memorijske konfiguracije;</li>
+  <li>promenu resource pool-a;</li>
+  <li>promenu limita, rezervacije ili shares vrednosti;</li>
+  <li>snapshot create, remove ili consolidate operaciju;</li>
+  <li>resetovanje ili ponovno pokretanje VM-a;</li>
+  <li>promenu virtuelnog mrežnog adaptera;</li>
+  <li>Storage vMotion;</li>
+  <li>HA restart ili host connectivity događaj.</li>
+</ul>
+
+<p>U praksi je promena neposredno pre pojave problema često vredniji trag od jedne visoke metrike.</p>
+
+<p><strong>Korak 4 – Otvoriti Performance Charts za VM</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Monitor
+→ Performance
+→ Advanced</code></pre>
+
+<p>Izabrati odgovarajući vremenski opseg, a zatim pregledati najmanje sledeće grupe:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Grupa</th>
+      <th>Brojači koje treba pregledati</th>
+      <th>Administratorsko pitanje</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CPU</td>
+      <td>Usage, Usage in MHz, Ready, Demand, Co-stop</td>
+      <td>Da li VM koristi CPU ili čeka da ga dobije?</td>
+    </tr>
+    <tr>
+      <td>Memory</td>
+      <td>Consumed, Active, Granted, Balloon, Compressed, Swapped</td>
+      <td>Da li je memorija samo dodeljena ili je aktivno potrebna, i postoji li reclamation?</td>
+    </tr>
+    <tr>
+      <td>Virtual disk</td>
+      <td>Read/Write latency, Read/Write rate, Commands</td>
+      <td>Da li gost čeka I/O i da li se to poklapa sa simptomom?</td>
+    </tr>
+    <tr>
+      <td>Network</td>
+      <td>Usage, packets transmitted/received, dropped packets gde su dostupni</td>
+      <td>Da li je zastoj povezan sa mrežnim opterećenjem ili gubicima?</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Raspoloživost brojača zavisi od objekta, statističkog nivoa i izabranog perioda. Real-time prikaz daje detaljnije kratkoročne podatke, dok se istorijski podaci agregiraju. Zbog toga se mali kratkotrajni skok može izgubiti u dnevnom ili nedeljnom proseku. Broadcom dokumentacija za vSphere Monitoring and Performance razlikuje prikaze i alate za praćenje CPU, memorijskih, storage i drugih resursa.</p>
+
+<p><strong>Korak 5 – Pregledati host i klaster, a ne samo VM</strong></p>
+
+<p>GUI putanje:</p>
+
+<pre><code class="language-none">Hosts and Clusters
+→ esxi01.lab.local
+→ Monitor
+→ Performance
+→ Advanced</code></pre>
+
+<pre><code class="language-none">Hosts and Clusters
+→ CLUSTER-PROD
+→ Monitor
+→ Performance</code></pre>
+
+<p>Na hostu proveriti:</p>
+
+<ul>
+  <li>ukupni CPU Usage i Demand;</li>
+  <li>broj aktivnih VM-ova;</li>
+  <li>memorijsku potrošnju i reclamation brojače;</li>
+  <li>storage latenciju po uređaju i datastore-u;</li>
+  <li>mrežni saobraćaj po fizičkom adapteru;</li>
+  <li>alarme za CPU, memoriju, datastore i mrežu.</li>
+</ul>
+
+<p>Na klasteru proveriti:</p>
+
+<ul>
+  <li>da li je opterećenje ravnomerno raspoređeno;</li>
+  <li>postoji li host sa znatno većim CPU ili memorijskim pritiskom;</li>
+  <li>postoje li aktivne DRS preporuke;</li>
+  <li>da li affinity pravila sprečavaju bolji raspored;</li>
+  <li>da li HA rezervisani kapacitet ograničava raspoložive resurse.</li>
+</ul>
+
+<p>Visok Ready na jednoj VM može biti posledica host-level konkurencije, čak i kada klaster kao celina raspolaže slobodnim kapacitetom. U tom slučaju problem može biti neravnomeran raspored, host affinity pravilo, lokalna zavisnost ili DRS režim, a ne nedostatak ukupnog klasterskog CPU kapaciteta.</p>
+
+<p><strong>Korak 6 – Napraviti PowerCLI inventar početnog stanja</strong></p>
+
+<p>Komande se izvršavaju na administratorskoj stanici sa instaliranim PowerCLI modulima.</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local
+
+$vmName = "TEST-PERF-01"
+$vm = Get-VM -Name $vmName
+
+$vm | Select-Object `
+    Name,
+    PowerState,
+    NumCpu,
+    MemoryGB,
+    VMHost,
+    @{N="GuestOS";E={$_.Guest.OSFullName}},
+    @{N="ToolsStatus";E={$_.ExtensionData.Guest.ToolsStatus}},
+    @{N="ToolsRunning";E={$_.ExtensionData.Guest.ToolsRunningStatus}}</code></pre>
+
+<p><code>Connect-VIServer</code> uspostavlja sesiju sa vCenter Serverom. <code>Get-VM</code> samo čita objekat, a <code>Select-Object</code> formira pregled ključnih vrednosti. Komande ne menjaju VM. Očekivani rezultat je jedan red sa ispravnim nazivom, hostom, brojem vCPU, memorijom i statusom VMware Tools-a.</p>
+
+<p>Za pregled resursnih postavki:</p>
+
+<pre><code class="language-powershell">$vm | Get-VMResourceConfiguration |
+    Select-Object VM,
+                  CpuReservationMhz,
+                  CpuLimitMhz,
+                  CpuSharesLevel,
+                  MemReservationGB,
+                  MemLimitGB,
+                  MemSharesLevel</code></pre>
+
+<p>Ova komanda je posebno važna jer VM može imati slab odziv zbog limita iako host nije opterećen. Broadcom dokumentuje slučajeve u kojima CPU ili memorijski limit izazivaju loše performanse, ballooning ili VMkernel swapping i pored slobodnih host resursa.</p>
+
+<p>Očekivani rezultat treba uporediti sa organizacionim standardom. Vrednost limita koja odgovara „Unlimited” može se u PowerCLI prikazu razlikovati u zavisnosti od objekta i verzije. Administrator ne treba da zaključuje samo na osnovu teksta u jednoj koloni, već da rezultat potvrdi u vSphere Client-u.</p>
+
+<p><strong>Korak 7 – Izlistati dostupne statističke brojače</strong></p>
+
+<pre><code class="language-powershell">Get-StatType -Entity $vm | Sort-Object</code></pre>
+
+<p>Komanda se izvršava u PowerCLI sesiji i ne menja stanje. Ona prikazuje koje metrike vCenter trenutno može da vrati za izabrani VM. Ovo je bezbedniji pristup od pretpostavke da je naziv brojača isti u svakoj verziji i na svakom objektu.</p>
+
+<p>Filtriranje po resursu:</p>
+
+<pre><code class="language-powershell">Get-StatType -Entity $vm |
+    Where-Object {
+        $_ -match "^cpu\." -or
+        $_ -match "^mem\." -or
+        $_ -match "^disk\." -or
+        $_ -match "^net\."
+    } |
+    Sort-Object</code></pre>
+
+<p><strong>Korak 8 – Prikupiti kratkoročni PowerCLI uzorak</strong></p>
+
+<pre><code class="language-powershell">$start = (Get-Date).AddMinutes(-30)
+$finish = Get-Date
+
+$metrics = @(
+    "cpu.usage.average",
+    "cpu.ready.summation",
+    "mem.usage.average",
+    "mem.active.average",
+    "mem.vmmemctl.average",
+    "mem.swapped.average"
+)
+
+Get-Stat -Entity $vm `
+         -Stat $metrics `
+         -Start $start `
+         -Finish $finish |
+    Select-Object Entity,
+                  MetricId,
+                  Instance,
+                  Timestamp,
+                  Value,
+                  Unit |
+    Sort-Object Timestamp, MetricId</code></pre>
+
+<p><code>Get-Stat</code> čita statistiku koju je prikupio vCenter Server. Komanda ne generiše opterećenje unutar VM-a i ne menja konfiguraciju. Ipak, veoma široki upiti nad velikim brojem objekata i dugim periodom mogu nepotrebno opteretiti vCenter bazu i PowerCLI sesiju. U produkciji ograničiti broj objekata, metrika i vremenski opseg.</p>
+
+<p>Ako se dobije greška da metrika nije dostupna:</p>
+
+<ol>
+  <li>pokrenuti <code>Get-StatType -Entity $vm</code>;</li>
+  <li>proveriti tačan naziv brojača;</li>
+  <li>proveriti da li izabrani period sadrži podatke;</li>
+  <li>proveriti nivo statističkog prikupljanja;</li>
+  <li>ponoviti upit sa jednom metrikom.</li>
+</ol>
+
+<p><strong>Važna napomena o CPU Ready podacima</strong></p>
+
+<p>U vCenter statistici brojač <code>cpu.ready.summation</code> tipično predstavlja zbir vremena čekanja u milisekundama tokom statističkog intervala. To nije isto što i <code>%RDY</code> prikazan u esxtop-u. Za pravilno poređenje potrebno je znati trajanje intervala i broj vCPU instanci. Ne treba porediti sirovu summation vrednost dve VM različite veličine niti iz različitih intervala bez normalizacije.</p>
+
+<p>Za pojedinačnu instancu vCPU, približna konverzija je:</p>
+
+<pre><code class="language-none">Ready % = Ready vreme u ms / (interval u sekundama × 1000) × 100</code></pre>
+
+<p>Ako je vCenter uzorak 20 sekundi, a Ready summation za jednu vCPU instancu 1.000 ms:</p>
+
+<pre><code class="language-none">Ready % = 1000 / 20000 × 100 = 5%</code></pre>
+
+<p>Pre računanja proveriti kolonu <code>Instance</code>. Agregirana instanca i pojedinačne vCPU instance ne smeju se nekritički sabirati, jer bi se isti podaci mogli dvostruko obračunati.</p>
+
+<p><strong>Korak 9 – Proveriti hardverski kontekst hosta</strong></p>
+
+<pre><code class="language-powershell">$hostObj = Get-VMHost -Name "esxi01.lab.local"
+
+$hostObj | Get-VMHostHardware |
+    Select-Object VMHost,
+                  Manufacturer,
+                  Model,
+                  CpuModel,
+                  CpuCount,
+                  CpuCoreCountTotal,
+                  MhzPerCpu,
+                  MemorySizeGB</code></pre>
+
+<p><code>Get-VMHostHardware</code> vraća hardverske i određene firmware podatke hosta i ne menja sistem. Broadcom PowerCLI referenca ga navodi kao cmdlet za čitanje hardverskih i firmware informacija.</p>
+
+<p>Očekivani rezultat treba da odgovara dokumentovanoj konfiguraciji servera. Neočekivano manji broj jezgara, promenjen CPU model nakon zamene hosta ili smanjena raspoloživa memorija mogu promeniti kapacitet i ponašanje VM-ova.</p>
+
+<p><strong>Korak 10 – Pokrenuti esxtop i snimiti real-time stanje</strong></p>
+
+<p>Na ESXi host se povezati kroz SSH ili otvoriti lokalni ESXi Shell, zatim pokrenuti:</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Komanda samo prikazuje podatke. Ne menja konfiguraciju, ali česta osvežavanja i veoma dugo interaktivno posmatranje nisu zamena za kontrolisano prikupljanje podataka.</p>
+
+<p>U interaktivnom esxtop-u koristiti:</p>
+
+<ul>
+  <li><code>c</code> za CPU prikaz;</li>
+  <li><code>m</code> za memoriju;</li>
+  <li><code>d</code> za storage uređaje;</li>
+  <li><code>u</code> za storage prikaz po VM-u;</li>
+  <li><code>n</code> za mrežu;</li>
+  <li><code>f</code> za izbor prikazanih polja;</li>
+  <li><code>V</code> za prikaz samo VM world-ova u CPU prikazu, kada je podržano;</li>
+  <li><code>q</code> za izlaz.</li>
+</ul>
+
+<p>Broadcom esxtop dokumentacija i KB materijali opisuju esxtop kao centralni alat za CPU, memorijsku, mrežnu i storage dijagnostiku.</p>
+
+<p><strong>Korak 11 – Prikupiti batch zapis</strong></p>
+
+<pre><code class="language-bash">esxtop -b -d 5 -n 120 &gt; /tmp/esxtop-baseline.csv</code></pre>
+
+<p>Parametri imaju sledeće značenje:</p>
+
+<ul>
+  <li><code>-b</code> uključuje batch režim;</li>
+  <li><code>-d 5</code> postavlja interval od pet sekundi;</li>
+  <li><code>-n 120</code> prikuplja 120 uzoraka;</li>
+  <li>ukupno trajanje je približno deset minuta;</li>
+  <li>rezultat se upisuje u <code>/tmp/esxtop-baseline.csv</code>.</li>
+</ul>
+
+<p>Komanda ne menja resursne postavke, ali fajl zauzima prostor na ESXi sistemskoj particiji. Ne koristiti neograničeno prikupljanje niti veoma kratak interval tokom dugog perioda. Broadcom u svom primeru za analizu CPU opterećenja koristi batch prikupljanje sa definisanim intervalom i brojem uzoraka, upravo da bi snimanje bilo vremenski ograničeno.</p>
+
+<p>Proveriti da li je fajl nastao:</p>
+
+<pre><code class="language-bash">ls -lh /tmp/esxtop-baseline.csv
+head -n 2 /tmp/esxtop-baseline.csv</code></pre>
+
+<p>Nakon bezbednog preuzimanja na administratorsku stanicu ukloniti laboratorijski fajl:</p>
+
+<pre><code class="language-bash">rm -f /tmp/esxtop-baseline.csv</code></pre>
+
+<p><code>rm</code> je destruktivna komanda. Pre izvršavanja proveriti punu putanju i naziv fajla. Nikada ne koristiti wildcard obrasce u sistemskim direktorijumima bez prethodnog <code>ls</code> pregleda.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>Dokumentovani su host, VM, resursne postavke i vreme merenja.</li>
+  <li>Postoji snimak ključnih vCenter grafikona ili izvezenih statistika.</li>
+  <li>Sačuvan je PowerCLI rezultat sa CPU i memorijskim brojačima.</li>
+  <li>Napravljen je ograničen esxtop batch zapis.</li>
+  <li>Nije menjana konfiguracija VM-a ili hosta.</li>
+  <li>Administrator može da opiše normalan raspon ponašanja tokom posmatranog perioda.</li>
+</ul>
+
+<p><strong>Provera uspeha</strong></p>
+
+<p>Vežba je uspešna ako administrator može da odgovori na sledeća pitanja bez ponovnog traženja osnovnih podataka:</p>
+
+<ul>
+  <li>Koliko vCPU i memorije ima testna VM?</li>
+  <li>Na kom hostu je radila tokom merenja?</li>
+  <li>Da li ima CPU ili memorijski limit?</li>
+  <li>Da li su VMware Tools aktivni?</li>
+  <li>Da li je VM migrirana tokom perioda?</li>
+  <li>Da li postoje ballooning, compression ili swapping vrednosti?</li>
+  <li>Da li CPU Usage, Ready i Demand rastu u isto vreme?</li>
+  <li>Da li se simptom poklapa sa skokom neke metrike?</li>
+</ul>
+
+<p><strong>Moguće greške i troubleshooting grane</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatan uzrok</th>
+      <th>Bezbedna provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Nema istorijskih podataka</td>
+      <td>Pogrešan vremenski opseg, nedostupan brojač ili statistički nivo</td>
+      <td>Prebaciti se na real-time prikaz i proveriti <code>Get-StatType</code></td>
+    </tr>
+    <tr>
+      <td>PowerCLI vraća više VM-ova</td>
+      <td>Naziv nije jedinstven</td>
+      <td>Filtrirati po folderu, datacentru ili koristiti tačan VM objekat</td>
+    </tr>
+    <tr>
+      <td>SSH pristup ne radi</td>
+      <td>Servis je isključen, firewall ili mrežna putanja blokira pristup</td>
+      <td>Proveriti Services i host firewall; ne menjati firewall naslepo</td>
+    </tr>
+    <tr>
+      <td>esxtop ne prikazuje očekivani VM</td>
+      <td>VM je migrirana ili ugašena</td>
+      <td>Proveriti trenutni host i Tasks and Events</td>
+    </tr>
+    <tr>
+      <td>VMware Tools status nije dobar</td>
+      <td>Tools servis ne radi ili paket nije instaliran</td>
+      <td>Proveriti servis u gostu pre zaključka o guest-level podacima</td>
+    </tr>
+    <tr>
+      <td>CSV fajl je veoma veliki</td>
+      <td>Previše uzoraka ili prekratak interval</td>
+      <td>Prekinuti prikupljanje, proveriti veličinu i ponoviti ograničenim parametrima</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Završiti esxtop tasterom <code>q</code>.</li>
+  <li>Preuzeti potrebni CSV fajl.</li>
+  <li>Ukloniti privremeni fajl iz <code>/tmp</code>.</li>
+  <li>Isključiti SSH servis ako je uključen samo za vežbu.</li>
+  <li>Odjaviti PowerCLI sesiju:</li>
+</ol>
+
+<pre><code class="language-powershell">Disconnect-VIServer -Server vcsa.lab.local -Confirm:$false</code></pre>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 2 – CPU contention, CPU Ready i pogrešno dimenzionisana VM</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator razlikuje:</p>
+
+<ul>
+  <li>visoku legitimnu CPU potrošnju aplikacije;</li>
+  <li>čekanje VM-a na fizički CPU;</li>
+  <li>problem izazvan prevelikim brojem vCPU;</li>
+  <li>problem izazvan CPU limitom;</li>
+  <li>kratkotrajni skok od trajnog nedostatka kapaciteta.</li>
+</ul>
+
+<p>Vežba ne pokušava da uspostavi jednu univerzalnu Ready graničnu vrednost. Prihvatljiv nivo zavisi od aplikacije, veličine VM-a, trajanja, SLA zahteva i ponašanja tokom vršnog opterećenja. Broadcom smernice za rightsizing naglašavaju analizu vCPU broja, memorije, NUMA rasporeda i virtuelne CPU topologije, a ne automatsko dodavanje procesora.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Završena prva vežba i sačuvano bazno stanje.</li>
+  <li>Testna VM koja nije produkciona.</li>
+  <li>Pristup gostujućem operativnom sistemu.</li>
+  <li>Alat za kontrolisano generisanje CPU opterećenja, na primer <code>stress-ng</code> na Linux sistemu.</li>
+  <li>Mogućnost promene broja vCPU nakon planiranog gašenja testne VM.</li>
+  <li>Nema aktivnog poslovnog opterećenja na testnom hostu.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Generisanje CPU opterećenja izvodi se isključivo u laboratoriji. Ne pokretati nekontrolisan broj worker procesa na produkcionom hostu. Ne simulirati contention na hostu koji nosi vCenter Server, kritične DNS, Active Directory, storage kontrolere, mrežne servise ili druge infrastrukturne VM-ove.</p>
+
+<p><strong>Početno stanje</strong></p>
+
+<ul>
+  <li>TEST-PERF-01 ima 2 vCPU i 4 GB RAM.</li>
+  <li>CPU limit je Unlimited.</li>
+  <li>Nema CPU rezervacije.</li>
+  <li>Shares su Normal.</li>
+  <li>VM je na poznatom hostu.</li>
+  <li>CPU Usage i Ready su prethodno zabeleženi.</li>
+</ul>
+
+<p><strong>Korak 1 – Potvrditi početnu resursnu konfiguraciju</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ CPU</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>broj vCPU;</li>
+  <li>cores per socket, ako se prikazuje;</li>
+  <li>CPU reservation;</li>
+  <li>CPU limit;</li>
+  <li>CPU shares;</li>
+  <li>CPU Hot Add status u VM Options, ako je relevantan.</li>
+</ul>
+
+<p>Ne menjati ništa u ovom koraku.</p>
+
+<p>PowerCLI provera:</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+
+$vm = Get-VM -Name "TEST-PERF-01"
+
+$vm | Select-Object Name, NumCpu, MemoryGB, VMHost
+
+$vm | Get-VMResourceConfiguration |
+    Select-Object VM,
+                  CpuReservationMhz,
+                  CpuLimitMhz,
+                  CpuSharesLevel</code></pre>
+
+<p><strong>Korak 2 – Generisati kontrolisano CPU opterećenje</strong></p>
+
+<p>Na Ubuntu ili drugom Debian-baziranom laboratorijskom gostu, ako <code>stress-ng</code> nije instaliran:</p>
+
+<pre><code class="language-bash">sudo apt update
+sudo apt install stress-ng</code></pre>
+
+<p>Instalacija menja gostujući sistem, ali ne menja ESXi konfiguraciju. U izolovanoj laboratoriji bez pristupa repozitorijumu koristiti unapred odobren paket ili postojeći alat. Ne preuzimati neproverene binarne fajlove.</p>
+
+<p>Pokrenuti opterećenje sa dva CPU worker procesa i automatskim prekidom nakon pet minuta:</p>
+
+<pre><code class="language-bash">stress-ng --cpu 2 --timeout 300s --metrics-brief</code></pre>
+
+<p>Važni parametri:</p>
+
+<ul>
+  <li><code>--cpu 2</code> pokreće dva CPU worker procesa;</li>
+  <li><code>--timeout 300s</code> garantuje završetak nakon pet minuta;</li>
+  <li><code>--metrics-brief</code> prikazuje sažetak izvršavanja.</li>
+</ul>
+
+<p>Očekuje se visok CPU Usage unutar gosta i na nivou VM-a. Ako host ima slobodan CPU kapacitet, CPU Ready može ostati nizak. To je primer legitimnog intenzivnog rada, a ne nužno problem virtualizacije.</p>
+
+<p><strong>Korak 3 – Pratiti CPU podatke u vSphere Client-u</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Monitor
+→ Performance
+→ Advanced
+→ CPU</code></pre>
+
+<p>Prikazati:</p>
+
+<ul>
+  <li>Usage;</li>
+  <li>Demand;</li>
+  <li>Ready;</li>
+  <li>Co-stop;</li>
+  <li>Run, ako je dostupan u izabranom prikazu.</li>
+</ul>
+
+<p>Istovremeno otvoriti host CPU grafikon:</p>
+
+<pre><code class="language-none">esxi01.lab.local
+→ Monitor
+→ Performance
+→ Advanced
+→ CPU</code></pre>
+
+<p>Tumačenje:</p>
+
+<ul>
+  <li>visok Usage i nizak Ready: VM dobija CPU i izvršava posao;</li>
+  <li>visok Demand, ali ograničen Usage: proveriti limit ili contention;</li>
+  <li>rast Ready na više VM-ova: proveriti host-level konkurenciju;</li>
+  <li>rast Co-stop kod široke VM: proveriti da li joj je dodeljeno više vCPU nego što opterećenje može efikasno da koristi;</li>
+  <li>visok host Usage bez odgovarajućeg poslovnog opterećenja: identifikovati VM ili host world koji troši CPU.</li>
+</ul>
+
+<p><strong>Korak 4 – Pratiti VM kroz esxtop</strong></p>
+
+<p>Na ESXi hostu pokrenuti:</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Pritisnuti <code>c</code>, zatim po potrebi <code>f</code> i uključiti polja:</p>
+
+<ul>
+  <li><code>%USED</code>;</li>
+  <li><code>%RUN</code>;</li>
+  <li><code>%RDY</code>;</li>
+  <li><code>%CSTP</code>;</li>
+  <li><code>%WAIT</code>;</li>
+  <li><code>%IDLE</code>;</li>
+  <li><code>%MLMTD</code>, kada je dostupno;</li>
+  <li><code>NWLD</code>;</li>
+  <li><code>GID</code> ili identifikatore VM world-ova.</li>
+</ul>
+
+<p>Važno tumačenje:</p>
+
+<ul>
+  <li><code>%RDY</code> pokazuje vreme tokom kog je world bio spreman, ali nije dobio fizički CPU;</li>
+  <li><code>%CSTP</code> ukazuje na čekanje povezano sa zajedničkim raspoređivanjem vCPU-ova iste VM;</li>
+  <li><code>%MLMTD</code> ukazuje na vreme u kom je VM bila spremna za rad, ali je zaustavljena zbog konfigurisanog CPU limita;</li>
+  <li><code>%WAIT</code> uključuje različita čekanja i ne sme se samostalno tumačiti kao CPU problem;</li>
+  <li><code>%IDLE</code> je deo wait vremena za vCPU world i pokazuje da gost nema posao za taj vCPU.</li>
+</ul>
+
+<p>Broadcom posebno upozorava da <code>%WAIT</code> obuhvata više stanja, uključujući idle i određena I/O čekanja, dok <code>%SWPWT</code> predstavlja čekanje povezano sa VMkernel swapping-om.</p>
+
+<p><strong>Korak 5 – Napraviti kontrolisani contention samo u izolovanoj laboratoriji</strong></p>
+
+<p>Ovaj korak se preskače ako laboratorijski host nosi bilo koji kritičan servis.</p>
+
+<p>Na nekoliko namenski kreiranih testnih VM-ova pokrenuti vremenski ograničeno opterećenje. Na svakoj VM broj worker procesa ne treba da prelazi broj njenih vCPU:</p>
+
+<pre><code class="language-bash">stress-ng --cpu 2 --timeout 180s --metrics-brief</code></pre>
+
+<p>Posmatrati:</p>
+
+<ul>
+  <li>host CPU Usage;</li>
+  <li>Ready na TEST-PERF-01;</li>
+  <li>Ready na drugim VM-ovima;</li>
+  <li>DRS preporuke, ako je DRS dostupan;</li>
+  <li>da li se usporenje javlja samo na jednom hostu.</li>
+</ul>
+
+<p>Bezbednija alternativa veštačkom contention-u jeste analiza postojećeg perioda vršnog laboratorijskog opterećenja ili prethodno snimljenog esxtop zapisa. U produkciji se contention ne izaziva radi testiranja.</p>
+
+<p><strong>Korak 6 – Proveriti da li je uzrok prevelika VM</strong></p>
+
+<p>TEST-PERF-02 sa 4 vCPU koristi se za poređenje. Pokrenuti workload koji koristi samo jednu ili dve niti, a zatim posmatrati:</p>
+
+<ul>
+  <li>da li su neki vCPU uglavnom idle;</li>
+  <li>da li je prosečan Usage nizak, ali VM ima Ready;</li>
+  <li>da li se pojavljuje Co-stop;</li>
+  <li>da li VM prelazi NUMA granicu hosta;</li>
+  <li>da li aplikacija uopšte može da koristi sve dodeljene vCPU.</li>
+</ul>
+
+<p>Broj vCPU ne smanjuje se samo zato što je prosečna potrošnja niska. Pre rightsizing odluke proveriti:</p>
+
+<ol>
+  <li>vršne periode;</li>
+  <li>broj aplikacionih niti;</li>
+  <li>SLA i maksimalno dozvoljeno trajanje posla;</li>
+  <li>ponašanje tokom backup-a, batch obrade i održavanja;</li>
+  <li>NUMA veličinu hosta;</li>
+  <li>zahteve i podršku proizvođača aplikacije;</li>
+  <li>licenciranje po socket-u, core-u ili vCPU-u.</li>
+</ol>
+
+<p><strong>Korak 7 – Planirano smanjenje broja vCPU</strong></p>
+
+<p>Ovaj korak se izvodi samo na TEST-PERF-02 i tek nakon dokumentovanog početnog stanja.</p>
+
+<p>Za pouzdano smanjenje vCPU planirati gašenje VM-a. CPU Hot Add uglavnom omogućava dodavanje, ali ne treba pretpostaviti da podržava uklanjanje vCPU tokom rada. Podrška zavisi od gosta, virtuelnog hardvera i konkretne konfiguracije.</p>
+
+<p>GUI postupak:</p>
+
+<ol>
+  <li>Zaustaviti testni workload.</li>
+  <li>U gostu izvršiti uredno gašenje operativnog sistema.</li>
+  <li>Potvrditi da je VM u stanju Powered Off.</li>
+  <li>Otvoriti <strong>Actions → Edit Settings → Virtual Hardware → CPU</strong>.</li>
+  <li>Smanjiti broj sa 4 vCPU na 2 vCPU.</li>
+  <li>Ne menjati istovremeno CPU limit, shares ili reservation.</li>
+  <li>Sačuvati konfiguraciju.</li>
+  <li>Pokrenuti VM.</li>
+  <li>Potvrditi da gost vidi očekivani broj procesora.</li>
+  <li>Ponoviti isti workload i isti period merenja.</li>
+</ol>
+
+<p>PowerCLI alternativa nakon urednog gašenja:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "TEST-PERF-02"
+
+if ($vm.PowerState -ne "PoweredOff") {
+    throw "VM mora biti uredno ugašena pre smanjenja broja vCPU."
+}
+
+Set-VM -VM $vm -NumCpu 2 -Confirm:$false</code></pre>
+
+<p><code>Set-VM</code> menja konfiguraciju VM-a. Ovo je state-changing komanda i zahteva change zapis, proveru kompatibilnosti i plan vraćanja. U produkciji ne koristiti <code>-Confirm:$false</code> dok procedura nije testirana i dok objekat nije jednoznačno identifikovan.</p>
+
+<p>Očekivani rezultat nije nužno manji CPU Usage procenat. Sa manjim brojem vCPU, procenat potrošnje može porasti jer isti workload koristi veći deo manjeg dodeljenog kapaciteta. Važniji pokazatelji su:</p>
+
+<ul>
+  <li>trajanje aplikacionog posla;</li>
+  <li>odziv korisnika;</li>
+  <li>CPU Ready;</li>
+  <li>Co-stop;</li>
+  <li>host-level contention;</li>
+  <li>stabilnost tokom vršnog opterećenja.</li>
+</ul>
+
+<p><strong>Korak 8 – Simulirati pogrešan CPU limit</strong></p>
+
+<p>Ovaj korak je namenjen isključivo laboratoriji. CPU limit može usporiti VM čak i kada host ima mnogo slobodnog kapaciteta.</p>
+
+<p>Pre izmene zabeležiti početnu konfiguraciju:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "TEST-PERF-01"
+$before = $vm | Get-VMResourceConfiguration
+$before | Format-List *</code></pre>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ CPU
+→ Limit</code></pre>
+
+<p>Postaviti laboratorijski limit koji je dovoljno nizak da se efekat primeti, ali ne toliko nizak da gost izgubi administrativni odziv. Vrednost mora biti prilagođena brzini host procesora i veličini VM-a. Ne postoji jedna univerzalna MHz vrednost za svaki host.</p>
+
+<p>Pokrenuti isti workload:</p>
+
+<pre><code class="language-bash">stress-ng --cpu 2 --timeout 180s --metrics-brief</code></pre>
+
+<p>Posmatrati:</p>
+
+<ul>
+  <li>da li CPU Demand ostaje visok;</li>
+  <li>da li CPU Usage prestaje da raste na očekivani nivo;</li>
+  <li>da li raste <code>%MLMTD</code> u esxtop-u;</li>
+  <li>da li host i dalje ima slobodnog CPU kapaciteta;</li>
+  <li>da li Ready ostaje relativno nizak dok VM ipak radi sporo.</li>
+</ul>
+
+<p>Ovo je ključni dijagnostički obrazac: VM može biti usporena sopstvenim limitom bez opšteg host contention-a. Broadcom dokumentuje negativan uticaj CPU i memorijskih limita upravo u takvim situacijama.</p>
+
+<p><strong>Korak 9 – Bezbedno ukloniti testni limit</strong></p>
+
+<p>U GUI vratiti CPU Limit na <strong>Unlimited</strong>.</p>
+
+<p>PowerCLI sintaksa za promenu resursne konfiguracije mora se proveriti prema verziji modula i tačnom tipu objekta pre izvršavanja. U ovoj laboratoriji je preporučeno vraćanje kroz GUI, jer jasno prikazuje vrednost Unlimited i smanjuje rizik pogrešnog tumačenja jedinice.</p>
+
+<p>Nakon vraćanja:</p>
+
+<ol>
+  <li>ponoviti workload;</li>
+  <li>proveriti da <code>%MLMTD</code> više ne raste zbog limita;</li>
+  <li>uporediti vreme završetka testa;</li>
+  <li>potvrditi da nema nove greške ili alarma;</li>
+  <li>dokumentovati pre i posle rezultate.</li>
+</ol>
+
+<p><strong>Logovi i događaji za CPU incident</strong></p>
+
+<p>CPU contention se prvenstveno potvrđuje metrikama, a ne očekivanjem jasne greške u logu. Ipak, logovi pomažu da se pronađu promene, migracije, restarti i infrastrukturni događaji.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Lokacija</th>
+      <th>Komponenta</th>
+      <th>Šta se traži</th>
+      <th>Primer pregleda</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/var/log/hostd.log</code></td>
+      <td>ESXi host management agent</td>
+      <td>Promene VM konfiguracije, power operacije, zadaci i greške upravljanja</td>
+      <td><code>grep -iE "TEST-PERF-01|reconfig|power" /var/log/hostd.log | tail -n 100</code></td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vpxa.log</code></td>
+      <td>vCenter agent na ESXi hostu</td>
+      <td>Komunikacija sa vCenterom, zadaci i upravljački događaji</td>
+      <td><code>grep -iE "error|warning|TEST-PERF" /var/log/vpxa.log | tail -n 100</code></td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vmkernel.log</code></td>
+      <td>VMkernel</td>
+      <td>Hardverski, NUMA, scheduling i drugi kernel-level događaji; ne očekuje se zapis za svaki Ready skok</td>
+      <td><code>grep -iE "cpu|numa|warning|error" /var/log/vmkernel.log | tail -n 100</code></td>
+    </tr>
+    <tr>
+      <td>VM folder: <code>vmware.log</code></td>
+      <td>VMX proces konkretne VM</td>
+      <td>Virtuelni hardver, power ciklus, promene konfiguracije i VMX upozorenja</td>
+      <td><code>grep -iE "vcpu|numa|warning|error" /vmfs/volumes/DATASTORE/VM/vmware.log | tail -n 100</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Prilikom filtriranja koristiti stvarnu putanju i naziv VM-a. Ne pretpostavljati da je direktorijum identičan display name-u VM-a. Putanju proveriti kroz VM Summary, datastore browser ili odgovarajući CLI prikaz.</p>
+
+<p><strong>Sistematična troubleshooting grana za CPU problem</strong></p>
+
+<ol>
+  <li><strong>Potvrditi simptom:</strong> izmeriti aplikacioni odziv ili trajanje zadatka.</li>
+  <li><strong>Odrediti obim:</strong> jedna VM, više VM-ova na hostu ili ceo klaster.</li>
+  <li><strong>Proveriti promene:</strong> vCPU, limit, shares, reservation, migracija ili update.</li>
+  <li><strong>Proveriti gosta:</strong> procesi, broj niti, load average, Windows Processor Queue i aplikacioni logovi.</li>
+  <li><strong>Proveriti VM:</strong> Usage, Demand, Ready, Co-stop i limit.</li>
+  <li><strong>Proveriti host:</strong> ukupni Usage, Ready drugih VM-ova i raspoloživi kapacitet.</li>
+  <li><strong>Proveriti klaster:</strong> DRS preporuke, affinity pravila i neravnomeran raspored.</li>
+  <li><strong>Potvrditi uzrok:</strong> ponoviti isti test nakon samo jedne kontrolisane izmene.</li>
+  <li><strong>Validirati oporavak:</strong> uporediti iste metrike i aplikaciono vreme.</li>
+  <li><strong>Dokumentovati:</strong> uzrok, izmenu, rezultat i plan daljeg kapaciteta.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Administrator mora moći da demonstrira najmanje tri različita CPU obrasca:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Obrazac</th>
+      <th>Tipični nalaz</th>
+      <th>Zaključak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Legitimno CPU opterećenje</td>
+      <td>Visok Usage, visok Demand, nizak ili prihvatljiv Ready</td>
+      <td>VM dobija CPU i izvršava posao</td>
+    </tr>
+    <tr>
+      <td>Host contention</td>
+      <td>Rast Ready na više VM-ova, visok host Usage</td>
+      <td>VM-ovi čekaju fizički CPU</td>
+    </tr>
+    <tr>
+      <td>CPU limit</td>
+      <td>Visok Demand, ograničen Usage, rast %MLMTD, host ima slobodan kapacitet</td>
+      <td>VM je usporena sopstvenom politikom</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Zaustaviti sve <code>stress-ng</code> procese ili sačekati timeout.</li>
+  <li>Vratiti CPU Limit na Unlimited.</li>
+  <li>Vratiti TEST-PERF-02 na početni broj vCPU samo ako je to deo definisanog laboratorijskog rollback-a.</li>
+  <li>Potvrditi da VM-ovi normalno odgovaraju.</li>
+  <li>Proveriti da nema aktivnog CPU alarma.</li>
+  <li>Sačuvati rezultate pre i posle izmene.</li>
+  <li>Zatvoriti SSH ako više nije potreban.</li>
+</ol>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 3 – Memory pressure, ballooning, compression, swapping i pogrešan memorijski limit</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator razlikuje:</p>
+
+<ul>
+  <li>veliku dodeljenu memoriju od stvarno aktivne memorije;</li>
+  <li>normalnu memorijsku potrošnju gosta od host memory pressure-a;</li>
+  <li>ballooning od host swapping-a;</li>
+  <li>memorijski problem gosta od problema ESXi hosta;</li>
+  <li>nedostatak kapaciteta od pogrešno postavljenog memorijskog limita;</li>
+  <li>kratkotrajnu reclamation aktivnost od trajnog degradiranog stanja.</li>
+</ul>
+
+<p>ESXi koristi više mehanizama za upravljanje memorijom, uključujući ballooning, memory sharing, compression i swapping. Oni ne predstavljaju jednako ozbiljna stanja i moraju se tumačiti u kontekstu host pritiska i aplikacionog odziva.</p>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>TEST-PERF-01 sa 4 GB ili više dodeljene memorije.</li>
+  <li>Ispravni VMware Tools ili open-vm-tools.</li>
+  <li>Sačuvano početno stanje memorijskih metrika.</li>
+  <li>Alat za kontrolisanu alokaciju memorije.</li>
+  <li>Izolovani laboratorijski host ili dovoljan rezervni kapacitet.</li>
+  <li>Administratorski pristup gostu i vCenter Serveru.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Namerno stvaranje ozbiljnog host memory pressure-a može ugroziti sve VM-ove na hostu. U ovoj vežbi se prvenstveno koristi kontrolisana guest-level alokacija i privremeni limit na testnoj VM. Ne pokretati veliki broj memorijskih worker-a na više VM-ova, ne puniti host do stanja bez slobodne memorije i ne izazivati swapping na produkcionom sistemu.</p>
+
+<p><strong>Korak 1 – Proveriti početne memorijske postavke</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ Memory</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>konfigurisanu memoriju;</li>
+  <li>reservation;</li>
+  <li>limit;</li>
+  <li>shares;</li>
+  <li>Memory Hot Plug status, ako je relevantan;</li>
+  <li>da li je VM u resource pool-u sa dodatnim ograničenjima.</li>
+</ul>
+
+<p>PowerCLI:</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+
+$vm = Get-VM -Name "TEST-PERF-01"
+
+$vm | Select-Object Name, MemoryGB, VMHost
+
+$vm | Get-VMResourceConfiguration |
+    Select-Object VM,
+                  MemReservationGB,
+                  MemLimitGB,
+                  MemSharesLevel</code></pre>
+
+<p>Komande samo čitaju konfiguraciju.</p>
+
+<p><strong>Korak 2 – Zabeležiti ključne memorijske metrike</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Monitor
+→ Performance
+→ Advanced
+→ Memory</code></pre>
+
+<p>Prikazati, gde su dostupni:</p>
+
+<ul>
+  <li>Granted;</li>
+  <li>Consumed;</li>
+  <li>Active;</li>
+  <li>Balloon;</li>
+  <li>Compressed;</li>
+  <li>Swapped;</li>
+  <li>Swap in i Swap out rate;</li>
+  <li>Overhead;</li>
+  <li>Usage.</li>
+</ul>
+
+<p>Tumačenje:</p>
+
+<ul>
+  <li><strong>Configured memory</strong> je veličina koju administrator dodeljuje VM-u.</li>
+  <li><strong>Granted</strong> predstavlja memoriju koju je ESXi dao VM-u.</li>
+  <li><strong>Consumed</strong> približno pokazuje host fizičku memoriju koju VM zauzima, uključujući relevantan overhead i uz efekte deljenja gde se primenjuju.</li>
+  <li><strong>Active</strong> je procena nedavno aktivno korišćene memorije, a ne precizna zamena za metrike unutar gosta.</li>
+  <li><strong>Balloon</strong> pokazuje memoriju povraćenu preko balloon driver-a.</li>
+  <li><strong>Compressed</strong> pokazuje stranice zadržane u kompresovanom obliku u memoriji.</li>
+  <li><strong>Swapped</strong> pokazuje memoriju koju je VMkernel prebacio na disk.</li>
+</ul>
+
+<p>Veliki Consumed uz mali Active nije automatski dokaz da VM treba odmah smanjiti. Active je procena i može potceniti povremeno korišćene radne skupove, cache i vršno opterećenje. Rightsizing odluka zahteva istoriju i poznavanje aplikacije.</p>
+
+<p><strong>Korak 3 – Proveriti VMware Tools i balloon driver</strong></p>
+
+<p>Na Linux gostu:</p>
+
+<pre><code class="language-bash">systemctl status open-vm-tools --no-pager
+lsmod | grep -i balloon
+vmware-toolbox-cmd -v</code></pre>
+
+<p>U zavisnosti od distribucije, moduli i način prikaza mogu se razlikovati. Odsustvo očekivanog reda u <code>lsmod</code> izlazu nije samo po sebi dovoljan dokaz da integracija ne radi; proveriti podržanu implementaciju za konkretni kernel, open-vm-tools paket i verziju gosta.</p>
+
+<p>Na Windows gostu proveriti:</p>
+
+<ul>
+  <li>VMware Tools servis;</li>
+  <li>Device Manager i VMware Balloon driver, gde je vidljiv;</li>
+  <li>Application i System event log;</li>
+  <li>Memory Available MBytes, Committed Bytes i Pages/sec brojače.</li>
+</ul>
+
+<p>Ako VMware Tools nisu funkcionalni, ESXi može izgubiti preferirani ballooning mehanizam i ranije koristiti druge metode reclamation-a. To ne znači da administrator treba da restartuje Tools servis bez provere aplikacionog uticaja i change procedure.</p>
+
+<p><strong>Korak 4 – Generisati bezbedno ograničeno memorijsko opterećenje unutar gosta</strong></p>
+
+<p>Na testnom Linux gostu sa 4 GB RAM pokrenuti kontrolisanu alokaciju, na primer 1 GB, uz timeout:</p>
+
+<pre><code class="language-bash">stress-ng --vm 1 --vm-bytes 1G --vm-keep --timeout 180s --metrics-brief</code></pre>
+
+<p>Parametri:</p>
+
+<ul>
+  <li><code>--vm 1</code> pokreće jedan memorijski worker;</li>
+  <li><code>--vm-bytes 1G</code> određuje ciljnu količinu memorije;</li>
+  <li><code>--vm-keep</code> zadržava mapiranje umesto stalnog ponovnog kreiranja;</li>
+  <li><code>--timeout 180s</code> prekida test nakon tri minuta.</li>
+</ul>
+
+<p>Vrednost <code>1G</code> je samo laboratorijski primer. Mora se prilagoditi raspoloživoj memoriji gosta. Ne alocirati gotovo svu memoriju jer gost može aktivirati OOM killer, izgubiti SSH odziv ili prekinuti važne procese.</p>
+
+<p>U gostu paralelno pratiti:</p>
+
+<pre><code class="language-bash">free -m
+vmstat 1
+top</code></pre>
+
+<p>Očekuje se rast guest-level potrošnje. Na hostu ne mora doći do ballooning-a ili swapping-a ako postoji dovoljno fizičke memorije. To je važna pouka: visoka memorijska potrošnja unutar gosta nije isto što i ESXi memory contention.</p>
+
+<p><strong>Korak 5 – Pratiti memoriju kroz esxtop</strong></p>
+
+<p>Na hostu:</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Pritisnuti <code>m</code>, zatim proveriti relevantna polja:</p>
+
+<ul>
+  <li><code>MEMSZ</code>;</li>
+  <li><code>GRANT</code>;</li>
+  <li><code>ACTV</code>;</li>
+  <li><code>MCTLSZ</code>;</li>
+  <li><code>SWCUR</code>;</li>
+  <li><code>SWR/s</code> i <code>SWW/s</code>;</li>
+  <li><code>ZIP</code> ili compression pokazatelje, u zavisnosti od verzije;</li>
+  <li>host memory state.</li>
+</ul>
+
+<p>Administratorsko tumačenje:</p>
+
+<ul>
+  <li>rast <code>ACTV</code> bez <code>MCTLSZ</code> i <code>SWCUR</code>: VM koristi memoriju, ali host nije pod reclamation pritiskom;</li>
+  <li>rast <code>MCTLSZ</code>: balloon driver vraća memoriju hostu;</li>
+  <li>rast <code>SWCUR</code> i aktivan swap I/O: host koristi VMkernel swap i postoji veći rizik za performanse;</li>
+  <li>povremena nenulta kumulativna swap vrednost bez trenutnog swap I/O nije isto što i aktivno, trajno swapping stanje;</li>
+  <li>memorijski problem mora se povezati sa aplikacionim simptomom i vremenom njegovog nastanka.</li>
+</ul>
+
+<p><strong>Korak 6 – Simulirati pogrešan memorijski limit</strong></p>
+
+<p>Ovaj korak se izvodi isključivo na testnoj VM. Pre izmene sačuvati konfiguraciju:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "TEST-PERF-01"
+$beforeMemory = $vm | Get-VMResourceConfiguration
+$beforeMemory | Format-List *</code></pre>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ Memory
+→ Limit</code></pre>
+
+<p>Postaviti privremeni limit niži od konfigurisane memorije, ali dovoljno visok da gost ostane administrativno dostupan. Na primer, kod laboratorijske VM sa 4 GB RAM može se koristiti kontrolisana vrednost u skladu sa minimalnim zahtevima operativnog sistema. Ne koristiti nasumičnu vrednost i ne spuštati limit ispod minimuma potrebnog za stabilan rad gosta.</p>
+
+<p>Nakon primene:</p>
+
+<ol>
+  <li>ponoviti isti memorijski workload;</li>
+  <li>posmatrati Balloon, Compressed i Swapped;</li>
+  <li>proveriti da li host ima slobodnu memoriju;</li>
+  <li>proveriti guest-level swap ili paging;</li>
+  <li>izmeriti odziv aplikacije ili trajanje kontrolnog zadatka.</li>
+</ol>
+
+<p>Važan dijagnostički obrazac jeste pojava reclamation-a na konkretnoj VM zbog njenog limita čak i kada host nije globalno pod pritiskom. Broadcom navodi da memorijski limit može dovesti do ballooning-a i VMkernel swapping-a uprkos raspoloživim host resursima.</p>
+
+<p><strong>Korak 7 – Razlikovati guest swapping od VMkernel swapping-a</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vrsta</th>
+      <th>Gde nastaje</th>
+      <th>Kako se proverava</th>
+      <th>Šta znači</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Guest OS swap ili paging</td>
+      <td>Unutar operativnog sistema gosta</td>
+      <td><code>vmstat</code>, <code>free</code>, Windows Performance Monitor</td>
+      <td>Gost sam upravlja svojim radnim skupom i page fajlom</td>
+    </tr>
+    <tr>
+      <td>Ballooning</td>
+      <td>Koordinacija ESXi i balloon driver-a u gostu</td>
+      <td>vCenter Balloon metrika, esxtop <code>MCTLSZ</code></td>
+      <td>ESXi traži od gosta da oslobodi memoriju na informisaniji način</td>
+    </tr>
+    <tr>
+      <td>VMkernel swapping</td>
+      <td>Na ESXi hostu</td>
+      <td>vCenter Swapped, esxtop <code>SWCUR</code>, swap read/write rate</td>
+      <td>ESXi prebacuje VM memorijske stranice na disk; veći rizik od latencije</td>
+    </tr>
+    <tr>
+      <td>Memory compression</td>
+      <td>Na ESXi hostu</td>
+      <td>Compression metrike u vCenteru i esxtop-u</td>
+      <td>Pokušaj da se izbegne skuplji disk swap zadržavanjem kompresovanih stranica u RAM-u</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Guest swap i host swap mogu postojati istovremeno. Administrator zato mora prikupiti podatke i iz gosta i sa ESXi hosta. Sam pogled na <code>free</code> ili Windows Task Manager nije dovoljan za zaključak o host memory pressure-u.</p>
+
+<p><strong>Korak 8 – Ukloniti limit i validirati oporavak</strong></p>
+
+<p>U vSphere Client-u vratiti Memory Limit na <strong>Unlimited</strong>.</p>
+
+<p>Zatim:</p>
+
+<ol>
+  <li>zaustaviti workload;</li>
+  <li>sačekati da se sistem stabilizuje;</li>
+  <li>ponoviti isti test bez limita;</li>
+  <li>uporediti Balloon, Compression, Swap i aplikacioni odziv;</li>
+  <li>proveriti da li su host i VM alarmi očišćeni;</li>
+  <li>ne očekivati da sve kumulativne vrednosti odmah postanu nula;</li>
+  <li>fokusirati se na prestanak aktivnog swap I/O i oporavak performansi.</li>
+</ol>
+
+<p><strong>Relevantni logovi za memorijski incident</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Lokacija</th>
+      <th>Komponenta</th>
+      <th>Šta tražimo</th>
+      <th>Primer komande</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/var/log/vmkernel.log</code></td>
+      <td>VMkernel</td>
+      <td>Memorijska upozorenja, sistemski pritisak i povezani kernel događaji</td>
+      <td><code>grep -iE "memory|swap|balloon|compression|warning" /var/log/vmkernel.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td><code>/var/log/hostd.log</code></td>
+      <td>Host management agent</td>
+      <td>Promena memorijske konfiguracije, limit, reconfigure zadatak</td>
+      <td><code>grep -iE "TEST-PERF-01|memory|reconfig" /var/log/hostd.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td><code>vmware.log</code> u direktorijumu VM-a</td>
+      <td>VMX proces</td>
+      <td>Promene virtuelnog hardvera, rezervacije, power ciklus i VMX upozorenja</td>
+      <td><code>grep -iE "memory|memsize|numa|warning|error" vmware.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td>Linux journal</td>
+      <td>Gostujući operativni sistem</td>
+      <td>OOM killer, prekid procesa, swap i servisne greške</td>
+      <td><code>journalctl -k --since "-30 min" | grep -iE "oom|out of memory|killed process|swap"</code></td>
+    </tr>
+    <tr>
+      <td>Windows System/Application log</td>
+      <td>Gostujući Windows</td>
+      <td>Resource exhaustion, page file i aplikacioni događaji</td>
+      <td>Event Viewer ili odobren PowerShell upit</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Nenalaženje poruke u logu ne dokazuje da memory pressure nije postojao. Performance problem može biti vidljiv prvenstveno kroz metrike, dok logovi služe za potvrdu promene, greške ili posledice kao što je OOM događaj.</p>
+
+<p><strong>Sistematična troubleshooting grana za memorijski problem</strong></p>
+
+<ol>
+  <li><strong>Potvrditi simptom:</strong> aplikacioni odziv, timeout, guest paging ili prekid procesa.</li>
+  <li><strong>Odrediti obim:</strong> jedna VM, više VM-ova na hostu ili ceo klaster.</li>
+  <li><strong>Proveriti promene:</strong> RAM, limit, reservation, resource pool, migracija ili novi workload.</li>
+  <li><strong>Proveriti gosta:</strong> dostupna memorija, cache, swap, paging, OOM i najveći procesi.</li>
+  <li><strong>Proveriti VMware Tools:</strong> da li je balloon mehanizam funkcionalan.</li>
+  <li><strong>Proveriti VM metrike:</strong> Active, Consumed, Balloon, Compressed, Swapped i swap rate.</li>
+  <li><strong>Proveriti host:</strong> memorijsko stanje, reclamation na drugim VM-ovima i raspoloživi kapacitet.</li>
+  <li><strong>Proveriti politike:</strong> VM limit, reservation i parent resource pool ograničenja.</li>
+  <li><strong>Potvrditi uzrok:</strong> ukloniti jednu pogrešnu postavku i ponoviti isti test.</li>
+  <li><strong>Validirati oporavak:</strong> prestanak aktivnog swap I/O, stabilan odziv i odsustvo novih alarma.</li>
+</ol>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Administrator treba da prepozna sledeće obrasce:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Obrazac</th>
+      <th>Nalaz</th>
+      <th>Zaključak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Normalna velika potrošnja gosta</td>
+      <td>Rastu Active i Consumed, bez Balloon i aktivnog Swap I/O</td>
+      <td>VM koristi memoriju, ali host nema reclamation problem</td>
+    </tr>
+    <tr>
+      <td>Kontrolisani ballooning</td>
+      <td>Raste Balloon/MCTLSZ, Tools rade</td>
+      <td>ESXi pokušava da povrati memoriju preko gosta</td>
+    </tr>
+    <tr>
+      <td>Ozbiljniji host pressure</td>
+      <td>Compression i aktivan VMkernel swap I/O, degradiran odziv</td>
+      <td>Kapacitet ili raspored zahtevaju korekciju</td>
+    </tr>
+    <tr>
+      <td>Pogrešan memorijski limit</td>
+      <td>Reclamation na jednoj VM dok host ima slobodnu memoriju</td>
+      <td>Politika ograničava VM, a ne fizički host</td>
+    </tr>
+    <tr>
+      <td>Guest-only problem</td>
+      <td>Guest paging ili OOM bez host ballooning-a i swapping-a</td>
+      <td>Problem je pre svega unutar operativnog sistema ili aplikacije</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Zaustaviti sve memorijske testove.</li>
+  <li>Vratiti Memory Limit na Unlimited.</li>
+  <li>Vratiti početnu rezervaciju i shares vrednosti ako su menjane.</li>
+  <li>Proveriti da nema zaostalih <code>stress-ng</code> procesa:</li>
+</ol>
+
+<pre><code class="language-bash">pgrep -a stress-ng</code></pre>
+
+<ol start="5">
+  <li>Proveriti guest swap i raspoloživu memoriju.</li>
+  <li>Potvrditi da je VM administrativno dostupna.</li>
+  <li>Pregledati vCenter alarme i događaje.</li>
+  <li>Sačuvati pre i posle rezultate.</li>
+  <li>Ukloniti alat za opterećenje ako organizaciona pravila ne dozvoljavaju da ostane instaliran.</li>
+</ol>
+
+<hr>
+
+<p><strong>Kontrolna tačka nakon prvog dela praktikuma</strong></p>
+
+<p>Administrator je uspešno završio prvi deo praktikuma ako može samostalno da:</p>
+
+<ul>
+  <li>definiše i sačuva bazno stanje performansi pre promene;</li>
+  <li>poveže aplikacioni simptom sa odgovarajućim vCenter vremenskim intervalom;</li>
+  <li>koristi Performance Charts bez oslanjanja na jednu metriku;</li>
+  <li>prikupi PowerCLI statistiku ograničenu na potreban objekat i period;</li>
+  <li>pokrene i bezbedno zaustavi interaktivni i batch esxtop;</li>
+  <li>razlikuje CPU Usage, Demand, Ready, Co-stop i limitovanje;</li>
+  <li>prepozna VM koja je prevelika za stvarni paralelizam aplikacije;</li>
+  <li>izvede kontrolisano rightsizing poređenje pre i posle promene;</li>
+  <li>prepozna CPU limit kao uzrok usporenja iako host ima slobodan kapacitet;</li>
+  <li>razlikuje Configured, Granted, Consumed i Active memoriju;</li>
+  <li>razlikuje guest paging, ballooning, compression i VMkernel swapping;</li>
+  <li>prepozna memorijski limit kao lokalni uzrok reclamation-a;</li>
+  <li>proveri VMware Tools i balloon driver pre zaključka;</li>
+  <li>koristi <code>hostd.log</code>, <code>vpxa.log</code>, <code>vmkernel.log</code> i <code>vmware.log</code> u odgovarajućem kontekstu;</li>
+  <li>menja samo jednu promenljivu tokom dijagnostičkog testa;</li>
+  <li>vrati laboratoriju u dokumentovano početno stanje;</li>
+  <li>dokaže oporavak ponovljenim merenjem, a ne samo odsustvom alarma.</li>
+</ul>
+
+<p><strong>Drugi deo praktikuma – storage i mrežne performanse, korelacija problema i bezbedan oporavak</strong></p>
+
+<p>Prvi deo praktikuma uspostavio je metodologiju za bazno merenje, CPU contention, pravilno dimenzionisanje vCPU resursa i memorijski pritisak. Drugi deo nastavlja istim principom: administrator prvo potvrđuje simptom i njegov obim, zatim razdvaja slojeve infrastrukture, prikuplja dokaze, menja samo jednu promenljivu i ponavlja potpuno isto merenje radi validacije.</p>
+
+<p>Storage i mrežni problemi posebno su podložni pogrešnim zaključcima. Visoka storage latencija može nastati u gostujućem sistemu, virtuelnom SCSI kontroleru, VMkernel redu, HBA adapteru, SAN mreži ili samom storage sistemu. Mrežni gubitak može nastati u guest driver-u, VMXNET3 redovima, virtuelnom switch-u, fizičkom adapteru, switch portu ili udaljenoj strani. Zbog toga se ni storage ni mrežni incident ne rešavaju samo dodavanjem resursa ili promenom jedne napredne postavke.</p>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 4 – Storage latencija, redovi i određivanje sloja uskog grla</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator utvrdi da li je usporenje virtuelne mašine povezano sa storage putem i da razlikuje:</p>
+
+<ul>
+  <li>latenciju koju vidi gostujući sistem;</li>
+  <li>latenciju fizičkog storage uređaja ili udaljenog sistema;</li>
+  <li>latenciju nastalu unutar VMkernel storage sloja;</li>
+  <li>zagušenje reda i čekanje I/O zahteva;</li>
+  <li>normalnu kratkotrajnu aktivnost od trajnog problema;</li>
+  <li>problem jedne VM od problema datastore-a, hosta ili celog storage sistema.</li>
+</ul>
+
+<p>U esxtop storage prikazu GAVG predstavlja ukupnu latenciju koju vidi gost, DAVG deo latencije vezan za uređaj i storage put, dok KAVG predstavlja vreme provedeno u VMkernel sloju. U uprošćenom modelu važi da je GAVG približno zbir DAVG i KAVG. Ovi brojači se moraju posmatrati zajedno sa IOPS, propusnim opsegom, queue vrednostima, tipom workload-a i karakteristikama storage sistema. </p>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Komponenta</th>
+      <th>Predložena konfiguracija</th>
+      <th>Namena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TEST-PERF-01</td>
+      <td>Linux VM sa zasebnim testnim VMDK diskom</td>
+      <td>Generisanje kontrolisanog sekvencijalnog i nasumičnog I/O opterećenja</td>
+    </tr>
+    <tr>
+      <td>TEST-PERF-02</td>
+      <td>Druga VM na istom ili drugom datastore-u</td>
+      <td>Određivanje obima problema</td>
+    </tr>
+    <tr>
+      <td>Datastore A</td>
+      <td>VMFS, NFS, vSAN ili drugi podržani laboratorijski datastore</td>
+      <td>Primarni predmet merenja</td>
+    </tr>
+    <tr>
+      <td>Datastore B</td>
+      <td>Opcioni nezavisni datastore</td>
+      <td>Poređenje i kontrolisana migracija testnog diska</td>
+    </tr>
+    <tr>
+      <td>Testni disk</td>
+      <td>Najmanje 10 GB, bez produkcionih podataka</td>
+      <td>Izolovanje laboratorijskog I/O od sistemskog diska gosta</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Završeno bazno merenje iz prve vežbe.</li>
+  <li>Testni VMDK koji ne sadrži operativni sistem, aplikaciju ili korisničke podatke.</li>
+  <li>Potvrđeno da datastore ima dovoljno slobodnog prostora.</li>
+  <li>Poznat storage protokol i multipathing konfiguracija.</li>
+  <li>Administratorski pristup vCenter Serveru, ESXi hostu i gostujućem sistemu.</li>
+  <li>Alat za kontrolisano I/O testiranje, na primer <code>fio</code>.</li>
+  <li>Dogovoren maksimalni intenzitet laboratorijskog testa.</li>
+</ul>
+
+<p><strong>Početno stanje</strong></p>
+
+<ul>
+  <li>Nema aktivnog backup-a, Storage vMotion-a, snapshot konsolidacije ili drugog planiranog intenzivnog I/O posla.</li>
+  <li>Datastore nije blizu punog kapaciteta.</li>
+  <li>Sve očekivane storage putanje su aktivne.</li>
+  <li>Testni VMDK je pravilno priključen i prepoznat u gostu.</li>
+  <li>Početne latencije i IOPS vrednosti su sačuvane.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>I/O generator može ozbiljno opteretiti datastore i uticati na sve VM-ove koje ga koriste. Test se izvodi isključivo u kontrolisanoj laboratoriji ili u unapred odobrenom maintenance prozoru. Nikada ne koristiti destruktivni test nad uređajem, particijom ili fajl sistemom koji sadrži podatke. Ne koristiti direktno pisanje na blok uređaj ako nije nedvosmisleno potvrđeno da je uređaj prazan i namenski kreiran za laboratoriju.</p>
+
+<p><strong>Korak 1 – Dokumentovati storage put VM-a</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Summary
+→ Related Objects
+→ Datastores</code></pre>
+
+<p>Zatim otvoriti:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ Hard disk</code></pre>
+
+<p>Zabeležiti:</p>
+
+<ul>
+  <li>naziv datastore-a;</li>
+  <li>VMDK putanju;</li>
+  <li>kapacitet i provisioning tip diska;</li>
+  <li>virtuelni SCSI kontroler i SCSI node;</li>
+  <li>da li postoje snapshot delta diskovi;</li>
+  <li>storage policy, ako se koristi;</li>
+  <li>host na kome VM trenutno radi.</li>
+</ul>
+
+<p>Administrator mora znati koji se VMDK meri. VM može imati sistemski disk na jednom, bazu na drugom, a logove na trećem datastore-u. Visoka ukupna latencija VM-a bez identifikovanja konkretnog virtuelnog diska nije dovoljno precizan nalaz.</p>
+
+<p><strong>Korak 2 – Proveriti datastore kapacitet i osnovno stanje</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">Storage
+→ Datastores
+→ DATASTORE-A
+→ Summary</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>ukupan i slobodan prostor;</li>
+  <li>tip datastore-a;</li>
+  <li>broj povezanih hostova i VM-ova;</li>
+  <li>aktivne alarme;</li>
+  <li>status konektivnosti;</li>
+  <li>da li postoje nedavni događaji gubitka redundanse ili pristupa;</li>
+  <li>da li se datastore koristi za intenzivne backup, replikacione ili snapshot poslove.</li>
+</ul>
+
+<p>Skoro pun thin-provisioned datastore predstavlja i kapacitivni i operativni rizik. Ipak, nizak slobodan prostor ne objašnjava automatski svaku latenciju. Potrebno je proveriti storage sistem, datastore tip i konkretan workload.</p>
+
+<p><strong>Korak 3 – Prikupiti PowerCLI inventar datastore-a i VMDK diskova</strong></p>
+
+<p>Komande se izvršavaju na administratorskoj stanici:</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local
+
+$vm = Get-VM -Name "TEST-PERF-01"
+
+$vm | Get-HardDisk |
+    Select-Object Parent,
+                  Name,
+                  CapacityGB,
+                  StorageFormat,
+                  Filename,
+                  Persistence</code></pre>
+
+<p><code>Get-HardDisk</code> čita konfiguraciju virtuelnih diskova i ne menja stanje. Očekivani rezultat je spisak svih VMDK diskova sa kapacitetom, formatom i putanjom.</p>
+
+<p>Za datastore inventar:</p>
+
+<pre><code class="language-powershell">Get-Datastore -Name "DATASTORE-A" |
+    Select-Object Name,
+                  Type,
+                  CapacityGB,
+                  FreeSpaceGB,
+                  @{N="FreePercent";E={
+                      if ($_.CapacityGB -gt 0) {
+                          [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+                      }
+                  }}</code></pre>
+
+<p>Komanda ne menja datastore. Rezultat treba uporediti sa pragovima kapaciteta koje je definisala organizacija, a ne sa proizvoljnim univerzalnim procentom.</p>
+
+<p><strong>Korak 4 – Proveriti adaptere, uređaje i putanje na ESXi hostu</strong></p>
+
+<p>Na ESXi Shell-u ili kroz SSH sesiju:</p>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<p>Komanda prikazuje storage adaptere, drajvere, link state i identifikatore. Ne menja stanje sistema.</p>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<p>Prikazuje storage uređaje koje ESXi vidi, uključujući identifikatore, tip, veličinu i druge karakteristike. Izlaz može biti veoma dug, pa ga treba filtrirati prema poznatom NAA ili drugom identifikatoru uređaja:</p>
+
+<pre><code class="language-bash">esxcli storage core device list -d naa.6000xxxxxxxxxxxxxxxx</code></pre>
+
+<p>Za pregled putanja konkretnog uređaja:</p>
+
+<pre><code class="language-bash">esxcli storage core path list -d naa.6000xxxxxxxxxxxxxxxx</code></pre>
+
+<p>Očekuje se da su potrebne putanje aktivne ili u stanju koje odgovara korišćenoj multipathing politici. Jedna aktivna putanja nije automatski greška ako je dizajn takav, ali neočekivani gubitak redundanse predstavlja incident koji treba rešavati pre performance testiranja.</p>
+
+<p>Za NMP uređaje:</p>
+
+<pre><code class="language-bash">esxcli storage nmp device list -d naa.6000xxxxxxxxxxxxxxxx</code></pre>
+
+<p>Komanda prikazuje Storage Array Type Plugin i Path Selection Policy. Ne menjati multipathing politiku samo zato što druga politika deluje „brže”. Promena mora biti podržana za konkretni storage sistem i potvrđena u dokumentaciji proizvođača.</p>
+
+<p><strong>Korak 5 – Otvoriti datastore i VM Performance Charts</strong></p>
+
+<p>GUI putanje:</p>
+
+<pre><code class="language-none">DATASTORE-A
+→ Monitor
+→ Performance
+→ Advanced</code></pre>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Monitor
+→ Performance
+→ Advanced
+→ Virtual disk</code></pre>
+
+<p>Izabrati isti period i pregledati:</p>
+
+<ul>
+  <li>read latency;</li>
+  <li>write latency;</li>
+  <li>read rate;</li>
+  <li>write rate;</li>
+  <li>read operations per second;</li>
+  <li>write operations per second;</li>
+  <li>outstanding I/O, gde je dostupno;</li>
+  <li>datastore latency po hostu;</li>
+  <li>latenciju konkretne VM i virtuelnog diska.</li>
+</ul>
+
+<p>Overview i Advanced Performance Charts dostupni su za različite vSphere inventarske objekte, ali skup metrika zavisi od tipa objekta, izabranog perioda i nivoa statističkog prikupljanja. </p>
+
+<p><strong>Korak 6 – Napraviti nedestruktivni fio testni fajl</strong></p>
+
+<p>Na Linux testnoj VM instalirati <code>fio</code> iz odobrenog repozitorijuma:</p>
+
+<pre><code class="language-bash">sudo apt update
+sudo apt install fio</code></pre>
+
+<p>Kreirati direktorijum na testnom fajl sistemu koji se nalazi na namenskom VMDK disku:</p>
+
+<pre><code class="language-bash">sudo mkdir -p /mnt/perf-test
+sudo chown "$(id -u):$(id -g)" /mnt/perf-test</code></pre>
+
+<p>Pre testiranja potvrditi mount point:</p>
+
+<pre><code class="language-bash">findmnt /mnt/perf-test
+df -hT /mnt/perf-test
+lsblk -f</code></pre>
+
+<p>Ako <code>findmnt</code> pokaže da direktorijum pripada sistemskom disku ili pogrešnom fajl sistemu, test se ne pokreće.</p>
+
+<p>Prvi test koristi vremenski ograničen sekvencijalni read/write workload nad testnim fajlom:</p>
+
+<pre><code class="language-bash">fio --name=seq-rw \
+    --filename=/mnt/perf-test/fio-test.bin \
+    --size=2G \
+    --rw=rw \
+    --bs=1M \
+    --iodepth=4 \
+    --direct=1 \
+    --runtime=180 \
+    --time_based \
+    --group_reporting</code></pre>
+
+<p>Parametri:</p>
+
+<ul>
+  <li><code>--filename</code> ograničava rad na konkretan testni fajl;</li>
+  <li><code>--size=2G</code> ograničava veličinu fajla;</li>
+  <li><code>--rw=rw</code> generiše sekvencijalno čitanje i pisanje;</li>
+  <li><code>--bs=1M</code> koristi blokove od 1 MB;</li>
+  <li><code>--iodepth=4</code> održava ograničenu dubinu reda;</li>
+  <li><code>--direct=1</code> smanjuje uticaj guest page cache-a;</li>
+  <li><code>--runtime=180</code> ograničava test na tri minuta;</li>
+  <li><code>--time_based</code> zadržava zadato trajanje;</li>
+  <li><code>--group_reporting</code> prikazuje objedinjene rezultate.</li>
+</ul>
+
+<p>Test menja sadržaj samo navedenog testnog fajla. Ipak, generiše stvarni storage I/O i zato može uticati na druge VM-ove na istom datastore-u.</p>
+
+<p><strong>Korak 7 – Posmatrati storage kroz esxtop</strong></p>
+
+<p>Na ESXi hostu pokrenuti:</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Pritisnuti <code>d</code> za storage device prikaz. Tasterom <code>f</code> uključiti relevantna polja:</p>
+
+<ul>
+  <li><code>CMDS/s</code>;</li>
+  <li><code>READS/s</code>;</li>
+  <li><code>WRITES/s</code>;</li>
+  <li><code>MBREAD/s</code>;</li>
+  <li><code>MBWRTN/s</code>;</li>
+  <li><code>DAVG/cmd</code>;</li>
+  <li><code>KAVG/cmd</code>;</li>
+  <li><code>GAVG/cmd</code>;</li>
+  <li><code>QAVG/cmd</code>, ako je dostupno;</li>
+  <li><code>QUED</code>;</li>
+  <li><code>ACTV</code>;</li>
+  <li><code>%USD</code>;</li>
+  <li><code>RESETS/s</code>;</li>
+  <li><code>ABRTS/s</code>.</li>
+</ul>
+
+<p>Broadcom KB kao važan indikator navodi trajno povišene DAVG, KAVG i GAVG vrednosti, ali istovremeno naglašava da se storage sistemi razlikuju. Jedan kratkotrajan skok nije dovoljan za zaključak. Latenciju treba povezati sa trajanjem problema, workload-om i očekivanjima proizvođača storage sistema. </p>
+
+<p>Za prikaz storage aktivnosti po VM-u pritisnuti <code>u</code>. U zavisnosti od verzije i izabranih polja, moguće je povezati VM, virtuelni disk i latenciju koju VM vidi.</p>
+
+<p><strong>Tumačenje osnovnih obrazaca</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nalaz</th>
+      <th>Verovatni sloj</th>
+      <th>Sledeća provera</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Visok DAVG, nizak KAVG</td>
+      <td>Uređaj, storage sistem, SAN/NAS put ili udaljeni target</td>
+      <td>Storage kontroler, array portovi, putanje, fabric i workload drugih hostova</td>
+    </tr>
+    <tr>
+      <td>Nizak DAVG, visok KAVG</td>
+      <td>VMkernel queue ili lokalni host storage sloj</td>
+      <td>Queue depth, broj outstanding zahteva, driver, adapter i policy</td>
+    </tr>
+    <tr>
+      <td>Visok GAVG</td>
+      <td>Ukupno kašnjenje koje VM oseća</td>
+      <td>Razdvojiti DAVG i KAVG</td>
+    </tr>
+    <tr>
+      <td>Visok QUED i %USD</td>
+      <td>Zasićenje reda ili uređaja</td>
+      <td>Queue granice, broj workload-a i storage odgovor</td>
+    </tr>
+    <tr>
+      <td>Rastu RESETS/s ili ABRTS/s</td>
+      <td>Ozbiljniji storage ili path problem</td>
+      <td>Odmah pregledati vmkernel log, uređaj i putanje</td>
+    </tr>
+    <tr>
+      <td>Latencija samo na jednom VMDK-u</td>
+      <td>VM, virtuelni kontroler ili konkretan workload</td>
+      <td>Guest procesi, snapshot, disk raspored i kontroler</td>
+    </tr>
+    <tr>
+      <td>Latencija na svim VM-ovima datastore-a</td>
+      <td>Datastore ili zajednička infrastruktura</td>
+      <td>Hostovi, storage sistem, mreža i konkurentni workload</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Korak 8 – Izvesti nasumični workload sa ograničenim intenzitetom</strong></p>
+
+<p>Nasumični I/O obično proizvodi drugačiji obrazac od sekvencijalnog. Koristiti ograničen test:</p>
+
+<pre><code class="language-bash">fio --name=rand-rw \
+    --filename=/mnt/perf-test/fio-test.bin \
+    --size=2G \
+    --rw=randrw \
+    --rwmixread=70 \
+    --bs=4k \
+    --iodepth=8 \
+    --numjobs=1 \
+    --direct=1 \
+    --runtime=180 \
+    --time_based \
+    --group_reporting</code></pre>
+
+<p>Ovaj test ne služi za sertifikovanje maksimalnih performansi storage sistema. Cilj je da administrator vidi razliku između:</p>
+
+<ul>
+  <li>sekvencijalnog throughput workload-a;</li>
+  <li>malih nasumičnih I/O zahteva;</li>
+  <li>IOPS ograničenja;</li>
+  <li>latencije koja raste sa dubinom reda;</li>
+  <li>ponašanja konkretnog datastore-a pod kontrolisanim opterećenjem.</li>
+</ul>
+
+<p>Rezultat jednog fio testa nije dovoljan za izbor storage platforme, sizing baze podataka ili poređenje različitih protokola. Za to je potreban dogovoren testni plan sa storage timom i workload-om koji odgovara stvarnoj aplikaciji.</p>
+
+<p><strong>Korak 9 – Proveriti da li snapshot ili konsolidacija utiču na rezultat</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-PERF-01
+→ Snapshots
+→ Manage Snapshots</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>da li postoji aktivan snapshot;</li>
+  <li>koliko dugo postoji;</li>
+  <li>da li je u toku konsolidacija;</li>
+  <li>da li datastore ima dovoljno prostora za završetak operacije;</li>
+  <li>da li se vreme snapshot operacije poklapa sa pojavom latencije.</li>
+</ul>
+
+<p>Snapshot ne treba uklanjati naslepo tokom performance incidenta. Konsolidacija može proizvesti dodatni I/O, zahtevati značajan slobodan prostor i kratkotrajno uticati na odziv VM-a. Potrebno je proceniti rizik, backup zavisnosti i maintenance prozor.</p>
+
+<p>PowerCLI provera:</p>
+
+<pre><code class="language-powershell">Get-VM -Name "TEST-PERF-01" |
+    Get-Snapshot |
+    Select-Object VM,
+                  Name,
+                  Created,
+                  SizeGB,
+                  Description</code></pre>
+
+<p>Komanda samo čita snapshot inventar.</p>
+
+<p><strong>Korak 10 – Pregledati storage događaje i logove</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">DATASTORE-A
+→ Monitor
+→ Tasks and Events
+→ Events</code></pre>
+
+<p>Na ESXi hostu pregledati:</p>
+
+<pre><code class="language-bash">grep -iE "latency|deteriorated|NMP|APD|PDL|abort|reset|timeout|naa\." \
+    /var/log/vmkernel.log | tail -n 200</code></pre>
+
+<p><code>/var/log/vmkernel.log</code> zapisuje VMkernel događaje, uključujući storage putanje, I/O timeout, resetovanja, gubitak pristupa i poruke o pogoršanoj latenciji. Broadcom dokumentuje slučajeve u kojima se uz visoku storage latenciju pojavljuju poruke da su performanse uređaja pogoršane. </p>
+
+<p>Dodatno proveriti:</p>
+
+<pre><code class="language-bash">grep -iE "storage|datastore|volume|latency|error" \
+    /var/log/hostd.log | tail -n 150</code></pre>
+
+<pre><code class="language-bash">grep -iE "storage|datastore|volume|error" \
+    /var/log/vpxa.log | tail -n 150</code></pre>
+
+<p><code>hostd.log</code> pomaže pri proveri host management zadataka i datastore događaja, dok <code>vpxa.log</code> pomaže pri proveri komunikacije hosta sa vCenter Serverom. Njihovo odsustvo storage greške ne isključuje problem latencije; primarni dokaz ostaju performance metrike i <code>vmkernel.log</code>.</p>
+
+<p><strong>Korak 11 – Odrediti obim problema poređenjem</strong></p>
+
+<ol>
+  <li>Pokrenuti isti ograničeni test na TEST-PERF-02.</li>
+  <li>Ako je moguće, koristiti isti datastore i zatim nezavisni datastore.</li>
+  <li>Uporediti IOPS, throughput i latenciju.</li>
+  <li>Proveriti da li problem prati VM, host ili datastore.</li>
+  <li>Ne menjati istovremeno host, datastore, VMDK kontroler i fio parametre.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rezultat poređenja</th>
+      <th>Verovatni zaključak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Samo jedna VM ima problem na istom datastore-u</td>
+      <td>Guest, aplikacija, VMDK, snapshot ili virtuelni kontroler</td>
+    </tr>
+    <tr>
+      <td>Sve VM na datastore-u imaju problem</td>
+      <td>Datastore, storage sistem ili zajednička putanja</td>
+    </tr>
+    <tr>
+      <td>Sve VM na jednom hostu imaju problem</td>
+      <td>Host adapter, driver, putanja ili lokalna queue konfiguracija</td>
+    </tr>
+    <tr>
+      <td>Problem postoji na svim hostovima prema istom target-u</td>
+      <td>Storage sistem, fabric, target port ili zajednička mreža</td>
+    </tr>
+    <tr>
+      <td>Problem prati VM nakon vMotion-a</td>
+      <td>VM, guest ili storage koji ostaje isti</td>
+    </tr>
+    <tr>
+      <td>Problem nestaje nakon kontrolisane Storage vMotion operacije</td>
+      <td>Prethodni datastore ili njegov storage put zahteva dalju analizu</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Korak 12 – Planirana korektivna operacija</strong></p>
+
+<p>Korektivna akcija zavisi od dokazanog uzroka. Moguće bezbedne akcije uključuju:</p>
+
+<ul>
+  <li>zaustavljanje ili pomeranje nekritičnog konkurentnog workload-a;</li>
+  <li>završetak ili preraspoređivanje backup posla;</li>
+  <li>planiranu Storage vMotion migraciju testne VM;</li>
+  <li>obnavljanje izgubljene storage redundanse;</li>
+  <li>zamenu ili nadogradnju podržanog driver/firmware para;</li>
+  <li>korekciju multipathing politike samo uz vendor podršku;</li>
+  <li>proširenje datastore-a ili storage kapaciteta;</li>
+  <li>promenu arhitekture VMDK diskova i kontrolera nakon testiranja.</li>
+</ul>
+
+<p>Ne menjati queue depth kao prvu reakciju na visok KAVG. Povećanje reda može preneti veće opterećenje na već zasićen storage sistem i pogoršati latenciju za druge hostove. Ovakva izmena zahteva koordinaciju sa storage proizvođačem i proveru svih slojeva puta.</p>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>Administrator identifikuje konkretan datastore, uređaj i VM disk.</li>
+  <li>Razlikuje GAVG, DAVG i KAVG.</li>
+  <li>Može da pokaže da li je problem na jednoj VM, hostu ili zajedničkom storage-u.</li>
+  <li>Prikuplja esxtop i log dokaze u istom vremenskom periodu.</li>
+  <li>Ne menja multipathing, queue ili storage politiku bez dokaza i vendor podrške.</li>
+  <li>Validira korekciju ponavljanjem identičnog fio testa.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Zaustaviti fio test.</li>
+  <li>Potvrditi da nema aktivnih fio procesa:</li>
+</ol>
+
+<pre><code class="language-bash">pgrep -a fio</code></pre>
+
+<ol start="3">
+  <li>Ukloniti samo namenski testni fajl:</li>
+</ol>
+
+<pre><code class="language-bash">rm -f /mnt/perf-test/fio-test.bin</code></pre>
+
+<ol start="4">
+  <li>Proveriti da testni direktorijum ne sadrži druge podatke.</li>
+  <li>Vratiti VM na početni datastore samo ako je migracija bila deo laboratorijskog scenarija i rollback plana.</li>
+  <li>Isključiti SSH ako više nije potreban.</li>
+  <li>Sačuvati pre i posle rezultate.</li>
+</ol>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 5 – Mrežni throughput, packet drops, MTU i određivanje tačke gubitka</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj je da administrator razlikuje:</p>
+
+<ul>
+  <li>mali throughput zbog aplikacije od problema mreže;</li>
+  <li>packet drops na VM portu od gubitaka na fizičkom adapteru;</li>
+  <li>CPU ograničenje gosta od zasićenja uplink-a;</li>
+  <li>MTU problem od problema rutiranja ili firewall-a;</li>
+  <li>kumulativne NIC brojače od aktivnog rasta grešaka;</li>
+  <li>virtuelni problem od problema fizičkog switch-a ili udaljene strane.</li>
+</ul>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Objekat</th>
+      <th>Uloga</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TEST-NET-01</td>
+      <td>iperf3 server</td>
+    </tr>
+    <tr>
+      <td>TEST-NET-02</td>
+      <td>iperf3 klijent</td>
+    </tr>
+    <tr>
+      <td>ESXi host 1 i host 2</td>
+      <td>Test unutar hosta i između hostova</td>
+    </tr>
+    <tr>
+      <td>VM Network port group</td>
+      <td>Testni VLAN i politika</td>
+    </tr>
+    <tr>
+      <td>vmnic uplink</td>
+      <td>Fizička mrežna putanja</td>
+    </tr>
+    <tr>
+      <td>VMXNET3 adapter</td>
+      <td>Preporučeni paravirtualizovani adapter za testne VM-ove</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Preduslovi</strong></p>
+
+<ul>
+  <li>Dve testne VM sa poznatim IP adresama.</li>
+  <li>VMware Tools ili open-vm-tools.</li>
+  <li>VMXNET3 virtuelni adapter, ako ga guest OS podržava.</li>
+  <li>Odobren firewall prolaz za testni iperf3 port.</li>
+  <li>Poznata VLAN i MTU konfiguracija.</li>
+  <li>Pristup fizičkom switch timu kada analiza izađe izvan ESXi hosta.</li>
+  <li>Sačuvano bazno stanje mrežnih brojača.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Throughput test može zasićivati uplink i uticati na druge servise. Koristiti vremenski ograničen test i kontrolisani broj paralelnih tokova. Ne pokretati maksimalni UDP test bez definisane brzine. Packet capture mora biti filtriran i vremenski ograničen; Broadcom upozorava da višestruke ili nefiltrirane pktcap-uw sesije na opterećenom hostu mogu same izazvati dodatni pritisak i packet drops. </p>
+
+<p><strong>Korak 1 – Dokumentovati VM mrežnu konfiguraciju</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-none">TEST-NET-01
+→ Actions
+→ Edit Settings
+→ Virtual Hardware
+→ Network adapter</code></pre>
+
+<p>Zabeležiti:</p>
+
+<ul>
+  <li>tip adaptera;</li>
+  <li>port group;</li>
+  <li>MAC adresu;</li>
+  <li>Connected i Connect at power on stanje;</li>
+  <li>host na kome VM radi;</li>
+  <li>da li je port group na standardnom ili distributed switch-u.</li>
+</ul>
+
+<p>Na port group-u proveriti:</p>
+
+<ul>
+  <li>VLAN ID;</li>
+  <li>teaming i failover politiku;</li>
+  <li>traffic shaping;</li>
+  <li>security politiku;</li>
+  <li>MTU na switch-u;</li>
+  <li>aktivne uplink adaptere.</li>
+</ul>
+
+<p>Traffic shaping ili drugi limit može smanjiti throughput iako fizička mreža ima raspoloživ kapacitet. Broadcom u postupku za sporu komunikaciju između VM-ova preporučuje proveru shaping politike i esxtop drop brojača. </p>
+
+<p><strong>Korak 2 – Proveriti fizičke NIC adaptere</strong></p>
+
+<p>Na ESXi hostu:</p>
+
+<pre><code class="language-bash">esxcli network nic list</code></pre>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>Link Status;</li>
+  <li>Speed;</li>
+  <li>Duplex;</li>
+  <li>Driver;</li>
+  <li>Description;</li>
+  <li>MAC adresu;</li>
+  <li>PCI identifikator.</li>
+</ul>
+
+<p>Detalji konkretnog adaptera:</p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic0</code></pre>
+
+<p>Statistika adaptera:</p>
+
+<pre><code class="language-bash">esxcli network nic stats get -n vmnic0</code></pre>
+
+<p>Komande su read-only. Broadcom navodi ovu ESXCLI komandu kao najprecizniji način za pregled fizičkih NIC drop brojača. </p>
+
+<p>Zabeležiti početne vrednosti:</p>
+
+<ul>
+  <li>Packets received i sent;</li>
+  <li>Receive packets dropped;</li>
+  <li>Transmit packets dropped;</li>
+  <li>Total receive errors;</li>
+  <li>Total transmit errors;</li>
+  <li>Receive length errors;</li>
+  <li>Receive missed errors, ako ih driver prikazuje.</li>
+</ul>
+
+<p>Brojači su uglavnom kumulativni od pokretanja ili resetovanja adaptera. Sama nenulta vrednost nije dovoljan dokaz aktivnog incidenta. Važno je da li brojač raste tokom prijavljenog problema. Broadcom preporučuje praćenje stope promene, a ne samo apsolutne vrednosti. </p>
+
+<p><strong>Korak 3 – Snimiti NIC statistiku pre i posle testa</strong></p>
+
+<pre><code class="language-bash">date
+esxcli network nic stats get -n vmnic0 &gt; /tmp/vmnic0-before.txt</code></pre>
+
+<p>Nakon testa:</p>
+
+<pre><code class="language-bash">date
+esxcli network nic stats get -n vmnic0 &gt; /tmp/vmnic0-after.txt
+diff -u /tmp/vmnic0-before.txt /tmp/vmnic0-after.txt</code></pre>
+
+<p>Ovaj pristup pokazuje da li drop ili error brojači rastu tokom precizno definisanog perioda. Fajlovi su mali, ali ih nakon analize treba ukloniti.</p>
+
+<p><strong>Korak 4 – Proveriti guest konfiguraciju</strong></p>
+
+<p>Na Linux VM:</p>
+
+<pre><code class="language-bash">ip -br link
+ip -br address
+ip route
+ethtool -i eth0
+ethtool -S eth0 | head -n 100
+ss -s</code></pre>
+
+<p>Naziv interfejsa može biti <code>ens192</code>, <code>ens160</code> ili drugi predvidivi naziv. Zameniti <code>eth0</code> stvarnim interfejsom.</p>
+
+<p>Proveriti:</p>
+
+<ul>
+  <li>da je link UP;</li>
+  <li>ispravnu IP adresu i masku;</li>
+  <li>default gateway;</li>
+  <li>driver, očekivano <code>vmxnet3</code> za VMXNET3 adapter;</li>
+  <li>guest-level drops i errors;</li>
+  <li>CPU opterećenje tokom testa.</li>
+</ul>
+
+<p>Na Windows VM proveriti adapter, driver, Advanced Properties i PowerShell statistiku:</p>
+
+<pre><code class="language-powershell">Get-NetAdapter
+Get-NetAdapterStatistics
+Get-NetIPConfiguration</code></pre>
+
+<p>Komande ne menjaju mrežnu konfiguraciju.</p>
+
+<p><strong>Korak 5 – Izmeriti osnovnu latenciju i gubitak</strong></p>
+
+<p>Sa TEST-NET-02 prema TEST-NET-01:</p>
+
+<pre><code class="language-bash">ping -c 100 192.168.50.11</code></pre>
+
+<p>Posmatrati:</p>
+
+<ul>
+  <li>packet loss;</li>
+  <li>minimum, average i maximum RTT;</li>
+  <li>varijaciju latencije;</li>
+  <li>da li se problem javlja kontinuirano ili u skokovima.</li>
+</ul>
+
+<p>Ping nije throughput test niti dokaz da aplikacioni port radi. On služi za početnu proveru osnovne IP putanje, pod uslovom da ICMP nije filtriran ili ograničen.</p>
+
+<p><strong>Korak 6 – Proveriti MTU kontrolisanim testom</strong></p>
+
+<p>Za standardni Ethernet MTU 1500 na Linux sistemu:</p>
+
+<pre><code class="language-bash">ping -M do -s 1472 -c 5 192.168.50.11</code></pre>
+
+<p>Vrednost 1472 zajedno sa IPv4 ICMP i IP zaglavljima daje okvir koji odgovara MTU 1500.</p>
+
+<p>Za jumbo MTU 9000:</p>
+
+<pre><code class="language-bash">ping -M do -s 8972 -c 5 192.168.50.11</code></pre>
+
+<p>Jumbo test se koristi samo ako je MTU 9000 projektovan na celoj putanji. Uspeh između dve VM na istom hostu ne potvrđuje fizičku putanju, jer saobraćaj možda ne napušta virtuelni switch.</p>
+
+<p>Za VMkernel interfejs koristi se <code>vmkping</code>. Primer za proveru konkretne TCP/IP stack putanje i jumbo okvira zavisi od namene VMkernel adaptera i verzije ESXi-a. Pre testa identifikovati odgovarajući interfejs:</p>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<pre><code class="language-bash">vmkping -I vmk1 -d -s 8972 192.168.60.12</code></pre>
+
+<p><code>-I</code> bira VMkernel interfejs, <code>-d</code> postavlja zabranu fragmentacije, a <code>-s</code> veličinu ICMP payload-a. Komanda ne menja stanje, ali pogrešan izbor interfejsa može dati lažan zaključak o drugoj mreži.</p>
+
+<p><strong>Korak 7 – Izmeriti TCP throughput pomoću iperf3</strong></p>
+
+<p>Na TEST-NET-01:</p>
+
+<pre><code class="language-bash">iperf3 -s</code></pre>
+
+<p>Na TEST-NET-02:</p>
+
+<pre><code class="language-bash">iperf3 -c 192.168.50.11 -t 30</code></pre>
+
+<p>Parametar <code>-t 30</code> ograničava test na 30 sekundi.</p>
+
+<p>Za reverse smer:</p>
+
+<pre><code class="language-bash">iperf3 -c 192.168.50.11 -t 30 -R</code></pre>
+
+<p>Za kontrolisani test sa četiri paralelna TCP toka:</p>
+
+<pre><code class="language-bash">iperf3 -c 192.168.50.11 -t 30 -P 4</code></pre>
+
+<p><code>-P 4</code> može povećati iskorišćenje linka, ali i opterećenje CPU-a. Ne zaključivati da mreža ima problem samo zato što jedan TCP tok ne dostiže nominalnu brzinu linka. Rezultat zavisi od latencije, TCP prozora, CPU-a, guest driver-a, offload funkcija i udaljene strane.</p>
+
+<p><strong>Korak 8 – Porediti tri putanje</strong></p>
+
+<ol>
+  <li>Pokrenuti obe VM na istom ESXi hostu i istom port group-u.</li>
+  <li>Izmeriti throughput.</li>
+  <li>Premestiti jednu VM na drugi host kroz planirani vMotion.</li>
+  <li>Ponoviti potpuno isti test.</li>
+  <li>Po mogućnosti testirati prema fizičkom serveru na istom VLAN-u.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th>Obrazac</th>
+      <th>Verovatni sloj problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Brzo na istom hostu, sporo između hostova</td>
+      <td>Uplink, fizički switch, VLAN, MTU ili inter-host putanja</td>
+    </tr>
+    <tr>
+      <td>Sporo i na istom hostu</td>
+      <td>Guest CPU, VMXNET3, virtuelni port, shaping ili aplikacija</td>
+    </tr>
+    <tr>
+      <td>Samo jedan smer je spor</td>
+      <td>RX/TX redovi, asimetrična putanja, driver ili udaljena strana</td>
+    </tr>
+    <tr>
+      <td>Samo jedna VM je spora</td>
+      <td>Guest, adapter, CPU Ready ili VM port</td>
+    </tr>
+    <tr>
+      <td>Sve VM na istom vmnic-u su spore</td>
+      <td>Fizički NIC, driver, firmware, switch port ili zasićen uplink</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Korak 9 – Posmatrati mrežu kroz esxtop</strong></p>
+
+<p>Na ESXi hostu pokrenuti:</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>Pritisnuti <code>n</code>. Prikazati:</p>
+
+<ul>
+  <li><code>PORT-ID</code>;</li>
+  <li><code>USED-BY</code>;</li>
+  <li><code>TEAM-PNIC</code>;</li>
+  <li><code>PKTTX/s</code>;</li>
+  <li><code>PKTRX/s</code>;</li>
+  <li><code>MbTX/s</code>;</li>
+  <li><code>MbRX/s</code>;</li>
+  <li><code>%DRPTX</code>;</li>
+  <li><code>%DRPRX</code>.</li>
+</ul>
+
+<p>Broadcom dokumentuje korišćenje <code>%DRPTX</code> i <code>%DRPRX</code> za identifikovanje aktivnih packet drops tokom testa. Vrednosti treba povezati sa konkretnim VM portom, uplink-om i vremenom simptoma. </p>
+
+<p>Ako drops rastu na VM portu, a fizički vmnic drop brojači ostaju nepromenjeni, problem može biti na guest ili virtuelnom port sloju. Ako rastu fizički adapter brojači, potrebno je proveriti driver, firmware, ring buffer, CPU opterećenje i fizički switch.</p>
+
+<p>Broadcom navodi da se receive drops mogu pojaviti kada ESXi ne obrađuje pakete dovoljno brzo, na primer zbog visokog CPU opterećenja ili popunjenog RX ring buffer-a. </p>
+
+<p><strong>Korak 10 – Korelisati mrežne drops sa CPU stanjem</strong></p>
+
+<p>Tokom istog iperf3 testa u drugoj esxtop sesiji otvoriti CPU prikaz tasterom <code>c</code> i proveriti:</p>
+
+<ul>
+  <li>host CPU Usage;</li>
+  <li>CPU Ready testnih VM-ova;</li>
+  <li>CPU limit i <code>%MLMTD</code>;</li>
+  <li>da li guest prima dovoljno CPU vremena za obradu paketa;</li>
+  <li>da li se drops javljaju samo tokom CPU contention-a.</li>
+</ul>
+
+<p>Packet loss ne mora biti posledica fizičke mreže. Broadcom opisuje slučajeve u kojima se drops na virtuelnom switch-u javljaju zbog nedovoljnih guest RX buffer-a ili nedostatka CPU ciklusa za obradu dolaznog saobraćaja. </p>
+
+<p><strong>Korak 11 – Proveriti driver i firmware kompatibilnost</strong></p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic0</code></pre>
+
+<p>Zabeležiti driver i firmware. Zatim ih proveriti prema aktuelnoj VMware Compatibility Guide i vendor dokumentaciji za konkretan server model, adapter i ESXi izdanje.</p>
+
+<p>Ne nadograđivati samo driver ili samo firmware bez provere podržanog para. Broadcom dokumentuje performance probleme i netačne drop brojače koji zavise od konkretne kombinacije NIC driver-a i firmware-a. </p>
+
+<p><strong>Korak 12 – Ciljani packet capture</strong></p>
+
+<p>Packet capture se koristi tek nakon što su osnovne metrike pokazale gde treba posmatrati saobraćaj. Broadcom navodi <code>pktcap-uw</code> kao ESXi alat koji omogućava snimanje na različitim tačkama unutar hipervizora. </p>
+
+<p>Prvo identifikovati switch port VM-a:</p>
+
+<pre><code class="language-bash">net-stats -l | grep -i "TEST-NET-01"</code></pre>
+
+<p>Zatim izvršiti vremenski i količinski ograničen capture. Tačna sintaksa zavisi od capture point-a i verzije, pa je pre produkcione upotrebe obavezno proveriti:</p>
+
+<pre><code class="language-bash">pktcap-uw --help</code></pre>
+
+<p>Primer ciljanog capture-a VM switch porta:</p>
+
+<pre><code class="language-bash">pktcap-uw \
+    --switchport SWITCHPORT-ID \
+    --capture PortInput,PortOutput \
+    --count 1000 \
+    -o /tmp/test-net-01.pcap</code></pre>
+
+<p>Primer capture-a na fizičkom uplink-u, filtriranog prema IP adresi:</p>
+
+<pre><code class="language-bash">pktcap-uw \
+    --uplink vmnic0 \
+    --capture UplinkSndKernel,UplinkRcvKernel \
+    --ip 192.168.50.11 \
+    --count 1000 \
+    -o /tmp/vmnic0-test.pcap</code></pre>
+
+<p>Opcije i podržani capture point nazivi mogu se razlikovati između izdanja. Ne kopirati sintaksu bez provere ugrađene pomoći na konkretnom hostu.</p>
+
+<p>Capture treba prekinuti čim je prikupljen potreban dokaz. Ne koristiti nefiltrirani kontinuirani capture na produkcionom uplink-u.</p>
+
+<p>Broadcom primeri za izolovanje problema porede paket na VM switch portu i fizičkom uplink-u, čime se određuje da li paket ulazi u vDS, napušta ga ili nestaje između dve tačke. </p>
+
+<p><strong>Korak 13 – Analizirati capture bez menjanja hosta</strong></p>
+
+<p>Fajl bezbedno prebaciti na administratorsku stanicu i otvoriti u Wireshark-u. Tražiti:</p>
+
+<ul>
+  <li>TCP retransmissions;</li>
+  <li>duplicate ACK;</li>
+  <li>zero window;</li>
+  <li>neusklađen MSS;</li>
+  <li>ARP ponavljanja;</li>
+  <li>asimetričan smer komunikacije;</li>
+  <li>ICMP fragmentation-needed poruke;</li>
+  <li>duge pauze između zahteva i odgovora.</li>
+</ul>
+
+<p>Packet capture pokazuje šta se događa sa paketima, ali ne objašnjava samostalno zašto je uzrok nastao. Nalaz se koreliše sa CPU, esxtop, vmnic i fizičkim switch brojačima.</p>
+
+<p><strong>Relevantni logovi za mrežni incident</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Lokacija</th>
+      <th>Komponenta</th>
+      <th>Šta se traži</th>
+      <th>Primer komande</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/var/log/vmkernel.log</code></td>
+      <td>VMkernel mrežni sloj i driver</td>
+      <td>Link promene, driver upozorenja, queue, watchdog i uplink događaji</td>
+      <td><code>grep -iE "vmnic|link|netqueue|watchdog|drop|error" /var/log/vmkernel.log | tail -n 200</code></td>
+    </tr>
+    <tr>
+      <td><code>/var/log/vobd.log</code></td>
+      <td>VMkernel observation događaji</td>
+      <td>Link up/down, redundant uplink i host observation događaji</td>
+      <td><code>grep -iE "vmnic|uplink|network|link" /var/log/vobd.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td><code>/var/log/hostd.log</code></td>
+      <td>Host management agent</td>
+      <td>Promene virtual switch-a, port group-a i NIC konfiguracije</td>
+      <td><code>grep -iE "network|vswitch|portgroup|vmnic|TEST-NET" /var/log/hostd.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td><code>vmware.log</code></td>
+      <td>VMX proces testne VM</td>
+      <td>Virtuelni adapter, povezivanje, reset i VMX upozorenja</td>
+      <td><code>grep -iE "ethernet|vmxnet|network|warning|error" vmware.log | tail -n 150</code></td>
+    </tr>
+    <tr>
+      <td>Guest logovi</td>
+      <td>Gostujući driver i TCP/IP stack</td>
+      <td>Interface reset, driver greška, timeout i resource exhaustion</td>
+      <td><code>journalctl -k --since "-30 min" | grep -iE "vmxnet|net|link|drop|timeout"</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Troubleshooting grane</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nalaz</th>
+      <th>Sledeća akcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>esxtop VM drops, vmnic bez drops</td>
+      <td>Proveriti guest CPU, VMXNET3 driver, RX redove i virtuelni port</td>
+    </tr>
+    <tr>
+      <td>vmnic drops rastu</td>
+      <td>Proveriti ring buffer, driver/firmware, CPU, switch port i fizički link</td>
+    </tr>
+    <tr>
+      <td>MTU test radi na istom hostu, ne radi između hostova</td>
+      <td>Proveriti fizičke switch-eve i celu inter-host putanju</td>
+    </tr>
+    <tr>
+      <td>iperf throughput nizak, bez drops</td>
+      <td>Proveriti CPU, TCP prozor, shaping, jedan naspram više tokova i udaljenu stranu</td>
+    </tr>
+    <tr>
+      <td>Samo reverse smer je spor</td>
+      <td>Proveriti RX stranu sporog primaoca i asimetričnu putanju</td>
+    </tr>
+    <tr>
+      <td>Problem prestaje nakon vMotion-a</td>
+      <td>Analizirati izvorni host, vmnic, switch port i driver</td>
+    </tr>
+    <tr>
+      <td>Packet capture vidi paket na VM portu, ne vidi ga na uplink-u</td>
+      <td>Problem između virtuelnog porta i uplink sloja</td>
+    </tr>
+    <tr>
+      <td>Paket napušta uplink, ali odgovor ne dolazi</td>
+      <td>Analizu nastaviti na fizičkoj mreži ili udaljenom sistemu</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<ul>
+  <li>Administrator meri throughput u oba smera.</li>
+  <li>Razlikuje virtuelne i fizičke packet drops.</li>
+  <li>Poredi kumulativne NIC brojače pre i posle incidenta.</li>
+  <li>Proverava MTU duž stvarne putanje.</li>
+  <li>Koreliše mrežne drops sa CPU stanjem gosta i hosta.</li>
+  <li>Koristi pktcap-uw samo ciljano, filtrirano i vremenski ograničeno.</li>
+  <li>Može da odredi poslednju tačku na kojoj je paket viđen.</li>
+</ul>
+
+<p><strong>Vraćanje laboratorije u početno stanje</strong></p>
+
+<ol>
+  <li>Zaustaviti iperf3 server i klijent kombinacijom <code>Ctrl+C</code>.</li>
+  <li>Zaustaviti sve pktcap-uw procese:</li>
+</ol>
+
+<pre><code class="language-bash">killall pktcap-uw</code></pre>
+
+<p><code>killall</code> prekida sve procese sa navedenim nazivom. Pre upotrebe proveriti:</p>
+
+<pre><code class="language-bash">ps | grep pktcap-uw</code></pre>
+
+<ol start="3">
+  <li>Prebaciti potrebne capture fajlove na bezbednu lokaciju.</li>
+  <li>Ukloniti samo laboratorijske fajlove:</li>
+</ol>
+
+<pre><code class="language-bash">rm -f /tmp/test-net-01.pcap
+rm -f /tmp/vmnic0-test.pcap
+rm -f /tmp/vmnic0-before.txt
+rm -f /tmp/vmnic0-after.txt</code></pre>
+
+<ol start="5">
+  <li>Vratiti VM raspored na početno stanje ako je to deo rollback plana.</li>
+  <li>Vratiti privremena firewall pravila.</li>
+  <li>Isključiti SSH servis.</li>
+  <li>Potvrditi normalnu aplikacionu komunikaciju.</li>
+</ol>
+
+<hr>
+
+<p><strong>Laboratorijska vežba 6 – Kombinovani enterprise incident: aplikacija je spora, ali uzrok nije unapred poznat</strong></p>
+
+<p><strong>Cilj vežbe</strong></p>
+
+<p>Cilj završne vežbe nije izazivanje još jednog izolovanog brojača, već primena kompletne administratorske metodologije. Administrator dobija prijavu:</p>
+
+<p>„Poslovna aplikacija APP-PROD-01 od 10:15 povremeno kasni. Korisnici prijavljuju sporo otvaranje podataka, a pojedini zahtevi završavaju timeout greškom.”</p>
+
+<p>Nije poznato da li je uzrok CPU, memorija, storage, mreža, gostujući sistem ili spoljašnja zavisnost.</p>
+
+<p><strong>Laboratorijska topologija</strong></p>
+
+<ul>
+  <li>APP-PROD-01 – aplikaciona testna VM;</li>
+  <li>DB-PROD-01 – baza ili simulirani backend servis;</li>
+  <li>ESXi hostovi esxi01 i esxi02;</li>
+  <li>datastore DATASTORE-A;</li>
+  <li>port group APP-NET;</li>
+  <li>vCenter Server;</li>
+  <li>opciona monitoring platforma.</li>
+</ul>
+
+<p><strong>Scenarijska priprema</strong></p>
+
+<p>Instruktor može pripremiti jedan od sledećih bezbednih uzroka, ali administrator unapred ne zna koji:</p>
+
+<ul>
+  <li>privremeni CPU limit na APP-PROD-01;</li>
+  <li>kontrolisani fio workload na drugoj testnoj VM na istom datastore-u;</li>
+  <li>traffic shaping na laboratorijskom port group-u;</li>
+  <li>namerno smanjen broj resursa unutar guest aplikacije;</li>
+  <li>backup ili snapshot zadatak u vreme incidenta;</li>
+  <li>testna VM premeštena na preopterećen host;</li>
+  <li>MTU neslaganje na laboratorijskoj, nekritičnoj putanji.</li>
+</ul>
+
+<p><strong>Upozorenje o riziku</strong></p>
+
+<p>Svi namerno uvedeni kvarovi moraju biti ograničeni na laboratorijske objekte. Ne prekidati storage putanje, ne gasiti fizičke switch portove, ne izazivati APD/PDL, ne puniti datastore, ne izazivati host memory exhaustion i ne menjati produkcione resource pool politike.</p>
+
+<p><strong>Faza 1 – Potvrda simptoma</strong></p>
+
+<ol>
+  <li>Zabeležiti tačno vreme, vremensku zonu i trajanje.</li>
+  <li>Identifikovati korisnike i poslovnu funkciju.</li>
+  <li>Izmeriti aplikacioni odziv istim testnim zahtevom.</li>
+  <li>Potvrditi da problem nije samo na jednom klijentskom računaru.</li>
+  <li>Proveriti da li backend servis odgovara.</li>
+</ol>
+
+<p>Primer osnovne HTTP provere sa klijentskog sistema:</p>
+
+<pre><code class="language-bash">curl -sS -o /dev/null \
+    -w 'HTTP=%{http_code} CONNECT=%{time_connect} TTFB=%{time_starttransfer} TOTAL=%{time_total}\n' \
+    https://app.lab.local/health</code></pre>
+
+<p>Komanda ne menja servis. Prikazuje vreme uspostavljanja veze, vreme do prvog bajta i ukupno vreme. Ako je connect vreme normalno, a time-to-first-byte visoko, uzrok može biti aplikacija, backend ili storage, a ne sama mrežna konekcija.</p>
+
+<p><strong>Faza 2 – Određivanje obima</strong></p>
+
+<ul>
+  <li>Da li je spora samo APP-PROD-01?</li>
+  <li>Da li su spore druge VM na istom hostu?</li>
+  <li>Da li su spore VM na istom datastore-u?</li>
+  <li>Da li je problem prisutan samo na istom VLAN-u?</li>
+  <li>Da li je DB-PROD-01 dostupna iz drugih aplikacionih VM-ova?</li>
+  <li>Da li problem postoji nakon vMotion-a testne VM?</li>
+</ul>
+
+<p><strong>Faza 3 – Provera nedavnih promena</strong></p>
+
+<p>GUI putanja:</p>
+
+<pre><code class="language-bash">APP-PROD-01
+→ Monitor
+→ Tasks and Events
+→ Events</code></pre>
+
+<p>Proveriti period najmanje 30 minuta pre početka incidenta. Tražiti:</p>
+
+<ul>
+  <li>VM reconfiguration;</li>
+  <li>promenu limita ili resursa;</li>
+  <li>vMotion ili Storage vMotion;</li>
+  <li>snapshot i konsolidaciju;</li>
+  <li>backup događaj;</li>
+  <li>promenu mreže ili port group-a;</li>
+  <li>DRS akciju;</li>
+  <li>host alarm ili datastore upozorenje.</li>
+</ul>
+
+<p>PowerCLI pregled osnovne konfiguracije:</p>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "APP-PROD-01"
+
+$vm | Select-Object Name,
+                    PowerState,
+                    NumCpu,
+                    MemoryGB,
+                    VMHost
+
+$vm | Get-VMResourceConfiguration |
+    Select-Object VM,
+                  CpuReservationMhz,
+                  CpuLimitMhz,
+                  CpuSharesLevel,
+                  MemReservationGB,
+                  MemLimitGB,
+                  MemSharesLevel
+
+$vm | Get-HardDisk |
+    Select-Object Name,
+                  CapacityGB,
+                  StorageFormat,
+                  Filename
+
+$vm | Get-NetworkAdapter |
+    Select-Object Name,
+                  Type,
+                  NetworkName,
+                  MacAddress,
+                  ConnectionState</code></pre>
+
+<p>Sve komande su read-only.</p>
+
+<p><strong>Faza 4 – Istovremena korelacija četiri resursne oblasti</strong></p>
+
+<p>Za isti vremenski interval prikupiti:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Oblast</th>
+      <th>Ključna pitanja</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CPU</td>
+      <td>Da li VM radi ili čeka? Postoji li limit? Da li i druge VM imaju Ready?</td>
+    </tr>
+    <tr>
+      <td>Memorija</td>
+      <td>Postoji li ballooning, compression ili aktivni swap I/O? Da li gost ima OOM ili paging?</td>
+    </tr>
+    <tr>
+      <td>Storage</td>
+      <td>Da li je visok GAVG? Da li uzrok dolazi iz DAVG ili KAVG? Da li su pogođene druge VM?</td>
+    </tr>
+    <tr>
+      <td>Mreža</td>
+      <td>Postoje li drops, retransmissions, shaping ili problem samo u jednom smeru?</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Broadcom pristup troubleshooting-u VM performansi upravo zahteva proveru CPU, memorije, storage-a i mreže umesto pretpostavke da je problem u jednom unapred izabranom sloju. </p>
+
+<p><strong>Faza 5 – Prikupiti ograničene PowerCLI statistike</strong></p>
+
+<pre><code class="language-powershell">$start = (Get-Date).AddHours(-1)
+$finish = Get-Date
+
+$available = Get-StatType -Entity $vm
+
+$wanted = @(
+    "cpu.usage.average",
+    "cpu.ready.summation",
+    "mem.usage.average",
+    "mem.vmmemctl.average",
+    "mem.swapped.average",
+    "disk.usage.average",
+    "disk.maxTotalLatency.latest",
+    "net.usage.average"
+)
+
+$metrics = $wanted | Where-Object { $available -contains $_ }
+
+Get-Stat -Entity $vm `
+         -Stat $metrics `
+         -Start $start `
+         -Finish $finish |
+    Select-Object Timestamp,
+                  MetricId,
+                  Instance,
+                  Value,
+                  Unit |
+    Sort-Object Timestamp, MetricId</code></pre>
+
+<p><code>Get-Stat</code> vraća statističke podatke koje je prikupio vCenter Server. Broadcom PowerCLI referenca ga opisuje kao cmdlet za preuzimanje dostupnih statističkih informacija sa vCenter sistema. </p>
+
+<p>Lista brojača se prvo preseče sa stvarno dostupnim metrikama, čime se izbegava prekid upita zbog razlika između verzija, objekata i nivoa statistike.</p>
+
+<p><strong>Faza 6 – Analiza događaja i logova</strong></p>
+
+<p>Na pogođenom hostu napraviti vremenski ograničene izvatke:</p>
+
+<pre><code class="language-bash">grep -iE "APP-PROD-01|reconfig|power|migrate|error|warning" \
+    /var/log/hostd.log | tail -n 250</code></pre>
+
+<pre><code class="language-bash">grep -iE "latency|deteriorated|NMP|APD|PDL|reset|abort|vmnic|link|drop|error" \
+    /var/log/vmkernel.log | tail -n 250</code></pre>
+
+<pre><code class="language-bash">grep -iE "APP-PROD-01|migrate|error|warning" \
+    /var/log/vpxa.log | tail -n 200</code></pre>
+
+<p>U VM direktorijumu:</p>
+
+<pre><code class="language-bash">grep -iE "cpu|memory|numa|scsi|latency|ethernet|vmxnet|warning|error" \
+    vmware.log | tail -n 250</code></pre>
+
+<p>Logove treba filtrirati prema tačnom vremenu incidenta. Hiljade nepovezanih starih poruka povećavaju rizik pogrešne korelacije.</p>
+
+<p><strong>Faza 7 – Formulisati hipotezu</strong></p>
+
+<p>Pre korektivne izmene administrator mora zapisati jednu proverljivu hipotezu, na primer:</p>
+
+<ul>
+  <li>„APP-PROD-01 je usporena CPU limitom jer je Demand visok, Usage ograničen, %MLMTD raste, a host ima slobodan CPU.”</li>
+  <li>„Problem potiče sa DATASTORE-A jer sve VM na njemu imaju visok DAVG u istom periodu.”</li>
+  <li>„Packet drops nastaju na guest/VM port sloju jer %DRPRX raste, dok fizički vmnic counters ostaju nepromenjeni.”</li>
+  <li>„Aplikacioni timeout nije VMware resursni problem jer su sve četiri oblasti stabilne, dok backend servis ima sopstveni visok response time.”</li>
+</ul>
+
+<p>Hipoteza mora sadržati:</p>
+
+<ul>
+  <li>simptom;</li>
+  <li>pogođeni sloj;</li>
+  <li>dokaz;</li>
+  <li>predloženu jednu izmenu;</li>
+  <li>očekivani rezultat izmene;</li>
+  <li>rollback postupak.</li>
+</ul>
+
+<p><strong>Faza 8 – Bezbedna korektivna akcija</strong></p>
+
+<p>Primeri dozvoljenih korekcija u laboratoriji:</p>
+
+<ul>
+  <li>ukloniti testni CPU ili memory limit;</li>
+  <li>zaustaviti konkurentni fio test;</li>
+  <li>ukloniti testni traffic shaping;</li>
+  <li>premestiti VM sa dokazano problematičnog hosta;</li>
+  <li>vratiti ispravan MTU na laboratorijskoj putanji;</li>
+  <li>zaustaviti testni backup ili snapshot zadatak;</li>
+  <li>vratiti VM na standardnu port group politiku.</li>
+</ul>
+
+<p>Ne izvršavati više korekcija odjednom. Ako se istovremeno uklone CPU limit, migrira VM i zaustavi backup, neće biti moguće dokazati stvarni uzrok.</p>
+
+<p><strong>Faza 9 – Validacija oporavka</strong></p>
+
+<ol>
+  <li>Ponoviti isti aplikacioni test.</li>
+  <li>Koristiti isti izvorni klijent.</li>
+  <li>Meriti isti period.</li>
+  <li>Prikupiti iste metrike.</li>
+  <li>Potvrditi oporavak korisničkog odziva.</li>
+  <li>Proveriti da korekcija nije stvorila novi problem.</li>
+  <li>Sačuvati pre i posle podatke.</li>
+</ol>
+
+<p>Oporavak nije potvrđen samo zato što je alarm nestao. Potrebno je dokazati da je poslovna transakcija ponovo u očekivanom rasponu i da su relevantne metrike stabilne.</p>
+
+<p><strong>Faza 10 – Dokumentovanje incidenta</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Polje</th>
+      <th>Sadržaj</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Početak i kraj</td>
+      <td>Tačno vreme i vremenska zona</td>
+    </tr>
+    <tr>
+      <td>Poslovni uticaj</td>
+      <td>Korisnici, servisi i trajanje</td>
+    </tr>
+    <tr>
+      <td>Obim</td>
+      <td>VM, host, datastore, mreža ili aplikacija</td>
+    </tr>
+    <tr>
+      <td>Nedavne promene</td>
+      <td>Change ID, automatizacija ili neočekivana izmena</td>
+    </tr>
+    <tr>
+      <td>Dokazi</td>
+      <td>Grafici, esxtop, logovi, PowerCLI i aplikaciona merenja</td>
+    </tr>
+    <tr>
+      <td>Uzrok</td>
+      <td>Tehnički potvrđen uzročni mehanizam</td>
+    </tr>
+    <tr>
+      <td>Korekcija</td>
+      <td>Tačno šta je promenjeno</td>
+    </tr>
+    <tr>
+      <td>Validacija</td>
+      <td>Pre i posle rezultati</td>
+    </tr>
+    <tr>
+      <td>Preventivna akcija</td>
+      <td>Monitoring, standard, kapacitet ili procesna promena</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Očekivani rezultat</strong></p>
+
+<p>Administrator ne bira najvišu metriku kao uzrok, već gradi vremenski usklađen dokazni lanac. Može da pokaže šta je simptom, šta je posledica, koji sloj je odgovoran, zašto je korektivna akcija bezbedna i kojim ponovljenim merenjem je potvrđen oporavak.</p>
+
+<hr>
+
+<p><strong>Završna kontrolna tačka praktikuma</strong></p>
+
+<p>Administrator je uspešno završio kompletan praktikum ako može samostalno da:</p>
+
+<ul>
+  <li>identifikuje datastore, VMDK, virtuelni kontroler, uređaj i storage put relevantan za incident;</li>
+  <li>razlikuje GAVG, DAVG i KAVG i koristi ih zajedno sa queue podacima;</li>
+  <li>prepozna da li je storage problem ograničen na VM, host, datastore ili zajedničku infrastrukturu;</li>
+  <li>izvede vremenski i prostorno ograničen fio test nad namenskim fajlom;</li>
+  <li>prepozna uticaj snapshot-a, konsolidacije, backup-a i konkurentnog workload-a;</li>
+  <li>proveri storage adaptere, uređaje, putanje i multipathing bez izmene stanja;</li>
+  <li>odvoji problem uređaja od VMkernel queue problema;</li>
+  <li>proveri mrežni adapter, port group, VLAN, teaming, shaping i MTU;</li>
+  <li>izmeri TCP throughput u oba smera i na više relevantnih putanja;</li>
+  <li>razlikuje VM port drops od fizičkih NIC drops;</li>
+  <li>poredi NIC brojače pre i posle precizno definisanog testa;</li>
+  <li>koreliše packet drops sa guest i host CPU stanjem;</li>
+  <li>izvede ciljani pktcap-uw capture bez dugotrajnog i nefiltriranog snimanja;</li>
+  <li>odredi poslednju tačku na kojoj je paket uspešno viđen;</li>
+  <li>poveže CPU, memorijske, storage i mrežne podatke u jednu incidentnu vremensku liniju;</li>
+  <li>formuliše proverljivu hipotezu pre promene;</li>
+  <li>primeni samo jednu bezbednu korektivnu akciju;</li>
+  <li>validira rezultat ponavljanjem istog aplikacionog i infrastrukturnog testa;</li>
+  <li>dokumentuje tehnički uzrok, poslovni uticaj, korekciju i preventivnu meru;</li>
+  <li>prepozna kada je uzrok izvan VMware sloja i eskalira problem sa upotrebljivim dokazima.</li>
+</ul>
+
+<hr>
+
+<p><strong>Administratorske prakse</strong></p>
+
+<p><strong>1. Projektovanje CPU resursa</strong></p>
+
+<ul>
+  <li>VM dimenzionisati prema stvarnom paralelizmu aplikacije, a ne prema maksimalnom broju dostupnih fizičkih jezgara.</li>
+  <li>Za kritične VM dokumentovati vršni CPU Demand, Ready, Co-stop i trajanje poslovnih poslova.</li>
+  <li>Velike VM projektovati uz razumevanje fizičke NUMA topologije hostova.</li>
+  <li>Ne koristiti cores per socket kao univerzalnu performance optimizaciju.</li>
+  <li>CPU reservation koristiti kada postoji dokazani zahtev za garantovanim kapacitetom, uz proveru HA i admission control posledica.</li>
+  <li>CPU limit izbegavati bez jasne poslovne potrebe, jer može veštački usporiti VM i kada klaster ima slobodan kapacitet.</li>
+</ul>
+
+<p><strong>2. Projektovanje memorije</strong></p>
+
+<ul>
+  <li>Razlikovati konfigurisanu, aktivnu i stvarno potrebnu memoriju.</li>
+  <li>Rightsizing zasnivati na dovoljno dugom periodu koji obuhvata vršna opterećenja, backup, batch i održavanje.</li>
+  <li>Ne uklanjati memoriju samo zato što je Active nizak u kratkom periodu.</li>
+  <li>Memory reservation koristiti za dokazano kritične radne skupove, uz razumevanje uticaja na HA i vMotion.</li>
+  <li>Memorijske limite koristiti samo kada je ograničenje namerno, dokumentovano i testirano.</li>
+  <li>Ballooning posmatrati kao signal reclamation-a, a aktivni VMkernel swap I/O kao ozbiljniji pokazatelj pritiska.</li>
+</ul>
+
+<p><strong>3. Projektovanje storage performansi</strong></p>
+
+<ul>
+  <li>Storage projektovati prema IOPS, throughput, latenciji, read/write odnosu, veličini blokova i burst ponašanju aplikacije.</li>
+  <li>Razdvojiti podatke, logove i privremene workload-e kada aplikacija i storage arhitektura to opravdavaju.</li>
+  <li>Održavati dovoljan slobodan kapacitet za rast thin diskova, snapshot operacije, konsolidaciju i recovery postupke.</li>
+  <li>Multipathing politiku birati prema dokumentaciji storage proizvođača i podržanoj VMware konfiguraciji.</li>
+  <li>Ne povećavati queue depth bez end-to-end analize, jer se zagušenje može samo premestiti na storage sistem.</li>
+  <li>Pratiti latenciju po VM, datastore-u, uređaju i hostu, a ne samo zbirni storage throughput.</li>
+</ul>
+
+<p><strong>4. Projektovanje mrežnih performansi</strong></p>
+
+<ul>
+  <li>Obezbediti redundantan uplink dizajn i proverene failover politike.</li>
+  <li>MTU mora biti usklađen na celoj putanji, uključujući VMkernel adaptere, virtual switch, fizičke switch-eve i udaljene uređaje.</li>
+  <li>Traffic shaping, Network I/O Control ili QoS politike dokumentovati kao deo performance dizajna.</li>
+  <li>VMXNET3 koristiti za podržane goste kada je potreban visok mrežni učinak i odgovarajuće VMware Tools komponente.</li>
+  <li>Driver i firmware tretirati kao podržan par, a ne kao dve nezavisne komponente.</li>
+  <li>Ne zaključivati o mrežnom problemu samo na osnovu ping-a ili jednog TCP toka.</li>
+</ul>
+
+<p><strong>5. Redundansa i otpornost</strong></p>
+
+<ul>
+  <li>Redundansa ne znači samo postojanje dva adaptera, već potvrđeno preživljavanje kvara bez neprihvatljive degradacije.</li>
+  <li>Periodično testirati mrežni i storage failover u kontrolisanom maintenance prozoru.</li>
+  <li>Pratiti stanje svih putanja; sistem može raditi sa izgubljenom redundansom, ali tada sledeći kvar postaje prekid servisa.</li>
+  <li>Kapacitet planirati i za stanje posle kvara hosta, storage kontrolera ili uplink-a.</li>
+  <li>HA rezervisani kapacitet ne tretirati kao raspoloživ performance kapacitet za redovan rad.</li>
+</ul>
+
+<p><strong>6. Kapacitet i pragovi</strong></p>
+
+<ul>
+  <li>Za svaki kritični servis definisati normalan, upozoravajući i kritičan raspon na osnovu sopstvenog baznog stanja.</li>
+  <li>CPU pratiti kroz Usage, Demand, Ready i Co-stop, a ne samo procentualnu potrošnju.</li>
+  <li>Memoriju pratiti kroz Active, Consumed, Balloon, Compression, Swap i guest paging.</li>
+  <li>Storage pratiti kroz latenciju, IOPS, throughput, queue i greške putanja.</li>
+  <li>Mrežu pratiti kroz throughput, packet rate, drops, errors, retransmissions i uplink iskorišćenje.</li>
+  <li>Trendove analizirati pre nego što kratkotrajni skok postane trajni SLA problem.</li>
+</ul>
+
+<p><strong>7. Monitoring i alarmi</strong></p>
+
+<ul>
+  <li>Alarm mora biti vezan za akciju. Za svaki alarm definisati vlasnika, prag, trajanje i prvu dijagnostičku proceduru.</li>
+  <li>Izbegavati alarm koji reaguje na svaki kratki skok i stvara zamor administratora.</li>
+  <li>Za CPU Ready i storage latenciju koristiti trajanje i učestalost, a ne samo jednu trenutnu vrednost.</li>
+  <li>Za packet drops pratiti stopu rasta brojača.</li>
+  <li>Monitoring mora obuhvatiti vCenter, ESXi, guest OS, aplikaciju, storage sistem i fizičku mrežu.</li>
+  <li>Vremenska sinhronizacija svih sistema je preduslov za korelaciju događaja.</li>
+</ul>
+
+<p><strong>8. Standardizacija</strong></p>
+
+<ul>
+  <li>Definisati standardne VM veličine, ali omogućiti odstupanje kada workload ima dokumentovanu potrebu.</li>
+  <li>Standardizovati tipove virtuelnih mrežnih i storage kontrolera prema podržanim gostima.</li>
+  <li>Voditi evidenciju odobrenih driver i firmware kombinacija.</li>
+  <li>Standardizovati PowerCLI skripte za bazno stanje i periodično izveštavanje.</li>
+  <li>Za svaki klaster dokumentovati NUMA topologiju, mrežnu brzinu, storage putanje i realni failover kapacitet.</li>
+</ul>
+
+<p><strong>9. Kontrola promena</strong></p>
+
+<ul>
+  <li>Svaka performance izmena mora imati početno merenje, hipotezu, očekivani rezultat i rollback.</li>
+  <li>Menjati jednu promenljivu po testnom ciklusu.</li>
+  <li>Ne menjati limits, reservations, shares, queue depth, multipathing i driver tokom istog incidentnog koraka.</li>
+  <li>Posle izmene ponoviti potpuno isti test.</li>
+  <li>Ne zadržavati izmenu ako nije dokazala poboljšanje ili je stvorila novi rizik.</li>
+</ul>
+
+<p><strong>10. Bezbednost performance dijagnostike</strong></p>
+
+<ul>
+  <li>SSH uključivati privremeno i pristup ograničiti na upravljačku mrežu.</li>
+  <li>Packet capture fajlove tretirati kao osetljive podatke jer mogu sadržati adrese, protokole i aplikacioni sadržaj.</li>
+  <li>Capture fajlove čuvati samo koliko zahteva incidentna ili regulatorna procedura.</li>
+  <li>Ne instalirati neodobrene benchmark alate na produkcione VM-ove.</li>
+  <li>Ne ostavljati testne servise, firewall pravila i privremene naloge nakon laboratorije.</li>
+</ul>
+
+<p><strong>11. Dokumentovanje</strong></p>
+
+<ul>
+  <li>Za svaki kritični servis čuvati bazno stanje i očekivane poslovne periode opterećenja.</li>
+  <li>Dokumentovati mapiranje VM–host–datastore–VMDK–port group–uplink.</li>
+  <li>Uz incident čuvati tačne komande, vremenski interval i relevantne izlaze.</li>
+  <li>Dokumentovati i odbačene hipoteze kako se ista analiza ne bi nepotrebno ponavljala.</li>
+  <li>Performance dokument mora sadržati aplikacioni rezultat, ne samo infrastrukturne procente.</li>
+</ul>
+
+<p><strong>12. Održavanje</strong></p>
+
+<ul>
+  <li>Pre ESXi nadogradnje proveriti podržane server, NIC, HBA, driver i firmware kombinacije.</li>
+  <li>Posle nadogradnje ponoviti reprezentativna bazna merenja.</li>
+  <li>Redovno proveravati stanje VMware Tools i virtuelnog hardvera, ali nadogradnje planirati u skladu sa podrškom gostujućeg sistema.</li>
+  <li>Uklanjati stare snapshot-e kroz kontrolisanu proceduru koja uzima u obzir dodatni I/O.</li>
+  <li>Pregledati datastore rast, storage putanje i mrežne error brojače pre nego što postanu incident.</li>
+</ul>
+
+<p><strong>13. Backup i disaster recovery</strong></p>
+
+<ul>
+  <li>Backup performanse uključiti u kapacitivni model, jer backup proxy, snapshot i transport mogu promeniti storage i mrežno opterećenje.</li>
+  <li>Recovery test koristiti za proveru da obnovljena VM ima odgovarajuće resurse, mrežu i storage performanse.</li>
+  <li>DR lokaciju dimenzionisati prema potrebnom nivou servisa tokom incidenta, a ne samo prema mogućnosti da VM bude pokrenuta.</li>
+  <li>Dokumentovati performance očekivanja u degradiranom režimu i prioritet oporavka servisa.</li>
+  <li>Backup nije zamena za performance monitoring, niti brza VM obnova dokazuje da aplikacija nakon oporavka ispunjava SLA.</li>
+</ul>
+
+<hr>
+
+<p><strong>Zaključak</strong></p>
+
+<p>Performanse virtuelnog okruženja ne mogu se svesti na pitanje da li host ima slobodan CPU, memoriju ili storage prostor. Administrator mora razumeti redove čekanja, planiranje procesora, NUMA lokalnost, memory reclamation, storage put, virtuelne i fizičke mrežne slojeve i ponašanje aplikacije unutar gosta.</p>
+
+<p>Najvažnija operativna veština nije pronalaženje najvećeg broja na grafikonu, već razdvajanje simptoma od uzroka. Visok CPU Usage može predstavljati koristan rad. Nizak CPU Usage ne znači da VM ne čeka procesor. Veliki Consumed memory ne dokazuje nedostatak memorije. Visok GAVG ne govori samostalno da li je problem na storage uređaju ili u VMkernel redu. Mali throughput bez packet drops ne dokazuje kvar mreže. Nenulti kumulativni NIC brojač ne dokazuje aktivan gubitak.</p>
+
+<p>Posle ove lekcije administrator treba da bude sposoban da napravi bazno stanje, odredi obim problema, prikupi usklađene podatke iz vCenter Servera, PowerCLI-ja, esxtop-a, ESXCLI-ja, gostujućeg sistema i relevantnih logova, a zatim formuliše proverljivu hipotezu. Korektivna akcija mora biti ograničena, reverzibilna i zasnovana na dokazu. Oporavak mora biti potvrđen ponovljenim aplikacionim i infrastrukturnim merenjem.</p>
+
+<p>Zreo VMware administrator ne optimizuje sistem nasumičnim dodavanjem resursa. On uklanja nepotrebne limite, pravilno dimenzioniše VM, štiti redundansu, planira kapacitet za kvar, prepoznaje kada je problem izvan VMware sloja i drugim timovima predaje precizne dokaze umesto neodređene prijave da je „mreža spora” ili da „storage kasni”.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp; lekcija je zasnovana na aktuelnoj Broadcom VMware vSphere dokumentaciji za monitoring i upravljanje resursima, zvaničnoj esxtop, ESXCLI i VCF PowerCLI referenci, relevantnim Broadcom Knowledge Base člancima o CPU Ready vremenu, NUMA i rightsizing-u, memory reclamation mehanizmima, storage latenciji i redovima, multipathing-u, mrežnim packet drops događajima, VMXNET3 i fizičkim NIC adapterima, pktcap-uw dijagnostici i lokacijama ESXi i VM logova, kao i dokumentaciji proizvođača servera, mrežnih adaptera i storage sistema za podržane driver i firmware konfiguracije
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-33-drs.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-35-sigurnost.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

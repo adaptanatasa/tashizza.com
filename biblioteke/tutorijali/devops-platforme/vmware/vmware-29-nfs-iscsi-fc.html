@@ -1,0 +1,2034 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-29-nfs-iscsi-fc.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>NFS, iSCSI i Fibre Channel – najčešći storage pristupi | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte NFS, iSCSI i Fibre Channel kao najčešće načine povezivanja VMware ESXi hostova sa zajedničkim storage sistemima i datastore prostorima.">
+
+  <meta name="keywords"
+        content="NFS, iSCSI, Fibre Channel, VMware storage, shared storage, zajednički storage, VMware datastore, NFS datastore, iSCSI datastore, Fibre Channel SAN, FC storage, SAN, NAS, LUN, VMFS, ESXi storage, vSphere storage, vCenter, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-29-nfs-iscsi-fc.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="NFS, iSCSI i Fibre Channel – najčešći storage pristupi">
+
+  <meta property="og:description"
+        content="Saznajte kako NFS, iSCSI i Fibre Channel povezuju VMware ESXi hostove sa zajedničkim storage sistemima i u kojim situacijama se koriste.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-29-nfs-iscsi-fc.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-29-nfs-iscsi-fc.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="NFS, iSCSI i Fibre Channel – najčešći storage pristupi">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-29-nfs-iscsi-fc.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-29-nfs-iscsi-fc.png"
+           alt="NFS, iSCSI i Fibre Channel – najčešći storage pristupi">
+
+    </a>
+
+    <div class="page-subtitle">
+  VI. Skladištenje, politike i integritet podataka
+</div>
+
+<div class="page-subtitle">
+ 29. NFS, iSCSI i Fibre Channel – protokoli, putanje i zone odgovornosti
+</div>
+
+<p>
+  Virtuelna mašina može imati dovoljno procesorskih i memorijskih resursa, ali njen rad neće biti stabilan ako storage infrastruktura nije pravilno projektovana. Na storage sistemu nalaze se virtuelni diskovi, konfiguracione datoteke, datoteke snapshot-ova, swap datoteke, logovi i drugi elementi potrebni za pokretanje i rad virtuelnih mašina. Zbog toga storage nije samo mesto za čuvanje podataka već jedan od ključnih slojeva čitave VMware infrastrukture.
+</p>
+
+<p>
+  Izbor storage tehnologije utiče na performanse virtuelnih mašina, raspoloživost podataka, mogućnost migracije između hostova, način zaštite od otkaza i složenost svakodnevne administracije. Loše projektovana storage infrastruktura može izazvati velike latencije, gubitak putanja, prekid pristupa datastore-u, zamrzavanje virtuelnih mašina ili potpun prekid rada većeg broja sistema.
+</p>
+
+<p>
+  U tradicionalnim VMware okruženjima najčešće se koriste tri pristupa zajedničkom storage-u:
+</p>
+
+<ul>
+  <li>NFS – pristup udaljenom fajl sistemu preko IP mreže;</li>
+  <li>iSCSI – blokovski pristup LUN-ovima preko TCP/IP mreže;</li>
+  <li>Fibre Channel – blokovski pristup LUN-ovima preko specijalizovane SAN infrastrukture.</li>
+</ul>
+
+<p>
+  NFS predstavlja file-level storage, dok iSCSI i Fibre Channel predstavljaju block-level storage. Ova razlika određuje kako ESXi vidi storage, ko upravlja fajl sistemom i kako se datastore kreira.
+</p>
+
+<p>
+  Verzijski okvir lekcije je vSphere/ESXi 8.x, sa posebno navedenim promenama iz Update izdanja. Osnovni arhitektonski pojmovi i većina read-only ESXCLI provera važe i u novijoj VCF/vSphere 9 dokumentacionoj liniji, ali podržani adapteri, firmware, maksimalne vrednosti, podrazumevane claim politike i pojedine opcije komandi moraju se proveriti za tačan build. Licenca sama ne čini storage kombinaciju podržanom: merodavne su Broadcom Compatibility Guide matrice i matrice interoperabilnosti proizvođača storage sistema.
+</p>
+
+<h3>Zajednički storage u VMware infrastrukturi</h3>
+
+<p>
+  Zajednički storage omogućava da više ESXi hostova pristupa istim podacima virtuelnih mašina. U tradicionalnom vSphere dizajnu virtuelna mašina može biti pokrenuta na jednom hostu, dok njeni VMDK diskovi ostaju na datastore-u koji je dostupan svim hostovima u klasteru.
+</p>
+
+<p>
+  Kada se izvodi standardni compute vMotion između hostova koji već imaju pristup istom datastore-u, prenose se aktivno stanje virtuelne mašine, sadržaj memorije i stanje izvršavanja procesora, dok VMDK datoteke ostaju na postojećem datastore-u. Ako izvorni i odredišni host nemaju zajednički storage, migracija može obuhvatiti i premeštanje datoteka virtuelne mašine, ali tada proces zahteva više mrežnih resursa i traje duže.
+</p>
+
+<p>
+  Zajednički storage olakšava korišćenje funkcija kao što su:
+</p>
+
+<ul>
+  <li>vSphere vMotion;</li>
+  <li>vSphere High Availability;</li>
+  <li>Distributed Resource Scheduler;</li>
+  <li>Storage vMotion;</li>
+  <li>centralizovani backup virtuelnih mašina;</li>
+  <li>ponovno pokretanje VM-a na drugom hostu nakon otkaza;</li>
+  <li>održavanje ESXi hostova bez dužeg prekida servisa.</li>
+</ul>
+
+<p>
+  Zajednički storage, međutim, ne sme predstavljati jednu tačku otkaza. Produkciono okruženje mora imati redundantne kontrolere, mrežne ili SAN putanje, napajanja, switch-eve i odgovarajuće politike failover-a.
+</p>
+
+<h3>File-level i block-level storage</h3>
+
+<p>
+  Kod file-level storage-a storage sistem upravlja fajl sistemom i izlaže direktorijum ili volume ESXi hostu. ESXi pristupa datotekama preko mrežnog protokola. NFS datastore je najvažniji primer ovakvog pristupa.
+</p>
+
+<p>
+  Kod block-level storage-a storage sistem izlaže logički blokovski uređaj – LUN. ESXi taj uređaj vidi kao disk i na njemu najčešće kreira VMFS fajl sistem. iSCSI i Fibre Channel koriste ovaj model.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Karakteristika</th>
+      <th>NFS</th>
+      <th>iSCSI</th>
+      <th>Fibre Channel</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Tip pristupa</td>
+      <td>File-level</td>
+      <td>Block-level</td>
+      <td>Block-level</td>
+    </tr>
+    <tr>
+      <td>Mreža</td>
+      <td>Ethernet / TCP-IP</td>
+      <td>Ethernet / TCP-IP</td>
+      <td>FC SAN fabric</td>
+    </tr>
+    <tr>
+      <td>Objekat koji storage izlaže</td>
+      <td>NFS export</td>
+      <td>LUN</td>
+      <td>LUN</td>
+    </tr>
+    <tr>
+      <td>Fajl sistem datastore-a</td>
+      <td>Fajl sistem storage uređaja</td>
+      <td>Najčešće VMFS</td>
+      <td>Najčešće VMFS</td>
+    </tr>
+    <tr>
+      <td>Tipična složenost</td>
+      <td>Niža</td>
+      <td>Srednja</td>
+      <td>Viša</td>
+    </tr>
+    <tr>
+      <td>Tipična infrastruktura</td>
+      <td>NAS</td>
+      <td>IP SAN</td>
+      <td>FC SAN</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>NFS – Network File System</h3>
+
+<p>
+  NFS omogućava da ESXi host preko IP mreže pristupi udaljenom direktorijumu koji je storage sistem eksportovao. ESXi poseduje ugrađeni NFS klijent, a udaljeni NFS volume registruje kao datastore. Datoteke virtuelnih mašina nalaze se direktno u fajl sistemu kojim upravlja NAS ili drugi NFS storage sistem.
+</p>
+
+<p>
+  Za razliku od iSCSI-ja i Fibre Channel-a, kod NFS-a ESXi ne dobija sirovi blokovski LUN i ne kreira VMFS. Storage uređaj upravlja sopstvenim fajl sistemom, raspodelom prostora, pristupnim pravima i dostupnošću eksportovanog direktorijuma.
+</p>
+
+<h3>NFS 3 i NFS 4.1</h3>
+
+<p>
+  ESXi podržava NFS 3 i NFS 4.1 datastore-e. Ove verzije protokola razlikuju se u načinu uspostavljanja sesije, autentifikaciji, zaključavanju datoteka i podršci za više putanja.
+</p>
+
+<p>
+  NFS 3 je dugo prisutan u VMware okruženjima i relativno je jednostavan za implementaciju. Za pristup se tipično koriste IP adresa NFS servera i putanja do eksportovanog direktorijuma. Visoka dostupnost se često ostvaruje mehanizmima samog storage sistema, redundantnom mrežom, više VMkernel adaptera i različitim NFS export-ima, ali NFS 3 nema protokolski multipathing istog datastore-a kakav postoji kod NFS 4.1.
+</p>
+
+<p>
+  NFS 4.1 podržava session trunking i može koristiti više putanja prema istom datastore-u kada storage sistem podržava odgovarajuću funkcionalnost. Više IP adresa mora predstavljati isti NFS server i isti server identity. Nije dovoljno samo navesti više proizvoljnih adresa storage uređaja.
+</p>
+
+<p>
+  NFS 4.1 može koristiti Kerberos autentifikaciju u podržanoj konfiguraciji. To, međutim, ne znači da je svaki NFS 4.1 datastore automatski konfigurisan sa Kerberos zaštitom. Potrebno je posebno podesiti identitet hosta, DNS, vreme, domen i odgovarajuću autentifikaciju.
+</p>
+
+<p>
+  Kod vSphere 8 treba razlikovati dve novije mogućnosti od starijeg, opšteg opisa NFS-a. Počev od ESXi 8.0 Update 1, jedan NFS 3 datastore može koristiti više TCP konekcija radi paralelizacije saobraćaja, ali to nije isto što i NFS 4.1 multipathing i ne uklanja potrebu za pravilnim mrežnim failover dizajnom. Počev od ESXi 8.0 Update 3, NFS 4.1 konekcija može se vezati za određeni VMkernel adapter; u multipath konfiguraciji može se navesti više VMkernel adaptera. Ove mogućnosti zahtevaju podržan ESXi build, odgovarajuću konfiguraciju servera i proveru interoperabilnosti, pa ih ne treba pretpostaviti samo zato što datastore koristi NFS.
+</p>
+
+<p>
+  Kerberos za NFS 4.1 u ESXi podržava bezbednosne modele <code>krb5</code> i <code>krb5i</code>. Model <code>krb5</code> obezbeđuje autentifikaciju, dok <code>krb5i</code> dodaje proveru integriteta poruka. Izbor bezbednosnog modela mora odgovarati politici organizacije i mogućnostima NFS servera; greška u DNS-u, vremenu ili principal identitetu može sprečiti montiranje iako je IP putanja ispravna.
+</p>
+
+<p>
+  Jedan datastore ne treba montirati na istom ESXi hostu istovremeno kao NFS 3 i NFS 4.1. Verzija protokola bira se prilikom kreiranja datastore-a i mora biti usklađena na svim hostovima koji mu pristupaju.
+</p>
+
+<h3>Preduslovi za NFS datastore</h3>
+
+<ul>
+  <li>NFS servis mora biti omogućen na storage uređaju.</li>
+  <li>Export mora biti dostupan IP adresama ESXi hostova.</li>
+  <li>ESXi host mora imati odgovarajući VMkernel mrežni interfejs.</li>
+  <li>Routing i VLAN konfiguracija moraju omogućiti pristup NFS serveru.</li>
+  <li>MTU mora biti usklađen duž cele putanje ako se koriste jumbo frame-ovi.</li>
+  <li>Storage export mora imati dozvole potrebne za čitanje i pisanje.</li>
+  <li>DNS mora biti ispravan ako se umesto IP adresa koriste imena.</li>
+  <li>Vreme mora biti sinhronizovano, naročito ako se koristi Kerberos.</li>
+</ul>
+
+<h3>NFS mrežni dizajn</h3>
+
+<p>
+  NFS saobraćaj treba odvojiti od korisničkog i administratorskog saobraćaja. U manjem laboratorijskom okruženju isti fizički adapter može nositi više VLAN-ova, ali u produkciji treba obezbediti dovoljnu propusnost i redundansu.
+</p>
+
+<p>
+  Tipičan produkcioni dizajn može sadržati:
+</p>
+
+<ul>
+  <li>poseban NFS VLAN;</li>
+  <li>najmanje dva fizička uplink-a;</li>
+  <li>redundantne fizičke switch-eve;</li>
+  <li>najmanje dve mrežne veze na storage uređaju;</li>
+  <li>dosledan MTU na ESXi hostu, switch-evima i storage uređaju;</li>
+  <li>praćenje gubitka paketa, grešaka i zasićenja mreže.</li>
+</ul>
+
+<p>
+  Jumbo frame nije obavezan da bi NFS radio. Može smanjiti broj paketa i procesorsko opterećenje u određenim okruženjima, ali samo kada je MTU dosledno konfigurisan od VMkernel adaptera do storage interfejsa. Delimična konfiguracija može izazvati prekide, fragmentaciju ili teško uočljive probleme sa performansama.
+</p>
+
+<h3>Pregled VMkernel interfejsa</h3>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<p>
+  Komanda prikazuje VMkernel adaptere, njihove port grupe, MAC adrese, MTU i status.
+</p>
+
+<h3>Pregled IPv4 adresa VMkernel interfejsa</h3>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<h3>Testiranje mrežne dostupnosti NFS servera</h3>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.30.20</code></pre>
+
+<p>
+  Parametar <code>-I</code> određuje VMkernel adapter sa kog se šalje testni saobraćaj. Time se izbegava situacija u kojoj običan ping uspe, ali test koristi pogrešan VMkernel interfejs ili pogrešnu routing putanju.
+</p>
+
+<h3>Testiranje jumbo frame putanje</h3>
+
+<pre><code class="language-bash">vmkping -I vmk2 -d -s 8972 192.168.30.20</code></pre>
+
+<p>
+  Vrednost 8972 koristi se za proveru IP putanje sa MTU 9000 kada se uračunaju IP i ICMP zaglavlja. Parametar <code>-d</code> zabranjuje fragmentaciju. Test treba ponoviti prema svim relevantnim storage interfejsima.
+</p>
+
+<h3>Dodavanje NFS 3 datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage nfs add \
+  --host 192.168.30.20 \
+  --share /exports/vmware_prod \
+  --volume-name NFS_PROD_01</code></pre>
+
+<p>
+  Parametri označavaju:
+</p>
+
+<ul>
+  <li><code>--host</code> – IP adresu ili ime NFS servera;</li>
+  <li><code>--share</code> – eksportovanu putanju;</li>
+  <li><code>--volume-name</code> – lokalno ime datastore-a u ESXi okruženju.</li>
+</ul>
+
+<p>
+  Dodavanje datastore-a ovom komandom odnosi se na host na kojem je komanda izvršena. U klasteru je potrebno obezbediti da isti datastore bude pravilno montiran na svim odgovarajućim hostovima. Za centralizovanu administraciju većeg broja hostova pogodniji su vCenter, PowerCLI, Host Profiles ili automatizovani alati.
+</p>
+
+<h3>Pregled NFS 3 datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<h3>Pregled NFS 4.1 datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage nfs41 list</code></pre>
+
+<h3>Uklanjanje NFS 3 datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage nfs remove --volume-name NFS_PROD_01</code></pre>
+
+<p>
+  Datastore se ne sme uklanjati dok se na njemu nalaze aktivne virtuelne mašine, registrovane VM konfiguracije, ISO datoteke povezane sa VM-ovima, aktivni snapshot-i, datastore heartbeat zavisnosti ili drugi procesi koji ga koriste.
+</p>
+
+<h3>NFS datastore preko PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-VMHost -Name "esxi01.lab.local" |
+  New-Datastore `
+    -Name "NFS_PROD_01" `
+    -Nfs `
+    -NfsHost "192.168.30.20" `
+    -Path "/exports/vmware_prod"</code></pre>
+
+<h3>Provera NFS datastore-a preko PowerCLI-ja</h3>
+
+<pre><code class="language-powershell">Get-Datastore -Name "NFS_PROD_01" |
+  Select-Object Name, Type, CapacityGB, FreeSpaceGB</code></pre>
+
+<h3>Prednosti NFS-a</h3>
+
+<ul>
+  <li>jednostavno dodavanje datastore-a bez kreiranja VMFS-a;</li>
+  <li>korišćenje standardne Ethernet infrastrukture;</li>
+  <li>jednostavno proširenje kapaciteta kada ga storage sistem podržava;</li>
+  <li>dobra integracija sa NAS sistemima;</li>
+  <li>jasna vidljivost direktorijuma i VM datoteka na storage strani;</li>
+  <li>mogućnost korišćenja storage snapshot i clone funkcija;</li>
+  <li>jednostavnije laboratorijske i manje produkcione implementacije.</li>
+</ul>
+
+<h3>Ograničenja i rizici NFS-a</h3>
+
+<ul>
+  <li>zavisnost od kvaliteta Ethernet mreže;</li>
+  <li>pogrešne export dozvole mogu potpuno onemogućiti pristup;</li>
+  <li>DNS problem može uticati na datastore ako je montiran preko imena;</li>
+  <li>MTU neusaglašenost može izazvati gubitak paketa i nestabilnost;</li>
+  <li>NFS 3 nema protokolski multipathing istog datastore-a;</li>
+  <li>performanse zavise od NAS kontrolera, diskova, cache-a i mreže;</li>
+  <li>jedan preopterećen mrežni uplink može postati usko grlo za više VM-ova.</li>
+</ul>
+
+<h3>iSCSI – blokovski storage preko IP mreže</h3>
+
+<p>
+  iSCSI prenosi SCSI komande preko TCP/IP mreže. Storage uređaj izlaže jedan ili više LUN-ova, a ESXi ih vidi kao blokovske uređaje. Na odgovarajućem LUN-u administrator najčešće kreira VMFS datastore.
+</p>
+
+<p>
+  iSCSI omogućava korišćenje standardne Ethernet infrastrukture bez posebnih Fibre Channel HBA kartica i FC switch-eva. Ipak, činjenica da koristi Ethernet ne znači da treba da deli neadekvatno dimenzionisanu mrežu sa korisničkim saobraćajem. Produkcioni iSCSI zahteva pažljivo projektovane VLAN-ove, VMkernel adaptere, putanje, fizičke uplink-e i redundantne storage target interfejse.
+</p>
+
+<h3>Osnovni elementi iSCSI okruženja</h3>
+
+<ul>
+  <li>
+    <strong>Initiator</strong> – komponenta na ESXi hostu koja uspostavlja vezu prema storage uređaju.
+  </li>
+  <li>
+    <strong>Target</strong> – iSCSI servis ili interfejs storage sistema koji prihvata konekcije.
+  </li>
+  <li>
+    <strong>IQN</strong> – jedinstveni iSCSI Qualified Name initiator-a ili target-a.
+  </li>
+  <li>
+    <strong>LUN</strong> – logički blokovski uređaj koji storage predstavlja hostu.
+  </li>
+  <li>
+    <strong>Portal</strong> – IP adresa i TCP port preko kojih je target dostupan.
+  </li>
+  <li>
+    <strong>Discovery</strong> – proces pronalaženja target-a i dostupnih LUN-ova.
+  </li>
+  <li>
+    <strong>VMkernel adapter</strong> – mrežni interfejs kojim ESXi šalje iSCSI saobraćaj.
+  </li>
+  <li>
+    <strong>Multipathing</strong> – korišćenje više putanja između hosta i LUN-a.</li>
+</ul>
+
+<p>
+  Standardni TCP port za iSCSI je 3260. Firewall, ACL pravila i mrežna segmentacija moraju omogućiti odgovarajuću komunikaciju između ESXi VMkernel adresa i iSCSI target portala.
+</p>
+
+<h3>Softverski, zavisni i nezavisni hardverski iSCSI</h3>
+
+<p>
+  ESXi može koristiti više vrsta iSCSI adaptera:
+</p>
+
+<ul>
+  <li>
+    <strong>Software iSCSI adapter</strong> koristi standardne mrežne adaptere i ESXi softverski initiator. Ovo je veoma česta implementacija.
+  </li>
+  <li>
+    <strong>Dependent hardware iSCSI adapter</strong> koristi određene hardverske funkcije mrežnog adaptera, ali i dalje zavisi od VMware mrežne konfiguracije.
+  </li>
+  <li>
+    <strong>Independent hardware iSCSI adapter</strong> preuzima veći deo iSCSI i mrežne obrade i može imati sopstvenu IP konfiguraciju.
+  </li>
+</ul>
+
+<p>
+  Vrsta adaptera, drajver, firmware i podržana verzija ESXi-ja moraju biti provereni u Broadcom Compatibility Guide-u i dokumentaciji proizvođača servera i storage sistema.
+</p>
+
+<h3>Pregled storage adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<h3>Pregled iSCSI adaptera</h3>
+
+<pre><code class="language-bash">esxcli iscsi adapter list</code></pre>
+
+<h3>Pregled IQN imena softverskog iSCSI adaptera</h3>
+
+<pre><code class="language-bash">esxcli iscsi adapter get --adapter vmhba64</code></pre>
+
+<p>
+  Oznaka adaptera nije uvek <code>vmhba64</code>. Prvo je treba utvrditi komandom <code>esxcli iscsi adapter list</code>.
+</p>
+
+<h3>Omogućavanje softverskog iSCSI adaptera</h3>
+
+<pre><code class="language-bash">esxcli iscsi software set --enabled=true</code></pre>
+
+<h3>Provera statusa softverskog iSCSI initiator-a</h3>
+
+<pre><code class="language-bash">esxcli iscsi software get</code></pre>
+
+<h3>Dodavanje dynamic discovery portala</h3>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget add \
+  --adapter vmhba64 \
+  --address 192.168.40.20:3260</code></pre>
+
+<p>
+  Dynamic discovery omogućava da ESXi kontaktira target portal i dobije informacije o dostupnim target-ima. U redundantnom dizajnu mogu postojati različiti portali na dva storage kontrolera ili dve nezavisne storage mreže.
+</p>
+
+<h3>Pregled dynamic discovery konfiguracije</h3>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget list \
+  --adapter vmhba64</code></pre>
+
+<h3>Pregled aktivnih iSCSI sesija</h3>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<h3>Pregled iSCSI target-a</h3>
+
+<pre><code class="language-bash">esxcli iscsi adapter target list \
+  --adapter vmhba64</code></pre>
+
+<h3>CHAP autentifikacija</h3>
+
+<p>
+  iSCSI može koristiti CHAP autentifikaciju između initiator-a i target-a. CHAP potvrđuje identitet na osnovu korisničkog imena i deljene tajne. Mutual CHAP omogućava autentifikaciju u oba smera kada je podržana.
+</p>
+
+<p>
+  CHAP nije zamena za mrežnu izolaciju, ACL pravila, LUN masking i druge zaštitne mehanizme. Tajne treba čuvati kao osetljive podatke i menjati kontrolisano, jer neusaglašena promena može prekinuti pristup LUN-ovima.
+</p>
+
+<h3>iSCSI port binding</h3>
+
+<p>
+  Kod software iSCSI konfiguracije VMkernel adapteri mogu se povezati sa iSCSI adapterom kroz network port binding. Time se određuje kojim VMkernel interfejsima software iSCSI initiator uspostavlja sesije prema target-ima.
+</p>
+
+<p>
+  U tipičnoj konfiguraciji sa dva VMkernel adaptera:
+</p>
+
+<ul>
+  <li>svaki VMkernel adapter koristi posebnu IP adresu;</li>
+  <li>svaki koristi odgovarajući fizički uplink kao aktivan;</li>
+  <li>drugi uplink se postavlja kao unused za tu port grupu;</li>
+  <li>binding se dodaje na software iSCSI adapter;</li>
+  <li>target mora biti dostupan iz odgovarajuće mreže;</li>
+  <li>nakon konfiguracije radi se rescan adaptera.</li>
+</ul>
+
+<p>
+  Port binding se ne primenjuje mehanički u svakoj iSCSI topologiji. Kod routed iSCSI mreža, različitih subnet-a ili određenih vendor dizajna treba slediti dokumentaciju storage proizvođača i odgovarajuće Broadcom smernice.
+</p>
+
+<p>
+  Presudno pravilo je topologija, a ne željeni broj putanja. Software iSCSI port binding namenjen je VMkernel portovima koji pristupaju target portovima u istom broadcast domenu i istom IP subnetu. Svaki vezani VMkernel port mora imati tačno jedan fizički uplink u stanju <em>Active</em>, dok ostali uplink-ovi za tu port grupu moraju biti <em>Unused</em>. Link aggregation, EtherChannel ili LACP ne predstavljaju zamenu za ovaj multipathing model. Kada su VMkernel i target portovi u različitim subnetima i komunikacija zahteva routing, port binding se ne koristi; redundantnost se projektuje rutiranjem i odvojenim putanjama prema vendor podržanoj arhitekturi. Pogrešno vezivanje portova iz različitih subneta može proizvesti duge rescan operacije, pogrešan broj putanja ili potpuni gubitak vidljivosti uređaja.
+</p>
+
+<p>
+  iSCSI standardno koristi TCP port <code>3260</code>. Dozvoljen port i uspešan <code>vmkping</code> potvrđuju samo deo putanje: administrator zatim mora dokazati postojanje discovery rezultata, aktivne iSCSI sesije, target pristupa, LUN mapping-a i PSA putanja. CHAP obezbeđuje autentifikaciju, ali sam po sebi ne šifruje podatke u prenosu; poverljivost se rešava mrežnom izolacijom i, kada je podržano kao celina, IPsec ili drugim odobrenim zaštitnim slojem.
+</p>
+
+<h3>Pregled VMkernel port binding-a</h3>
+
+<pre><code class="language-bash">esxcli iscsi networkportal list \
+  --adapter vmhba64</code></pre>
+
+<h3>Dodavanje VMkernel adaptera u port binding</h3>
+
+<pre><code class="language-bash">esxcli iscsi networkportal add \
+  --adapter vmhba64 \
+  --nic vmk2</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi networkportal add \
+  --adapter vmhba64 \
+  --nic vmk3</code></pre>
+
+<h3>Testiranje iSCSI putanja</h3>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.40.20</code></pre>
+
+<pre><code class="language-bash">vmkping -I vmk3 192.168.40.21</code></pre>
+
+<p>
+  Svaki VMkernel adapter treba proveriti prema target adresi kojoj je namenjen. Uspešan ping ne dokazuje da je iSCSI target pravilno konfigurisan, ali potvrđuje osnovnu IP dostupnost.
+</p>
+
+<h3>Rescan iSCSI adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba64</code></pre>
+
+<h3>Rescan svih storage adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<p>
+  Rescan treba izvršiti nakon dodavanja target portala, promene LUN masking-a, prezentovanja novog LUN-a ili obnove storage putanje. Rescan sam po sebi ne može popraviti pogrešan VLAN, nedostupan target, neispravan zoning ili pogrešan LUN masking.
+</p>
+
+<h3>Pregled otkrivenih uređaja</h3>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<h3>Pregled uređaja određenog adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba64</code></pre>
+
+<h3>Prednosti iSCSI-ja</h3>
+
+<ul>
+  <li>blokovski storage preko standardne IP infrastrukture;</li>
+  <li>niža ulazna cena u odnosu na klasični FC SAN;</li>
+  <li>mogućnost korišćenja postojećih Ethernet znanja i alata;</li>
+  <li>podrška za multipathing;</li>
+  <li>pogodan za mala, srednja i mnoga velika okruženja;</li>
+  <li>VMFS datastore i standardne vSphere storage funkcije;</li>
+  <li>mogućnost automatizacije kroz ESXCLI, PowerCLI i API.</li>
+</ul>
+
+<h3>Rizici iSCSI konfiguracije</h3>
+
+<ul>
+  <li>zagušenje Ethernet mreže može direktno uticati na diskovne operacije;</li>
+  <li>pogrešan VLAN ili routing može onemogućiti target pristup;</li>
+  <li>neispravan MTU izaziva nestabilnost i gubitak paketa;</li>
+  <li>pogrešan port binding može smanjiti broj putanja ili prekinuti pristup;</li>
+  <li>target-side load balancing ne mora biti kompatibilan sa ESXi software iSCSI dizajnom;</li>
+  <li>pogrešan LUN masking može izložiti LUN pogrešnim hostovima;</li>
+  <li>jedan switch ili jedan storage kontroler može postati tačka otkaza;</li>
+  <li>neusklađeni firmware i drajveri mogu izazvati prekide i loše performanse.</li>
+</ul>
+
+<h3>Fibre Channel – specijalizovana SAN infrastruktura</h3>
+
+<p>
+  Fibre Channel predstavlja blokovski storage protokol projektovan za pouzdan prenos storage saobraćaja. ESXi host koristi Fibre Channel HBA adaptere, koji se povezuju sa FC switch-evima, a zatim sa portovima storage sistema.
+</p>
+
+<p>
+  U klasičnom dizajnu FC koristi posebnu SAN fabric infrastrukturu, odvojenu od standardne Ethernet mreže. Postoje i druge tehnologije, kao što je Fibre Channel over Ethernet, ali klasični FC i FCoE ne treba posmatrati kao potpuno istu implementaciju.
+</p>
+
+<p>
+  Fibre Channel se često koristi u većim data centrima, bankama, telekomunikacionim sistemima i drugim okruženjima u kojima su potrebne predvidljive performanse, niska latencija, veliki broj I/O operacija i višestruka redundansa.
+</p>
+
+<h3>Elementi Fibre Channel infrastrukture</h3>
+
+<ul>
+  <li>
+    <strong>HBA</strong> – Host Bus Adapter u ESXi serveru.
+  </li>
+  <li>
+    <strong>WWPN</strong> – World Wide Port Name pojedinačnog FC porta.
+  </li>
+  <li>
+    <strong>WWNN</strong> – World Wide Node Name uređaja.
+  </li>
+  <li>
+    <strong>FC switch</strong> – switch namenjen SAN saobraćaju.
+  </li>
+  <li>
+    <strong>Fabric</strong> – skup povezanih FC switch-eva i uređaja.
+  </li>
+  <li>
+    <strong>Zoning</strong> – kontrola koji initiator portovi mogu komunicirati sa kojim target portovima.
+  </li>
+  <li>
+    <strong>LUN masking</strong> – kontrola koji LUN-ovi se predstavljaju određenim hostovima.
+  </li>
+  <li>
+    <strong>Storage target port</strong> – FC port na storage kontroleru.
+  </li>
+</ul>
+
+<h3>Zoning i LUN masking</h3>
+
+<p>
+  Zoning se konfiguriše na FC fabric-u i određuje koji HBA portovi mogu uspostaviti komunikaciju sa storage target portovima. LUN masking se konfiguriše na storage sistemu i određuje koje LUN-ove određeni host ili grupa hostova može videti.
+</p>
+
+<p>
+  Ova dva mehanizma imaju različite uloge:
+</p>
+
+<ul>
+  <li>zoning kontroliše komunikaciju između FC portova;</li>
+  <li>LUN masking kontroliše pristup konkretnim blokovskim uređajima.</li>
+</ul>
+
+<p>
+  Ispravan zoning ne garantuje da će host videti LUN ako LUN masking nije podešen. Isto tako, prezentovanje LUN-a host grupi nije dovoljno ako FC initiator i target portovi ne mogu da komuniciraju kroz fabric.
+</p>
+
+<h3>Single-initiator zoning</h3>
+
+<p>
+  U mnogim enterprise okruženjima primenjuje se single-initiator zoning, pri kojem se u jednoj zoni nalazi jedan initiator WWPN i jedan ili više odgovarajućih target portova, u skladu sa preporukom proizvođača. Ovakav pristup olakšava izolaciju problema i smanjuje neželjene interakcije između hostova.
+</p>
+
+<p>
+  Konkretan zoning model mora biti usklađen sa dizajnom SAN infrastrukture i dokumentacijom proizvođača FC switch-eva i storage sistema.
+</p>
+
+<h3>Dual-fabric dizajn</h3>
+
+<p>
+  Produkcioni FC SAN se često gradi kao dve potpuno nezavisne fabric celine:
+</p>
+
+<ul>
+  <li>Fabric A povezuje prvi HBA port sa prvim skupom storage portova;</li>
+  <li>Fabric B povezuje drugi HBA port sa drugim skupom storage portova;</li>
+  <li>fabric-i ne zavise od istog switch-a;</li>
+  <li>otkaz jednog HBA porta, kabla ili switch-a ne prekida sve storage putanje.</li>
+</ul>
+
+<p>
+  Ako oba HBA porta prolaze kroz isti FC switch, postoje dve putanje, ali i dalje postoji zajednička tačka otkaza. Prava redundansa zahteva nezavisnost ključnih komponenti.
+</p>
+
+<h3>Pregled Fibre Channel adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<p>
+  Komanda prikazuje FC adaptere, WWPN i WWNN identifikatore, brzinu veze i stanje porta.
+</p>
+
+<h3>Pregled svih storage adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<h3>Pregled FC događaja</h3>
+
+<pre><code class="language-bash">esxcli storage san fc events get \
+  --adapter vmhba2</code></pre>
+
+<p>
+  Oznaka adaptera mora odgovarati stvarnom FC HBA adapteru na hostu. Događaji mogu pomoći pri analizi promene stanja linka, fabric prijave i drugih FC problema.
+</p>
+
+<h3>Pregled FC statistike</h3>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba2</code></pre>
+
+<h3>Rescan FC adaptera</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba2</code></pre>
+
+<h3>Pregled uređaja koje vidi FC adapter</h3>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<h3>Prednosti Fibre Channel-a</h3>
+
+<ul>
+  <li>namenska storage infrastruktura;</li>
+  <li>predvidljive performanse i mala latencija;</li>
+  <li>zrela enterprise multipathing podrška;</li>
+  <li>odvajanje storage saobraćaja od LAN mreže;</li>
+  <li>skalabilnost za velike data centre;</li>
+  <li>detaljna kontrola pristupa kroz zoning i LUN masking;</li>
+  <li>visoka dostupnost kroz dual-fabric arhitekturu.</li>
+</ul>
+
+<h3>Ograničenja Fibre Channel-a</h3>
+
+<ul>
+  <li>veća cena HBA kartica, optike, switch-eva i licenci;</li>
+  <li>potrebno specijalizovano SAN znanje;</li>
+  <li>zoning i masking povećavaju administrativnu složenost;</li>
+  <li>pogrešna izmena fabric-a može uticati na veliki broj hostova;</li>
+  <li>firmware, drajveri i HBA modeli moraju biti strogo usklađeni;</li>
+  <li>troubleshooting zahteva podatke sa ESXi hosta, FC switch-a i storage sistema.</li>
+</ul>
+
+<h3>VMFS na iSCSI i Fibre Channel LUN-ovima</h3>
+
+<p>
+  Kada ESXi otkrije blokovski LUN preko iSCSI-ja ili Fibre Channel-a, na njemu se može kreirati VMFS datastore. VMFS je klasterski fajl sistem projektovan tako da više ESXi hostova može istovremeno pristupati istom datastore-u.
+</p>
+
+<p>
+  VMFS upravlja zaključavanjem datoteka i koordinacijom pristupa, ali ne može nadoknaditi pogrešno prezentovanje LUN-a, nestabilne putanje ili storage uređaj koji ne podržava odgovarajući način rada.
+</p>
+
+<p>
+  Svi hostovi koji treba da koriste isti VMFS datastore moraju videti isti LUN sa konzistentnim identitetom. Ne treba kreirati poseban VMFS na istom zajedničkom LUN-u sa svakog hosta. VMFS se kreira jednom, a zatim se postojeći datastore otkriva i montira na drugim hostovima.
+</p>
+
+<h3>Identifikacija storage uređaja</h3>
+
+<p>
+  ESXi storage uređaje identifikuje trajnim identifikatorima kao što su NAA, EUI ili T10 identifikatori. U administraciji treba koristiti stabilan identifikator uređaja, a ne oslanjati se samo na promenljive nazive adaptera ili redosled prikaza.
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<p>
+  Primer identifikatora može izgledati ovako:
+</p>
+
+<pre><code class="language-none">naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<h3>Pregled VMFS ekstenata</h3>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<p>
+  Ova komanda povezuje VMFS datastore sa odgovarajućim blokovskim uređajem i particijom. Veoma je korisna kada administrator mora da utvrdi koji NAA uređaj pripada kom datastore-u.
+</p>
+
+<h3>Pregled svih montiranih datastore-a</h3>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<h3>Pluggable Storage Architecture</h3>
+
+<p>
+  ESXi koristi Pluggable Storage Architecture – PSA – za upravljanje storage putanjama i multipathing modulima. PSA omogućava da uređaje preuzmu VMware ili vendor multipathing moduli.
+</p>
+
+<p>
+  Važni elementi ovog sloja su:
+</p>
+
+<ul>
+  <li>
+    <strong>NMP</strong> – Native Multipathing Plugin, VMware modul za veliki broj tradicionalnih storage uređaja.
+  </li>
+  <li>
+    <strong>HPP</strong> – High Performance Plugin, namenjen određenim high-performance uređajima, naročito NVMe okruženjima.
+  </li>
+  <li>
+    <strong>MPP</strong> – multipathing plugin proizvođača storage sistema.
+  </li>
+  <li>
+    <strong>SATP</strong> – Storage Array Type Plugin, određuje način aktivacije putanja i failover ponašanje.
+  </li>
+  <li>
+    <strong>PSP</strong> – Path Selection Plugin, određuje kojom aktivnom putanjom se šalje I/O.
+  </li>
+</ul>
+
+<p>
+  Nije svaki storage uređaj nužno pod kontrolom NMP-a. Pre izmene politike administrator mora proveriti koji modul je preuzeo uređaj.
+</p>
+
+<h3>Pregled PSA uređaja</h3>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<h3>Pregled NMP uređaja</h3>
+
+<pre><code class="language-bash">esxcli storage nmp device list</code></pre>
+
+<h3>Pregled dostupnih SATP modula</h3>
+
+<pre><code class="language-bash">esxcli storage nmp satp list</code></pre>
+
+<h3>Pregled claim pravila</h3>
+
+<pre><code class="language-bash">esxcli storage core claimrule list</code></pre>
+
+<h3>Storage multipathing</h3>
+
+<p>
+  Multipathing omogućava da ESXi koristi više fizičkih ili logičkih putanja do istog blokovskog uređaja. Putanja može obuhvatati:
+</p>
+
+<ul>
+  <li>HBA ili mrežni adapter na hostu;</li>
+  <li>kabl;</li>
+  <li>FC ili Ethernet switch;</li>
+  <li>storage target port;</li>
+  <li>storage kontroler;</li>
+  <li>vezu prema konkretnom LUN-u.</li>
+</ul>
+
+<p>
+  Dve putanje nisu nužno dve nezavisne putanje. Ako obe prolaze kroz isti switch, isti storage kontroler ili isti fizički adapter, zajednička komponenta i dalje predstavlja tačku otkaza.
+</p>
+
+<h3>Stanja storage putanja</h3>
+
+<p>
+  U zavisnosti od storage sistema i konfiguracije, putanja može biti prikazana kao:
+</p>
+
+<ul>
+  <li>
+    <strong>active</strong> – putanja je dostupna za I/O;
+  </li>
+  <li>
+    <strong>standby</strong> – putanja je dostupna, ali se aktivira nakon failover-a;
+  </li>
+  <li>
+    <strong>dead</strong> – putanja nije dostupna;
+  </li>
+  <li>
+    <strong>disabled</strong> – putanja je administrativno isključena;
+  </li>
+  <li>
+    <strong>unknown</strong> – stanje nije pravilno utvrđeno.
+  </li>
+</ul>
+
+<p>
+  Na ALUA storage sistemima aktivne putanje mogu imati različit nivo optimizacije. Active Optimized putanja vodi preko kontrolera koji je vlasnik ili optimalni procesor LUN-a, dok Active Non-Optimized može biti dostupna, ali sa manje povoljnom putanjom kroz storage sistem.
+</p>
+
+<h3>Pregled svih storage putanja</h3>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<h3>Pregled putanja određenog uređaja</h3>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<h3>Path Selection Policy</h3>
+
+<p>
+  Kada NMP upravlja uređajem, Path Selection Policy određuje način izbora aktivne putanje. Najčešće VMware politike su:
+</p>
+
+<ul>
+  <li>
+    <strong>Fixed</strong> – ESXi koristi preferiranu putanju kada je dostupna. Ako ona otkaže, prelazi na drugu i može se vratiti na preferiranu kada ponovo postane dostupna.
+  </li>
+  <li>
+    <strong>Most Recently Used</strong> – koristi putanju koja je poslednja izabrana. Nakon otkaza prelazi na drugu, ali se po pravilu ne vraća automatski na prethodnu samo zato što se oporavila.
+  </li>
+  <li>
+    <strong>Round Robin</strong> – raspoređuje I/O između više aktivnih putanja prema definisanom algoritmu.
+  </li>
+</ul>
+
+<p>
+  Round Robin nije automatski najbolji izbor za svaki uređaj. Ispravna politika zavisi od tipa storage sistema, ALUA podrške, vendor multipathing modula i preporuke proizvođača. Pogrešna promena može smanjiti performanse ili izazvati nestabilno ponašanje.
+</p>
+
+<h3>Pregled politike određenog uređaja</h3>
+
+<pre><code class="language-bash">esxcli storage nmp device list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<h3>Promena politike na Round Robin</h3>
+
+<pre><code class="language-bash">esxcli storage nmp device set \
+  --device naa.6006016045502500c4f5f3e8a17fe611 \
+  --psp VMW_PSP_RR</code></pre>
+
+<p>
+  Ovu komandu treba izvršiti samo kada dokumentacija storage proizvođača i Broadcom Compatibility Guide potvrđuju da je <code>VMW_PSP_RR</code> odgovarajući izbor za konkretan model uređaja i verziju softvera.
+</p>
+
+<h3>Zašto broj putanja nije dovoljan pokazatelj</h3>
+
+<p>
+  Administrator ne treba da proverava samo koliko putanja postoji. Potrebno je utvrditi:
+</p>
+
+<ul>
+  <li>da li su putanje aktivne;</li>
+  <li>preko kojih adaptera prolaze;</li>
+  <li>koje target portove koriste;</li>
+  <li>da li prolaze kroz nezavisne switch-eve;</li>
+  <li>da li su optimizovane ili neoptimizovane;</li>
+  <li>koja PSP politika upravlja I/O saobraćajem;</li>
+  <li>da li se broj putanja poklapa na svim hostovima;</li>
+  <li>da li vendor dokumentacija očekuje upravo takvu topologiju.</li>
+</ul>
+
+<h3>Uporedni izbor storage pristupa</h3>
+
+<h3>Put I/O zahteva i zone odgovornosti</h3>
+
+<p>
+  Storage incident se ne rešava nagađanjem „da li je do VMware-a ili storage-a”, već praćenjem istog I/O zahteva kroz slojeve. Kod NFS-a put tipično vodi od virtuelnog SCSI kontrolera i VMDK datoteke, preko ESXi NFS klijenta, VMkernel adaptera, vSwitch-a, fizičkog NIC-a i Ethernet mreže do NFS servisa i fajl sistema na storage sistemu. Kod iSCSI-ja put vodi preko PSA/NMP sloja, softverskog ili hardverskog initiator-a, VMkernel mreže i TCP sesije do target porta, mapiranog LUN-a i njegovog fizičkog pool-a. Kod FC-a PSA/NMP predaje I/O HBA drajveru, zatim ga prenose HBA port, FC fabric i target port do mapiranog LUN-a.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj i dokaz</th>
+      <th>Primarna odgovornost</th>
+      <th>Tipična provera</th>
+      <th>Eskaluje se kada</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>VM, VMDK i datastore zavisnosti</td>
+      <td>vSphere administrator</td>
+      <td>vCenter događaji, datastore usage, VM konfiguracija i task-ovi</td>
+      <td>Potvrđen je problem iznad ili ispod VM sloja</td>
+    </tr>
+    <tr>
+      <td>ESXi adapter, PSA/NMP, sesija i putanja</td>
+      <td>vSphere administrator uz storage tim</td>
+      <td>ESXCLI, <code>esxtop</code>, <code>vmkernel.log</code> i <code>vobd.log</code></td>
+      <td>Host vidi transportnu grešku, pogrešan claim ili neusklađene putanje</td>
+    </tr>
+    <tr>
+      <td>IP mreža za NFS/iSCSI</td>
+      <td>Mrežni tim uz vSphere administratora</td>
+      <td>VLAN, MTU, gubitak paketa, NIC brojači, switch portovi i tokovi</td>
+      <td><code>vmkping</code>, brojači ili switch telemetrija potvrde mrežni problem</td>
+    </tr>
+    <tr>
+      <td>FC fabric</td>
+      <td>SAN tim</td>
+      <td>Login, zoning, ISL, credit starvation, CRC/frame greške i port događaji</td>
+      <td>HBA je online, ali login ili ciljna putanja nedostaju ili ima frame grešaka</td>
+    </tr>
+    <tr>
+      <td>Export, target, masking, kontroler i medijum</td>
+      <td>Storage tim</td>
+      <td>Export ACL, host grupa, LUN mapping, kontroleri, cache, pool i array latencija</td>
+      <td>Transport je zdrav, a servis, prezentovanje LUN-a ili backend pokazuje grešku</td>
+    </tr>
+    <tr>
+      <td>Kompatibilnost i podrška</td>
+      <td>Zajednička change odgovornost</td>
+      <td>Broadcom Compatibility Guide i matrica proizvođača storage-a</td>
+      <td>Driver, firmware, HBA/NIC ili PSP odstupaju od podržane kombinacije</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Ova podela nije granica preko koje timovi „prebacuju problem”. Vreme incidenta, NAA/IQN/WWPN identifikatori, host, datastore, target port i putanja moraju biti zajednički korelacioni podaci. Bez njih svaki tim posmatra drugi objekat i nalazi koji pojedinačno deluju ispravno mogu prikriti kvar na njihovom preseku.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kriterijum</th>
+      <th>NFS</th>
+      <th>iSCSI</th>
+      <th>Fibre Channel</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Način pristupa</td>
+      <td>Datoteke</td>
+      <td>Blokovi</td>
+      <td>Blokovi</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td>TCP/IP</td>
+      <td>TCP/IP</td>
+      <td>FC fabric</td>
+    </tr>
+    <tr>
+      <td>Poseban VMFS</td>
+      <td>Ne</td>
+      <td>Najčešće da</td>
+      <td>Najčešće da</td>
+    </tr>
+    <tr>
+      <td>Početna složenost</td>
+      <td>Niža</td>
+      <td>Srednja</td>
+      <td>Viša</td>
+    </tr>
+    <tr>
+      <td>Trošak infrastrukture</td>
+      <td>Niži do srednji</td>
+      <td>Srednji</td>
+      <td>Viši</td>
+    </tr>
+    <tr>
+      <td>Tipična primena</td>
+      <td>NAS i jednostavnija administracija</td>
+      <td>IP SAN i fleksibilan blokovski storage</td>
+      <td>Veliki enterprise SAN sistemi</td>
+    </tr>
+    <tr>
+      <td>Najčešći rizik</td>
+      <td>NFS mreža i export dozvole</td>
+      <td>Mreža, binding i target konfiguracija</td>
+      <td>Zoning, masking i fabric konfiguracija</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Kako izabrati odgovarajuću tehnologiju</h3>
+
+<p>
+  Izbor ne treba zasnivati samo na teorijskoj brzini protokola. Potrebno je proceniti čitav sistem:
+</p>
+
+<ul>
+  <li>postojeću mrežnu i SAN infrastrukturu;</li>
+  <li>broj ESXi hostova i virtuelnih mašina;</li>
+  <li>zahtevane IOPS vrednosti i latenciju;</li>
+  <li>obrazac čitanja i pisanja aplikacija;</li>
+  <li>potrebnu raspoloživost;</li>
+  <li>stručnost administratorskog tima;</li>
+  <li>mogućnosti storage snapshot-a i replikacije;</li>
+  <li>backup i disaster recovery zahteve;</li>
+  <li>licence, podršku i ukupne troškove;</li>
+  <li>kompatibilnost servera, adaptera, drajvera, firmware-a i storage sistema.</li>
+</ul>
+
+<p>
+  Dobro projektovan NFS ili iSCSI sistem može biti pouzdaniji od loše projektovanog Fibre Channel sistema. Protokol sam po sebi ne garantuje kvalitet. Presudni su arhitektura, redundansa, kompatibilnost, nadzor i operativna disciplina.
+</p>
+
+<h3>Praktikum – priprema okruženja</h3>
+
+<p>
+  Pre praktičnog rada potrebno je evidentirati postojeću storage konfiguraciju. Administrator ne treba da izvršava promene dok ne zna koji hostovi, datastore-i, adapteri, LUN-ovi i mrežne putanje učestvuju u radu sistema.
+</p>
+
+<p>
+  Početni pregled može se izvršiti sledećim komandama:
+</p>
+
+<pre><code class="language-bash"># pregled storage adaptera
+esxcli storage core adapter list
+
+# pregled blokovskih uređaja
+esxcli storage core device list
+
+# pregled svih storage putanja
+esxcli storage core path list
+
+# pregled montiranih fajl sistema i datastore-a
+esxcli storage filesystem list
+
+# povezivanje VMFS datastore-a sa NAA uređajem
+esxcli storage vmfs extent list
+
+# pregled NFS 3 datastore-a
+esxcli storage nfs list
+
+# pregled NFS 4.1 datastore-a
+esxcli storage nfs41 list
+
+# pregled iSCSI adaptera
+esxcli iscsi adapter list
+
+# pregled aktivnih iSCSI sesija
+esxcli iscsi session list
+
+# pregled Fibre Channel adaptera
+esxcli storage san fc list
+
+# pregled NMP uređaja i politika
+esxcli storage nmp device list</code></pre>
+
+<p>
+  Izlaz komandi treba sačuvati pre i posle promene. Time se dobija početno stanje za poređenje i olakšava vraćanje konfiguracije.
+</p>
+
+<h3>Praktikum 1 – dodavanje NFS 3 datastore-a</h3>
+
+<p>
+  Pretpostavimo sledeće laboratorijsko okruženje:
+</p>
+
+<ul>
+  <li>ESXi host: <code>esxi01.lab.local</code>;</li>
+  <li>NFS VMkernel adapter: <code>vmk2</code>;</li>
+  <li>ESXi NFS adresa: <code>192.168.30.11</code>;</li>
+  <li>NFS server: <code>192.168.30.20</code>;</li>
+  <li>NFS export: <code>/exports/vmware_lab</code>;</li>
+  <li>ime datastore-a: <code>NFS_LAB_01</code>.</li>
+</ul>
+
+<h4>Korak 1 – proveriti VMkernel adapter</h4>
+
+<pre><code class="language-bash">esxcli network ip interface list</code></pre>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<p>
+  Potrebno je potvrditi da <code>vmk2</code> ima očekivanu IP adresu, da je interfejs omogućen i da koristi odgovarajući MTU.
+</p>
+
+<h4>Korak 2 – proveriti IP putanju</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.30.20</code></pre>
+
+<p>
+  Ako test ne uspe, ne treba odmah pokušavati montiranje datastore-a. Prvo treba proveriti VLAN, uplink, routing, firewall i storage mrežni interfejs.
+</p>
+
+<h4>Korak 3 – proveriti jumbo frame konfiguraciju, ako se koristi</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 -d -s 8972 192.168.30.20</code></pre>
+
+<h4>Korak 4 – dodati datastore</h4>
+
+<pre><code class="language-bash">esxcli storage nfs add \
+  --host 192.168.30.20 \
+  --share /exports/vmware_lab \
+  --volume-name NFS_LAB_01</code></pre>
+
+<h4>Korak 5 – potvrditi montiranje</h4>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<h4>Korak 6 – proveriti mogućnost pisanja</h4>
+
+<p>
+  Najbezbednija funkcionalna provera jeste kreiranje testne virtuelne mašine ili kontrolisana Storage vMotion migracija male testne virtuelne mašine. Ne treba ručno menjati ili brisati postojeće VM datoteke u datastore browser-u.
+</p>
+
+<h4>Korak 7 – proveriti datastore na svim hostovima</h4>
+
+<p>
+  Ako datastore treba da koristi klaster, isti NFS export mora biti dostupan svim odgovarajućim hostovima. Treba potvrditi da hostovi koriste očekivanu storage mrežu i da datastore ima konzistentno ime.
+</p>
+
+<h3>Praktikum 2 – osnovna iSCSI konfiguracija</h3>
+
+<p>
+  Pretpostavimo:
+</p>
+
+<ul>
+  <li>software iSCSI adapter: <code>vmhba64</code>;</li>
+  <li>prvi VMkernel adapter: <code>vmk2</code>, adresa <code>192.168.40.11/24</code>, samo <code>vmnic4</code> aktivan;</li>
+  <li>drugi VMkernel adapter: <code>vmk3</code>, adresa <code>192.168.40.12/24</code>, samo <code>vmnic5</code> aktivan;</li>
+  <li>prvi target portal: <code>192.168.40.20</code>;</li>
+  <li>drugi target portal: <code>192.168.40.21</code>;</li>
+  <li>svi portovi su u istom, nerutiranom iSCSI subnetu, pa je ovo laboratorija za port binding; za odvojene rutirane subnete korak vezivanja se preskače i primenjuje se vendor podržan routed dizajn.</li>
+</ul>
+
+<h4>Korak 1 – omogućiti software iSCSI</h4>
+
+<pre><code class="language-bash">esxcli iscsi software set --enabled=true</code></pre>
+
+<h4>Korak 2 – pronaći adapter</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter list</code></pre>
+
+<h4>Korak 3 – proveriti VMkernel adrese</h4>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<h4>Korak 4 – testirati target mreže</h4>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.40.20</code></pre>
+
+<pre><code class="language-bash">vmkping -I vmk3 192.168.40.21</code></pre>
+
+<h4>Korak 5 – proveriti postojeći port binding</h4>
+
+<pre><code class="language-bash">esxcli iscsi networkportal list \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 6 – dodati VMkernel adaptere jer proverena topologija ispunjava uslove za port binding</h4>
+
+<pre><code class="language-bash">esxcli iscsi networkportal add \
+  --adapter vmhba64 \
+  --nic vmk2</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi networkportal add \
+  --adapter vmhba64 \
+  --nic vmk3</code></pre>
+
+<h4>Korak 7 – dodati discovery portale</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget add \
+  --adapter vmhba64 \
+  --address 192.168.40.20:3260</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget add \
+  --adapter vmhba64 \
+  --address 192.168.40.21:3260</code></pre>
+
+<h4>Korak 8 – izvršiti rescan</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba64</code></pre>
+
+<h4>Korak 9 – proveriti sesije</h4>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<h4>Korak 10 – proveriti uređaje i putanje</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba64</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<p>
+  Ako je otkriven samo jedan target ili jedna putanja, ne treba odmah kreirati produkcioni datastore. Prvo treba utvrditi da li je problem u VMkernel mreži, port binding-u, target konfiguraciji, LUN masking-u ili redundansi storage sistema.
+</p>
+
+<p>
+  <strong>Očekivani rezultat i kriterijum završetka:</strong> oba network portal binding-a imaju stanje <code>Compliant</code>, discovery prikazuje očekivane target-e, postoje aktivne iSCSI sesije, isti NAA uređaj ima vendor-očekivan broj putanja i svi hostovi koji će koristiti datastore vide isti LUN. Izlaze treba sačuvati uz zapis promene.
+</p>
+
+<p>
+  <strong>Rollback laboratorije:</strong> samo ako na otkrivenom LUN-u nije kreiran VMFS i nema zavisnih objekata, ukloniti dodate SendTargets i network portal binding-e odgovarajućim <code>esxcli iscsi ... remove</code> komandama, izvršiti rescan i potvrditi da su nestale samo laboratorijske sesije i uređaji. Pre uklanjanja koristiti <code>--help</code> za tačnu sintaksu konkretnog ESXi build-a. U produkciji se target portal ili binding ne uklanja dok se ne potvrdi da time neće nestati poslednja putanja do uređaja.
+</p>
+
+<h3>Praktikum 3 – provera Fibre Channel LUN-a</h3>
+
+<p>
+  Pretpostavimo da je storage tim prezentovao novi LUN ESXi klasteru. VMware administrator treba da proveri da li je LUN vidljiv preko obe fabric celine.
+</p>
+
+<h4>Korak 1 – evidentirati HBA adaptere i WWPN vrednosti</h4>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<h4>Korak 2 – proveriti link stanje</h4>
+
+<p>
+  U izlazu treba proveriti da li su HBA portovi online, kojom brzinom rade i da li su prijavljeni u fabric.
+</p>
+
+<h4>Korak 3 – izvršiti rescan oba FC adaptera</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba3</code></pre>
+
+<h4>Korak 4 – proveriti uređaje po adapteru</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba3</code></pre>
+
+<h4>Korak 5 – pronaći novi NAA uređaj</h4>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<h4>Korak 6 – proveriti putanje novog uređaja</h4>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<p>
+  Očekivani broj putanja zavisi od broja HBA portova, fabric-a, storage kontrolera i target portova. Više putanja nije automatski bolje ako dizajn nije usklađen sa vendor dokumentacijom.
+</p>
+
+<h4>Korak 7 – proveriti NMP i PSP</h4>
+
+<pre><code class="language-bash">esxcli storage nmp device list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<h4>Korak 8 – proveriti vidljivost na svim hostovima</h4>
+
+<p>
+  Pre kreiranja VMFS datastore-a treba potvrditi da svi planirani hostovi vide isti LUN, isti kapacitet i očekivani broj putanja.
+</p>
+
+<h3>Praktičan scenario 1 – NFS datastore ne može da se montira</h3>
+
+<p>
+  Administrator pokušava da doda NFS datastore, ali dobija poruku da mount operacija nije uspela.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>pogrešna IP adresa NFS servera;</li>
+  <li>pogrešno ime ili putanja export-a;</li>
+  <li>ESXi IP adresa nije dozvoljena u export pravilima;</li>
+  <li>export je dostupan samo za čitanje;</li>
+  <li>pogrešan VLAN ili routing;</li>
+  <li>firewall blokira NFS saobraćaj;</li>
+  <li>DNS ime se ne razrešava pravilno;</li>
+  <li>NFS servis nije pokrenut;</li>
+  <li>neusklađena verzija NFS protokola;</li>
+  <li>isti export je već montiran na konfliktan način.</li>
+</ul>
+
+<h4>Redosled dijagnostike</h4>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get</code></pre>
+
+<pre><code class="language-bash">vmkping -I vmk2 192.168.30.20</code></pre>
+
+<pre><code class="language-bash">esxcli storage nfs list</code></pre>
+
+<pre><code class="language-bash">esxcli storage nfs41 list</code></pre>
+
+<pre><code class="language-bash">tail -n 100 /var/log/vmkernel.log</code></pre>
+
+<pre><code class="language-bash">tail -n 100 /var/log/hostd.log</code></pre>
+
+<p>
+  Ako mrežna komunikacija radi, sledeći korak je provera export pravila na storage sistemu. Potrebno je potvrditi da je dozvoljena tačna VMkernel IP adresa ili subnet, a ne samo management IP ESXi hosta.
+</p>
+
+<p>
+  Posebno treba proveriti da li se pokušava montiranje NFS 3 export-a kao NFS 4.1 ili obrnuto. Ne treba nasumično menjati verziju protokola bez potvrde šta storage sistem podržava.
+</p>
+
+<h3>Praktičan scenario 2 – iSCSI target je dostupan, ali LUN nije vidljiv</h3>
+
+<p>
+  VMkernel adapter može da ping-uje target, a discovery portal je konfigurisan, ali ESXi ne prikazuje očekivani LUN.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>LUN nije mapiran odgovarajućem initiator IQN-u;</li>
+  <li>host nije dodat u odgovarajuću storage host grupu;</li>
+  <li>CHAP podaci nisu usklađeni;</li>
+  <li>target ne prezentuje LUN kroz odgovarajući portal;</li>
+  <li>iSCSI sesija nije uspostavljena;</li>
+  <li>port binding nije odgovarajući za topologiju;</li>
+  <li>ACL ili firewall dozvoljava ICMP, ali blokira TCP 3260;</li>
+  <li>rescan nije izvršen;</li>
+  <li>LUN je već prezentovan sa konfliktom ili neodgovarajućim identitetom.</li>
+</ul>
+
+<h4>Redosled dijagnostike</h4>
+
+<pre><code class="language-bash">esxcli iscsi adapter list</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi adapter get \
+  --adapter vmhba64</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi adapter discovery sendtarget list \
+  --adapter vmhba64</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi session list</code></pre>
+
+<pre><code class="language-bash">esxcli iscsi adapter target list \
+  --adapter vmhba64</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan \
+  --adapter vmhba64</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba64</code></pre>
+
+<p>
+  Ako nema aktivne iSCSI sesije, problem je pre otkrivanja LUN-a. Ako sesija postoji, ali LUN nije prikazan, najčešći sledeći korak je provera LUN masking-a i host grupe na storage sistemu.
+</p>
+
+<h3>Praktičan scenario 3 – Fibre Channel LUN je vidljiv samo preko jedne putanje</h3>
+
+<p>
+  Novi FC LUN je otkriven, ali ESXi prikazuje samo jednu aktivnu putanju iako dizajn predviđa dve fabric celine.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>jedan HBA port nije online;</li>
+  <li>optički kabl ili SFP modul je neispravan;</li>
+  <li>nedostaje zoning na jednoj fabric celini;</li>
+  <li>jedan initiator WWPN nije dodat u storage host grupu;</li>
+  <li>LUN nije mapiran kroz oba kontrolera;</li>
+  <li>jedan target port nije dostupan;</li>
+  <li>FC switch port je administrativno isključen;</li>
+  <li>driver ili firmware HBA adaptera nije odgovarajući.</li>
+</ul>
+
+<h4>Provera na ESXi hostu</h4>
+
+<pre><code class="language-bash">esxcli storage san fc list</code></pre>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage san fc stats get \
+  --adapter vmhba3</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba2</code></pre>
+
+<pre><code class="language-bash">esxcli storage core adapter device list \
+  --adapter vmhba3</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<p>
+  Ako jedan HBA ne vidi nijedan uređaj, provera se pomera prema FC linku, switch portu i zoning-u. Ako oba HBA adaptera vide druge LUN-ove, ali samo jedan vidi novi LUN, verovatniji uzrok je zoning, masking ili prezentovanje konkretnog LUN-a.
+</p>
+
+<h3>Praktičan scenario 4 – virtuelne mašine imaju visoku storage latenciju</h3>
+
+<p>
+  Korisnici prijavljuju da se aplikacije sporo odazivaju, iako CPU i memorija virtuelnih mašina nisu potpuno opterećeni. Problem može biti u storage sloju, ali latenciju treba razložiti pre donošenja zaključka.
+</p>
+
+<h4>Važne vrste latencije</h4>
+
+<ul>
+  <li>
+    <strong>Device latency</strong> – vreme koje storage uređaj provodi obrađujući I/O.
+  </li>
+  <li>
+    <strong>Kernel latency</strong> – vreme zadržavanja I/O zahteva u ESXi kernel sloju.
+  </li>
+  <li>
+    <strong>Guest-observed latency</strong> – ukupno vreme koje vidi virtuelna mašina.
+  </li>
+</ul>
+
+<p>
+  Visoka device latencija češće ukazuje na storage array, kontrolere, diskove, cache ili SAN mrežu. Visoka kernel latencija može ukazivati na queue zasićenje, putanje, drajvere ili preveliku konkurenciju na hostu.
+</p>
+
+<h4>Pokretanje esxtop alata</h4>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>
+  Nakon pokretanja treba pritisnuti <code>u</code> za prikaz storage uređaja. Korisne kolone uključuju:
+</p>
+
+<ul>
+  <li><code>CMDS/s</code> – broj komandi u sekundi;</li>
+  <li><code>READS/s</code> i <code>WRITES/s</code>;</li>
+  <li><code>DAVG/cmd</code> – prosečna latencija uređaja;</li>
+  <li><code>KAVG/cmd</code> – prosečna kernel latencija;</li>
+  <li><code>GAVG/cmd</code> – ukupna latencija koju dobija guest;</li>
+  <li><code>QAVG/cmd</code> – vreme provedeno u redu čekanja.</li>
+</ul>
+
+<p>
+  Ne postoji jedna univerzalna vrednost latencije koja je prihvatljiva za svaku aplikaciju i svaki storage sistem. Vrednosti treba porediti sa baznim stanjem, zahtevima aplikacije i preporukama proizvođača.
+</p>
+
+<h4>Dodatne provere</h4>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<pre><code class="language-bash">esxcli storage nmp device list</code></pre>
+
+<pre><code class="language-bash">esxcli network nic stats get \
+  --nic-name vmnic4</code></pre>
+
+<pre><code class="language-bash">tail -n 200 /var/log/vmkernel.log</code></pre>
+
+<p>
+  Administrator treba da proveri:
+</p>
+
+<ul>
+  <li>da li su neke putanje dead ili degraded;</li>
+  <li>da li se I/O šalje neoptimizovanom putanjom;</li>
+  <li>da li postoji packet loss na iSCSI ili NFS mreži;</li>
+  <li>da li je jedan fizički uplink zasićen;</li>
+  <li>da li storage kontroler vrši failover;</li>
+  <li>da li backup ili snapshot operacija stvara veliki I/O;</li>
+  <li>da li jedna VM generiše neuobičajeno opterećenje;</li>
+  <li>da li je datastore skoro popunjen;</li>
+  <li>da li storage array prijavljuje cache, disk ili kontroler problem.</li>
+</ul>
+
+<h3>Praktičan scenario 5 – otkaz jedne storage putanje</h3>
+
+<p>
+  Jedan iSCSI uplink, FC kabl ili target port prestaje da radi. Virtuelne mašine i dalje rade, ali je redundansa smanjena.
+</p>
+
+<h4>Prvi cilj – utvrditi opseg problema</h4>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<pre><code class="language-bash">esxcli storage nmp device list</code></pre>
+
+<p>
+  Potrebno je utvrditi:
+</p>
+
+<ul>
+  <li>da li je problem ograničen na jedan LUN;</li>
+  <li>da li je pogođen jedan adapter;</li>
+  <li>da li je pogođen jedan host ili ceo klaster;</li>
+  <li>da li su sve putanje kroz jedan switch nestale;</li>
+  <li>da li je aktiviran storage kontroler failover;</li>
+  <li>da li su preostale putanje dovoljne za trenutno opterećenje.</li>
+</ul>
+
+<h4>Drugi cilj – ne pogoršati stanje</h4>
+
+<p>
+  Dok sistem radi preko preostalih putanja ne treba nasumično restartovati sve adaptere, menjati PSP politiku ili izvoditi istovremeni rescan čitavog klastera bez plana. Ako je opterećenje veliko, preostala putanja može biti preopterećena.
+</p>
+
+<h4>Treći cilj – obnoviti redundansu</h4>
+
+<p>
+  Nakon popravke fizičke ili logičke veze treba:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<p>
+  Zatim treba potvrditi da se očekivani broj putanja vratio, da su stanja pravilna i da se latencija normalizovala.
+</p>
+
+<h3>Praktičan scenario 6 – broj storage putanja nije isti na svim hostovima</h3>
+
+<p>
+  Jedan ESXi host vidi četiri putanje do LUN-a, dok drugi vidi samo dve. Datastore je dostupan na oba hosta, ali konfiguracija nije konzistentna.
+</p>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>nedostaje jedan VMkernel binding na iSCSI hostu;</li>
+  <li>jedan discovery portal nije dodat;</li>
+  <li>zoning nije isti za sve FC HBA portove;</li>
+  <li>LUN masking nije primenjen na sve initiator-e;</li>
+  <li>jedan adapter ili fizički uplink nije aktivan;</li>
+  <li>hostovi koriste različite drajvere ili firmware;</li>
+  <li>jedna target adresa nije dostupna sa određenog hosta;</li>
+  <li>rescan nije izvršen nakon storage izmene.</li>
+</ul>
+
+<h4>Poređenje hostova</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<pre><code class="language-bash">esxcli storage core path list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<pre><code class="language-bash">esxcli storage nmp device list \
+  --device naa.6006016045502500c4f5f3e8a17fe611</code></pre>
+
+<p>
+  Komande treba izvršiti na svakom hostu i uporediti:
+</p>
+
+<ul>
+  <li>adaptere;</li>
+  <li>runtime nazive putanja;</li>
+  <li>target identifikatore;</li>
+  <li>stanje putanja;</li>
+  <li>SATP i PSP politiku;</li>
+  <li>broj aktivnih i optimizovanih putanja.</li>
+</ul>
+
+<p>
+  Host sa manjim brojem putanja ne treba ostaviti u produkciji bez razumevanja uzroka. Iako datastore trenutno radi, naredni otkaz može ukloniti poslednju dostupnu putanju.
+</p>
+
+<h3>Napredni CLI pregled storage okruženja</h3>
+
+<pre><code class="language-bash"># osnovni pregled adaptera
+esxcli storage core adapter list
+
+# detaljan pregled uređaja
+esxcli storage core device list
+
+# pregled putanja
+esxcli storage core path list
+
+# pregled putanja jednog uređaja
+esxcli storage core path list \
+  --device naa.ID_UREĐAJA
+
+# pregled VMFS datastore-a i NAA uređaja
+esxcli storage vmfs extent list
+
+# pregled montiranih datastore-a
+esxcli storage filesystem list
+
+# NFS 3 datastore-i
+esxcli storage nfs list
+
+# NFS 4.1 datastore-i
+esxcli storage nfs41 list
+
+# iSCSI adapteri
+esxcli iscsi adapter list
+
+# iSCSI discovery portali
+esxcli iscsi adapter discovery sendtarget list \
+  --adapter vmhba64
+
+# iSCSI port binding
+esxcli iscsi networkportal list \
+  --adapter vmhba64
+
+# iSCSI sesije
+esxcli iscsi session list
+
+# Fibre Channel adapteri
+esxcli storage san fc list
+
+# NMP uređaji
+esxcli storage nmp device list
+
+# dostupni SATP moduli
+esxcli storage nmp satp list
+
+# PSA claim pravila
+esxcli storage core claimrule list
+
+# rescan jednog adaptera
+esxcli storage core adapter rescan \
+  --adapter vmhba64
+
+# rescan svih adaptera
+esxcli storage core adapter rescan --all</code></pre>
+
+<h3>Pregled storage-a pomoću PowerCLI-ja</h3>
+
+<pre><code class="language-powershell"># povezivanje sa vCenter serverom
+Connect-VIServer -Server "vcenter.lab.local"
+
+# pregled datastore-a
+Get-Datastore |
+  Select-Object Name, Type, CapacityGB, FreeSpaceGB
+
+# pregled datastore-a određenog hosta
+Get-VMHost -Name "esxi01.lab.local" |
+  Get-Datastore |
+  Select-Object Name, Type, CapacityGB, FreeSpaceGB
+
+# pregled SCSI LUN-ova
+Get-VMHost -Name "esxi01.lab.local" |
+  Get-ScsiLun -LunType disk |
+  Select-Object CanonicalName, Vendor, Model, CapacityGB, MultipathPolicy
+
+# pregled putanja
+Get-VMHost -Name "esxi01.lab.local" |
+  Get-ScsiLun -LunType disk |
+  Get-ScsiLunPath |
+  Select-Object Name, State, SanId, ScsiLun
+
+# pregled HBA adaptera
+Get-VMHostHba -VMHost "esxi01.lab.local"
+
+# pregled iSCSI HBA adaptera
+Get-VMHostHba -VMHost "esxi01.lab.local" -Type iSCSI
+
+# pregled Fibre Channel HBA adaptera
+Get-VMHostHba -VMHost "esxi01.lab.local" -Type FibreChannel</code></pre>
+
+<h3>Provera konzistentnosti klastera kroz PowerCLI</h3>
+
+<pre><code class="language-powershell">Get-Cluster -Name "PROD-CLUSTER" |
+  Get-VMHost |
+  ForEach-Object {
+    $VMHost = $_
+
+    Get-ScsiLun -VMHost $VMHost -LunType disk |
+      Select-Object @{
+        Name = "VMHost"
+        Expression = { $VMHost.Name }
+      },
+      CanonicalName,
+      MultipathPolicy,
+      OperationalState
+  }</code></pre>
+
+<p>
+  Ovakav pregled pomaže da se uoče hostovi sa različitim politikama, nedostajućim uređajima ili neusklađenim operativnim stanjem.
+</p>
+
+<h3>Log datoteke važne za storage troubleshooting</h3>
+
+<ul>
+  <li>
+    <code>/var/log/vmkernel.log</code> – kernel, storage putanje, APD/PDL događaji, adapteri i I/O greške.
+  </li>
+  <li>
+    <code>/var/log/vobd.log</code> – VMware Observations, storage i hardverski događaji.
+  </li>
+  <li>
+    <code>/var/log/hostd.log</code> – operacije host management servisa.
+  </li>
+  <li>
+    <code>/var/log/vpxa.log</code> – komunikacija ESXi hosta sa vCenter serverom.
+  </li>
+  <li>
+    <code>/var/log/fdm.log</code> – vSphere HA događaji, kada je HA uključen.
+  </li>
+</ul>
+
+<h3>Pretraga storage poruka u logovima</h3>
+
+<pre><code class="language-bash">grep -Ei "NFS|iSCSI|APD|PDL|naa\.|vmhba|path" \
+  /var/log/vmkernel.log |
+  tail -n 100</code></pre>
+
+<p>
+  Log poruke treba analizirati zajedno sa vremenom događaja, stanjem storage array-a, mrežnih uređaja i vCenter alarma. Jedna izdvojena poruka bez konteksta često nije dovoljna za zaključak.
+</p>
+
+<h3>APD i PDL</h3>
+
+<p>
+  Kada ESXi izgubi pristup blokovskom storage uređaju, važno je razlikovati dva stanja:
+</p>
+
+<ul>
+  <li>
+    <strong>All Paths Down – APD</strong> znači da trenutno ne postoji dostupna putanja, ali ESXi nema potvrdu da je uređaj trajno uklonjen. Host nastavlja da pokušava ponovno uspostavljanje pristupa.
+  </li>
+  <li>
+    <strong>Permanent Device Loss – PDL</strong> znači da je storage sistem nedvosmisleno saopštio da uređaj više nije dostupan tom hostu.
+  </li>
+</ul>
+
+<p>
+  APD može nastati zbog prekida mreže, fabric-a, kontrolera ili svih putanja. PDL se može pojaviti nakon uklanjanja LUN mapping-a ili druge storage promene. Neplanirano uklanjanje LUN-a dok ga ESXi koristi može izazvati ozbiljne posledice.
+</p>
+
+<h3>Bezbedno uklanjanje datastore-a i LUN-a</h3>
+
+<p>
+  LUN se ne sme prvo ukloniti sa storage sistema pa tek onda čistiti na ESXi hostovima. Kontrolisana procedura obuhvata:
+</p>
+
+<ol>
+  <li>identifikaciju svih virtuelnih mašina i datoteka na datastore-u;</li>
+  <li>migraciju ili gašenje zavisnih VM-ova;</li>
+  <li>uklanjanje ISO i drugih veza prema datastore-u;</li>
+  <li>proveru HA datastore heartbeat zavisnosti;</li>
+  <li>proveru Storage DRS i drugih klasterskih funkcija;</li>
+  <li>unmount datastore-a sa svih hostova;</li>
+  <li>detach uređaja kada je to primenljivo;</li>
+  <li>tek zatim uklanjanje LUN mapping-a na storage sistemu;</li>
+  <li>rescan i potvrdu da je uređaj uklonjen.</li>
+</ol>
+
+<p>
+  Tačan postupak zavisi od verzije vSphere-a, tipa storage-a i vendor dokumentacije. Produkciona izmena treba da ima plan vraćanja i jasno definisan opseg.
+</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>
+    Pre nabavke ili nadogradnje proveriti server, HBA, NIC, driver, firmware i storage kombinaciju u Broadcom Compatibility Guide-u.
+  </li>
+  <li>
+    Koristiti najmanje dve zaista nezavisne storage putanje kada poslovni zahtevi traže visoku dostupnost.
+  </li>
+  <li>
+    Odvojiti NFS i iSCSI saobraćaj od korisničkog saobraćaja odgovarajućim VLAN-ovima i kapacitetom mreže.
+  </li>
+  <li>
+    Jumbo frame koristiti samo kada je isti MTU konfigurisan i testiran duž cele putanje.
+  </li>
+  <li>
+    Ne menjati PSP politiku bez potvrde proizvođača storage sistema i Broadcom dokumentacije.
+  </li>
+  <li>
+    Dokumentovati NAA identifikatore, LUN brojeve, datastore nazive, kapacitet, host grupe i poslovnu namenu.
+  </li>
+  <li>
+    Dokumentovati WWPN vrednosti FC adaptera i IQN vrednosti iSCSI initiator-a.
+  </li>
+  <li>
+    Koristiti standardizovana imena datastore-a koja označavaju lokaciju, tip storage-a, okruženje i namenu.
+  </li>
+  <li>
+    Redovno porediti broj i stanje putanja na svim hostovima u klasteru.
+  </li>
+  <li>
+    Nadzirati latenciju, IOPS, throughput, queue dubinu, greške adaptera i packet loss.
+  </li>
+  <li>
+    Čuvati bazne vrednosti performansi kako bi se novo odstupanje moglo porediti sa normalnim stanjem.
+  </li>
+  <li>
+    Planirati dovoljno slobodnog prostora i alarme pre nego što datastore postane kritično popunjen.
+  </li>
+  <li>
+    Storage snapshot ne tretirati automatski kao potpunu zamenu za nezavisan backup.
+  </li>
+  <li>
+    Promene zoning-a, LUN masking-a, target portala i multipathing politike izvoditi kroz kontrolisan change proces.
+  </li>
+  <li>
+    Pre promene sačuvati izlaze relevantnih ESXCLI i PowerCLI komandi.
+  </li>
+  <li>
+    Nakon promene proveriti pristup, broj putanja, PSP, latenciju i vCenter alarme.
+  </li>
+  <li>
+    Failover testove izvoditi u kontrolisanom terminu, uz odobrenje i plan vraćanja.
+  </li>
+  <li>
+    Ne testirati redundansu nekontrolisanim izvlačenjem kablova u produkciji.
+  </li>
+  <li>
+    Firmware i drajvere menjati kao usklađen skup, a ne kao izolovane komponente.
+  </li>
+  <li>
+    Redovno pregledati logove i upozorenja storage array-a, SAN switch-eva i ESXi hostova.
+  </li>
+</ul>
+
+<h3>Administratorska kontrolna lista za novi datastore</h3>
+
+<ol>
+  <li>Potvrđen je poslovni zahtev i očekivano opterećenje.</li>
+  <li>Odabran je odgovarajući storage protokol.</li>
+  <li>Proverena je kompatibilnost svih komponenti.</li>
+  <li>Obezbeđeni su kapacitet i očekivane performanse.</li>
+  <li>Konfigurisani su VLAN, zoning ili export pravila.</li>
+  <li>Konfigurisan je LUN masking kada se koristi blokovski storage.</li>
+  <li>Proverene su sve mrežne ili SAN putanje.</li>
+  <li>Datastore je vidljiv na svim potrebnim hostovima.</li>
+  <li>Broj putanja je konzistentan.</li>
+  <li>PSP politika odgovara vendor preporuci.</li>
+  <li>Testirano je čitanje i pisanje testnim workload-om.</li>
+  <li>Konfigurisani su alarmi i monitoring.</li>
+  <li>Datastore je unet u tehničku dokumentaciju.</li>
+  <li>Definisani su backup, restore i disaster recovery postupci.</li>
+</ol>
+
+<h3>Administratorska kontrolna lista nakon storage incidenta</h3>
+
+<ol>
+  <li>Zabeležiti tačno vreme početka i završetka incidenta.</li>
+  <li>Utvrditi pogođene hostove, datastore-e i virtuelne mašine.</li>
+  <li>Sačuvati vCenter alarme i relevantne logove.</li>
+  <li>Utvrditi da li je incident bio NFS, iSCSI, FC, VMFS ili array problem.</li>
+  <li>Uporediti broj putanja pre i posle incidenta.</li>
+  <li>Proveriti mrežne i SAN switch događaje.</li>
+  <li>Proveriti storage kontrolere, portove, diskove i cache.</li>
+  <li>Potvrditi da su se sve putanje oporavile.</li>
+  <li>Proveriti latenciju nakon oporavka.</li>
+  <li>Dokumentovati osnovni uzrok, privremeno rešenje i trajnu korekciju.</li>
+</ol>
+
+<h3>Pitanja za proveru znanja</h3>
+
+<ol>
+  <li>Koja je osnovna razlika između file-level i block-level storage-a?</li>
+  <li>Zašto NFS datastore ne zahteva VMFS fajl sistem?</li>
+  <li>Koju ulogu imaju initiator, target i LUN u iSCSI okruženju?</li>
+  <li>Koja je razlika između FC zoning-a i LUN masking-a?</li>
+  <li>Zašto dve storage putanje ne moraju predstavljati potpunu redundansu?</li>
+  <li>Koja je uloga SATP-a, a koja PSP-a u NMP arhitekturi?</li>
+  <li>Zašto Round Robin ne treba automatski uključiti za svaki storage uređaj?</li>
+  <li>Kako se proverava kojim NAA uređajem je podržan određeni VMFS datastore?</li>
+  <li>Koja je razlika između NFS 3 i NFS 4.1 multipathing-a?</li>
+  <li>Zašto običan ping nije dovoljan za proveru storage mreže?</li>
+  <li>Koja komanda prikazuje aktivne iSCSI sesije?</li>
+  <li>Koja komanda prikazuje Fibre Channel WWPN i stanje HBA adaptera?</li>
+  <li>Šta treba proveriti kada jedan host vidi manje putanja od ostalih?</li>
+  <li>Koja je razlika između APD i PDL stanja?</li>
+  <li>Zašto LUN ne treba ukloniti sa storage sistema pre unmount i detach postupka na ESXi hostovima?</li>
+</ol>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+  Lekcija je uspešno završena kada administrator može da pokaže sledeće sposobnosti na laboratorijskom ili odobrenom testnom sistemu i da za svaku tvrdnju priloži dokaz:
+</p>
+
+<ol>
+  <li>razlikuje NFS file-level pristup od iSCSI i FC block-level pristupa i pravilno određuje ko upravlja fajl sistemom datastore-a;</li>
+  <li>crta stvarnu I/O putanju od VM-a do storage medijuma i označava zone odgovornosti vSphere, mrežnog, SAN i storage tima;</li>
+  <li>proverava VMkernel adresu, MTU i izabranu izvornu putanju bez menjanja stanja hosta;</li>
+  <li>objašnjava razliku između NFS 3 više TCP konekcija, NFS 4.1 multipathing-a i običnog NIC failover-a, uz navođenje verzijskog uslova;</li>
+  <li>procenjuje da li je software iSCSI port binding primenljiv na datu topologiju i dokazuje postojanje discovery-ja, sesije, LUN-a i putanja;</li>
+  <li>povezuje FC WWPN, zoning, target port, LUN masking, NAA identifikator i VMFS datastore bez oslanjanja samo na prikazno ime;</li>
+  <li>utvrđuje SATP i PSP za uređaj i ne menja politiku bez matrice interoperabilnosti i plana vraćanja;</li>
+  <li>razlikuje APD od PDL, prikuplja vremenski korelisane logove i izbegava neplanirano uklanjanje LUN-a;</li>
+  <li>izvodi bezbedan rescan, potvrđuje očekivani broj nezavisnih putanja na svakom hostu i prepoznaje kada broj putanja daje lažni osećaj redundanse;</li>
+  <li>nakon vežbe ili incidenta dokumentuje simptom, opseg, neposredni i osnovni uzrok, privremeno rešenje, trajnu meru, validaciju oporavka i preostali rizik.</li>
+</ol>
+
+<h3>Zaključak</h3>
+
+<p>
+  NFS, iSCSI i Fibre Channel predstavljaju tri najvažnija tradicionalna načina povezivanja VMware ESXi hostova sa zajedničkim storage sistemima. NFS omogućava pristup datotekama preko IP mreže, dok iSCSI i Fibre Channel izlažu blokovske uređaje na kojima ESXi najčešće kreira VMFS datastore.
+</p>
+
+<p>
+  NFS se izdvaja jednostavnijom administracijom i dobrom integracijom sa NAS sistemima. iSCSI omogućava blokovski storage korišćenjem Ethernet infrastrukture, ali zahteva pažljivo projektovanje VMkernel mreže, target portala i multipathing konfiguracije. Fibre Channel pruža namensku SAN infrastrukturu i zrele enterprise mogućnosti, ali zahteva HBA adaptere, FC fabric, zoning, LUN masking i specijalizovano administratorsko znanje.
+</p>
+
+<p>
+  Pouzdanost ne određuje samo izbor protokola. Ključni su redundantna arhitektura, kompatibilni drajveri i firmware, pravilno projektovane putanje, odgovarajuća PSP politika, kontinuiran monitoring i kontrolisan proces promena. Administrator mora znati da poveže informacije sa ESXi hosta, mrežnih ili FC switch-eva i storage sistema, jer se uzrok problema često ne nalazi samo u jednom sloju.
+</p>
+
+<p>
+  Najvažnija praktična veština nije samo dodavanje datastore-a, već sposobnost da se precizno utvrdi kojim putem I/O prolazi, koji uređaj pripada kom datastore-u, koliko je putanja zaista nezavisno i kako će se infrastruktura ponašati kada jedna komponenta otkaže. Tek takav pristup pretvara storage konfiguraciju iz skupa povezanih uređaja u pouzdanu osnovu za rad virtuelnih mašina.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere 8 Storage, NFS Datastores, Software iSCSI, Fibre Channel SAN, PSA/NMP multipathing i ESXCLI dokumentacija; VMware Compatibility Guide i Knowledge Base reference za NFS 4.1, iSCSI port binding, APD/PDL i kontrolisano uklanjanje LUN-a; IETF NFSv4.1, iSCSI i Kerberos standardi.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-28-thin-thick-provisioning.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-30-storage-troubleshooting.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

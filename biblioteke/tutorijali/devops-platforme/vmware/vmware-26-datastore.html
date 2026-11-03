@@ -1,0 +1,1909 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-26-datastore.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Datastore – mesto gde žive virtuelne mašine i njihovi diskovi | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte VMware datastore kao prostor za čuvanje virtuelnih mašina, VMDK diskova, konfiguracionih datoteka, snapshotova i drugih podataka VMware infrastrukture.">
+
+  <meta name="keywords"
+        content="VMware datastore, datastore, VMware storage, virtuelna mašina, VMDK, VMFS, NFS datastore, storage, skladištenje podataka, ESXi storage, vSphere datastore, snapshot, konfiguracione datoteke, ESXi, vCenter, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-26-datastore.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Datastore – mesto gde žive virtuelne mašine i njihovi diskovi">
+
+  <meta property="og:description"
+        content="Upoznajte ulogu VMware datastore prostora u čuvanju virtuelnih mašina, njihovih diskova, konfiguracionih datoteka i snapshotova.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-26-datastore.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-26-datastore.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Datastore – mesto gde žive virtuelne mašine i njihovi diskovi">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+ Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-26-datastore.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-26-datastore.png"
+           alt="Datastore – mesto gde žive virtuelne mašine i njihovi diskovi">
+
+    </a>
+
+  <div class="page-subtitle">
+  VI. Skladištenje, politike i integritet podataka
+</div>
+
+<div class="page-subtitle">
+   26. Datastore – logički prostor za datoteke virtuelnih mašina
+</div>
+
+<p>
+Datastore predstavlja logički prostor za skladištenje podataka koji ESXi hostovi koriste za čuvanje virtuelnih mašina, virtuelnih diskova, template-a, ISO slika, snapshot datoteka, logova i drugih objekata potrebnih za rad VMware infrastrukture. Za administratora datastore nije samo „disk na kojem se nalazi VM”, već centralna tačka u kojoj se susreću fizički storage, storage protokoli, VMware filesystem, virtuelne mašine, dostupnost, performanse, backup i oporavak sistema.
+</p>
+
+<p>
+Kada se kreira virtuelna mašina, administrator bira datastore na kojem će biti smešteni njeni konfiguracioni fajlovi i virtuelni diskovi. ESXi zatim koristi taj datastore kao skladišni prostor iz kojeg čita podatke potrebne za pokretanje VM-a i u koji upisuje sve promene nastale tokom njegovog rada.
+</p>
+
+<p>
+Ako je datastore nedostupan, virtuelna mašina može ostati bez pristupa svom konfiguracionom fajlu ili virtuelnim diskovima. Posledice mogu biti usporenje aplikacija, zamrzavanje operativnog sistema gosta, neuspešno pokretanje VM-a, prekid backup poslova ili potpuni prekid rada servisa. Zbog toga storage predstavlja jednu od najvažnijih oblasti VMware administracije.
+</p>
+
+<h3>Datastore nije isto što i fizički disk</h3>
+
+<p>
+Datastore predstavlja logičku apstrakciju storage prostora. Ispod njega se može nalaziti lokalni disk, RAID grupa, SAN LUN, NFS export, vSAN kapacitet ili storage sistem koji koristi Virtual Volumes.
+</p>
+
+<p>
+Osnovni slojevi mogu se predstaviti ovako:
+</p>
+
+<pre><code class="language-none">Fizički diskovi ili flash uređaji
+              │
+              ▼
+RAID grupa, storage pool ili disk grupa
+              │
+              ▼
+LUN, NFS export, vSAN kapacitet ili storage container
+              │
+              ▼
+Storage protokol i pristupna mreža
+              │
+              ▼
+VMFS, NFS, vSAN ili vVol datastore
+              │
+              ▼
+Folderi virtuelnih mašina
+              │
+              ▼
+VMX, VMDK, snapshot-i, logovi i ostale datoteke</code></pre>
+
+<p>
+Kvar fizičkog diska ne mora automatski značiti gubitak datastore-a ako storage sistem koristi odgovarajući RAID, replikaciju ili drugi mehanizam zaštite. Sa druge strane, potpuno ispravan storage sistem može postati nedostupan ESXi hostu ako postoji problem sa SAN putanjom, iSCSI mrežom, NFS servisom, zoning konfiguracijom, autentifikacijom ili VMkernel mrežom.
+</p>
+
+<h3>Najčešći tipovi datastore-a</h3>
+
+<h4>VMFS datastore</h4>
+
+<p>
+VMFS, odnosno VMware Virtual Machine File System, predstavlja klasterovani filesystem namenjen blok storage uređajima. Koristi se nad lokalnim diskovima, Fibre Channel LUN-ovima, iSCSI LUN-ovima, Fibre Channel over Ethernet uređajima i drugim kompatibilnim blok storage sistemima.
+</p>
+
+<p>
+Klasterovana priroda VMFS-a omogućava da više ESXi hostova istovremeno pristupa istom datastore-u. VMware mehanizmi zaključavanja sprečavaju da dva hosta istovremeno na neispravan način menjaju iste datoteke virtuelne mašine.
+</p>
+
+<p>
+U savremenim vSphere okruženjima standardni format je VMFS 6. Prilikom kreiranja novog datastore-a treba koristiti format koji odgovara verziji i kompatibilnosti hostova u konkretnom okruženju.
+</p>
+
+<h4>NFS datastore</h4>
+
+<p>
+NFS datastore koristi mrežni filesystem koji storage server ili NAS uređaj izlaže ESXi hostovima. Za razliku od VMFS-a, gde VMware kreira filesystem nad blok uređajem, kod NFS-a filesystem održava NFS server, dok ESXi mountuje izvezeni direktorijum.
+</p>
+
+<p>
+vSphere podržava NFS 3 i NFS 4.1. Izbor verzije utiče na način autentifikacije, multipathing, mrežnu konfiguraciju i podržane funkcionalnosti. NFS storage zahteva pouzdanu VMkernel mrežu, pravilno podešen export i odgovarajuće dozvole za ESXi hostove.
+</p>
+
+<p>
+Važna verzijska razlika postoji kod vezivanja NFS saobraćaja za VMkernel adapter. NFS 4.1 podržava više serverskih adresa radi multipathing-a, ali je eksplicitni VMkernel port binding za NFS 4.1 uveden u ESXi 8.0 Update 3. Zato postupak iz starijeg vSphere izdanja ne treba prenositi bez provere na 8.0 U3 ili novije okruženje. NFS 3 i NFS 4.1 datastore ne treba montirati na istom hostu prema istom export-u, jer te verzije koriste različite modele zaključavanja i takva kombinacija nije podržan način zajedničkog pristupa istim datotekama.
+</p>
+
+<h4>vSAN datastore</h4>
+
+<p>
+vSAN kombinuje lokalne diskove ili flash uređaje ESXi hostova u distribuirani datastore klastera. Dostupnost podataka ne određuje samo tradicionalni RAID, već storage politike virtuelnih mašina kojima se definišu tolerancija na kvarove, broj kopija podataka, način kodiranja i druge karakteristike.
+</p>
+
+<p>
+vSAN datastore se ne administrira na isti način kao klasični VMFS LUN. Njegovo stanje zavisi od zdravlja hostova, disk grupa, mreže, storage politika i usklađenosti objekata.
+</p>
+
+<h4>vVol datastore</h4>
+
+<p>
+Virtual Volumes omogućavaju da storage sistem upravlja objektima virtuelnih mašina na granularnijem nivou. Umesto da veliki broj VM-ova bude smešten unutar jednog tradicionalnog LUN-a, storage funkcionalnosti se mogu primenjivati prema zahtevima pojedinačnih virtuelnih mašina i njihovih diskova.
+</p>
+
+<p>
+vVol arhitektura se oslanja na VASA provider, storage container i protokol endpoint. Njena dostupnost zato zavisi i od pravilne komunikacije vCenter Servera sa VASA providerom.
+</p>
+
+<h3>Lokalni i deljeni datastore</h3>
+
+<p>
+Lokalni datastore dostupan je samo hostu na kojem se fizički nalazi. Pogodan je za laboratorijska okruženja, privremene virtuelne mašine, određene servisne VM-ove ili specifične arhitekture, ali sam po sebi ne omogućava drugim hostovima da pristupe istim VM datotekama.
+</p>
+
+<p>
+Deljeni datastore dostupan je većem broju ESXi hostova. On predstavlja važan uslov za klasične scenarije u kojima HA nakon pada jednog hosta registruje i pokreće virtuelnu mašinu na drugom hostu. Deljeni storage takođe pojednostavljuje compute vMotion, jer se tokom migracije hosta lokacija VMDK datoteka ne mora menjati.
+</p>
+
+<p>
+Treba razlikovati sledeće operacije:
+</p>
+
+<ul>
+  <li><strong>Compute vMotion</strong> – menja host na kojem VM radi, dok datoteke mogu ostati na istom zajedničkom datastore-u.</li>
+  <li><strong>Storage vMotion</strong> – premešta datoteke VM-a sa jednog datastore-a na drugi.</li>
+  <li><strong>Kombinovana migracija</strong> – istovremeno menja host i datastore, ako infrastruktura, licence i kompatibilnost to dozvoljavaju.</li>
+</ul>
+
+<h3>Šta se nalazi u folderu virtuelne mašine</h3>
+
+<p>
+Svaka virtuelna mašina najčešće ima poseban folder na datastore-u. Nazivi i broj datoteka zavise od konfiguracije VM-a, broja diskova, snapshot-a, tipa firmware-a i trenutnog stanja virtuelne mašine.
+</p>
+
+<pre><code class="language-none">/vmfs/volumes/PROD-VMFS01/APP-SRV01/
+
+APP-SRV01.vmx
+APP-SRV01.vmdk
+APP-SRV01-flat.vmdk
+APP-SRV01.nvram
+APP-SRV01.vmsd
+APP-SRV01.vswp
+vmware.log
+vmware-1.log</code></pre>
+
+<p>
+Najvažnije datoteke su:
+</p>
+
+<ul>
+  <li><strong>.vmx</strong> – glavni konfiguracioni fajl virtuelne mašine.</li>
+  <li><strong>.vmdk</strong> – descriptor virtuelnog diska sa informacijama o geometriji, tipu i povezanoj data datoteci.</li>
+  <li><strong>-flat.vmdk</strong> – datoteka koja kod klasičnog baznog VMFS diska sadrži stvarne blokove podataka.</li>
+  <li><strong>-delta.vmdk ili -sesparse.vmdk</strong> – datoteke povezane sa snapshot lancem.</li>
+  <li><strong>.nvram</strong> – stanje BIOS ili UEFI firmware podešavanja.</li>
+  <li><strong>.vmsd</strong> – informacije o snapshot hijerarhiji.</li>
+  <li><strong>.vmsn</strong> – stanje memorije i uređaja kada je snapshot kreiran sa čuvanjem memorije.</li>
+  <li><strong>.vswp</strong> – swap datoteka virtuelne mašine, čija veličina zavisi od dodeljene memorije i memory reservation vrednosti.</li>
+  <li><strong>vmware.log</strong> – aktuelni log virtuelne mašine.</li>
+  <li><strong>vmware-#.log</strong> – prethodne rotirane verzije VM loga.</li>
+</ul>
+
+<p>
+Administrator ne treba ručno da briše, preimenuje ili menja VMDK, snapshot, VMX i druge datoteke dok prethodno ne utvrdi njihovu ulogu i međusobne veze. Datoteka koja deluje kao stari disk može biti deo aktivnog snapshot lanca. Njeno brisanje može trajno oštetiti virtuelnu mašinu.
+</p>
+
+<h3>Kako ESXi identifikuje datastore</h3>
+
+<p>
+Datastore ima prikazano ime i jedinstveni identifikator, odnosno UUID. Putanja sa imenom datastore-a obično predstavlja simboličku vezu ka UUID putanji.
+</p>
+
+<pre><code class="language-bash">ls -l /vmfs/volumes</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">PROD-VMFS01 -&gt; 681f2b5a-a1b2c3d4-1122-001122334455
+ISO-NFS01   -&gt; 9f21a611-55aa77cc</code></pre>
+
+<p>
+Putanja:
+</p>
+
+<pre><code class="language-none">/vmfs/volumes/PROD-VMFS01</code></pre>
+
+<p>
+lakša je za svakodnevni rad, dok UUID ostaje važan tokom troubleshooting-a, posebno ako se ime promeni, datastore postane nemontiran ili ESXi otkrije snapshot kopiju VMFS volumena.
+</p>
+
+<h3>Prikaz datastore-a u vSphere Client-u</h3>
+
+<p>
+U vSphere Client-u administrator može otvoriti:
+</p>
+
+<pre><code class="language-none">Menu → Storage → Datastores</code></pre>
+
+<p>
+ili izabrati host i otvoriti:
+</p>
+
+<pre><code class="language-none">Host → Configure → Storage → Datastores</code></pre>
+
+<p>
+Za svaki datastore treba proveriti:
+</p>
+
+<ul>
+  <li>ime i tip datastore-a;</li>
+  <li>ukupan kapacitet;</li>
+  <li>slobodan i zauzet prostor;</li>
+  <li>hostove koji imaju pristup;</li>
+  <li>virtuelne mašine i template-e koji ga koriste;</li>
+  <li>storage uređaj ili mrežni share na kojem se nalazi;</li>
+  <li>alarme, događaje i aktuelne zadatke;</li>
+  <li>performanse, latenciju, IOPS i throughput;</li>
+  <li>storage politike i kompatibilnost, kada se koriste.</li>
+</ul>
+
+<h3>Datastore Browser</h3>
+
+<p>
+Datastore Browser omogućava pregled foldera i datoteka, upload i download određenih objekata, kreiranje direktorijuma i obavljanje osnovnih operacija nad sadržajem datastore-a.
+</p>
+
+<p>
+Tipične bezbedne aktivnosti su:
+</p>
+
+<ul>
+  <li>upload instalacionih ISO slika;</li>
+  <li>kreiranje organizovanog direktorijuma za ISO fajlove;</li>
+  <li>provera postojanja VMX i VMDK datoteka;</li>
+  <li>pregled veličine snapshot datoteka;</li>
+  <li>preuzimanje logova radi analize;</li>
+  <li>registracija VMX fajla kada je VM uklonjen samo iz inventory-ja.</li>
+</ul>
+
+<p>
+Datastore Browser nije zamena za backup alat niti treba da se koristi za nasumično ručno kopiranje aktivnih VM datoteka. Datoteke VM-a mogu biti zaključane, međusobno zavisne ili promenjene tokom kopiranja.
+</p>
+
+<h3>Pregled datastore-a kroz ESXi Shell</h3>
+
+<p>
+Komande u ovom odeljku su read-only i bezbedne su za prikupljanje početnih dokaza, osim kada je izričito navedeno da komanda radi rescan, mount ili unmount i time menja stanje. ESXi Shell ili SSH treba omogućiti samo prema operativnoj politici, koristiti nalog sa potrebnim privilegijama, a po završetku privremeni pristup ponovo ograničiti.
+</p>
+
+<p>
+Za rad kroz ESXi Shell ili SSH pristup najpre treba utvrditi koje filesystem-e host vidi:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+Komanda prikazuje mount point, naziv, UUID, mount status, tip, veličinu i slobodan prostor.
+</p>
+
+<p>
+Primer skraćenog izlaza:
+</p>
+
+<pre><code class="language-none">Mount Point                              Volume Name    Mounted  Type   Size          Free
+---------------------------------------  -------------  -------  -----  ------------  ------------
+/vmfs/volumes/681f2b5a-a1b2c3d4         PROD-VMFS01    true     VMFS-6 2198754826240  780123013120
+/vmfs/volumes/9f21a611-55aa77cc          ISO-NFS01      true     NFS    1099511627776  650123456512</code></pre>
+
+<p>
+Za prikaz VMFS volumena i uređaja na kojima se nalaze koristi se:
+</p>
+
+<pre><code class="language-bash">esxcli storage vmfs extent list</code></pre>
+
+<p>
+Ova komanda povezuje naziv VMFS datastore-a sa njegovim UUID-om, brojem extent-a, canonical nazivom uređaja i particijom.
+</p>
+
+<p>
+Pregled storage adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<p>
+Pregled storage uređaja:
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list</code></pre>
+
+<p>
+Sažetiji pregled uređaja:
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list -c</code></pre>
+
+<p>
+Pregled aktivnih putanja:
+</p>
+
+<pre><code class="language-bash">esxcli storage core path list</code></pre>
+
+<p>
+Pregled NMP uređaja i aktivnih multipathing politika:
+</p>
+
+<pre><code class="language-bash">esxcli storage nmp device list</code></pre>
+
+<p>
+Pregled sadržaja datastore-a:
+</p>
+
+<pre><code class="language-bash">ls -lah /vmfs/volumes/PROD-VMFS01</code></pre>
+
+<p>
+Pregled karakteristika određenog filesystem-a:
+</p>
+
+<pre><code class="language-bash">vmkfstools -P /vmfs/volumes/PROD-VMFS01</code></pre>
+
+<p>
+Za prikaz zauzeća datastore-a može se koristiti:
+</p>
+
+<pre><code class="language-bash">vdf -h</code></pre>
+
+<p>
+Komanda <code>df -h</code> prvenstveno prikazuje ESXi sistemske filesystem-e i ne treba je smatrati glavnom komandom za analizu VMFS kapaciteta. Za datastore-e su precizniji <code>esxcli storage filesystem list</code>, <code>vdf -h</code> i podaci iz vCenter Servera.
+</p>
+
+<h3>Pronalaženje VM-a i njegovih datoteka kroz CLI</h3>
+
+<p>
+Lista registrovanih virtuelnih mašina dobija se komandom:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Vmid  Name        File
+12    APP-SRV01   [PROD-VMFS01] APP-SRV01/APP-SRV01.vmx
+18    DB-SRV01    [PROD-VMFS02] DB-SRV01/DB-SRV01.vmx</code></pre>
+
+<p>
+Na ovaj način administrator brzo povezuje VM sa datastore-om i putanjom konfiguracionog fajla.
+</p>
+
+<p>
+Za pronalaženje VMDK referenci iz VMX konfiguracije može se koristiti:
+</p>
+
+<pre><code class="language-bash">grep -i "fileName" /vmfs/volumes/PROD-VMFS01/APP-SRV01/APP-SRV01.vmx</code></pre>
+
+<p>
+Ovu komandu treba koristiti samo za pregled. Ručna izmena VMX fajla zahteva prethodni backup, razumevanje konfiguracije i odgovarajuću proceduru.
+</p>
+
+<h3>Pregled datastore-a preko PowerCLI-ja</h3>
+
+<p>
+Povezivanje sa vCenter Serverom:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local</code></pre>
+
+<p>
+Prikaz svih datastore-a:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore</code></pre>
+
+<p>
+Pregled osnovnih podataka:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB</code></pre>
+
+<p>
+Izračunavanje procenta slobodnog prostora:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }} |
+Sort-Object FreePercent</code></pre>
+
+<p>
+Pronalaženje datastore-a sa manje od 20 procenata slobodnog prostora:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Where-Object {
+    $_.CapacityGB -gt 0 -and
+    (($_.FreeSpaceGB / $_.CapacityGB) * 100) -lt 20
+} |
+Select-Object Name,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }}</code></pre>
+
+<p>
+Prikaz hostova povezanih sa datastore-om:
+</p>
+
+<pre><code class="language-powershell">$datastore = Get-Datastore -Name "PROD-VMFS01"
+
+Get-VMHost |
+Where-Object {
+    (Get-Datastore -VMHost $_).Name -contains $datastore.Name
+} |
+Select-Object Name, ConnectionState, PowerState</code></pre>
+
+<p>
+Prikaz virtuelnih mašina koje koriste određeni datastore:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore -Name "PROD-VMFS01" |
+Get-VM |
+Select-Object Name, PowerState, VMHost</code></pre>
+
+<p>
+Izvoz izveštaja:
+</p>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }} |
+Export-Csv -Path "./datastore-report.csv" -NoTypeInformation</code></pre>
+
+<h3>Datastore i prostor koji VM stvarno koristi</h3>
+
+<p>
+Kapacitet konfigurisanog virtuelnog diska i fizički zauzet prostor na datastore-u nisu uvek isti. Kod thin provisioned diska može biti konfigurisan kapacitet od 500 GB, dok je na datastore-u trenutno zauzeto samo 80 GB. Kako gost upisuje nove blokove, zauzeće raste.
+</p>
+
+<p>
+Na datastore kapacitet utiču:
+</p>
+
+<ul>
+  <li>bazni VMDK diskovi;</li>
+  <li>thin provisioning i stvarna potrošnja blokova;</li>
+  <li>snapshot delta datoteke;</li>
+  <li>swap datoteke virtuelnih mašina;</li>
+  <li>suspend datoteke;</li>
+  <li>ISO slike;</li>
+  <li>template-i i klonovi;</li>
+  <li>logovi;</li>
+  <li>neobrisane datoteke starih VM-ova;</li>
+  <li>privremeni prostor potreban za snapshot konsolidaciju, migraciju i backup.</li>
+</ul>
+
+<p>
+Administrator zato ne sme planirati kapacitet samo na osnovu zbira veličina aktivnih VMDK diskova. Potrebna je rezerva za rast, operativne aktivnosti i nepredviđene događaje.
+</p>
+
+<h3>Datastore i snapshot-i</h3>
+
+<p>
+Snapshot ne predstavlja potpunu nezavisnu kopiju virtuelne mašine. Nakon kreiranja snapshot-a, novi upisi se usmeravaju u delta datoteku, dok bazni disk ostaje deo aktivnog lanca. Delta datoteka može rasti sve dok postoji slobodan prostor na datastore-u.
+</p>
+
+<p>
+Dugotrajni snapshot-i mogu izazvati:
+</p>
+
+<ul>
+  <li>veliko zauzeće prostora;</li>
+  <li>duže vreme konsolidacije;</li>
+  <li>dodatnu storage latenciju;</li>
+  <li>komplikovaniji disk lanac;</li>
+  <li>rizik da datastore ostane bez slobodnog prostora;</li>
+  <li>neuspeh backup ili migracionih poslova.</li>
+</ul>
+
+<p>
+Pre brisanja velikog snapshot-a treba proveriti slobodan kapacitet, stanje VM-a, trajanje snapshot-a, aktivne backup poslove i očekivano opterećenje storage sistema. Operacija „Delete” uklanja snapshot iz lanca konsolidacijom podataka; ona ne znači jednostavno trenutno brisanje jedne male datoteke.
+</p>
+
+<h3>Datastore i HA</h3>
+
+<p>
+vSphere HA mora imati mogućnost da na preživelom hostu pristupi konfiguraciji i diskovima virtuelne mašine koju treba ponovo pokrenuti. Kod klasičnog shared-storage modela to znači da svi relevantni hostovi moraju videti datastore na kojem se VM nalazi.
+</p>
+
+<p>
+Ako samo jedan host izgubi storage putanju, a ostali hostovi datastore i dalje vide, problem nije isti kao potpuni kvar storage sistema. Administrator mora utvrditi da li je kvar:
+</p>
+
+<ul>
+  <li>ograničen na jedan ESXi host;</li>
+  <li>ograničen na jednu putanju;</li>
+  <li>ograničen na jedan datastore;</li>
+  <li>prisutan na svim hostovima;</li>
+  <li>izazvan storage sistemom ili storage mrežom.</li>
+</ul>
+
+<p>
+Ova razlika određuje da li treba raditi rescan jednog hosta, proveriti HBA ili VMkernel interfejs, uključiti storage tim, migrirati VM-ove ili aktivirati širi incidentni postupak.
+</p>
+
+<h3>Datastore i backup</h3>
+
+<p>
+Backup alat često kreira privremeni snapshot kako bi dobio konzistentnu tačku iz koje čita podatke virtuelnog diska. Ako backup traje dugo, snapshot delta može značajno porasti. Ako backup ne završi pravilno, snapshot ili zahtev za konsolidaciju mogu ostati iza njega.
+</p>
+
+<p>
+Zbog toga se kod naglog rasta datastore-a proveravaju:
+</p>
+
+<ul>
+  <li>aktuelni i neuspešni backup poslovi;</li>
+  <li>novi snapshot-i;</li>
+  <li>stanje „Virtual machine disks consolidation is needed”;</li>
+  <li>veličina delta datoteka;</li>
+  <li>promene u aplikacionom opterećenju;</li>
+  <li>novi VM-ovi, klonovi ili ISO slike.</li>
+</ul>
+
+<p>
+Backup kopija ne treba da bude smeštena samo na istom datastore-u kao produkcioni VM. Kvar datastore-a tada bi istovremeno ugrozio i primarne podatke i backup.
+</p>
+
+<h3>Performanse datastore-a</h3>
+
+<p>
+Veliki slobodan kapacitet ne znači automatski dobre performanse. Datastore može imati dovoljno prostora, a da VM-ovi ipak rade sporo zbog visoke latencije, nedovoljnog broja diskova, zasićenih storage kontrolera, problema sa putanjama ili velikog broja istovremenih I/O operacija.
+</p>
+
+<p>
+Važni pokazatelji su:
+</p>
+
+<ul>
+  <li><strong>IOPS</strong> – broj ulazno-izlaznih operacija u sekundi;</li>
+  <li><strong>throughput</strong> – količina prenetih podataka u jedinici vremena;</li>
+  <li><strong>latency</strong> – vreme potrebno da se I/O zahtev obradi;</li>
+  <li><strong>queue depth</strong> – broj zahteva koji čekaju obradu;</li>
+  <li><strong>read/write odnos</strong> – karakter opterećenja;</li>
+  <li><strong>blok veličina</strong> – veličina pojedinačnih I/O operacija;</li>
+  <li><strong>path stanje</strong> – broj i status dostupnih storage putanja.</li>
+</ul>
+
+<p>
+U vSphere Client-u performanse se proveravaju izborom datastore-a ili hosta i otvaranjem:
+</p>
+
+<pre><code class="language-none">Monitor → Performance → Advanced</code></pre>
+
+<p>
+Za realnu dijagnostiku treba posmatrati korelaciju između VM, host i datastore metrika. Jedan spor VM ne mora značiti spor datastore, dok istovremeno usporenje većeg broja VM-ova na istom datastore-u snažno ukazuje na zajednički storage problem.
+</p>
+
+<h3>Praćenje storage-a kroz esxtop</h3>
+
+<p>
+Komanda:
+</p>
+
+<pre><code class="language-bash">esxtop</code></pre>
+
+<p>
+zatim taster:
+</p>
+
+<pre><code class="language-none">u</code></pre>
+
+<p>
+otvara prikaz storage uređaja. U zavisnosti od prikaza i verzije, administrator prati metrike kao što su:
+</p>
+
+<ul>
+  <li><strong>DAVG/cmd</strong> – prosečno vreme obrade zahteva na storage uređaju;</li>
+  <li><strong>KAVG/cmd</strong> – vreme provedeno u ESXi kernel sloju;</li>
+  <li><strong>GAVG/cmd</strong> – ukupna latencija koju VM vidi;</li>
+  <li><strong>CMDS/s</strong> – broj komandi u sekundi;</li>
+  <li><strong>READS/s i WRITES/s</strong> – broj čitanja i upisa;</li>
+  <li><strong>MBREAD/s i MBWRTN/s</strong> – količina pročitanih i upisanih podataka.</li>
+</ul>
+
+<p>
+Visoka DAVG vrednost obično usmerava analizu ka storage uređaju, fabric mreži ili storage sistemu. Visoka KAVG vrednost može ukazivati na redove i zadržavanje unutar hosta. GAVG predstavlja zbir različitih komponenti kašnjenja i pokazuje ukupan efekat koji radno opterećenje oseća.
+</p>
+
+<p>
+Vrednosti se moraju tumačiti u kontekstu konkretnog storage sistema i njegovih očekivanih performansi. Jedan trenutni skok nije isto što i trajna povišena latencija tokom perioda u kojem aplikacije prijavljuju problem.
+</p>
+
+<h3>Rescan storage adaptera</h3>
+
+<p>
+Kada storage tim predstavi novi LUN ili se putanja ponovo uspostavi, ESXi host mora osvežiti pogled na storage uređaje.
+</p>
+
+<p>
+Pregled adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter list</code></pre>
+
+<p>
+Rescan svih adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<p>
+Nakon toga proverava se:
+</p>
+
+<pre><code class="language-bash">esxcli storage core device list
+esxcli storage vmfs extent list
+esxcli storage filesystem list</code></pre>
+
+<p>
+Rescan ne treba koristiti kao nasumično rešenje za svaki storage problem. Pre izvršavanja u produkciji treba razumeti obim incidenta, stanje storage sistema i moguće posledice većeg broja istovremenih rescan operacija na svim hostovima.
+</p>
+
+<h3>Montiranje i demontiranje datastore-a</h3>
+
+<p>
+Pregled montiranih i nemontiranih filesystem-a:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list</code></pre>
+
+<p>
+Montiranje prema labeli:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem mount -l PROD-VMFS01</code></pre>
+
+<p>
+Montiranje prema UUID-u:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem mount -u 681f2b5a-a1b2c3d4-1122-001122334455</code></pre>
+
+<p>
+Demontiranje:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem unmount -l PROD-VMFS01</code></pre>
+
+<p>
+Demontiranje datastore-a je kontrolisana administrativna promena, a ne obična komanda za rešavanje problema. Pre toga mora se proveriti da datastore:
+</p>
+
+<ul>
+  <li>ne sadrži aktivne VM-ove;</li>
+  <li>nije odredište HA heartbeat-a koje je i dalje potrebno klasteru;</li>
+  <li>ne sadrži registrovane template-e koji se koriste;</li>
+  <li>nije podešen za host scratch, core dump, logove ili swap;</li>
+  <li>nije deo aktivnog Storage DRS procesa;</li>
+  <li>nema otvorene datoteke i aktivne zadatke;</li>
+  <li>više nije potreban nijednom hostu na kojem se uklanja.</li>
+</ul>
+
+<p>
+Kod trajnog uklanjanja LUN-a pravilni redosled obično uključuje migraciju ili uklanjanje potrošača, demontiranje datastore-a na svim hostovima, odvajanje uređaja, uklanjanje prezentacije sa storage strane i završni rescan. Preskakanje koraka može izazvati APD događaje, greške ili nekonzistentan prikaz storage-a.
+</p>
+
+<h3>APD i PDL stanja</h3>
+
+<p>
+Kod ozbiljnih storage prekida administrator može naići na izraze APD i PDL.
+</p>
+
+<ul>
+  <li><strong>APD – All Paths Down</strong> označava da su sve putanje do uređaja trenutno nedostupne, ali host nema potvrdu da je uređaj trajno uklonjen.</li>
+  <li><strong>PDL – Permanent Device Loss</strong> označava stanje u kojem storage sistem hostu jasno saopštava da uređaj više nije dostupan i da se pristup neće obnoviti u postojećem obliku.</li>
+</ul>
+
+<p>
+APD može biti posledica prekida mreže, fabric problema, restarta storage kontrolera ili drugih privremenih događaja. PDL se može javiti kada je LUN pogrešno uklonjen ili trajno povučen bez pravilne procedure.
+</p>
+
+<p>
+Kod ovih stanja najvažnije je izbeći panične i destruktivne komande. Prvo se prikupljaju podaci iz vCenter događaja, <code>vmkernel.log</code>, stanja putanja i storage sistema, a zatim se odluke donose zajedno sa storage i mrežnim timom.
+</p>
+
+<h3>Logovi važni za datastore troubleshooting</h3>
+
+<p>
+Najvažniji ESXi log za veliki broj storage problema je:
+</p>
+
+<pre><code class="language-none">/var/run/log/vmkernel.log</code></pre>
+
+<p>
+Pregled poslednjih poruka:
+</p>
+
+<pre><code class="language-bash">tail -n 100 /var/run/log/vmkernel.log</code></pre>
+
+<p>
+Praćenje novih poruka:
+</p>
+
+<pre><code class="language-bash">tail -f /var/run/log/vmkernel.log</code></pre>
+
+<p>
+Pretraga storage termina:
+</p>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|NMP|VMFS|I/O error|nfs|iscsi|scsi" \
+/var/run/log/vmkernel.log | tail -n 100</code></pre>
+
+<p>
+Dodatno se proveravaju:
+</p>
+
+<ul>
+  <li><code>/var/run/log/hostd.log</code> – zadaci i upravljanje hostom;</li>
+  <li><code>/var/run/log/vobd.log</code> – sistemski događaji i VOB poruke;</li>
+  <li><code>/var/run/log/vmkernel.log</code> – kernel, storage adapteri, putanje, uređaji i VMFS;</li>
+  <li>vCenter Events i Tasks – vremenska linija promena i alarma;</li>
+  <li>logovi storage sistema, SAN switch-eva, NAS uređaja ili iSCSI mreže.</li>
+</ul>
+
+<h3>Metodologija za datastore troubleshooting</h3>
+
+<p>
+Dobar administrator ne počinje nasumičnim restartovanjem servisa i ponavljanjem rescan komandi. Najpre određuje obim problema.
+</p>
+
+<h4>1. Utvrditi šta je pogođeno</h4>
+
+<ul>
+  <li>Jedna virtuelna mašina?</li>
+  <li>Sve virtuelne mašine na jednom datastore-u?</li>
+  <li>Svi datastore-i na jednom hostu?</li>
+  <li>Jedan datastore na svim hostovima?</li>
+  <li>Čitav storage sistem?</li>
+</ul>
+
+<h4>2. Utvrditi vrstu problema</h4>
+
+<ul>
+  <li>nedostupnost;</li>
+  <li>visoka latencija;</li>
+  <li>popunjenost;</li>
+  <li>gubitak jedne ili svih putanja;</li>
+  <li>nemogućnost montiranja;</li>
+  <li>greška filesystem-a;</li>
+  <li>snapshot rast;</li>
+  <li>problem sa pravima ili NFS export-om.</li>
+</ul>
+
+<h4>3. Proveriti vremensku liniju</h4>
+
+<ul>
+  <li>Kada je problem počeo?</li>
+  <li>Da li je prethodila promena na storage sistemu?</li>
+  <li>Da li je promenjen zoning ili masking?</li>
+  <li>Da li je pokrenut backup, snapshot, kloniranje ili Storage vMotion?</li>
+  <li>Da li je host restartovan ili ažuriran?</li>
+  <li>Da li postoji mrežni incident?</li>
+</ul>
+
+<h4>4. Uporediti hostove</h4>
+
+<p>
+Ako drugi hostovi normalno vide isti datastore, verovatnije je da je problem lokalizovan na host, HBA, VMkernel interfejs, mrežni uplink ili pojedinačnu putanju. Ako ga nijedan host ne vidi, analiza se širi na storage sistem, SAN fabric, NAS servis ili zajedničku mrežnu infrastrukturu.
+</p>
+
+<h4>5. Sačuvati dokaze pre promene</h4>
+
+<p>
+Pre restartovanja servisa, demontiranja datastore-a ili reboot-a hosta treba sačuvati:
+</p>
+
+<ul>
+  <li>vCenter alarme i događaje;</li>
+  <li>izlaz ključnih ESXi komandi;</li>
+  <li>relevantne log poruke sa vremenom događaja;</li>
+  <li>screenshot ili izvoz performansi;</li>
+  <li>informacije o pogođenim VM-ovima;</li>
+  <li>stanje storage kontrolera i mrežnih uređaja.</li>
+</ul>
+
+<h3>Praktikum 1 – Inventar i mapiranje datastore infrastrukture</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Napraviti tačan inventar datastore-a, njihovih tipova, kapaciteta, slobodnog prostora, povezanih hostova i virtuelnih mašina.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>pristup vCenter Serveru;</li>
+  <li>PowerCLI instaliran na administratorskoj radnoj stanici;</li>
+  <li>nalog sa pravom čitanja inventory-ja;</li>
+  <li>najmanje dva datastore-a u laboratoriji.</li>
+</ul>
+
+<h4>Korak 1 – Pregled kroz vSphere Client</h4>
+
+<ol>
+  <li>Otvoriti <strong>Menu → Storage</strong>.</li>
+  <li>Zabeležiti ime, tip, kapacitet i slobodan prostor svakog datastore-a.</li>
+  <li>Za svaki datastore otvoriti karticu <strong>Hosts</strong>.</li>
+  <li>Proveriti da li ga vide svi očekivani hostovi.</li>
+  <li>Otvoriti karticu <strong>VMs</strong> i zabeležiti broj VM-ova.</li>
+  <li>Proveriti aktivne alarme i događaje.</li>
+</ol>
+
+<h4>Korak 2 – Pregled kroz PowerCLI</h4>
+
+<pre><code class="language-powershell">Connect-VIServer -Server vcsa.lab.local
+
+Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }} |
+Sort-Object FreePercent</code></pre>
+
+<h4>Korak 3 – Izvoz inventara</h4>
+
+<pre><code class="language-powershell">Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }} |
+Export-Csv "./vmware-datastores.csv" -NoTypeInformation</code></pre>
+
+<h4>Korak 4 – Povezivanje VM-ova sa datastore-om</h4>
+
+<pre><code class="language-powershell">Get-Datastore -Name "PROD-VMFS01" |
+Get-VM |
+Select-Object Name, PowerState, VMHost</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Administrator dobija dokumentovan pregled storage infrastrukture i može brzo da odgovori:
+</p>
+
+<ul>
+  <li>koji datastore ima najmanje prostora;</li>
+  <li>koji hostovi imaju pristup određenom datastore-u;</li>
+  <li>koji VM-ovi zavise od njega;</li>
+  <li>da li postoji datastore koji vidi samo deo klastera.</li>
+</ul>
+
+<h4>Administratorska provera</h4>
+
+<p>
+Ako jedan host ne vidi datastore koji vide ostali hostovi klastera, to treba evidentirati kao konfiguracioni ili operativni problem čak i ako trenutno nijedan VM nije pogođen.
+</p>
+
+<h3>Praktikum 2 – Kreiranje laboratorijskog VMFS datastore-a</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Kreirati novi VMFS datastore nad praznim laboratorijskim uređajem i proveriti njegovu dostupnost.
+</p>
+
+<h4>Važno upozorenje</h4>
+
+<p>
+Ova vežba sme se izvoditi isključivo nad praznim laboratorijskim diskom ili LUN-om. Kreiranje VMFS datastore-a formatira izabrani prostor i može uništiti postojeće podatke.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>ESXi host vidi dodatni prazan storage uređaj;</li>
+  <li>uređaj nije deo postojećeg datastore-a;</li>
+  <li>uređaj nije boot, scratch ili aktivni sistemski disk;</li>
+  <li>administrator je proverio canonical naziv i kapacitet.</li>
+</ul>
+
+<h4>Korak 1 – Identifikacija uređaja</h4>
+
+<pre><code class="language-bash">esxcli storage core device list -c</code></pre>
+
+<p>
+Zabeležiti canonical naziv laboratorijskog uređaja, na primer:
+</p>
+
+<pre><code class="language-none">naa.6000c29abcdef123456789000000001</code></pre>
+
+<h4>Korak 2 – Kreiranje kroz vSphere Client</h4>
+
+<ol>
+  <li>Izabrati ESXi host.</li>
+  <li>Otvoriti <strong>Storage → Datastores</strong>.</li>
+  <li>Izabrati <strong>New datastore</strong>.</li>
+  <li>Izabrati <strong>Create new VMFS datastore</strong>.</li>
+  <li>Uneti naziv <code>LAB-VMFS01</code>.</li>
+  <li>Pažljivo izabrati prethodno identifikovan prazan uređaj.</li>
+  <li>Izabrati odgovarajuću VMFS verziju.</li>
+  <li>Pregledati sažetak i potvrditi operaciju.</li>
+</ol>
+
+<h4>Korak 3 – Verifikacija kroz CLI</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+esxcli storage vmfs extent list
+vmkfstools -P /vmfs/volumes/LAB-VMFS01</code></pre>
+
+<h4>Korak 4 – Provera putanje</h4>
+
+<pre><code class="language-bash">ls -l /vmfs/volumes
+ls -lah /vmfs/volumes/LAB-VMFS01</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Datastore <code>LAB-VMFS01</code> prikazan je kao montiran, koristi VMFS i povezan je sa očekivanim storage uređajem.
+</p>
+
+<h4>Dodatni zadatak</h4>
+
+<p>
+Kreirati mali test VM na novom datastore-u, pokrenuti ga, a zatim proveriti da li se njegov folder i datoteke pojavljuju u Datastore Browser-u.
+</p>
+
+<h3>Praktikum 3 – Organizacija ISO repozitorijuma i kontrola sadržaja</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Napraviti uredan ISO repozitorijum, uploadovati instalacionu sliku, povezati je sa VM-om i proveriti da li je kasnije ostala nepotrebno priključena.
+</p>
+
+<h4>Korak 1 – Kreiranje direktorijuma</h4>
+
+<p>
+U Datastore Browser-u otvoriti datastore namenjen ISO sadržaju i kreirati strukturu:
+</p>
+
+<pre><code class="language-none">ISO/
+├── Linux/
+├── Windows/
+├── VMware-Tools/
+└── Archived/</code></pre>
+
+<h4>Korak 2 – Upload ISO slike</h4>
+
+<ol>
+  <li>Otvoriti odgovarajući direktorijum.</li>
+  <li>Izabrati <strong>Upload</strong>.</li>
+  <li>Odabrati laboratorijsku ISO sliku.</li>
+  <li>Sačekati završetak zadatka.</li>
+  <li>Proveriti veličinu uploadovanog fajla.</li>
+</ol>
+
+<h4>Korak 3 – Povezivanje sa VM-om</h4>
+
+<ol>
+  <li>Otvoriti <strong>Edit Settings</strong> test virtuelne mašine.</li>
+  <li>Izabrati CD/DVD uređaj.</li>
+  <li>Izabrati <strong>Datastore ISO File</strong>.</li>
+  <li>Odabrati uploadovanu sliku.</li>
+  <li>Uključiti <strong>Connect At Power On</strong> samo ako je potrebno.</li>
+</ol>
+
+<h4>Korak 4 – Provera VM konfiguracije</h4>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms</code></pre>
+
+<p>
+Nakon utvrđivanja VMID-a:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/device.getdevices VMID</code></pre>
+
+<h4>Korak 5 – Čišćenje</h4>
+
+<p>
+Po završetku instalacije odvojiti ISO od VM-a. Pre brisanja stare ISO slike proveriti da li je ijedan VM još koristi.
+</p>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+ISO sadržaj je centralizovan, organizovan i kontrolisan. Administrator ne ostavlja nasumične ISO slike u folderima produkcionih VM-ova.
+</p>
+
+<h3>Praktikum 4 – Monitoring kapaciteta i alarm za nizak slobodan prostor</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Identifikovati datastore-e sa rizično niskim slobodnim prostorom i pripremiti izveštaj za kapacitivno planiranje.
+</p>
+
+<h4>Korak 1 – PowerCLI izveštaj</h4>
+
+<pre><code class="language-powershell">$report = Get-Datastore |
+Where-Object { $_.CapacityGB -gt 0 } |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="UsedGB";Expression={
+                  [math]::Round($_.CapacityGB - $_.FreeSpaceGB, 2)
+              }},
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }}
+
+$report | Sort-Object FreePercent | Format-Table -AutoSize</code></pre>
+
+<h4>Korak 2 – Filtriranje kritičnih datastore-a</h4>
+
+<pre><code class="language-powershell">$report |
+Where-Object { $_.FreePercent -lt 20 } |
+Export-Csv "./datastore-capacity-warning.csv" -NoTypeInformation</code></pre>
+
+<h4>Korak 3 – Kreiranje alarma</h4>
+
+<p>
+U vCenter Serveru pronaći datastore usage alarm ili kreirati odgovarajući alarm prema pravilima konkretnog okruženja. Pragove treba uskladiti sa veličinom datastore-a, stopom rasta, snapshot politikom i operativnim procedurama.
+</p>
+
+<p>
+Primer organizacionih pragova:
+</p>
+
+<ul>
+  <li>upozorenje kada je slobodno manje od 20%;</li>
+  <li>kritično kada je slobodno manje od 10%;</li>
+  <li>dodatni apsolutni prag za vrlo velike datastore-e;</li>
+  <li>hitna eskalacija kada trenutna stopa rasta pokazuje da će prostor uskoro biti iscrpljen.</li>
+</ul>
+
+<h4>Korak 4 – Analiza potrošača</h4>
+
+<pre><code class="language-powershell">Get-Datastore -Name "PROD-VMFS01" |
+Get-VM |
+Select-Object Name,
+              PowerState,
+              @{Name="ProvisionedGB";Expression={
+                  [math]::Round($_.ProvisionedSpaceGB, 2)
+              }},
+              @{Name="UsedGB";Expression={
+                  [math]::Round($_.UsedSpaceGB, 2)
+              }} |
+Sort-Object UsedGB -Descending</code></pre>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Administrator ima pregled rizika pre nego što datastore postane potpuno pun i može planirati čišćenje, migraciju ili proširenje kapaciteta.
+</p>
+
+<h3>Praktikum 5 – Storage vMotion test virtuelne mašine</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Premestiti datoteke test virtuelne mašine između dva datastore-a bez promene njenog compute hosta, ako okruženje podržava ovu funkcionalnost.
+</p>
+
+<h4>Preduslovi</h4>
+
+<ul>
+  <li>dva dostupna datastore-a;</li>
+  <li>dovoljno slobodnog prostora na odredištu;</li>
+  <li>odgovarajuće licence i privilegije;</li>
+  <li>odredišni datastore kompatibilan je sa VM-om;</li>
+  <li>nema aktivnih konflikata, blokirajućih uređaja ili neusaglašenih politika.</li>
+</ul>
+
+<h4>Korak 1 – Početna provera</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-APP01" |
+Select-Object Name,
+              VMHost,
+              @{Name="Datastore";Expression={
+                  (Get-Datastore -VM $_).Name -join ", "
+              }}</code></pre>
+
+<h4>Korak 2 – Migracija kroz vSphere Client</h4>
+
+<ol>
+  <li>Desni klik na test VM.</li>
+  <li>Izabrati <strong>Migrate</strong>.</li>
+  <li>Izabrati <strong>Change storage only</strong>.</li>
+  <li>Izabrati odredišni datastore.</li>
+  <li>Proveriti kompatibilnost.</li>
+  <li>Pregledati sažetak i pokrenuti migraciju.</li>
+  <li>Pratiti zadatak u <strong>Recent Tasks</strong>.</li>
+</ol>
+
+<h4>Korak 3 – PowerCLI varijanta</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "LAB-APP01"
+$targetDatastore = Get-Datastore -Name "LAB-VMFS02"
+
+Move-VM -VM $vm -Datastore $targetDatastore</code></pre>
+
+<h4>Korak 4 – Verifikacija</h4>
+
+<pre><code class="language-powershell">Get-VM -Name "LAB-APP01" |
+Select-Object Name,
+              PowerState,
+              VMHost,
+              @{Name="Datastore";Expression={
+                  (Get-Datastore -VM $_).Name -join ", "
+              }}</code></pre>
+
+<p>
+Proveriti i rad aplikacije ili operativnog sistema gosta tokom i nakon migracije.
+</p>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+VM ostaje dostupan, a njegove datoteke prelaze na odredišni datastore. Na izvornom datastore-u ne treba nasumično ručno brisati eventualne ostatke bez prethodne provere zadatka, logova i aktivnih referenci.
+</p>
+
+<h3>Praktikum 6 – Kontrolisana dijagnostika nestalog datastore-a</h3>
+
+<h4>Cilj</h4>
+
+<p>
+Uvežbati redosled provera kada jedan ESXi host ne prikazuje datastore koji drugi hostovi i dalje vide.
+</p>
+
+<h4>Bezbednosno pravilo</h4>
+
+<p>
+Vežba se izvodi bez demontiranja produkcionog datastore-a i bez prekidanja aktivne putanje. Cilj je dijagnostički postupak, a ne namerno izazivanje incidenta.
+</p>
+
+<h4>Korak 1 – Uporediti hostove</h4>
+
+<p>
+Na pogođenom i zdravom hostu izvršiti:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+esxcli storage vmfs extent list
+esxcli storage core adapter list
+esxcli storage core path list</code></pre>
+
+<h4>Korak 2 – Proveriti uređaj</h4>
+
+<pre><code class="language-bash">esxcli storage core device list -c</code></pre>
+
+<p>
+Utvrditi da li pogođeni host vidi isti canonical uređaj kao zdravi host.
+</p>
+
+<h4>Korak 3 – Proveriti logove</h4>
+
+<pre><code class="language-bash">grep -Ei "APD|PDL|NMP|VMFS|I/O error|scsi" \
+/var/run/log/vmkernel.log | tail -n 100</code></pre>
+
+<h4>Korak 4 – Rescan, samo kada je opravdan</h4>
+
+<pre><code class="language-bash">esxcli storage core adapter rescan --all</code></pre>
+
+<h4>Korak 5 – Ponovna verifikacija</h4>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+esxcli storage vmfs extent list</code></pre>
+
+<h4>Korak 6 – Dokumentovanje</h4>
+
+<p>
+Zabeležiti:
+</p>
+
+<ul>
+  <li>vreme problema;</li>
+  <li>pogođeni host;</li>
+  <li>naziv i UUID datastore-a;</li>
+  <li>canonical naziv uređaja;</li>
+  <li>stanje putanja;</li>
+  <li>relevantne log poruke;</li>
+  <li>rezultat rescan operacije;</li>
+  <li>da li drugi hostovi vide datastore.</li>
+</ul>
+
+<h4>Očekivani rezultat</h4>
+
+<p>
+Administrator može da razlikuje problem prezentacije uređaja, problem putanje, nemontiran filesystem i širi kvar storage sistema.
+</p>
+
+<h3>Scenario iz prakse 1 – Datastore je dostigao 100% kapaciteta</h3>
+
+<h4>Simptomi</h4>
+
+<ul>
+  <li>VM se zamrzava ili prelazi u problematično stanje;</li>
+  <li>snapshot ne može da se kreira ili ukloni;</li>
+  <li>backup posao pada;</li>
+  <li>Storage vMotion ne može da počne;</li>
+  <li>vCenter prikazuje alarm za kapacitet;</li>
+  <li>VM log sadrži poruke o nedostatku prostora.</li>
+</ul>
+
+<h4>Prvi odgovor administratora</h4>
+
+<p>
+Ne treba odmah nasumično brisati velike VMDK ili delta datoteke. Prvo treba utvrditi šta je izazvalo rast.
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+vdf -h
+ls -lah /vmfs/volumes/PROD-VMFS01</code></pre>
+
+<p>
+Zatim kroz vSphere Client i PowerCLI treba proveriti najveće VM potrošače, aktivne snapshot-e, backup zadatke, ISO slike i nedavne klonove.
+</p>
+
+<h4>Bezbedan redosled aktivnosti</h4>
+
+<ol>
+  <li>Potvrditi koji datastore je pun i koji VM-ovi su pogođeni.</li>
+  <li>Zaustaviti ili odložiti nove zadatke koji dodatno troše prostor.</li>
+  <li>Proveriti da li postoji bezbedan sadržaj za uklanjanje, na primer nepotrebne ISO slike ili provereno napuštene datoteke.</li>
+  <li>Migrirati odgovarajuće VM-ove na drugi datastore ako postoji kapacitet.</li>
+  <li>Proširiti datastore ako storage arhitektura i procedura to dozvoljavaju.</li>
+  <li>Snapshot konsolidaciju izvoditi tek nakon procene potrebnog prostora i opterećenja.</li>
+  <li>Pratiti VM i storage performanse tokom oporavka.</li>
+</ol>
+
+<h4>Šta ne treba raditi</h4>
+
+<ul>
+  <li>ne brisati <code>-flat.vmdk</code> datoteke;</li>
+  <li>ne brisati snapshot delta datoteke ručno;</li>
+  <li>ne pretpostavljati da je svaka velika datoteka nepotrebna;</li>
+  <li>ne pokretati više velikih konsolidacija istovremeno;</li>
+  <li>ne odlagati incident ako slobodan prostor nastavlja brzo da opada.</li>
+</ul>
+
+<h3>Scenario iz prakse 2 – Datastore je vidljiv na dva hosta, ali nije vidljiv na trećem</h3>
+
+<h4>Mogući uzroci</h4>
+
+<ul>
+  <li>LUN nije predstavljen trećem hostu;</li>
+  <li>pogrešan SAN zoning ili LUN masking;</li>
+  <li>HBA adapter ili putanja nije aktivna;</li>
+  <li>iSCSI VMkernel mreža ne radi;</li>
+  <li>host nije obavio rescan;</li>
+  <li>filesystem postoji, ali nije montiran;</li>
+  <li>NFS export ne dozvoljava pristup IP adresi trećeg hosta.</li>
+</ul>
+
+<h4>Dijagnostika</h4>
+
+<p>
+Na zdravom i pogođenom hostu uporediti:
+</p>
+
+<pre><code class="language-bash">esxcli storage core adapter list
+esxcli storage core device list -c
+esxcli storage core path list
+esxcli storage vmfs extent list
+esxcli storage filesystem list</code></pre>
+
+<p>
+Ako uređaj uopšte nije prikazan, problem je pre VMFS sloja. Treba proveriti storage prezentaciju, zoning, masking, iSCSI sesiju ili mrežnu dostupnost.
+</p>
+
+<p>
+Ako je uređaj vidljiv, ali datastore nije montiran, proveravaju se UUID, mount status i <code>vmkernel.log</code>.
+</p>
+
+<h4>Zaključak incidenta</h4>
+
+<p>
+Rescan može pomoći tek kada je osnovna storage prezentacija ili mrežna komunikacija ispravna. Rescan ne može popraviti pogrešan zoning, nepostojeću iSCSI rutu ili NFS zabranu pristupa.
+</p>
+
+<h3>Scenario iz prakse 3 – Sve virtuelne mašine na jednom datastore-u rade sporo</h3>
+
+<h4>Simptomi</h4>
+
+<ul>
+  <li>više nepovezanih aplikacija istovremeno prijavljuje kašnjenje;</li>
+  <li>CPU i memorija hostova nisu zasićeni;</li>
+  <li>VM-ovi na drugim datastore-ima rade normalno;</li>
+  <li>vCenter prikazuje povišenu storage latenciju;</li>
+  <li>backup ili veliki batch posao radi u istom periodu.</li>
+</ul>
+
+<h4>Analiza</h4>
+
+<ol>
+  <li>Potvrditi da pogođeni VM-ovi dele isti datastore.</li>
+  <li>Proveriti datastore performance grafikone.</li>
+  <li>Pokrenuti <code>esxtop</code> i otvoriti storage prikaz.</li>
+  <li>Proveriti stanje svih putanja.</li>
+  <li>Proveriti da li je jedna putanja ostala aktivna umesto očekivanog multipath skupa.</li>
+  <li>Proveriti storage array alarme, kontrolere, cache i backend diskove.</li>
+  <li>Proveriti istovremene snapshot, backup, clone i Storage vMotion operacije.</li>
+</ol>
+
+<h4>Mogući nalaz</h4>
+
+<p>
+Jedna SAN putanja je otkazala, a preostala putanja je postala zasićena. VM-ovi nisu izgubili datastore, ali je ukupna propusnost smanjena i latencija povećana.
+</p>
+
+<h4>Ispravna reakcija</h4>
+
+<p>
+Ne treba restartovati sve VM-ove. Treba obnoviti redundansu storage putanja, smanjiti nepotrebno I/O opterećenje i pratiti povratak latencije na uobičajeni nivo.
+</p>
+
+<h3>Scenario iz prakse 4 – VM je uklonjen iz inventory-ja, ali njegove datoteke postoje</h3>
+
+<h4>Situacija</h4>
+
+<p>
+Administrator je izabrao <strong>Remove from Inventory</strong>, a ne <strong>Delete from Disk</strong>. VM više nije prikazan u vCenter inventory-ju, ali njegov folder postoji na datastore-u.
+</p>
+
+<h4>Provera</h4>
+
+<pre><code class="language-bash">ls -lah /vmfs/volumes/PROD-VMFS01/APP-SRV01</code></pre>
+
+<p>
+Treba potvrditi postojanje glavnog VMX fajla:
+</p>
+
+<pre><code class="language-none">/vmfs/volumes/PROD-VMFS01/APP-SRV01/APP-SRV01.vmx</code></pre>
+
+<h4>Oporavak kroz vSphere Client</h4>
+
+<ol>
+  <li>Otvoriti Datastore Browser.</li>
+  <li>Pronaći folder VM-a.</li>
+  <li>Izabrati odgovarajući <code>.vmx</code> fajl.</li>
+  <li>Izabrati <strong>Register VM</strong>.</li>
+  <li>Odabrati ime, folder, compute resurs i host ili klaster.</li>
+  <li>Proveriti mreže, diskove i konfiguraciju pre pokretanja.</li>
+</ol>
+
+<h4>Važna provera</h4>
+
+<p>
+Pre registracije treba proveriti da ista virtuelna mašina nije već registrovana pod drugim imenom ili u drugom vCenter Serveru. Dvostruka registracija i pokušaj paralelnog pokretanja mogu izazvati zaključavanje datoteka i ozbiljne probleme.
+</p>
+
+<h3>Scenario iz prakse 5 – Datastore je posle restarta hosta prikazan kao nemontiran</h3>
+
+<h4>Simptomi</h4>
+
+<ul>
+  <li>storage uređaj je vidljiv;</li>
+  <li>datastore je prikazan sa statusom <code>Mounted: false</code>;</li>
+  <li>drugi hostovi možda i dalje koriste isti datastore;</li>
+  <li>VMFS extent postoji, ali filesystem nije dostupan pogođenom hostu.</li>
+</ul>
+
+<h4>Provera</h4>
+
+<pre><code class="language-bash">esxcli storage core device list -c
+esxcli storage vmfs extent list
+esxcli storage filesystem list</code></pre>
+
+<p>
+Ako je potvrđeno da je to očekivani originalni datastore, nema konflikta sa resignature kopijom i storage putanje su stabilne, montiranje se može izvršiti prema labeli ili UUID-u:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem mount -l PROD-VMFS01</code></pre>
+
+<p>
+Nakon toga:
+</p>
+
+<pre><code class="language-bash">esxcli storage filesystem list
+vmkfstools -P /vmfs/volumes/PROD-VMFS01</code></pre>
+
+<h4>Važna napomena</h4>
+
+<p>
+Ako ESXi prepoznaje uređaj kao snapshot kopiju VMFS volumena ili postoji više kopija sa istim potpisom, ne treba nasumično montirati ili resignature-ovati datastore. Prvo treba utvrditi poreklo LUN-a i namenu kopije.
+</p>
+
+<h3>Scenario iz prakse 6 – Storage vMotion ne može da premesti VM</h3>
+
+<h4>Mogući simptomi</h4>
+
+<ul>
+  <li>odredišni datastore nije kompatibilan;</li>
+  <li>nema dovoljno slobodnog prostora;</li>
+  <li>aktivni snapshot ili disk lanac stvara problem;</li>
+  <li>VM koristi uređaj ili funkcionalnost koja blokira migraciju;</li>
+  <li>storage politika nije zadovoljena;</li>
+  <li>datastore ima problem sa dostupnošću ili latencijom;</li>
+  <li>postoje zaključane datoteke;</li>
+  <li>prethodni zadatak je ostao u toku ili je neuspešno završen.</li>
+</ul>
+
+<h4>Redosled provere</h4>
+
+<ol>
+  <li>Pročitati punu poruku greške u Recent Tasks.</li>
+  <li>Proveriti kapacitet odredišta.</li>
+  <li>Proveriti kompatibilnost u migracionom čarobnjaku.</li>
+  <li>Proveriti snapshot-e i zahtev za konsolidaciju.</li>
+  <li>Proveriti storage politike i dostupnost datastore-a svim relevantnim hostovima.</li>
+  <li>Proveriti <code>vmware.log</code>, <code>hostd.log</code> i <code>vmkernel.log</code>.</li>
+  <li>Proveriti da li već postoji aktivna migracija, backup ili kloniranje.</li>
+</ol>
+
+<h4>Primer PowerCLI provere</h4>
+
+<pre><code class="language-powershell">$vm = Get-VM -Name "LAB-APP01"
+
+$vm |
+Select-Object Name,
+              PowerState,
+              VMHost,
+              ProvisionedSpaceGB,
+              UsedSpaceGB
+
+Get-Snapshot -VM $vm
+
+Get-Datastore -VM $vm |
+Select-Object Name, CapacityGB, FreeSpaceGB</code></pre>
+
+<h4>Pravilna reakcija</h4>
+
+<p>
+Uzrok se rešava pre ponovnog pokretanja migracije. Višestruko ponavljanje istog neuspešnog zadatka bez analize samo povećava broj događaja i može dodatno opteretiti infrastrukturu.
+</p>
+
+<h3>Najčešće administratorske greške</h3>
+
+<ul>
+  <li>Posmatranje datastore-a samo kroz slobodan kapacitet, bez praćenja latencije i putanja.</li>
+  <li>Ručno brisanje datoteka čija uloga nije potvrđena.</li>
+  <li>Dugotrajno čuvanje snapshot-a kao zamene za backup.</li>
+  <li>Predstavljanje različitog skupa LUN-ova hostovima istog klastera bez jasnog razloga.</li>
+  <li>Korišćenje jednog datastore-a za sve produkcione, testne i ISO sadržaje.</li>
+  <li>Odsustvo alarma za kapacitet i nedostatak kapacitivnog planiranja.</li>
+  <li>Pokretanje više velikih Storage vMotion, snapshot konsolidacija i backup poslova u isto vreme.</li>
+  <li>Uklanjanje LUN-a sa storage sistema pre pravilnog unmount i detach postupka na ESXi hostovima.</li>
+  <li>Ignorisanje jednog izgubljenog storage path-a zato što datastore i dalje radi.</li>
+  <li>Čuvanje jedine backup kopije na istom storage sistemu kao produkcija.</li>
+  <li>Neusklađeni nazivi datastore-a bez informacije o lokaciji, nameni i nivou usluge.</li>
+  <li>Korišćenje SSH pristupa za promene bez change evidencije i dokumentovanja izvršenih komandi.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<h4>Standardizovati nazive</h4>
+
+<p>
+Naziv datastore-a treba da prenese korisnu informaciju, na primer:
+</p>
+
+<pre><code class="language-none">BG-DC1-PROD-VMFS01
+BG-DC1-TEST-NFS01
+BG-DC1-ISO-NFS01
+BG-DC1-BACKUP-REPO01</code></pre>
+
+<p>
+Standard može sadržati lokaciju, namenu, tip storage-a i redni broj, ali treba izbegavati predugačke i nejasne nazive.
+</p>
+
+<h4>Održavati operativnu rezervu</h4>
+
+<p>
+Praktična rezerva zavisi od veličine datastore-a, rasta VM-ova, snapshot politike i vrste poslova. Fiksno pravilo nije dovoljno za svako okruženje, ali produkcioni datastore ne treba redovno održavati blizu punog kapaciteta.
+</p>
+
+<p>
+Za VM-ove kod kojih se očekuju veliki snapshot-i ili intenzivne backup operacije treba planirati dodatni prostor. Broadcom preporuke za velike snapshot operacije naglašavaju potrebu za značajnom slobodnom rezervom, jer nedostatak prostora može izazvati neuspeh snapshot-a ili virtuelne mašine.
+</p>
+
+<h4>Pratiti trend, a ne samo trenutnu vrednost</h4>
+
+<p>
+Datastore sa 30% slobodnog prostora može biti rizičniji od datastore-a sa 15% ako prvi gubi nekoliko stotina gigabajta dnevno. Izveštaji treba da prikazuju:
+</p>
+
+<ul>
+  <li>trenutni kapacitet;</li>
+  <li>nedeljni i mesečni rast;</li>
+  <li>najveće potrošače;</li>
+  <li>projektovani datum iscrpljenja prostora;</li>
+  <li>planiranu nabavku ili proširenje.</li>
+</ul>
+
+<h4>Odvojiti različite namene kada je opravdano</h4>
+
+<p>
+Produkcioni VM-ovi, testni sistemi, ISO biblioteka i backup repozitorijum imaju različite obrasce korišćenja. Njihovo razdvajanje olakšava upravljanje kapacitetom, bezbednošću i performansama.
+</p>
+
+<h4>Dosledno proveravati pristup svih hostova</h4>
+
+<p>
+Novi datastore nije spreman za produkciju samo zato što ga vidi jedan host. U klasteru treba potvrditi da ga vide svi hostovi koji mogu pokretati odgovarajuće VM-ove.
+</p>
+
+<h4>Ne ignorisati degradiranu redundansu</h4>
+
+<p>
+Datastore može ostati dostupan nakon gubitka jedne putanje. To je degradirano, a ne zdravo stanje. Redundansu treba obnoviti pre sledećeg kvara ili planiranog održavanja.
+</p>
+
+<h4>Kontrolisati snapshot životni ciklus</h4>
+
+<p>
+Svaki snapshot treba da ima vlasnika, razlog, vreme kreiranja i plan uklanjanja. Automatski izveštaj o starim snapshot-ima treba da bude deo redovne administracije.
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-Snapshot |
+Select-Object VM,
+              Name,
+              Created,
+              SizeGB,
+              Description |
+Sort-Object Created</code></pre>
+
+<h4>Dokumentovati zavisnosti</h4>
+
+<p>
+Za svaki važan datastore treba znati:
+</p>
+
+<ul>
+  <li>koji storage sistem ga obezbeđuje;</li>
+  <li>koji LUN, export ili container koristi;</li>
+  <li>koji hostovi mu pristupaju;</li>
+  <li>koji poslovni servisi zavise od njega;</li>
+  <li>koja je očekivana klasa performansi;</li>
+  <li>ko je odgovoran za storage, SAN i mrežnu infrastrukturu;</li>
+  <li>koja je procedura eskalacije.</li>
+</ul>
+
+<h4>Koristiti maintenance i change procedure</h4>
+
+<p>
+Proširenje datastore-a, promena multipathing politike, uklanjanje LUN-a, izmena NFS export-a i firmware nadogradnja storage sistema predstavljaju promene koje mogu uticati na veliki broj VM-ova. Potrebni su plan, provera zavisnosti, rollback mogućnost i praćenje posle promene.
+</p>
+
+<h4>Razdvojiti monitoring kapaciteta i performansi</h4>
+
+<p>
+Kapacitet odgovara na pitanje „koliko prostora je ostalo”, dok performanse odgovaraju na pitanje „koliko brzo storage obrađuje zahteve”. Oba aspekta moraju imati posebne pragove, alarme i izveštaje.
+</p>
+
+<h3>Operativna kontrolna lista za datastore</h3>
+
+<h4>Dnevna provera</h4>
+
+<ul>
+  <li>kritični vCenter alarmi;</li>
+  <li>datastore-i sa niskim slobodnim prostorom;</li>
+  <li>APD, PDL i path događaji;</li>
+  <li>neuspešni backup i Storage vMotion zadaci;</li>
+  <li>neočekivani snapshot-i;</li>
+  <li>datastore-i sa povišenom latencijom.</li>
+</ul>
+
+<h4>Nedeljna provera</h4>
+
+<ul>
+  <li>trend zauzeća;</li>
+  <li>najveći rast VM-ova;</li>
+  <li>stari snapshot-i;</li>
+  <li>nepotrebne ISO slike;</li>
+  <li>usklađenost pristupa datastore-ima među hostovima klastera;</li>
+  <li>degradirane storage putanje;</li>
+  <li>otvoreni zahtevi za konsolidaciju.</li>
+</ul>
+
+<h4>Mesečna provera</h4>
+
+<ul>
+  <li>kapacitivna prognoza;</li>
+  <li>pregled performansi i perioda zasićenja;</li>
+  <li>usklađenost dokumentacije sa stvarnim stanjem;</li>
+  <li>provera storage firmware i compatibility zahteva;</li>
+  <li>analiza ponavljajućih incidenata;</li>
+  <li>test procedura oporavka i eskalacije.</li>
+</ul>
+
+<h3>Najčešće korišćene ESXi CLI komande</h3>
+
+<pre><code class="language-bash"># Lista filesystem-a i datastore-a
+esxcli storage filesystem list
+
+# VMFS datastore-i i njihovi uređaji
+esxcli storage vmfs extent list
+
+# Storage adapteri
+esxcli storage core adapter list
+
+# Rescan svih storage adaptera
+esxcli storage core adapter rescan --all
+
+# Storage uređaji
+esxcli storage core device list
+esxcli storage core device list -c
+
+# Storage putanje
+esxcli storage core path list
+
+# Native Multipathing Plugin podaci
+esxcli storage nmp device list
+
+# Pregled datastore kapaciteta
+vdf -h
+
+# Datastore simboličke veze i UUID vrednosti
+ls -l /vmfs/volumes
+
+# Sadržaj određenog datastore-a
+ls -lah /vmfs/volumes/PROD-VMFS01
+
+# Karakteristike filesystem-a
+vmkfstools -P /vmfs/volumes/PROD-VMFS01
+
+# Lista registrovanih virtuelnih mašina
+vim-cmd vmsvc/getallvms
+
+# Montiranje datastore-a prema nazivu
+esxcli storage filesystem mount -l PROD-VMFS01
+
+# Montiranje datastore-a prema UUID-u
+esxcli storage filesystem mount -u DATASTORE-UUID
+
+# Demontiranje datastore-a
+esxcli storage filesystem unmount -l PROD-VMFS01
+
+# Storage logovi
+tail -n 100 /var/run/log/vmkernel.log
+
+# Praćenje loga uživo
+tail -f /var/run/log/vmkernel.log
+
+# Filtriranje čestih storage poruka
+grep -Ei "APD|PDL|NMP|VMFS|I/O error|nfs|iscsi|scsi" \
+/var/run/log/vmkernel.log | tail -n 100
+
+# Interaktivno praćenje performansi
+esxtop
+# Zatim pritisnuti taster u za storage device prikaz</code></pre>
+
+<h3>Najčešće korišćene PowerCLI komande</h3>
+
+<pre><code class="language-powershell"># Povezivanje sa vCenter Serverom
+Connect-VIServer -Server vcsa.lab.local
+
+# Svi datastore-i
+Get-Datastore
+
+# Datastore-i sortirani prema slobodnom prostoru
+Get-Datastore |
+Sort-Object FreeSpaceGB
+
+# Kapacitet i procenat slobodnog prostora
+Get-Datastore |
+Select-Object Name,
+              Type,
+              CapacityGB,
+              FreeSpaceGB,
+              @{Name="FreePercent";Expression={
+                  [math]::Round(($_.FreeSpaceGB / $_.CapacityGB) * 100, 2)
+              }}
+
+# Datastore-i sa manje od 20% slobodnog prostora
+Get-Datastore |
+Where-Object {
+    $_.CapacityGB -gt 0 -and
+    (($_.FreeSpaceGB / $_.CapacityGB) * 100) -lt 20
+}
+
+# VM-ovi na određenom datastore-u
+Get-Datastore -Name "PROD-VMFS01" |
+Get-VM
+
+# Datastore-i koje koristi određeni VM
+Get-VM -Name "APP-SRV01" |
+Get-Datastore
+
+# Snapshot-i svih VM-ova
+Get-VM |
+Get-Snapshot |
+Select-Object VM, Name, Created, SizeGB
+
+# Storage migracija test VM-a
+Move-VM -VM "LAB-APP01" -Datastore "LAB-VMFS02"
+
+# Izvoz datastore izveštaja
+Get-Datastore |
+Select-Object Name, Type, CapacityGB, FreeSpaceGB |
+Export-Csv "./datastore-report.csv" -NoTypeInformation
+
+# Prekid PowerCLI sesije
+Disconnect-VIServer -Server vcsa.lab.local -Confirm:$false</code></pre>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je završena kada administrator može dokazima da mapira datastore do njegovog uređaja ili mrežnog export-a, utvrdi hostove i VM-ove koji od njega zavise, izračuna kapacitivni rizik, razlikuje problem prostora od problema performansi i od gubitka putanje, bezbedno prikupi relevantne događaje i logove i objasni kada rescan, mount, unmount ili Storage vMotion menjaju stanje i zahtevaju change kontrolu i rollback plan.
+</p>
+
+<h4>Pitanja za proveru znanja</h4>
+
+<ol>
+  <li>Koja je razlika između fizičkog storage uređaja, LUN-a i datastore-a?</li>
+  <li>Zašto više ESXi hostova može istovremeno pristupati VMFS datastore-u?</li>
+  <li>Koja je osnovna razlika između VMFS i NFS datastore-a?</li>
+  <li>Zašto lokalni datastore nije dovoljan za klasičan HA restart VM-a na drugom hostu?</li>
+  <li>Šta prikazuje komanda <code>esxcli storage filesystem list</code>?</li>
+  <li>Kako se VMFS datastore povezuje sa canonical nazivom storage uređaja?</li>
+  <li>Zašto snapshot može da popuni datastore?</li>
+  <li>Koja je razlika između APD i PDL stanja?</li>
+  <li>Zašto izgubljena multipath putanja predstavlja problem i kada datastore i dalje radi?</li>
+  <li>Koji log je najvažniji za veliki broj ESXi storage problema?</li>
+  <li>Zašto ručno brisanje <code>-delta.vmdk</code> datoteke može uništiti VM?</li>
+  <li>Koje provere treba izvršiti pre demontiranja datastore-a?</li>
+  <li>Kako se kroz PowerCLI pronalaze datastore-i sa manje od 20% slobodnog prostora?</li>
+  <li>Kako razlikovati problem jednog hosta od problema zajedničkog storage sistema?</li>
+  <li>Zašto kapacitet i storage performanse moraju da se nadgledaju odvojeno?</li>
+</ol>
+
+<h3>Zaključak</h3>
+
+<p>
+Datastore je operativna osnova VMware infrastrukture. U njemu se ne čuvaju samo virtuelni diskovi, već i konfiguracija, stanje, snapshot lanci, swap datoteke, logovi i drugi elementi bez kojih virtuelna mašina ne može pravilno da radi.
+</p>
+
+<p>
+Napredna administracija datastore-a zahteva više od provere slobodnog prostora. Administrator mora razumeti odnos između fizičkog storage-a, LUN-a ili NFS export-a, storage mreže, ESXi adaptera, putanja, VMFS ili NFS sloja i samih virtuelnih mašina. Tek takav pogled omogućava da se problem pravilno lokalizuje i da se izbegnu rizične intervencije.
+</p>
+
+<p>
+Najvažnija praktična navika jeste određivanje obima incidenta pre bilo kakve promene: da li je pogođen jedan VM, jedan datastore, jedan host ili čitava storage infrastruktura. Nakon toga slede poređenje hostova, provera putanja, filesystem-a, kapaciteta, performansi i logova.
+</p>
+
+<p>
+Stabilno VMware okruženje počiva na dobro dokumentovanim datastore-ima, kontrolisanom rastu kapaciteta, zdravim redundantnim putanjama, kratkotrajnom korišćenju snapshot-a, redovnom monitoringu i bezbednim change procedurama. Administrator koji ovlada tim postupcima može da reaguje pre nego što upozorenje preraste u prekid rada poslovnih servisa.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom VMware vSphere Storage dokumentacija za vSphere 8.x i VMware Cloud Foundation 9.x; administrativne i arhitektonske reference za VMFS, NFS, vSAN i Virtual Volumes; Broadcom Knowledge Base procedure za APD/PDL, VMFS mount, unmount i resignature, uklanjanje LUN-a i datastore kapacitet; ESXCLI i vmkfstools reference; VCF PowerCLI dokumentacija za datastore inventar i migraciju; zvanične smernice za monitoring, događaje, logove i storage troubleshooting.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-25-debug-mreze.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-27-vmdk.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,650 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-41-image-security-policy-i-supply-chain.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Sigurnost image-a – skeniranje, poverenje i kontrola kontejnerskih slika | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Sigurnost container image-a obuhvata skeniranje ranjivosti, proveru porekla, digitalno potpisivanje i kontrolu korišćenja kontejnerskih slika u VMware Tanzu i Kubernetes okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes, container image security, image scanning, Harbor, Trivy, Cosign, image signing, vulnerability scanning, DevOps, cloud native, TKG, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-41-image-security-policy-i-supply-chain.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Sigurnost image-a – skeniranje, poverenje i kontrola kontejnerskih slika">
+
+  <meta property="og:description"
+        content="Trideset druga lekcija VMware & Tanzu tutorijala – zaštita container image-a kroz skeniranje ranjivosti, proveru porekla i kontrolu korišćenja u Kubernetes okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-41-image-security-policy-i-supply-chain.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-41-image-security.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Sigurnost image-a – skeniranje, poverenje i kontrola kontejnerskih slika">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-41-image-security.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-41-image-security.png"
+           alt="Sigurnost image-a – skeniranje, poverenje i kontrola kontejnerskih slika">
+
+    </a>
+ 
+   <div class="page-subtitle">
+X. Bezbednost i usklađenost Tanzu platforme
+</div>
+  <div class="page-subtitle">
+41. Image security, admission politike i software supply chain – od registra do dozvoljenog workload-a
+</div>
+
+<p>Kontejnerski image je izvršni artefakt koji ulazi u produkcioni klaster sa aplikacionim kodom, sistemskim bibliotekama, paketima, alatima i podrazumevanom konfiguracijom. Zbog toga odluka da se image dozvoli nije samo odluka o verziji aplikacije. Administrator istovremeno prihvata poreklo artefakta, sadržaj njegovih slojeva, poznate ranjivosti, identitet procesa koji ga je napravio i mogućnost da je artefakt promenjen nakon bezbednosne provere.</p>
+<p>Produkcioni model zaštite zato ne sme da se zasniva na jednoj kontroli. Skeniranje otkriva poznate probleme u sadržaju, kriptografski potpis potvrđuje integritet i identitet potpisnika, digest vezuje deployment za tačno određeni artefakt, a admission politika sprečava da nepouzdan image uopšte postane Pod. Tek kombinacija ovih kontrola formira proverljiv lanac od build procesa do izvršavanja u Tanzu Kubernetes klasteru.</p>
+
+<h3>Šta obuhvata sigurnost kontejnerskog image-a</h3>
+<p>Sigurnost image-a obuhvata ceo životni ciklus artefakta: izbor baznog image-a, preuzimanje zavisnosti, build, generisanje softverskog inventara, skeniranje, potpisivanje, objavljivanje u registry, promociju između okruženja i proveru pri prijemu workload-a u klaster. Problem u bilo kojoj tački može proizvesti image koji radi funkcionalno, ali nije prihvatljiv za produkciju.</p>
+<p>Administrator mora da razlikuje četiri odvojena pitanja:</p>
+<ul>
+  <li><strong>Šta se nalazi u image-u?</strong> Odgovor daju inventar paketa, SBOM i skeneri ranjivosti, tajni i pogrešnih konfiguracija.</li>
+  <li><strong>Da li je sadržaj poznato ranjiv?</strong> Skener poredi pakete i biblioteke sa bazama bezbednosnih obaveštenja, ali rezultat važi samo za vreme i bazu podataka korišćenu tokom skeniranja.</li>
+  <li><strong>Ko je proizveo ili odobrio image?</strong> Potpis ili potvrda o poreklu povezuju nepromenljivi digest sa ključem, identitetom ili kontrolisanim build sistemom.</li>
+  <li><strong>Da li klaster sme da ga izvrši?</strong> Admission kontrola proverava registry, digest, potpis i druge uslove pre nego što API server prihvati Pod ili njegov kontroler.</li>
+</ul>
+<p>Nijedna od ovih kontrola ne zamenjuje ostale. Potpisan image može sadržati kritičnu ranjivost jer potpis potvrđuje ko ga je potpisao, a ne da je bezbedan. Image bez poznatih CVE nalaza može biti nepoverljiv ako je nastao iz nepoznatog build procesa. Referenca sa digestom sprečava neprimetnu zamenu sadržaja, ali ne dokazuje da je originalni sadržaj prihvatljiv.</p>
+
+<h3>Model pretnji u lancu isporuke image-a</h3>
+<p>Najčešća administrativna greška jeste posmatranje registry-ja kao pasivnog skladišta. Registry je kritična komponenta lanca isporuke. Kompromitovan nalog sa pravom upisa, pogrešno podešen javni projekat, nezaštićen CI token ili preširoka administratorska privilegija mogu omogućiti objavljivanje zlonamernog artefakta pod nazivom koji izgleda legitimno.</p>
+<p>Važne pretnje uključuju kompromitovan bazni image, zavisnost preuzetu iz nepouzdanog izvora, tajnu slučajno upisanu u image sloj, zamenu taga nakon uspešnog testa, krađu signing ključa, manipulisanje build agentom i deployment direktno sa javnog registry-ja. Posebno je opasna upotreba promenljivih tagova kao što su <code>latest</code>, <code>stable</code> ili <code>production</code>. Tag je pokazivač koji se može premestiti na drugi manifest, dok puni SHA-256 digest identifikuje konkretan OCI manifest.</p>
+<p>Pretnja nije ograničena na namerni napad. Zastareo operativni sistem u baznom image-u, paket bez podrške ili razvojni alat ostavljen u finalnom sloju povećavaju površinu napada i broj nalaza. Čak i kada aplikacija ne koristi ranjivu funkciju biblioteke, administrator mora imati dokumentovanu procenu rizika, vlasnika odluke i rok za ponovnu evaluaciju.</p>
+
+<h3>Skeniranje ranjivosti i značenje rezultata</h3>
+<p>Skeneri kao što je Trivy analiziraju operativne pakete i zavisnosti podržanih programskih ekosistema, a mogu generisati i SBOM, proveravati konfiguracione fajlove i tražiti obrasce koji liče na tajne. U Harbor okruženju skener može biti integrisan sa registry-jem, tako da se analiza pokreće nakon push operacije ili periodično ponavlja kada se osveži baza ranjivosti.</p>
+<p>Rezultat skeniranja nije apsolutna potvrda da je image bezbedan. Skener prepoznaje samo klase problema za koje poseduje detekciju i dovoljno metapodataka. Nova ranjivost možda još nije objavljena, paket može biti nepravilno identifikovan, a ozbiljnost se može razlikovati između proizvođača distribucije i opštih baza. Zato administrator proverava izvor ocene, dostupnu popravljenu verziju, status paketa, ekspoziciju aplikacije i stvarnu mogućnost iskorišćavanja.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Rezultat</th>
+      <th>Značenje</th>
+      <th>Administratorska odluka</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CRITICAL ili HIGH sa dostupnom zakrpom</td>
+      <td>Postoji novija verzija paketa ili baznog image-a koja otklanja problem.</td>
+      <td>Zaustaviti promociju, ponovo izgraditi image i ponoviti testove.</td>
+    </tr>
+    <tr>
+      <td>CRITICAL ili HIGH bez zakrpe</td>
+      <td>Problem je poznat, ali dobavljač još nema ispravku ili paket više nije podržan.</td>
+      <td>Procena ekspozicije, kompenzacione kontrole, vremenski ograničen izuzetak ili zamena komponente.</td>
+    </tr>
+    <tr>
+      <td>UNKNOWN</td>
+      <td>Skener nema pouzdanu klasifikaciju ozbiljnosti.</td>
+      <td>Ne tretirati automatski kao bezopasno; proveriti vendor advisory i vlasništvo paketa.</td>
+    </tr>
+    <tr>
+      <td>Nema nalaza</td>
+      <td>U korišćenim izvorima i trenutnoj bazi nema prepoznatih problema.</td>
+      <td>Proveriti starost baze, uspeh skena, podržanost operativnog sistema i obuhvat skenera.</td>
+    </tr>
+  </tbody>
+</table>
+<p>Opcija koja ignoriše ranjivosti bez dostupne zakrpe može biti korisna za poseban izveštaj o neposredno popravljivim problemima, ali nije odgovarajuća kao jedini produkcioni kriterijum. Ona može sakriti ozbiljne nalaze koje organizacija mora da prati kompenzacionim kontrolama. Bezbedniji model je da se svi nalazi sačuvaju, a da se izuzeci vode kroz verzionisanu allowlist evidenciju sa razlogom, vlasnikom i datumom isteka.</p>
+
+<h3>SBOM, poreklo i potvrde o build procesu</h3>
+<p>Software Bill of Materials predstavlja inventar komponenti sadržanih u artefaktu. SBOM ubrzava odgovor kada se objavi nova ranjivost jer bez ponovnog ručnog pregleda omogućava pretragu image-a koji sadrže pogođenu biblioteku. Međutim, SBOM nije sken i nije dokaz bezbednosti. On opisuje sastav; skener taj sastav poredi sa podacima o ranjivostima.</p>
+<p>Provenance ili potvrda o poreklu odgovara na druga pitanja: koji izvorni commit je korišćen, koji builder je izvršio postupak, koja build definicija je primenjena i koji artefakt je nastao. Standardizovane potvrde, poput SLSA provenance zapisa, treba vezivati za digest konkretnog artefakta. Time se smanjuje rizik da se valjan izveštaj ili potvrda priloži drugom image-u sa sličnim nazivom.</p>
+<p>U zrelom sistemu CI proces proizvodi image, SBOM, izveštaj skeniranja i potpis ili attestation. Produkcioni administrator ne mora da veruje svakom nalogu koji može da izvrši <code>docker push</code>; on veruje određenom build identitetu, odobrenom registry projektu i pravilima koja se proveravaju pri deployment-u.</p>
+
+<h3>Potpisivanje, digest i poverenje</h3>
+<p>Cosign može da potpisuje OCI artefakte korišćenjem privatnog ključa, ključa u KMS ili keyless modela zasnovanog na OIDC identitetu i kratkotrajnom sertifikatu. Za enterprise produkciju privatni signing ključ ne treba čuvati na administratorskom laptopu niti u Git repozitorijumu. Preporučeni cilj je HSM ili KMS, odnosno identitet kontrolisanog CI workload-a. Lokalni par ključeva je prihvatljiv za laboratoriju i demonstraciju toka, uz strogo ograničena prava nad privatnim ključem.</p>
+<p>Potpis se proverava nad digestom. Ako se promeni bilo koji sloj ili manifest, menja se digest i prethodni potpis više ne potvrđuje novi sadržaj. Zbog toga deployment manifest treba da koristi oblik:</p>
+<pre><code class="language-none">harbor.tashizza.local/prod/tashizza-api@sha256:PRECIZAN_DIGEST</code></pre>
+<p>Kubernetes pri kreiranju objekta određuje <code>imagePullPolicy</code>, ali politika povlačenja ne predstavlja sigurnosnu verifikaciju. Vrednost <code>Always</code> zahteva razrešavanje reference preko registry-ja, dok lokalni slojevi i dalje mogu biti iskorišćeni kada odgovaraju istom digestu. Ona ne potvrđuje potpis, ne skenira sadržaj i ne sprečava korišćenje neodobrenog registry-ja.</p>
+
+<h3>Kontrola pri prijemu workload-a u klaster</h3>
+<p>Skeniranje u CI procesu smanjuje broj loših artefakata koji stižu do registry-ja, ali nije dovoljna završna kontrola. Korisnik sa Kubernetes pravima može pokušati da navede drugi image, javni registry ili nepotpisanu verziju. Admission kontroler zato proverava zahtev pre nego što API server trajno prihvati resurs.</p>
+<p>Politika treba da obuhvati najmanje regularne kontejnere, init kontejnere i, gde platforma podržava njihovo korišćenje, ephemeral kontejnere. Takođe mora biti jasno da se deployment kontroleri na kraju pretvaraju u Pod zahteve. Politika koja proverava Pod-ove štiti izvršni trenutak čak i kada je inicijalni zahtev bio Deployment, StatefulSet, Job ili drugi kontroler.</p>
+<p>U referentnom rešenju koristi se Kyverno <code>ImageValidatingPolicy</code> za proveru Cosign potpisa. U aktuelnoj Kyverno dokumentaciji CEL zasnovani resurs koristi API <code>policies.kyverno.io/v1</code>. Ranija izdanja koristila su razvojni <code>v1alpha1</code>, dok legacy <code>ClusterPolicy</code> model koristi <code>verifyImages</code>; ta dva modela nemaju istu šemu. Zato administrator pre primene proverava verziju kontrolera, CRD resurs i polja komandom <code>kubectl explain imagevalidatingpolicy.spec</code>. Kyverno je dodatna komponenta workload klastera, a ne mogućnost koju treba pretpostaviti samo zato što je klaster VMware Tanzu/VKS.</p>
+<p><strong>Verzijska i licencna granica.</strong> Harbor, Trivy, Cosign i Kyverno imaju sopstvene matrice kompatibilnosti i životne cikluse. Dostupnost Harbor skenera, SBOM prikaza, immutable tag pravila, retention funkcija i enterprise integracija zavisi od konkretnog Harbor izdanja i načina pakovanja u organizaciji. Broadcom/VMware podrška za VKS/Tanzu ne znači automatski podršku za svaku samostalno instaliranu verziju policy engine-a; pre produkcije proveravaju se VKS release notes, podržana Kubernetes verzija i support boundary dodatnih komponenti.</p>
+<p>Politika može raditi u audit režimu pre prelaska na blokiranje. To je važan operativni korak jer otkriva postojeće workload-e koji ne ispunjavaju zahtev. Međutim, audit nije krajnja produkciona zaštita: zahtev se beleži, ali nije zaustavljen. Nakon sanacije postojećih izuzetaka, akcija se postavlja na <code>Deny</code>, a <code>failurePolicy</code> se bira u skladu sa rizikom. Za kritičnu kontrolu potpisa u produkciji uobičajen je fail-closed model, uz visoku dostupnost admission kontrolera i prethodno testiran postupak oporavka.</p>
+
+<h3>Referentna enterprise arhitektura</h3>
+<p>Praktikum koristi Tanzu Kubernetes workload klaster <code>tkg-prod-01</code>, namespace <code>payments-prod</code>, Harbor registry <code>harbor.tashizza.local</code> i projekat <code>prod</code>. Aplikacioni image ima naziv <code>tashizza-api</code>. Administratorska radna stanica koristi direktorijum <code>/opt/tashizza/image-security</code>. Trivy radi kao CI bezbednosna kontrola, Cosign potpisuje odobreni digest, a Kyverno proverava potpis pre prijema Pod-a.</p>
+<p>Tok odobravanja izgleda ovako:</p>
+<ol>
+  <li>CI izgradi image sa nepromenljivim tagom povezanim sa Git commitom.</li>
+  <li>Trivy generiše JSON izveštaj i CycloneDX SBOM; CRITICAL i HIGH nalazi prekidaju promociju prema usvojenoj politici.</li>
+  <li>Uspešno provereni image se šalje u Harbor i identifikuje punim digestom.</li>
+  <li>Odobreni CI identitet potpisuje digest.</li>
+  <li>Deployment referencira image po digestu.</li>
+  <li>Kyverno admission kontrola proverava potpis i odbija nepotpisan ili neodobren artefakt.</li>
+</ol>
+<p>Ova arhitektura ne rešava runtime izolaciju, privilegije procesa, mrežne politike, upravljanje Secret objektima niti ranjivosti same aplikacione logike. Image bezbednost je jedan sloj odbrane, a ne zamena za zaštitu klastera i workload-a.</p>
+
+<h3>Integrisani praktikum – od skeniranja do blokiranja nepotpisanog image-a</h3>
+<p><strong>Poslovni i tehnički kontekst.</strong> Tim za plaćanja želi da postavi verziju aplikacije u produkciju. Organizacija dozvoljava samo image-e iz internog Harbor projekta <code>prod</code>, bez CRITICAL i popravljivih HIGH ranjivosti, potpisane kontrolisanim Cosign ključem i navedene punim digestom. Administrator mora dokazati da odobreni image prolazi, a nepotpisani image biva odbijen pre kreiranja Pod-a.</p>
+<p><strong>Cilj.</strong> Skenirati image, sačuvati izveštaj i SBOM, objaviti i potpisati tačan digest, aktivirati admission politiku i sprovesti pozitivan i negativan test.</p>
+<p><strong>Referentno okruženje.</strong> Radna stanica ima instalirane <code>docker</code>, <code>trivy</code>, <code>cosign</code> i <code>kubectl</code>. Harbor koristi pouzdan TLS sertifikat. Kyverno je već instaliran u klasteru. Primer koristi laboratorijski lokalni signing ključ; u produkciji ga treba zameniti KMS/HSM ključem ili odobrenim keyless CI identitetom.</p>
+<p><strong>Potrebna prava.</strong> Korisnik registry-ja mora imati push pravo samo u projektu <code>prod</code>. Kubernetes operator mora moći da čita namespace i workload objekte. Za kreiranje klasterske admission politike potrebna je posebno odobrena privilegija nad Kyverno policy resursima. Aplikacionom timu nije potrebno pravo izmene klasterske politike.</p>
+<p><strong>Preduslovi.</strong> DNS i TLS pristup adresi <code>harbor.tashizza.local</code> moraju raditi; projekat <code>prod</code> i namespace <code>payments-prod</code> moraju postojati; Trivy baza mora biti ažurirana; promenljiva <code>HARBOR_USER</code> mora sadržati korisničko ime, dok se lozinka unosi interaktivno ili preuzima iz odobrenog secrets sistema.</p>
+<ol>
+  <li>
+    <strong>Napraviti radni direktorijum i potvrditi kontekst.</strong>
+    Pre bilo kakve promene administrator proverava da komande ciljaju klaster <code>tkg-prod-01</code> i da postoje potrebni resursi. Pogrešan Kubernetes kontekst predstavlja realan produkcioni rizik.
+    <pre><code class="language-bash">sudo install -d -m 0750 -o "$USER" -g "$(id -gn)" /opt/tashizza/image-security
+cd /opt/tashizza/image-security
+
+kubectl config current-context
+kubectl get namespace payments-prod
+kubectl get crd imagevalidatingpolicies.policies.kyverno.io
+kubectl -n kyverno get deployments,pods</code></pre> <strong>Validacija:</strong> trenutni kontekst mora biti <code>tkg-prod-01</code>, namespace mora imati status <code>Active</code>, CRD mora postojati, a Kyverno Pod-ovi moraju biti <code>Running</code> i spremni. Ako CRD ne postoji, manifest iz ovog praktikuma se ne primenjuje dok se ne proveri kompatibilna Kyverno verzija.
+
+  </li>
+  <li>
+    <strong>Definisati dosledne promenljive artefakta.</strong>
+    Ne koristi se promenljivi tag <code>latest</code>. Verzija <code>1.4.0</code> predstavlja izdanje koje je već prošlo aplikacione testove.
+    <pre><code class="language-bash">export REGISTRY="harbor.tashizza.local"
+export PROJECT="prod"
+export APP="tashizza-api"
+export VERSION="1.4.0"
+export IMAGE="${REGISTRY}/${PROJECT}/${APP}:${VERSION}"
+
+printf 'Target image: %s\n' "$IMAGE"</code></pre> <strong>Validacija:</strong> ispis mora biti <code>harbor.tashizza.local/prod/tashizza-api:1.4.0</code>. Ove vrednosti se koriste u svim sledećim koracima.
+
+  </li>
+  <li>
+    <strong>Prijaviti se u registry bez zapisivanja lozinke u shell istoriju.</strong>
+    Lozinka se ne navodi kao argument komande jer bi mogla ostati vidljiva u istoriji ili listi procesa.
+    <pre><code class="language-bash">printf 'Harbor password: '
+read -r -s HARBOR_PASSWORD
+printf '\n'
+printf '%s' "$HARBOR_PASSWORD" | docker login "$REGISTRY" \
+  --username "$HARBOR_USER" \
+  --password-stdin
+unset HARBOR_PASSWORD</code></pre>
+    <strong>Validacija:</strong> komanda mora prijaviti uspešnu autentikaciju. Neuspeh sa porukom <code>x509</code> ukazuje na problem poverenja u TLS lanac; ne treba ga zaobilaziti podešavanjem nesigurnog registry-ja, već instalirati ispravan CA sertifikat.
+  </li>
+  <li>
+    <strong>Izgraditi referentni image minimalnog sadržaja.</strong>
+    Kreiraju se jednostavna aplikaciona datoteka i Dockerfile. Bazni image je namerno jasno verzionisan; u produkciji bi i on trebalo da bude pinovan digestom i preuzet kroz kontrolisani mirror.
+    <pre><code class="language-bash">cat &gt; index.html &lt;&lt;'EOF'
+&lt;!doctype html&gt;
+&lt;html lang="sr"&gt;
+&lt;head&gt;&lt;meta charset="utf-8"&gt;&lt;title&gt;Tashizza API&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;&lt;h1&gt;tashizza-api 1.4.0&lt;/h1&gt;&lt;/body&gt;
+&lt;/html&gt;
+EOF
+
+cat &gt; Dockerfile &lt;&lt;'EOF'
+FROM nginxinc/nginx-unprivileged:1.27.5-alpine
+COPY index.html /usr/share/nginx/html/index.html
+USER 101
+EXPOSE 8080
+EOF
+
+docker build --pull --no-cache -t "$IMAGE" .</code></pre> <strong>Validacija:</strong> lokalni image mora postojati, a istorija slojeva treba da odgovara očekivanom Dockerfile-u. <pre><code class="language-bash">docker image inspect "$IMAGE" \
+  --format 'ID={{.Id}} Created={{.Created}} User={{.Config.User}}'
+docker history --no-trunc "$IMAGE"</code></pre>
+Očekuje se korisnik <code>101</code>. Napomena: podrazumevani NGINX image i konkretna non-root konfiguracija moraju biti funkcionalno provereni; samo postavljanje direktive <code>USER</code> ne garantuje da aplikacija može da piše u potrebne direktorijume ili sluša na privilegovanom portu.
+
+  </li>
+  <li>
+    <strong>Pokrenuti bezbednosni scan i sačuvati dokaz.</strong>
+    Prvi scan generiše kompletan JSON za audit. Drugi služi kao CI gate i vraća nenulti izlazni kod kada postoje HIGH ili CRITICAL nalazi. Nalazi bez zakrpe se ne skrivaju.
+    <pre><code class="language-bash">trivy image \
+  --scanners vuln,secret \
+  --format json \
+  --output trivy-report.json \
+  "$IMAGE"
+
+trivy image \
+  --scanners vuln,secret \
+  --severity HIGH,CRITICAL \
+  --exit-code 1 \
+  "$IMAGE"</code></pre> <strong>Validacija:</strong> druga komanda mora završiti kodom <code>0</code>. Ako završi kodom <code>1</code>, promocija se prekida. Administrator u <code>trivy-report.json</code> proverava ID ranjivosti, paket, instaliranu verziju, popravljenu verziju i izvor ozbiljnosti. Samo ponovno pokretanje komande bez izmene image-a nije sanacija.
+
+  </li>
+  <li>
+    <strong>Generisati SBOM i proveriti da datoteke nisu prazne.</strong>
+    CycloneDX SBOM ostaje vezan za izdanje kao inventar komponenti.
+    <pre><code class="language-bash">trivy image \
+  --format cyclonedx \
+  --output tashizza-api-1.4.0.cdx.json \
+  "$IMAGE"
+
+test -s trivy-report.json
+test -s tashizza-api-1.4.0.cdx.json
+sha256sum trivy-report.json tashizza-api-1.4.0.cdx.json \
+  > evidence.sha256
+cat evidence.sha256</code></pre> <strong>Validacija:</strong> obe datoteke moraju imati sadržaj, a <code>evidence.sha256</code> dva kontrolna zbira. U produkciji se izveštaj, SBOM i kontrolni zbirovi čuvaju u kontrolisanom artifact sistemu sa pravilima retencije, a ne samo na radnoj stanici.
+
+  </li>
+  <li>
+    <strong>Objaviti image i utvrditi registry digest.</strong>
+    Lokalni image ID nije zamena za OCI registry digest. Tek nakon push operacije dobija se referenca koju deployment i potpis treba da koriste.
+    <pre><code class="language-bash">docker push "$IMAGE"
+
+DIGEST="$(docker buildx imagetools inspect "$IMAGE" \
+  --format '{{json .Manifest.Digest}}' | tr -d '"')"
+IMAGE_BY_DIGEST="${REGISTRY}/${PROJECT}/${APP}@${DIGEST}"
+
+printf 'Digest: %s\nImmutable reference: %s\n' \
+  "$DIGEST" "$IMAGE_BY_DIGEST"</code></pre> <strong>Validacija:</strong> <code>DIGEST</code> mora početi sa <code>sha256:</code>, a nepromenljiva referenca mora sadržati znak <code>@</code>. Ako korišćena Docker verzija ne podržava dati format, digest se proverava odgovarajućim OCI alatom ili Harbor API-jem, ali se ne prepisuje ručno iz nepouzdanog izvora.
+
+  </li>
+  <li>
+    <strong>Kreirati laboratorijski Cosign ključ.</strong>
+    <strong>Upozorenje:</strong> privatni ključ omogućava izdavanje poverljivih potpisa. Sledeći postupak je samo za kontrolisani laboratorijski scenario. U produkciji koristiti KMS/HSM ili workload identitet CI sistema.
+    <pre><code class="language-bash">umask 077
+export COSIGN_PASSWORD='LAB_ONLY_REPLACE_WITH_SECRET_MANAGER_VALUE'
+cosign generate-key-pair
+
+chmod 0600 cosign.key
+chmod 0644 cosign.pub
+ls -l cosign.key cosign.pub</code></pre> <strong>Validacija:</strong> privatni ključ mora imati prava <code>0600</code>, a javni ključ može biti čitljiv. Vrednost <code>COSIGN_PASSWORD</code> se ne sme čuvati u shell profilu, Git-u ili manifestu. U realnom toku preuzima se kratkotrajno iz secrets sistema.
+
+  </li>
+  <li>
+    <strong>Potpisati isključivo provereni digest.</strong>
+    Potpisivanje taga ostavlja prostor da tag kasnije pokaže na drugi sadržaj. Zato se potpisuje <code>IMAGE_BY_DIGEST</code>.
+    <pre><code class="language-bash">cosign sign \
+  --key cosign.key \
+  --yes \
+  "$IMAGE_BY_DIGEST"</code></pre>
+    <strong>Validacija:</strong> potpis se odmah proverava javnim ključem.
+    <pre><code class="language-bash">cosign verify \
+  --key cosign.pub \
+  "$IMAGE_BY_DIGEST" \
+  &gt; cosign-verification.json
+
+test -s cosign-verification.json
+grep -F "$DIGEST" cosign-verification.json</code></pre>
+Provera mora biti uspešna i izlaz mora biti vezan za očekivani digest. Potpisivanje nije odobrenje ako prethodni bezbednosni gate nije prošao; CI mora tehnički onemogućiti preskakanje redosleda.
+
+  </li>
+  <li>
+    <strong>Kreirati admission politiku sa javnim ključem.</strong>
+    Javni ključ se ugrađuje u manifest politike. Prvo se generiše lokalna datoteka, zatim se radi serverska provera pre stvarne promene.
+    <pre><code class="language-bash">PUBKEY_INDENTED="$(sed 's/^/              /' cosign.pub)"
+
+cat &gt; verify-tashizza-images.yaml &lt;&lt;EOF
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: verify-tashizza-prod-images
+spec:
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 15
+  evaluation:
+    background:
+      enabled: false
+  validationActions:
+    - Deny
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        tashizza.local/image-trust: enforced
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  matchImageReferences:
+    - glob: "harbor.tashizza.local/prod/tashizza-api*"
+  attestors:
+    - name: tashizzaCosignKey
+      cosign:
+        key:
+          data: |
+${PUBKEY_INDENTED}
+  validationConfigurations:
+    required: true
+    verifyDigest: true
+    mutateDigest: false
+  validations:
+    - expression: &gt;-
+        images.containers.map(image,
+        verifyImageSignatures(image,
+        [attestors.tashizzaCosignKey])).all(result, result &gt; 0)
+      message: "Image mora imati važeći potpis odobrenog Tashizza Cosign ključa."
+EOF
+
+kubectl apply --server-side --dry-run=server \
+  -f verify-tashizza-images.yaml</code></pre> <strong>Validacija:</strong> serverski dry-run mora prihvatiti objekat bez greške šeme. Ako API odbije polje, ne treba nasumično menjati manifest; proveravaju se instalirana Kyverno verzija i njena odgovarajuća API referenca. Tek nakon uspešne provere politika se primenjuje: <pre><code class="language-bash">kubectl apply --server-side -f verify-tashizza-images.yaml
+kubectl get imagevalidatingpolicy verify-tashizza-prod-images -o yaml</code></pre>
+
+  </li>
+  <li>
+    <strong>Označiti samo ciljni namespace za enforcement.</strong>
+    Selektor sprečava nenamerno obuhvatanje celog klastera tokom prve implementacije. Promena labele je kontrolisana tačka aktiviranja politike.
+    <pre><code class="language-bash">kubectl label namespace payments-prod \
+  tashizza.local/image-trust=enforced \
+  --overwrite
+
+kubectl get namespace payments-prod --show-labels</code></pre> <strong>Validacija:</strong> namespace mora prikazati labelu <code>tashizza.local/image-trust=enforced</code>. Pre šire primene treba napraviti inventar sistemskih i poslovnih namespace-ova jer neki vendor workload-i mogu imati poseban model potpisivanja.
+
+  </li>
+  <li>
+    <strong>Postaviti potpisani image punim digestom.</strong>
+    Kreira se Deployment koji koristi isti nepromenljivi artefakt koji je skeniran i potpisan.
+    <pre><code class="language-bash">cat &gt; tashizza-api-deployment.yaml &lt;&lt;EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tashizza-api
+  namespace: payments-prod
+  labels:
+    app.kubernetes.io/name: tashizza-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tashizza-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tashizza-api
+    spec:
+      containers:
+        - name: api
+          image: ${IMAGE_BY_DIGEST}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+EOF
+
+kubectl apply --server-side -f tashizza-api-deployment.yaml
+kubectl -n payments-prod rollout status \
+  deployment/tashizza-api \
+  --timeout=180s</code></pre> <strong>Validacija:</strong> API server mora prihvatiti zahtev, a Deployment mora dobiti dve dostupne replike. Ako admission provera uspe, ali Pod-ovi nisu spremni, problem više nije nužno potpis: proveravaju se Events, registry autentikacija, port, prava nad filesystem-om i aplikacioni logovi. <pre><code class="language-bash">kubectl -n payments-prod get deployment,pods -o wide
+kubectl -n payments-prod describe deployment tashizza-api
+kubectl -n payments-prod get events \
+  --sort-by=.metadata.creationTimestamp | tail -n 20</code></pre>
+
+  </li>
+  <li>
+    <strong>Sprovesti negativni test sa nepotpisanim image-om.</strong>
+    Test dokazuje da kontrola blokira zahtev, a ne samo da valjani image može da radi. Koristi se drugi image iz istog registry obrasca koji nije potpisan odobrenim ključem.
+    <pre><code class="language-bash">printf '\n&lt;!-- unsigned negative test --&gt;\n' &gt;&gt; index.html
+docker build --no-cache \
+  -t "${REGISTRY}/${PROJECT}/${APP}:unsigned-test" .
+docker push "${REGISTRY}/${PROJECT}/${APP}:unsigned-test"
+
+UNSIGNED_DIGEST="$(docker buildx imagetools inspect \
+  "${REGISTRY}/${PROJECT}/${APP}:unsigned-test" \
+  --format '{{json .Manifest.Digest}}' | tr -d '"')"
+test "$UNSIGNED_DIGEST" != "$DIGEST"
+
+kubectl -n payments-prod run unsigned-test \
+  --image="${REGISTRY}/${PROJECT}/${APP}@${UNSIGNED_DIGEST}" \
+  --restart=Never</code></pre> <strong>Očekivani rezultat:</strong> poslednja komanda mora biti odbijena admission porukom koja ukazuje da zahtevani potpis nije pronađen ili nije potvrđen od odobrenog attestor-a. Pod <code>unsigned-test</code> ne sme postojati. <pre><code class="language-bash">kubectl -n payments-prod get pod unsigned-test</code></pre>
+Očekuje se <code>NotFound</code>. Ako Pod postoji, kriterijum prihvatanja nije ispunjen i deployment zaštita se smatra neispravnom bez obzira na uspešan pozitivan test.
+
+  </li>
+  <li>
+    <strong>Pregledati logove i razlikovati tip problema.</strong>
+    Kyverno admission logovi pokazuju rezultat evaluacije politike, greške pristupa registry-ju, timeout i neuspešnu verifikaciju. Kubernetes Events pokazuju probleme koji nastaju nakon prijema, kao što su <code>ImagePullBackOff</code> ili <code>ErrImagePull</code>.
+    <pre><code class="language-bash">kubectl -n kyverno logs \
+  -l app.kubernetes.io/component=admission-controller \
+  --since=15m \
+  --all-containers=true \
+  | grep -E 'verify-tashizza-prod-images|unsigned-test|error|denied'
+
+kubectl -n payments-prod get events \
+  --sort-by=.metadata.creationTimestamp | tail -n 30</code></pre> <strong>Tumačenje:</strong> admission denial znači da objekat nije prihvaćen. <code>ImagePullBackOff</code> znači da je Pod prihvaćen, ali kubelet nije uspeo da preuzme image. <code>CrashLoopBackOff</code> znači da je image preuzet i proces pokrenut, ali se kontejner ruši. Ove situacije zahtevaju različite reakcije.
+
+  </li>
+  <li>
+    <strong>Dokumentovati dokaz o prihvatanju.</strong>
+    Čuvaju se digest, politika, scan izveštaj, SBOM, rezultat verifikacije i izlaz pozitivnog i negativnog testa.
+    <pre><code class="language-bash">kubectl get imagevalidatingpolicy verify-tashizza-prod-images \
+  -o yaml &gt; applied-image-policy.yaml
+
+kubectl -n payments-prod get deployment tashizza-api \
+  -o yaml &gt; deployed-tashizza-api.yaml
+
+printf '%s\n' "$IMAGE_BY_DIGEST" &gt; approved-image.txt
+
+sha256sum approved-image.txt \
+  applied-image-policy.yaml \
+  deployed-tashizza-api.yaml \
+  trivy-report.json \
+  tashizza-api-1.4.0.cdx.json \
+  cosign-verification.json \
+  &gt; final-evidence.sha256</code></pre> <strong>Validacija:</strong> sve navedene datoteke moraju postojati, a kontrolni zbirovi moraju moći ponovo da se provere komandom <code>sha256sum -c final-evidence.sha256</code>. Evidencija promene treba da sadrži broj change zahteva, vlasnika aplikacije, odobreni digest i rezultat negativnog testa.
+
+  </li>
+</ol>
+
+<h3>Rollback i cleanup</h3>
+<p>Rollback aplikacije ne znači automatsko isključivanje sigurnosne politike. Ako nova verzija ima funkcionalni problem, vraća se prethodni odobreni i potpisani digest. Deployment history je koristan, ali administrator pre rollback-a proverava da li prethodni ReplicaSet i dalje referencira artefakt koji zadovoljava aktuelnu politiku.</p>
+<pre><code class="language-bash">kubectl -n payments-prod rollout history deployment/tashizza-api
+kubectl -n payments-prod rollout undo deployment/tashizza-api
+kubectl -n payments-prod rollout status deployment/tashizza-api --timeout=180s</code></pre>
+<p>Ako sama admission politika izaziva incident, prvo se procenjuje da li je problem nedostupnost registry-ja, Kyverno kvar, pogrešan ključ ili greška selektora. Bezbedniji privremeni rollback obuhvata uklanjanje enforcement labele samo sa pogođenog namespace-a, uz incident zapis i vremenski ograničenu odluku:</p>
+<pre><code class="language-bash">kubectl label namespace payments-prod \
+  tashizza.local/image-trust-
+
+kubectl get namespace payments-prod --show-labels</code></pre>
+
+<p>Brisanje klasterske politike ima širi uticaj i ne treba ga koristiti kao prvi odgovor. Laboratorijski cleanup uklanja test objekte, ali ne briše produkcioni deployment:</p>
+<pre><code class="language-bash">kubectl -n payments-prod delete pod unsigned-test \
+  --ignore-not-found
+rm -f cosign.key
+unset COSIGN_PASSWORD</code></pre>
+<p><strong>Upozorenje:</strong> brisanje privatnog ključa bez sigurnosne kopije može onemogućiti buduće potpisivanje istim identitetom. U produkciji se lifecycle ključa vodi kroz formalnu rotaciju, opoziv i KMS/HSM politiku, a ne kroz ručno brisanje datoteke.</p>
+
+<h3>Tipične greške i dijagnostika</h3>
+<p>Dijagnostika počinje read-only proverama: zabeležiti vreme i korisnika zahteva, Kubernetes kontekst, tačnu image referencu, digest, poslednju promenu politike i odgovor API servera. Tek zatim se korelišu Kyverno admission logovi, Kubernetes audit zapis, Harbor access/audit trag i CI evidencija. Ne treba odmah menjati <code>failurePolicy</code>, ključ ili namespace labelu, jer se time uklanja dokaz i može proširiti incident.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom i obim</th>
+      <th>Neposredni uzrok koji se proverava</th>
+      <th>Osnovni uzrok i dokaz</th>
+      <th>Bezbedna korekcija i potvrda</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Samo novi Pod-ovi u označenom namespace-u dobijaju admission denial.</td>
+      <td>Potpis nedostaje, digest se razlikuje ili registry nije dostupan kontroleru.</td>
+      <td>Uporediti digest iz zahteva, <code>cosign verify</code> rezultat, policy glob i Kyverno log u istom vremenskom prozoru.</td>
+      <td>Ponovo izgraditi i potpisati pravi digest ili ispraviti usko ograničenu policy grešku; ponoviti pozitivan i negativan test.</td>
+    </tr>
+    <tr>
+      <td>Svi admission zahtevi kasne ili se odbijaju.</td>
+      <td>Webhook nema spremne endpoint-e, istekao je TLS sertifikat ili verifikacija registry-ja prelazi timeout.</td>
+      <td>Proveriti Deployment, EndpointSlice, Events, webhook sertifikat, mrežnu putanju, DNS i metrike latencije.</td>
+      <td>Oporaviti visoko dostupne replike ili TLS lanac. Break-glass izuzeće mora biti vremenski ograničeno i obuhvatiti samo pogođeni namespace.</td>
+    </tr>
+    <tr>
+      <td>Pod je prihvaćen, ali je u stanju <code>ImagePullBackOff</code>.</td>
+      <td>Kubelet nema registry kredencijale, DNS/TLS putanju ili artefakt ne postoji.</td>
+      <td>Admission je već prošao; dokaz su Pod Events i odsustvo denial zapisa. Proveriti <code>imagePullSecrets</code> i postojanje istog digest-a.</td>
+      <td>Ispraviti registry pristup bez gašenja politike potpisa; potvrditi uspešno povlačenje i Ready stanje.</td>
+    </tr>
+    <tr>
+      <td>Ranije odobren image dobija novi CRITICAL nalaz.</td>
+      <td>Osvežena baza ranjivosti prepoznala je ranije nepoznat CVE.</td>
+      <td>SBOM, novi scan, vendor advisory i inventar aktivnih Pod digest-a potvrđuju obim.</td>
+      <td>Procena ekspozicije, kompenzacione kontrole i hitan rebuild; opozvati poverenje ili blokirati digest kada rizik to zahteva.</td>
+    </tr>
+  </tbody>
+</table>
+<ul>
+  <li><strong>Image je skeniran, ali deployment koristi drugi digest.</strong> Uporediti vrednost iz scan evidencije, <code>cosign verify</code> izlaza i <code>kubectl get pod -o jsonpath</code>. Svako odstupanje znači da dokaz ne pripada izvršenom artefaktu.</li>
+  <li><strong>Potpis postoji, ali ga admission kontroler ne prihvata.</strong> Proveriti javni ključ, registry putanju, glob obrazac, format potpisa, mrežni pristup registry-ju i Kyverno logove. Potpis drugim ključem nije prihvatljiv potpis.</li>
+  <li><strong>Politika proverava samo aplikacione kontejnere.</strong> Init ili ephemeral kontejner može postati zaobilazni put. Proveriti dokumentaciju konkretne verzije policy engine-a i testirati sve podržane lokacije image reference.</li>
+  <li><strong>Scan nema nalaze zbog zastarele baze.</strong> Pregledati vreme poslednjeg ažuriranja Trivy baze i log preuzimanja baze. Nulti broj nalaza nije dovoljan dokaz uspešnog skena.</li>
+  <li><strong>Koristi se globalna CVE allowlist bez roka.</strong> Time se nalaz može sakriti u svim projektima. Prednost ima usko ograničen izuzetak sa datumom isteka, poslovnim vlasnikom i dokumentovanim kompenzacionim merama.</li>
+  <li><strong>Tag je potpisan, a zatim ponovo iskorišćen.</strong> Deployment mora koristiti digest. Registry projekat treba da zabrani prepisivanje release tagova kada podržava immutable tag pravila.</li>
+  <li><strong>Fail-closed politika blokira promene tokom kvara kontrolera.</strong> Obezbediti više replika admission kontrolera, PodDisruptionBudget, monitoring latencije i testiran break-glass postupak. Prelazak na fail-open bez procene rizika uklanja zaštitu upravo tokom incidenta.</li>
+</ul>
+
+<h3>Kriterijumi prihvatanja</h3>
+<ul>
+  <li>Trivy gate završava izlaznim kodom <code>0</code> za odobreni image prema definisanoj HIGH/CRITICAL politici.</li>
+  <li>JSON scan izveštaj, CycloneDX SBOM i njihovi SHA-256 kontrolni zbirovi postoje u evidenciji izdanja.</li>
+  <li>Deployment manifest koristi puni <code>sha256</code> digest, a ne samo tag.</li>
+  <li><code>cosign verify</code> uspešno potvrđuje isti digest javnim ključem koji koristi admission politika.</li>
+  <li>Kyverno policy objekat postoji, spreman je za evaluaciju i obuhvata namespace <code>payments-prod</code>.</li>
+  <li>Potpisani image proizvodi dve dostupne replike Deployment-a <code>tashizza-api</code>.</li>
+  <li>Nepotpisani testni image biva odbijen i Pod <code>unsigned-test</code> ne postoji.</li>
+  <li>Logovi admission kontrolera sadrže zapis negativnog testa, a evidencija promene sadrži odobreni digest i rezultate validacije.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+<p><strong>Kontinuirano ponovno skeniranje.</strong> Registry image-i se ponovo skeniraju nakon svakog ažuriranja vulnerability baze i najmanje jednom dnevno za produkcione projekte. Proveravaju se Harbor scan status, Trivy job logovi i broj novih CRITICAL/HIGH nalaza. Novi CRITICAL nalaz ili neuspešan scan zahteva otvaranje incidenta ili security zadatka, identifikovanje svih aktivnih digest-a i obaveštavanje vlasnika aplikacije. U CMDB-u ili vulnerability sistemu dokumentuju se digest, CVE, ekspozicija, odluka i rok sanacije. Uspešnost se meri vremenom od objave nalaza do identifikacije pogođenih workload-a i vremenom do ponovnog build-a.</p>
+<p><strong>Kontrola starosti baznih image-a.</strong> Posle svakog release-a i najmanje mesečno proveravaju se datum baznog image-a, status podrške distribucije i dostupnost novog odobrenog digest-a. CI izveštaj ili SBOM pokazuje OS porodicu i pakete, dok registry evidencija pokazuje vreme push-a. EOL operativni sistem ili bazni image stariji od internog praga zahteva plan migracije. Dokumentuju se vlasnik baznog image-a, planirana verzija i datum ponovnog build-a. Praksa je uspešna kada nijedan produkcioni image ne koristi nepodržanu bazu bez formalnog izuzetka.</p>
+<p><strong>Praćenje admission kontrole.</strong> Kontinuirano se prate dostupnost Kyverno Pod-ova, restart count, webhook latencija, broj denied zahteva i greške pristupa registry-ju. Nakon upgrade-a klastera, Kyverno-a, registry-ja ili CA sertifikata obavezno se sprovode pozitivan i negativan test. Timeout, rast grešaka ili nedostupna replika zahteva prvo proveru Events, admission logova, mrežne putanje i TLS lanca. Rezultati se beleže u operativnom dnevniku i monitoringu. Uspešnost znači da negativni test ostaje blokiran, a legitimni zahtev prolazi unutar dogovorenog vremena.</p>
+<p><strong>Rotacija signing identiteta.</strong> Ključevi se inventarišu i rotiraju prema politici organizacije, kao i odmah nakon sumnje na kompromitovanje. Proveravaju se KMS audit logovi, dozvole CI identiteta i lista javnih ključeva prihvaćenih u admission politici. Neočekivana signing operacija ili korišćenje ključa van odobrenog pipeline-a zahteva obustavu promocije, opoziv poverenja i istragu svih digest-a potpisanih u pogođenom periodu. Dokumentuju se fingerprint ključa, vlasnik, datum aktivacije, datum povlačenja i pogođene politike. Uspešnost se potvrđuje testom da novi ključ prolazi, a povučeni više ne prolazi.</p>
+<p><strong>Upravljanje izuzecima.</strong> Svaki CVE ili policy izuzetak mora imati tehničko obrazloženje, poslovnog vlasnika, kompenzacione kontrole i datum isteka. Lista se proverava nedeljno i nakon objave zakrpe. Istekao izuzetak, odsustvo vlasnika ili dostupna popravljena verzija zahteva prekid promocije i ponovno otvaranje sanacije. Evidencija se vodi u centralnom risk ili ticket sistemu, ne u privatnoj tabeli administratora. Uspešnost se meri procentom izuzetaka sa važećim rokom i smanjenjem prosečnog trajanja izuzetka.</p>
+<p><strong>Backup i oporavak dokaza i konfiguracije.</strong> Čuvaju se registry baza i konfiguracija prema Harbor backup proceduri, policy manifesti u verzionisanom Git repozitorijumu, javni ključevi, SBOM, scan izveštaji i audit zapisi. Privatni ključevi se čuvaju kroz KMS/HSM backup i recovery mehanizam dobavljača, nikada kao nezaštićena kopija. Backup se radi prema RPO zahtevu platforme, a integritet se proverava kontrolnim zbirovima i periodičnim probnim restore-om u izolovanom okruženju. Restore je uspešan tek kada je moguće pronaći artefakt po digestu, proveriti njegov potpis, učitati policy konfiguraciju i uspešno izvršiti pozitivan i negativan admission test.</p>
+
+<h3>Završna kontrolna lista</h3>
+<ul>
+  <li>Potvrđen je Kubernetes kontekst <code>tkg-prod-01</code> pre primene promene.</li>
+  <li>Trivy baza je ažurna, scan je uspešno završen i sačuvan je kompletan JSON izveštaj.</li>
+  <li>Za image je generisan CycloneDX SBOM i provereni su kontrolni zbirovi evidencije.</li>
+  <li>Nema nedokumentovanih CRITICAL ili HIGH nalaza koji krše produkcionu politiku.</li>
+  <li>Harbor referenca je zabeležena punim SHA-256 digestom.</li>
+  <li>Potpis je verifikovan odobrenim javnim ključem nad istim digestom.</li>
+  <li>Deployment ne koristi <code>latest</code> niti drugi promenljivi tag kao jedinu referencu.</li>
+  <li>Admission politika je serverski validirana pre primene i selektor obuhvata samo planirane namespace-ove.</li>
+  <li>Pozitivni test daje dve dostupne replike aplikacije.</li>
+  <li>Negativni test odbija nepotpisani image i testni Pod nije kreiran.</li>
+  <li>Pregledani su Kyverno logovi i Kubernetes Events bez neočekivanih grešaka.</li>
+  <li>Digest, policy manifest, SBOM, scan i rezultat testova priloženi su change evidenciji.</li>
+  <li>Postoji dokumentovan rollback i vremenski ograničen break-glass postupak.</li>
+</ul>
+
+<h3>Zaključak</h3>
+<p>Administrator nakon ove lekcije treba da razume da bezbednost image-a nije jednokratno skeniranje pre deployment-a. Pouzdan tok zahteva nepromenljivu identifikaciju digestom, proveru poznatih ranjivosti, inventar komponenti, dokaz o odobrenom poreklu, kriptografski potpis i tehničko sprovođenje pravila na ulazu u klaster.</p>
+<p>Praktična odgovornost administratora obuhvata proveru tačnog artefakta, čuvanje dokaza, validaciju admission politike, razlikovanje admission greške od problema povlačenja ili pokretanja image-a i bezbedan rollback na prethodni odobreni digest. Posebno mora prepoznati da potpis ne potvrđuje odsustvo ranjivosti, da scan ne potvrđuje identitet proizvođača i da tag nije nepromenljivi identifikator.</p>
+<p>Promena poverljivih ključeva, globalnih policy pravila, registry sigurnosnih pragova i fail-open/fail-closed ponašanja prevazilazi rutinsko aplikaciono administriranje i zahteva formalno odobrenje vlasnika platforme i bezbednosti. Sumnja na krađu signing ključa, kompromitovanje build sistema, neobjašnjiv potpis ili nemogućnost utvrđivanja porekla aktivnog image-a razlog su za neposrednu eskalaciju, zaustavljanje promocije i kontrolisanu istragu lanca isporuke.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Kubernetes dokumentacija za image reference, digest, image pull politiku, privatne registry-je i sigurnosne kontrole; Harbor administrativni vodiči za vulnerability scanning, SBOM, content trust i CVE allowlist; Trivy CLI i vulnerability reference; Sigstore Cosign vodiči za potpisivanje i verifikaciju; Kyverno API i administrativna dokumentacija za ImageValidatingPolicy; SLSA specifikacija za provenance i integritet softverskog lanca
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-40-secrets-sertifikati-i-upravljanje-poverenjem.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-42-hardening-audit-i-compliance.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

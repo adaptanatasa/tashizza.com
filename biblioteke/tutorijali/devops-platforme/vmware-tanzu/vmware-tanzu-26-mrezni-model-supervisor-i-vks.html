@@ -1,0 +1,814 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-26-mrezni-model-supervisor-i-vks.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Tanzu mreže – povezivanje klastera, node-ova, servisa i korisnika | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Tanzu mreže predstavljaju osnovu komunikacije između Kubernetes klastera, node-ova, Pod-ova, servisa i korisnika u VMware Tanzu okruženju.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, Kubernetes networking, Tanzu mreže, CNI, Pod network, Service, ClusterIP, NSX, Antrea, Calico, vSphere with Tanzu, TKG, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-26-mrezni-model-supervisor-i-vks.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Tanzu mreže – povezivanje klastera, node-ova, servisa i korisnika">
+
+  <meta property="og:description"
+        content="Dvadeset šesta lekcija VMware & Tanzu tutorijala – razumevanje Kubernetes mrežnog modela, komunikacije između Pod-ova, servisa i korisnika u Tanzu okruženju.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-26-mrezni-model-supervisor-i-vks.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-26-tanzu-mreze.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Tanzu mreže – povezivanje klastera, node-ova, servisa i korisnika">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+     Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-26-tanzu-mreze.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-26-tanzu-mreze.png"
+           alt="Tanzu mreže – povezivanje klastera, node-ova, servisa i korisnika">
+
+    </a>
+  
+<div class="page-subtitle">
+ VII. Tanzu mrežna arhitektura i izlaganje servisa
+</div>
+   <div class="page-subtitle">
+  26. Mrežni model Supervisor-a i VKS-a – segmenti, interfejsi, adrese i tok saobraćaja
+</div>
+<p>
+  Mreža u VMware Tanzu okruženju nije samo transport između virtuelnih mašina. Ona istovremeno povezuje administratorske radne stanice sa Kubernetes API serverom, control plane sa radnim node-ovima, podove međusobno, aplikacije sa internim servisima, klaster sa infrastrukturnim sistemima i krajnje korisnike sa objavljenim aplikacijama. Zbog toga mrežni problem u Tanzu okruženju može izgledati kao kvar aplikacije, DNS-a, Kubernetes kontrolera, load balancera, NSX segmenta, vSphere port grupe, fizičkog rutera ili bezbednosnog pravila. Administrator mora da posmatra ceo put paketa, a ne samo objekat koji trenutno prijavljuje grešku.
+</p>
+<p>
+  Savremena VMware platforma može pružati Kubernetes kroz vSphere Supervisor i vSphere Kubernetes Service, koji se u novijoj dokumentaciji i izdanjima VMware Cloud Foundation pojavljuje pod skraćenicom VKS. U ranijim implementacijama mogu se sresti nazivi vSphere with Tanzu, Tanzu Kubernetes Grid Service, TKG Service i Tanzu Kubernetes Cluster. Samostalni Tanzu Kubernetes Grid 2.x i Tanzu Kubernetes Grid Integrated Edition predstavljaju drugačije modele implementacije i ne treba njihove mrežne postupke automatski prenositi na Supervisor okruženje. Konkretne mogućnosti zavise od verzije VMware Cloud Foundation ili vSphere platforme, izabranog mrežnog steka, CNI dodatka, load balancer integracije i licence.
+</p>
+<h3>Mrežni slojevi Tanzu okruženja</h3>
+<p>
+  Produkciona Tanzu mreža sastoji se od više međuzavisnih slojeva. Najniži sloj čine fizički switch-evi, ruteri, VLAN-ovi, MTU konfiguracija i uplink veze ESXi hostova. Iznad njega nalazi se vSphere Distributed Switch ili NSX mrežni sloj, zatim mrežni adapteri Kubernetes virtuelnih mašina, CNI mreža podova, virtuelne adrese servisa i mehanizam kojim se aplikacije objavljuju korisnicima. Kubernetes upravlja željenim stanjem mrežnih objekata, ali ne zamenjuje osnovnu infrastrukturu koja mora da obezbedi povezivost.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Tipični objekti</th>
+      <th>Administratorska odgovornost</th>
+      <th>Tipičan simptom problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Fizička i vSphere mreža</td>
+      <td>VLAN, uplink, VDS, port grupa, vmkernel adapter</td>
+      <td>Redundantnost, MTU, VLAN dozvole, routing i dostupnost gateway-a</td>
+      <td>Node nije dostupan, povremeni gubitak paketa ili veliki broj retransmisija</td>
+    </tr>
+    <tr>
+      <td>Supervisor ili klasterska mreža</td>
+      <td>Control plane adrese, node mreža, API endpoint</td>
+      <td>Planiranje opsega, DNS-a, NTP-a, firewall pravila i load balancera</td>
+      <td><code>kubectl</code> ne može da pristupi API serveru ili se node ne registruje</td>
+    </tr>
+    <tr>
+      <td>Pod mreža</td>
+      <td>Pod CIDR, CNI interfejsi, overlay ili rutabilne pod adrese</td>
+      <td>Neponavljanje opsega, ispravan CNI i dovoljan broj adresa</td>
+      <td>Podovi rade na istom node-u, ali ne komuniciraju između node-ova</td>
+    </tr>
+    <tr>
+      <td>Service mreža</td>
+      <td>ClusterIP, EndpointSlice, kube-proxy ili odgovarajući dataplane</td>
+      <td>Planiranje Service CIDR-a i validacija backend endpoint-a</td>
+      <td>Direktan pristup podu radi, ali pristup Service adresi ne radi</td>
+    </tr>
+    <tr>
+      <td>Objavljivanje aplikacija</td>
+      <td>LoadBalancer Service, Ingress, Gateway API, virtual service</td>
+      <td>VIP opseg, DNS, TLS, health monitori i firewall</td>
+      <td>Servis radi unutar klastera, ali nije dostupan korisnicima</td>
+    </tr>
+    <tr>
+      <td>Bezbednosna segmentacija</td>
+      <td>NetworkPolicy, NSX pravila, distribuirani firewall</td>
+      <td>Minimalno potrebni tokovi, audit i kontrola promena</td>
+      <td>Selektivno odbijanje konekcije između određenih workload-a</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Podržani mrežni modeli i verzijske granice</h3>
+<p>
+  Izbor mrežnog modela pripada dizajnu Supervisor-a i ne svodi se na kasniju promenu nekoliko Kubernetes objekata. U vSphere 8 okruženjima najčešće se sreću Supervisor sa NSX networking-om i Supervisor sa vSphere Distributed Switch (VDS) networking-om uz podržani load balancer. U VMware Cloud Foundation 9 dokumentaciji pojavljuju se tri odvojena Supervisor mrežna steka, a VCF Networking sa Virtual Private Cloud (VPC) modelom predstavlja preporučeni workload mrežni pristup za nove odgovarajuće implementacije. Postojeće NSX i VDS arhitekture time ne postaju automatski nevažeće: njihova podrška, mogućnosti i put nadogradnje proveravaju se za tačan VCF/vCenter/ESXi/NSX build i izabranu topologiju zona.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Gde se tipično sreće</th>
+      <th>Mrežne karakteristike</th>
+      <th>Važna posledica dizajna</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>NSX networking</td>
+      <td>vSphere 8 i VCF implementacije sa NSX integracijom</td>
+      <td>NSX segmenti, gateway-i, distribuirani routing/firewall i infrastrukturne integracije</td>
+      <td>Transportne zone, edge kapacitet, MTU, T0/T1 ili odgovarajući gateway model i pravila postaju deo Kubernetes puta paketa.</td>
+    </tr>
+    <tr>
+      <td>VDS networking</td>
+      <td>Supervisor implementacije zasnovane na vSphere Distributed Switch-u</td>
+      <td>VLAN-backed port grupe i eksterni podržani load balancer; manje mrežnih funkcija je realizovano samim NSX dataplane-om</td>
+      <td>Fizički routing, VLAN dozvole, adresni pool-ovi i load balancer integracija moraju biti unapred obezbeđeni; namespace nije sam po sebi mikrosegmentaciona granica.</td>
+    </tr>
+    <tr>
+      <td>VCF Networking sa VPC</td>
+      <td>VCF 9.x, kada ga konkretno izdanje i dizajn podržavaju</td>
+      <td>VPC-orijentisana izolacija i self-service mreže za Supervisor workload-e</td>
+      <td>Ne treba prenositi nazive polja, postupke i pretpostavke iz vSphere 8 čarobnjaka; koristi se dokumentacija za tačno VCF izdanje.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  CNI unutar VKS klastera i mrežni stek Supervisor-a nisu ista komponenta. Supervisor obezbeđuje infrastrukturnu povezanost i lifecycle VKS virtuelnih mašina, dok CNI u svakom VKS klasteru realizuje pod mrežu i, kada je podržano, NetworkPolicy. Naziv i podrazumevani CNI zavise od Kubernetes release-a i VKS cluster class/plan konfiguracije; zato se stvarno stanje utvrđuje iz deklaracije klastera, instaliranih sistemskih workload-a i zvanične release dokumentacije, a ne iz pretpostavke da svaki klaster koristi Antrea ili drugi konkretan dodatak.
+</p>
+<h3>Segmenti, virtuelni interfejsi i put paketa</h3>
+<p>
+  Na Supervisor i VKS virtuelnim mašinama operativni sistem vidi virtuelne NIC-ove povezane na vSphere ili NSX mreže. Unutar VKS node-a CNI zatim kreira dodatne interfejse, virtual Ethernet parove, bridge, tunnel ili routing stanje prema svojoj implementaciji. Nazivi kao <code>eth0</code>, <code>antrea-gw0</code>, <code>cali*</code> ili <code>genev_sys_*</code> nisu prenosiv ugovor između proizvoda i verzija. Administrator ih sme koristiti kao dokaz tek kada je identifikovao CNI i podržani troubleshooting postupak za konkretan klaster; ručno brisanje interfejsa, ruta ili dataplane pravila na upravljanom node-u nije prihvatljiva korekcija.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Tok</th>
+      <th>Logički put</th>
+      <th>Adrese koje treba pratiti</th>
+      <th>Dokaz funkcionalnosti</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Administrator → API</td>
+      <td>radna stanica/VPN → DNS → API VIP ili endpoint → aktivni API server</td>
+      <td>izvor klijenta, DNS odgovor, API endpoint i backend control plane adrese</td>
+      <td>TLS veza, odgovarajući sertifikat i autorizovan <code>kubectl</code> zahtev; ping nije dovoljan.</td>
+    </tr>
+    <tr>
+      <td>VKS node → Supervisor/infrastruktura</td>
+      <td>VM NIC → port grupa ili NSX segment → gateway/firewall → API, DNS, NTP, registry</td>
+      <td>node IP, gateway, SNAT ako postoji i odredišna adresa</td>
+      <td>node ostaje <code>Ready</code>, images se preuzimaju i vreme/DNS su stabilni.</td>
+    </tr>
+    <tr>
+      <td>Pod → pod na drugom node-u</td>
+      <td>pod interfejs → CNI dataplane → node transport → udaljeni CNI → odredišni pod</td>
+      <td>obe pod IP adrese, node IP adrese i eventualni tunnel endpoint-i</td>
+      <td>test tačnog protokola i veličine paketa sa podovima namerno raspoređenim na različite node-ove.</td>
+    </tr>
+    <tr>
+      <td>Pod → ClusterIP Service</td>
+      <td>DNS → ClusterIP → service proxy/dataplane → spremni EndpointSlice backend</td>
+      <td>ClusterIP, service port, endpoint IP i target port</td>
+      <td>ime i IP rade, EndpointSlice je spreman, a odgovor stiže sa očekivanog backend-a.</td>
+    </tr>
+    <tr>
+      <td>Korisnik → LoadBalancer Service</td>
+      <td>korporativni DNS → VIP → virtual service/health monitor → node ili pod dataplane → endpoint</td>
+      <td>korisnički izvor, VIP, SNAT izvor ako postoji, backend i pod IP</td>
+      <td>test spolja i iznutra, zdrav backend pool i korelisani LB/Kubernetes događaji.</td>
+    </tr>
+    <tr>
+      <td>Pod → spoljna destinacija</td>
+      <td>pod → CNI egress → node/gateway → SNAT/firewall → odredište</td>
+      <td>pod IP, prevedena izvorna adresa, ruta i odredišni IP/port</td>
+      <td>DNS i TCP/TLS test uz potvrdu egress politike i povratne rute.</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  Osnovni Kubernetes mrežni model polazi od toga da svaki pod dobija sopstvenu IP adresu, da podovi mogu da komuniciraju bez ručnog NAT-a između njih i da node može da komunicira sa podovima. Implementaciju tog modela obezbeđuje CNI dodatak i infrastrukturni mrežni sloj. Administrator zato ne sme pretpostaviti da sama činjenica da je pod u stanju <code>Running</code> potvrđuje ispravnost mreže. Kontejnerski proces može raditi dok CNI interfejs, ruta, DNS ili NetworkPolicy sprečavaju funkcionalnu komunikaciju.
+</p>
+<h3>Adresni plan i razdvajanje mrežnih opsega</h3>
+<p>
+  Pre implementacije klastera moraju se planirati najmanje upravljačka mreža, mreža node-ova, Pod CIDR, Service CIDR i opseg virtuelnih IP adresa za load balancer. U NSX okruženju mogu postojati dodatni segmenti, tier gateway-i, VPC mreže, SNAT adrese i odvojeni opsezi za Supervisor i njegove workload-e. Nazivi i način konfigurisanja razlikuju se između verzija, ali osnovno pravilo ostaje isto: nijedan opseg ne sme se preklapati sa drugim klasterskim opsegom, korporativnim mrežama, VPN adresama ili rutama sa kojima workload mora da komunicira.
+</p>
+<p>
+  Preklapanje adresa često ne izaziva trenutni potpuni prekid. Sistem može raditi za deo destinacija, dok paketi namenjeni udaljenoj mreži završavaju u lokalnoj pod ili service ruti. Takvi problemi su teški za dijagnostiku jer DNS radi, aplikacija šalje zahtev, ali povratni saobraćaj odlazi pogrešnim putem. Adresni plan zato mora biti deo infrastrukturne dokumentacije i procesa odobravanja, a ne proizvoljna vrednost unesena tokom čarobnjaka za instalaciju.
+</p>
+<p>
+  Service CIDR se koristi za virtuelne adrese Kubernetes servisa i obično nije direktno rutabilan izvan klastera. Pod CIDR služi za adrese podova, a način njegove dostupnosti zavisi od implementacije. VIP opseg mora biti dostupan komponenti koja realizuje Service tipa <code>LoadBalancer</code> i mora biti rutiran ili oglašen mreži korisnika. Dodeljivanje VIP adrese samo po sebi ne dokazuje da do nje postoji ispravan put.
+</p>
+<p><strong>Pre odobravanja adresnog plana administrator proverava:</strong></p>
+<ul>
+  <li>da se upravljački, node, pod, service i VIP opsezi međusobno ne preklapaju;</li>
+  <li>da se opsezi ne preklapaju sa data centrom, udaljenim lokacijama, cloud mrežama i korisničkim VPN pool-ovima;</li>
+  <li>da postoji dovoljan broj adresa za planirani broj node-ova, podova, servisa i buduće proširenje;</li>
+  <li>da su gateway, DNS, NTP i potrebne izlazne destinacije dostupni iz odgovarajućih segmenata;</li>
+  <li>da je dokumentovano ko upravlja rutama, firewall pravilima, VIP pool-om i javnim ili internim DNS zonama.</li>
+</ul>
+<h3>Povezivanje control plane-a i radnih node-ova</h3>
+<p>
+  Kubernetes API server predstavlja centralnu upravljačku tačku klastera. Administratori, automatizacioni sistemi, kubelet procesi i kontroleri moraju da mu pristupaju preko stabilnog endpoint-a. U klasteru sa više control plane node-ova taj endpoint se obično realizuje virtuelnom IP adresom iza load balancera. Load balancer ne zamenjuje Kubernetes control plane; on raspoređuje TCP konekcije ka zdravim API server instancama i uklanja nedostupne instance iz aktivnog skupa.
+</p>
+<p>
+  Radni node mora da razreši DNS imena, pristupi API endpoint-u, preuzme images iz registra, komunicira sa infrastrukturnim servisima i uspostavi mrežni put prema drugim node-ovima. Firewall koji dozvoljava samo administratorski pristup API serveru, ali ne i komunikaciju node-ova sa control plane-om, proizvodi klaster u kojem se node pojavljuje kao <code>NotReady</code> ili prestaje da šalje status. Potrebne portove i smerove treba uzeti iz dokumentacije za tačno izdanje platforme i CNI dodatka; generička lista portova nije dovoljna za svaku Tanzu arhitekturu.
+</p>
+<p>
+  Status <code>Ready</code> potvrđuje da kubelet trenutno zadovoljava osnovne uslove, ali administrator treba da proveri i uslove <code>NetworkUnavailable</code>, pritisak na resurse i događaje node-a. Povremeni prelazak u <code>NotReady</code> može ukazivati na gubitak API konekcije, problem sa vSphere mrežnim adapterom, CNI procesom, DNS-om ili preopterećenjem node-a.
+</p>
+<pre><code class="language-bash">kubectl get nodes -o wide
+kubectl describe node prod-tkg-01-worker-01
+kubectl get events -A --sort-by=.metadata.creationTimestamp</code></pre>
+<p>
+  U izlazu treba proveriti internu IP adresu node-a, Kubernetes verziju, stanje <code>Ready</code>, poslednje heartbeat vreme i događaje koji pominju kubelet, CNI ili nedostupan API server. Jednokratni stari događaj nije isto što i aktivna greška; vreme nastanka i broj ponavljanja moraju se posmatrati zajedno.
+</p>
+<h3>Pod mreža, CNI i komunikacija između node-ova</h3>
+<p>
+  CNI dodatak kreira mrežni interfejs podova, dodeljuje IP adrese i uspostavlja pravila potrebna za komunikaciju. VMware Tanzu implementacije mogu koristiti različite mrežne komponente u zavisnosti od proizvoda i verzije. Zbog toga se CNI ne menja proizvoljno na postojećem produkcionom klasteru. Promena može zahtevati ponovno kreiranje klastera ili posebno podržan postupak migracije.
+</p>
+<p>
+  Kada pod ostane u stanju <code>ContainerCreating</code>, administrator proverava događaje. Poruke poput <code>FailedCreatePodSandBox</code>, neuspešnog poziva CNI dodatka ili nemogućnosti dodele IP adrese ukazuju da kontejner još nije dobio funkcionalan mrežni sandbox. Restart aplikacije tada nije rešenje; potrebno je proveriti CNI komponente, raspoloživost adresnog pool-a i stanje node-a.
+</p>
+<pre><code class="language-bash">kubectl get pods -A -o wide
+kubectl describe pod &lt;IME_PODA&gt; -n &lt;NAMESPACE&gt;
+kubectl get pods -A | grep -Ei 'cni|antrea|calico|cilium|nsx'
+kubectl logs -n &lt;SISTEMSKI_NAMESPACE&gt; &lt;CNI_POD&gt; --since=15m</code></pre>
+<p>
+  Naziv CNI komponenti i njihov namespace moraju se prvo utvrditi u konkretnom klasteru. Ne treba pretpostavljati da svaka Tanzu implementacija koristi isti dodatak. Ako komunikacija radi između podova na istom node-u, ali ne i između različitih node-ova, sumnja se usmerava na overlay tunel, fizičku fabric mrežu, MTU, firewall između node-ova ili CNI agent na jednom od njih.
+</p>
+<p>
+  Neusklađen MTU je posebno opasan jer mali paketi mogu prolaziti, dok veći zahtevi, TLS sesije ili prenos images-a otkazuju. Administrator tada ne zaključuje da je aplikacija neispravna samo zato što TCP konekcija ponekad može da se uspostavi. Potrebno je uporediti MTU na fizičkoj mreži, VDS-u, NSX transportnoj zoni, VM interfejsu i CNI overlay-u prema podržanom dizajnu proizvođača.
+</p>
+<h3>Kubernetes Service i stabilan pristup aplikaciji</h3>
+<p>
+  Podovi su potrošni objekti. Njihove IP adrese se menjaju pri ponovnom kreiranju, skaliranju i raspoređivanju na drugi node. Kubernetes Service obezbeđuje stabilan naziv i virtuelnu adresu ispred skupa podova izabranih label selector-om. Najčešći tip je <code>ClusterIP</code>, namenjen komunikaciji unutar klastera.
+</p>
+<p>
+  Service ne proverava poslovnu ispravnost aplikacije sam po sebi. On prosleđuje saobraćaj ka endpoint-ima koji odgovaraju selector-u i stanju spremnosti podova. Ako selector ne odgovara labelama podova, Service postoji, dobija ClusterIP i može se uspešno razrešiti kroz DNS, ali nema backend endpoint-e. To je česta konfiguraciona greška koja izgleda kao mrežni kvar.
+</p>
+<pre><code class="language-bash">kubectl get service -n payments
+kubectl describe service payments-web -n payments
+kubectl get endpointslice -n payments -l kubernetes.io/service-name=payments-web
+kubectl get pods -n payments --show-labels</code></pre>
+<p>
+  EndpointSlice objekti treba da sadrže IP adrese spremnih podova i očekivani port. Prazan skup obično znači pogrešne labele, neuspešan readiness probe ili odsustvo podova. Ako endpoint postoji, direktan pristup pod IP adresi radi, a ClusterIP ne radi, proveravaju se service dataplane, kube-proxy ili odgovarajuća zamenska komponenta.
+</p>
+<p>
+  <code>NodePort</code> otvara port na node-ovima i uglavnom se koristi kao infrastrukturni mehanizam ili za ograničene testove. Direktno izlaganje produkcione aplikacije korisnicima kroz nasumično dodeljen NodePort obično nije poželjan dizajn zbog upravljanja firewall pravilima, TLS-om, dostupnošću i praćenjem saobraćaja. <code>LoadBalancer</code> zahteva integrisanog provajdera koji može da kreira ili rezerviše virtuelnu adresu i usmeri saobraćaj ka servisu.
+</p>
+<h3>DNS, objavljivanje servisa i pristup korisnika</h3>
+<p>
+  Klaster DNS kreira imena za Kubernetes servise. Pod u istom namespace-u može pristupiti servisu kratkim imenom, na primer <code>payments-web</code>, dok je potpuno ime oblika <code>payments-web.payments.svc.cluster.local</code> u tipičnoj konfiguraciji domena klastera. Stvarni cluster domain može biti drugačiji i treba ga proveriti.
+</p>
+<p>
+  DNS problem treba razdvojiti od problema transporta. Ako <code>nslookup</code> ne vraća adresu, proveravaju se DNS Service, CoreDNS podovi, konfiguracija podovog <code>/etc/resolv.conf</code> fajla i NetworkPolicy pravila. Ako se ime razrešava, ali TCP konekcija ne uspeva, istraga se nastavlja na Service, endpoint-e, portove i politike.
+</p>
+<pre><code class="language-bash">kubectl get service -n kube-system
+kubectl get pods -n kube-system -l k8s-app=kube-dns
+kubectl logs -n kube-system -l k8s-app=kube-dns --since=15m
+kubectl exec -n payments &lt;POD&gt; -- cat /etc/resolv.conf</code></pre>
+<p>
+  Za pristup korisnika aplikacija se može objaviti Service objektom tipa <code>LoadBalancer</code>, Ingress resursom ili Gateway API resursima, u zavisnosti od instaliranih kontrolera i podržane platforme. Kreiranje Ingress objekta bez Ingress kontrolera ne objavljuje aplikaciju. Kubernetes API prihvata objekat, ali nijedna komponenta ne realizuje pravila.
+</p>
+<p>
+  U Tanzu okruženjima load balancing mogu realizovati NSX Advanced Load Balancer, NSX komponente ili drugi podržani provajderi. Administrator mora da zna ko upravlja VIP pool-om, kojim mrežama su Service Engine ili odgovarajuće dataplane komponente povezani, kako se proverava health monitor i ko održava DNS zapis. Stanje <code>EXTERNAL-IP: &lt;pending&gt;</code> duže od očekivanog obično znači da provider nije dostupan, nema slobodnih VIP adresa, nema prava, ne može da kreira virtual service ili ne može da pronađe odgovarajuću mrežu.
+</p>
+<h3>Mrežna segmentacija i NetworkPolicy</h3>
+<p>
+  Kubernetes podovi su podrazumevano neizolovani ako nijedna NetworkPolicy politika ne bira te podove. Sama definicija namespace-a ne predstavlja mrežnu bezbednosnu granicu. Za produkcione workload-e preporučuje se eksplicitno definisanje dozvoljenih tokova, ali samo kada instalirani CNI podržava i zaista sprovodi NetworkPolicy. API može prihvatiti politiku čak i kada je dataplane ne primenjuje.
+</p>
+<p>
+  Politika se primenjuje na izabrane podove i smerove <code>Ingress</code> i <code>Egress</code>. Kada pod postane izolovan u jednom smeru, dozvoljen je samo saobraćaj koji odgovara dozvolama relevantnih pravila. Više politika se sabira; jedna politika ne poništava dozvolu koju daje druga. Administrator zato analizira sve politike koje biraju pod, a ne samo poslednju izmenjenu.
+</p>
+<p>
+  Primena <code>default-deny</code> egress pravila bez eksplicitne dozvole za DNS često prekida razrešavanje imena. Aplikacija zatim prijavljuje da baza, API ili registar nije dostupan, iako su odredišni sistemi zdravi. Bezbedna implementacija uvodi politiku u testnom namespace-u, potvrđuje DNS i zavisnosti, a zatim je primenjuje u produkciji kroz kontrolisanu promenu.
+</p>
+<h3>Integrisani praktikum: objavljivanje i segmentacija aplikacije payments-web</h3>
+<p>
+  <strong>Poslovni kontekst.</strong> Interna aplikacija za pregled statusa plaćanja treba da bude dostupna korisnicima preko virtuelne IP adrese, dok direktan pristup aplikacionim podovima iz drugih namespace-ova mora biti zabranjen. Frontend se izvršava u VKS klasteru <code>prod-tkg-01</code>. Organizacija koristi podržanu integraciju za Service tipa <code>LoadBalancer</code>, a mrežni tim je rezervisao VIP pool iz kojeg se adrese dodeljuju automatski.
+</p>
+<p>
+  <strong>Cilj.</strong> Implementirati dve replike aplikacije <code>payments-web</code>, interni ClusterIP servis, spoljašnji LoadBalancer servis i NetworkPolicy pravila koja dozvoljavaju pristup aplikacionom portu samo kroz namespace <code>payments</code>, uz očuvanu DNS funkcionalnost. Praktikum koristi jednostavan HTTP server za proveru mrežnog puta; u produkciji bi image prošao sigurnosno skeniranje i bio smešten u odobrenom privatnom registru.
+</p>
+<p>
+  <strong>Referentno okruženje.</strong> Klaster je dostupan aktivnim kontekstom <code>prod-tkg-01-admin</code>. Aplikacioni namespace je <code>payments</code>, testni namespace je <code>network-test</code>, Deployment se zove <code>payments-web</code>, interni Service <code>payments-web</code>, a spoljašnji Service <code>payments-web-lb</code>. Manifesti se čuvaju u direktorijumu <code>~/tanzu-labs/lesson-26</code>.
+</p>
+<p>
+  <strong>Preduslovi i prava.</strong> Administrator mora imati pravo da čita node-ove i sistemske mrežne objekte i da u namespace-ovima <code>payments</code> i <code>network-test</code> kreira Deployment, Pod, Service i NetworkPolicy objekte. Za ovaj scenario nisu potrebne cluster-admin privilegije ako su namespace-i unapred delegirani. Potrebni su funkcionalan CNI sa NetworkPolicy podrškom, klasterski DNS, slobodan VIP i mrežni put korisnika do VIP mreže.
+</p>
+<ol>
+  <li>
+    <strong>Potvrda identiteta, konteksta i osnovnog zdravlja klastera.</strong>
+    Pre promene se proverava da komande neće biti izvršene u pogrešnom klasteru i da svi node-ovi imaju stanje <code>Ready</code>.
+    <pre><code class="language-bash">kubectl config current-context
+kubectl config get-contexts
+kubectl auth can-i create deployments.apps -n payments
+kubectl auth can-i create services -n payments
+kubectl auth can-i create networkpolicies.networking.k8s.io -n payments
+kubectl get nodes -o wide</code></pre>
+    <strong>Validacija:</strong> aktivni kontekst mora biti <code>prod-tkg-01-admin</code>, sve provere prava moraju vratiti <code>yes</code>, a svi očekivani node-ovi moraju imati stanje <code>Ready</code>. Ako namespace još ne postoji, provera prava može vratiti drugačiji rezultat u zavisnosti od RBAC modela; namespace tada kreira ovlašćeni platformski administrator.
+  </li>
+  <li>
+    <strong>Priprema radnog direktorijuma i namespace-a.</strong>
+    Kreiraju se direktorijum za auditabilne manifeste i dva izolovana namespace-a. Labela <code>kubernetes.io/metadata.name</code> automatski postoji na savremenim Kubernetes namespace-ovima i kasnije se koristi u NetworkPolicy selector-u.
+    <pre><code class="language-bash">mkdir -p ~/tanzu-labs/lesson-26
+cd ~/tanzu-labs/lesson-26
+
+kubectl create namespace payments --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace network-test --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl get namespaces payments network-test --show-labels</code></pre> <strong>Validacija:</strong> oba namespace-a moraju biti u stanju <code>Active</code>. Komanda je idempotentna jer se generisani manifest prosleđuje naredbi <code>apply</code>.
+
+  </li>
+  <li>
+    <strong>Kreiranje aplikacionog Deployment-a.</strong>
+    Manifest definiše dve replike, stabilnu labelu i readiness probe. Service neće slati saobraćaj ka podu dok HTTP provera na portu 8080 ne uspe.
+    <pre><code class="language-bash">cat &gt; payments-web.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-web
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payments-web
+  template:
+    metadata:
+      labels:
+        app: payments-web
+    spec:
+      containers:
+        - name: web
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /hostname
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+EOF
+
+kubectl apply -f payments-web.yaml
+kubectl rollout status deployment/payments-web -n payments --timeout=120s
+kubectl get pods -n payments -l app=payments-web -o wide</code></pre> <strong>Validacija:</strong> Deployment mora imati dve dostupne replike, a podovi stanje <code>Running</code> i <code>READY 1/1</code>. Za produkcionu upotrebu javni test image mora biti zamenjen odobrenim image-om iz internog registra.
+
+  </li>
+  <li>
+    <strong>Kreiranje internog i spoljašnjeg servisa.</strong>
+    Interni Service obezbeđuje stabilno DNS ime, dok LoadBalancer Service zahteva da infrastrukturni provider dodeli virtuelnu adresu.
+    <pre><code class="language-bash">cat &gt; payments-services.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-web
+  namespace: payments
+spec:
+  type: ClusterIP
+  selector:
+    app: payments-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-web-lb
+  namespace: payments
+spec:
+  type: LoadBalancer
+  selector:
+    app: payments-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+EOF
+
+kubectl apply -f payments-services.yaml
+kubectl get services -n payments
+kubectl get endpointslice -n payments \
+  -l kubernetes.io/service-name=payments-web -o wide
+kubectl get endpointslice -n payments \
+  -l kubernetes.io/service-name=payments-web-lb -o wide</code></pre> <strong>Validacija:</strong> oba servisa moraju imati ClusterIP, oba EndpointSlice skupa moraju sadržati IP adrese dva spremna poda, a LoadBalancer Service treba da dobije spoljašnju adresu. Kratko stanje <code>&lt;pending&gt;</code> može biti normalno tokom provisioninga; dugotrajno stanje zahteva proveru provider kontrolera, VIP pool-a i događaja servisa.
+
+  </li>
+  <li>
+    <strong>Početna funkcionalna provera pre segmentacije.</strong>
+    Privremeni testni pod proverava DNS i HTTP odgovor internog servisa. Koristi se zaseban namespace kako bi kasniji negativni test imao jasnu bezbednosnu vrednost.
+    <pre><code class="language-bash">kubectl run netcheck \
+  -n network-test \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --restart=Never \
+  --command -- sleep 3600
+
+kubectl wait -n network-test \
+  --for=condition=Ready pod/netcheck \
+  --timeout=120s
+
+kubectl exec -n network-test netcheck -- \
+  nslookup payments-web.payments.svc.cluster.local
+
+kubectl exec -n network-test netcheck -- \
+  curl -fsS --max-time 5 \
+  http://payments-web.payments.svc.cluster.local/hostname</code></pre> <strong>Validacija:</strong> DNS mora vratiti ClusterIP servisa, a HTTP zahtev ime jednog od aplikacionih podova. Ovaj uspeh potvrđuje osnovni mrežni put pre uvođenja politike.
+
+  </li>
+  <li>
+    <strong>Uvođenje podrazumevane izolacije i eksplicitnih dozvola.</strong>
+    Prva politika izoluje sve podove u namespace-u za ingress i egress. Druga dozvoljava DNS upite, treća međusobni saobraćaj podova u namespace-u, a četvrta ingress na TCP port 8080 samo iz namespace-a <code>payments</code>. Ova laboratorijska matrica namerno dokazuje izolaciju između namespace-ova; ona još ne predstavlja kompletno produkciono pravilo za ulaz preko load balancera. Izvor koji pod vidi može biti adresa klijenta, node-a, Service Engine-a ili druga prevedena adresa, zavisno od <code>externalTrafficPolicy</code>, SNAT-a i konkretnog providera. Kubernetes standard ne garantuje da se saobraćaj koji je stigao kroz Service može bezbedno identifikovati samo <code>namespaceSelector</code>-om. Pre produkcione primene mrežni tim mora packet capture-om ili LB telemetry podacima dokazati stvarni izvor, a zatim dodati najmanji podržani <code>ipBlock</code>, CNI-specifičnu politiku ili infrastrukturno pravilo. Ne unosi se široko <code>0.0.0.0/0</code> samo da bi VIP test uspeo.
+    <pre><code class="language-bash">cat &gt; payments-networkpolicy.yaml &lt;&lt;'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-payments-internal
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-from-payments
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: payments-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: payments
+      ports:
+        - protocol: TCP
+          port: 8080
+EOF
+
+kubectl apply -f payments-networkpolicy.yaml
+kubectl get networkpolicy -n payments
+kubectl describe networkpolicy -n payments</code></pre> <strong>Validacija:</strong> moraju postojati četiri politike sa očekivanim selector-ima i smerovima. Samo uspešan <code>apply</code> nije dokaz da CNI sprovodi pravila; to potvrđuju sledeći pozitivni i negativni testovi.
+
+  </li>
+  <li>
+    <strong>Negativni test iz neovlašćenog namespace-a.</strong>
+    Testni pod iz namespace-a <code>network-test</code> i dalje treba da razreši DNS ime servisa, ali HTTP konekcija prema aplikaciji mora da bude blokirana.
+    <pre><code class="language-bash">kubectl exec -n network-test netcheck -- \
+  nslookup payments-web.payments.svc.cluster.local
+
+kubectl exec -n network-test netcheck -- \
+  curl -fsS --connect-timeout 3 --max-time 5 \
+  http://payments-web.payments.svc.cluster.local/hostname</code></pre> <strong>Očekivani rezultat:</strong> DNS upit uspeva, dok <code>curl</code> završava timeout greškom ili neuspelom konekcijom. Ako HTTP zahtev i dalje uspeva, prvo se proverava da li CNI podržava NetworkPolicy i da li su selector-i ispravni. Ne treba automatski dodavati šira pravila samo da bi test prošao.
+
+  </li>
+  <li>
+    <strong>Pozitivni test iz dozvoljenog namespace-a.</strong>
+    Kreira se privremeni klijent u namespace-u <code>payments</code>. Politika dozvoljava njegov pristup aplikacionom portu.
+    <pre><code class="language-bash">kubectl run payments-client \
+  -n payments \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
+  --restart=Never \
+  --command -- sleep 3600
+
+kubectl wait -n payments \
+  --for=condition=Ready pod/payments-client \
+  --timeout=120s
+
+kubectl exec -n payments payments-client -- \
+  nslookup payments-web
+
+kubectl exec -n payments payments-client -- \
+  curl -fsS --max-time 5 http://payments-web/hostname</code></pre> <strong>Validacija:</strong> kratko DNS ime mora da se razreši, a HTTP odgovor mora sadržati ime jednog od podova <code>payments-web</code>. Ponovljeni zahtevi mogu vratiti različita imena, što potvrđuje raspodelu saobraćaja između replika.
+
+  </li>
+  <li>
+    <strong>Provera LoadBalancer adrese i puta korisnika.</strong>
+    Adresa se čita iz statusa servisa, a zatim se proveravaju događaji i HTTP odgovor. Test treba izvršiti sa administratorske stanice koja ima odobrenu rutu do VIP mreže.
+    <pre><code class="language-bash">kubectl get service payments-web-lb -n payments -o wide
+kubectl describe service payments-web-lb -n payments
+
+LB_ADDRESS="$(kubectl get service payments-web-lb -n payments \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+
+if [ -z "${LB_ADDRESS}" ]; then
+LB_ADDRESS="$(kubectl get service payments-web-lb -n payments \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+fi
+
+printf 'Load balancer adresa: %s\n' "${LB_ADDRESS}"
+curl -fsS --connect-timeout 5 --max-time 10 \
+  "http://${LB_ADDRESS}/hostname"</code></pre> <strong>Validacija:</strong> promenljiva ne sme biti prazna, servis ne sme imati aktivne warning događaje, a HTTP zahtev mora vratiti ime aplikacionog poda. Ako interni test radi, a VIP ne radi, problem se traži u load balancer health monitoru, VIP ruti, firewall-u ili NetworkPolicy kompatibilnosti sa konkretnim dataplane tokom.
+    <p><strong>Bezbednosno tumačenje:</strong> ako je zahtev radio pre politike, a posle nje završava timeout-om, politika verovatno blokira stvarni LB izvor. To je očekivan i koristan nalaz ove restriktivne laboratorijske politike, a ne razlog za nasumično proširenje dozvole. Sa ovlašćenim mrežnim timom utvrđuje se izvorni CIDR i testira precizna dopuna; ako izvor nije pouzdano ograničiv standardnom NetworkPolicy politikom, koristi se podržana CNI/NSX/LB kontrola. Ako zahtev prolazi, proverava se da li je to posledica očuvanog izvornog IP-a i postojećeg pravila ili znak da CNI politiku uopšte ne sprovodi; negativni test iz <code>network-test</code> mora i dalje ostati blokiran.</p>
+
+  </li>
+  <li>
+    <strong>Provera raspodele i otpornosti na otkaz jedne replike.</strong>
+    Jedan aplikacioni pod se briše kontrolisano. Deployment treba automatski da kreira zamenu, dok servis ostaje dostupan preko preostalog spremnog endpoint-a.
+    <pre><code class="language-bash">POD_TO_DELETE="$(kubectl get pods -n payments \
+  -l app=payments-web \
+  -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl delete pod -n payments "${POD_TO_DELETE}"
+kubectl get pods -n payments -l app=payments-web -w</code></pre> <strong>Upozorenje:</strong> prekid komande za praćenje vrši se sa <code>Ctrl+C</code> kada zamenski pod postane spreman. Brisanje poda je prihvatljivo samo zato što Deployment održava dve replike; isto se ne radi nad jedinom instancom stateful aplikacije bez plana oporavka. <pre><code class="language-bash">kubectl rollout status deployment/payments-web -n payments --timeout=120s
+kubectl get endpointslice -n payments \
+  -l kubernetes.io/service-name=payments-web -o wide
+curl -fsS --connect-timeout 5 --max-time 10 \
+  "http://${LB_ADDRESS}/hostname"</code></pre> <strong>Validacija:</strong> Deployment ponovo mora imati dve spremne replike i EndpointSlice dve adrese. VIP test mora zadržati isto, unapred dokumentovano ponašanje kao u prethodnom koraku: uspeh ako je precizno dozvoljen stvarni LB izvor, odnosno kontrolisano blokiranje ako takva dozvola još nije uvedena. Kratak pad broja endpoint-a sa dva na jedan je normalan; gubitak svih internih endpoint-a nije.
+
+  </li>
+  <li>
+    <strong>Pregled logova i događaja.</strong>
+    Aplikacioni logovi potvrđuju prijem zahteva, DNS logovi pomažu pri razrešavanju imena, a događaji servisa otkrivaju probleme sa load balancer provisioningom.
+    <pre><code class="language-bash">kubectl logs -n payments \
+  -l app=payments-web \
+  --all-containers=true \
+  --since=15m \
+  --prefix
+
+kubectl logs -n kube-system \
+  -l k8s-app=kube-dns \
+  --since=15m \
+  --prefix
+
+kubectl get events -n payments \
+  --sort-by=.metadata.creationTimestamp
+
+kubectl get events -n network-test \
+  --sort-by=.metadata.creationTimestamp</code></pre> <strong>Tumačenje:</strong> aplikacioni logovi treba da prikažu uspešne HTTP zahteve. DNS greške tipa <code>SERVFAIL</code> ili timeout zahtevaju proveru upstream resolvera i politika. Događaji servisa koji pominju nedostupan pool, odbijenu operaciju ili neuspešno kreiranje virtual service-a upućuju na infrastrukturni provider, a ne na aplikacioni Deployment.
+
+  </li>
+</ol>
+<p>
+  <strong>Kriterijumi prihvatanja praktikuma.</strong> Klaster ima sve node-ove u stanju <code>Ready</code>; Deployment ima dve dostupne replike; oba servisa imaju dva spremna endpoint-a; LoadBalancer Service ima dodeljenu adresu; DNS razrešavanje radi iz oba testna namespace-a; HTTP pristup iz <code>payments</code> uspeva; HTTP pristup iz <code>network-test</code> ne uspeva; brisanje jednog poda ne izaziva gubitak internog servisa; u događajima nema ponavljajućih warning poruka. Za VIP tok kriterijum je ili uspešan, dokumentovano dozvoljen pristup, ili dokazano blokiranje uz identifikovan LB izvor i odobren plan minimalne korekcije; ne prihvata se nedokumentovana široka dozvola.
+</p>
+<p>
+  <strong>Rollback i cleanup.</strong> Ako politika nenamerno prekine produkcioni tok, najbezbedniji privremeni rollback je vraćanje prethodne verzije manifestâ iz sistema za upravljanje izvornim kodom. U laboratoriji se politike mogu ukloniti sledećim komandama:
+</p>
+<pre><code class="language-bash">kubectl delete -f payments-networkpolicy.yaml
+
+kubectl exec -n network-test netcheck -- \
+  curl -fsS --max-time 5 \
+  http://payments-web.payments.svc.cluster.local/hostname</code></pre>
+
+<p>
+  Uspešan HTTP zahtev nakon uklanjanja politika potvrđuje da je prekid izazvala segmentacija. Za potpuno čišćenje laboratorije prvo se briše LoadBalancer Service kako bi provider oslobodio VIP, zatim ostali objekti i namespace-i:
+</p>
+<pre><code class="language-bash">kubectl delete service payments-web-lb -n payments
+kubectl wait --for=delete service/payments-web-lb \
+  -n payments --timeout=120s
+
+kubectl delete namespace payments network-test</code></pre>
+
+<p>
+  Pre brisanja namespace-a u produkcionom okruženju mora se potvrditi da u njemu nema drugih workload-a, tajni, konfiguracija ili persistent resursa. Brisanje namespace-a je destruktivno i nije prihvatljiv način rollback-a produkcione promene.
+</p>
+<h3>Tipične greške i dijagnostičko razdvajanje</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prva provera</th>
+      <th>Verovatan sloj problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pod je dugo u stanju <code>ContainerCreating</code></td>
+      <td><code>kubectl describe pod</code> i događaji <code>FailedCreatePodSandBox</code></td>
+      <td>CNI, IP pool ili node mreža</td>
+    </tr>
+    <tr>
+      <td>DNS ime se razrešava, ali Service ne odgovara</td>
+      <td>EndpointSlice, readiness i Service port/targetPort</td>
+      <td>Service konfiguracija ili aplikacioni endpoint</td>
+    </tr>
+    <tr>
+      <td>Service nema endpoint-e</td>
+      <td>Uporediti selector i pod labele</td>
+      <td>Manifest ili readiness probe</td>
+    </tr>
+    <tr>
+      <td><code>EXTERNAL-IP</code> ostaje <code>&lt;pending&gt;</code></td>
+      <td>Događaji servisa i stanje load balancer kontrolera</td>
+      <td>Provider, prava, VIP pool ili mrežni mapping</td>
+    </tr>
+    <tr>
+      <td>VIP postoji, ali nije dostupan iz korisničke mreže</td>
+      <td>Ruta, firewall, health monitor i backend pool</td>
+      <td>Load balancer ili data center mreža</td>
+    </tr>
+    <tr>
+      <td>Komunikacija radi samo između podova na istom node-u</td>
+      <td>Test sa podovima na različitim node-ovima, CNI logovi i MTU</td>
+      <td>Overlay, transportna mreža ili firewall između node-ova</td>
+    </tr>
+    <tr>
+      <td>Posle default-deny politike ne radi DNS</td>
+      <td>Dozvola za UDP/TCP 53 prema DNS podovima ili servisu</td>
+      <td>NetworkPolicy</td>
+    </tr>
+    <tr>
+      <td>NetworkPolicy postoji, ali ne blokira saobraćaj</td>
+      <td>Podrška i stanje CNI enforcement-a</td>
+      <td>Nepodržan ili neispravan policy dataplane</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Administratorske prakse</h3>
+<ul>
+  <li><strong>Kontrola kapaciteta IP opsega.</strong> Najmanje mesečno i pre svakog proširenja proveravaju se zauzeće node, pod i VIP pool-ova kroz alate odgovarajućeg mrežnog provajdera i inventar klastera. Reakcija je obavezna kada slobodan kapacitet padne ispod internog praga, tipično 20–25%, ili kada trend pokazuje da će biti iscrpljen pre sledećeg planskog prozora. Dokumentuju se trenutna zauzetost, trend, plan proširenja i vlasnik akcije u CMDB-u ili operativnom sistemu evidencije. Uspeh se meri odsustvom neuspešnih dodela adresa i održavanjem rezervnog kapaciteta.</li>
+  <li><strong>Provera node i CNI zdravlja.</strong> Posle patch-a ESXi hostova, nadogradnje klastera, promene VDS/NSX konfiguracije i najmanje dnevno proveravaju se <code>kubectl get nodes</code>, sistemski podovi i događaji. Ponavljajući <code>NotReady</code>, restart CNI podova ili <code>FailedCreatePodSandBox</code> zahtevaju trenutnu istragu. Beleže se zahvaćeni node, vreme, događaji, mrežne promene i rezultat oporavka. Uspeh je stabilno stanje node-ova bez novih mrežnih warning događaja tokom definisanog perioda posmatranja.</li>
+  <li><strong>Praćenje DNS-a.</strong> CoreDNS replike, restarti, latencija i greške proveravaju se dnevno kroz Kubernetes monitoring i nakon svake promene upstream resolvera ili NetworkPolicy pravila. <code>SERVFAIL</code>, rast timeout-a, nedostupne replike ili zasićenje CPU-a zahtevaju proveru konfiguracije, upstream DNS-a i mrežnih pravila. Incident zapis sadrži problematično ime, namespace, vreme, odgovor resolvera i logove. Uspeh se meri stabilnim vremenom odgovora i odsustvom ponavljajućih DNS grešaka.</li>
+  <li><strong>Validacija servisa i endpoint-a.</strong> Nakon svakog deployment-a proveravaju se Service selector-i, EndpointSlice objekti i readiness stanje. Service bez endpoint-a duže od vremena potrebnog za rollout smatra se neuspelom promenom. Prva reakcija je poređenje labela, portova i readiness probe-a, a ne izmena firewall-a. U change zapisu čuvaju se manifest, izlaz rollout provere i broj endpoint-a. Uspeh je da broj spremnih endpoint-a odgovara planiranom broju dostupnih replika.</li>
+  <li><strong>Kontrola load balancer objekata.</strong> Nakon kreiranja ili izmene Service, Ingress ili Gateway objekta proveravaju se VIP, virtual service, backend pool i health monitor. VIP bez zdravog backend-a ili objekat u stanju greške zahteva prekid puštanja promene u rad. Dokumentuju se Kubernetes objekat, dodeljena adresa, DNS zapis, TLS sertifikat, vlasnik i datum isteka. Uspeh se meri dostupnošću sa odobrenih korisničkih mreža i prolaskom sintetičkog testa.</li>
+  <li><strong>NetworkPolicy testiranje.</strong> Svaka politika se testira najmanje jednim dozvoljenim i jednim zabranjenim tokom. Posle promene CNI-a, nadogradnje klastera ili promene namespace labela testovi se ponavljaju. Neočekivano dozvoljen saobraćaj je bezbednosni incident, dok neočekivano blokiran poslovni tok zahteva rollback ili preciznu korekciju. Manifesti i rezultati testova čuvaju se u verzionisanom repozitorijumu i change evidenciji. Uspeh je podudaranje stvarnog toka sa odobrenom matricom komunikacije.</li>
+  <li><strong>Praćenje MTU-a i gubitka paketa.</strong> Nakon promena fizičke mreže, VDS-a, NSX transporta ili uplink-a proveravaju se interfejsi, drop brojači, retransmisije i testovi paketa odgovarajuće veličine. Fragmentacija, rast drop brojača ili razlika MTU vrednosti zahteva koordinaciju vSphere, NSX i mrežnog tima. Dokumentuju se put paketa, izmerene vrednosti i tačka gubitka. Uspeh je stabilan prenos maksimalne podržane veličine bez fragmentacije i gubitka.</li>
+  <li><strong>Čuvanje konfiguracije i oporavak.</strong> Kubernetes manifesti, mrežne politike, Service i Ingress/Gateway definicije čuvaju se pri svakoj promeni u verzionisanom repozitorijumu, bez tajni u otvorenom tekstu. Konfiguracija load balancera, NSX-a i vSphere mreže čuva se mehanizmima koje podržava odgovarajući proizvod i korporativna backup politika. Najmanje kvartalno radi se probni restore u neprodukcionom okruženju ili kontrolisana rekonstrukcija iz deklarativnih manifestâ. Backup je upotrebljiv tek kada se objekti mogu obnoviti, VIP i pravila ponovo realizovati i funkcionalni test uspešno završiti.</li>
+</ul>
+<h3>Završna kontrolna tačka</h3>
+<ul>
+  <li>Aktivni <code>kubectl</code> kontekst i identitet provereni su pre promene, a potrebne RBAC provere vraćaju <code>yes</code>.</li>
+  <li>Node, pod, Service i VIP opsezi dokumentovani su i potvrđeno je da se ne preklapaju sa povezanim mrežama.</li>
+  <li>Svi očekivani node-ovi imaju stanje <code>Ready</code>, bez aktivnih događaja koji ukazuju na CNI ili API problem.</li>
+  <li>Sistemski DNS i mrežni podovi imaju očekivani broj spremnih replika i nemaju ponavljajuće restarte.</li>
+  <li>Service selector-i odgovaraju pod labelama, a EndpointSlice sadrži očekivani broj spremnih endpoint-a.</li>
+  <li>LoadBalancer Service ima dodeljenu adresu, zdrav backend i potvrđen mrežni put sa odobrene korisničke lokacije.</li>
+  <li>DNS ime aplikacije vraća očekivanu adresu iz testnog poda i sa korisničke mreže kada je spoljašnji zapis potreban.</li>
+  <li>NetworkPolicy je proverena pozitivnim i negativnim testom, a rezultati odgovaraju odobrenoj matrici tokova.</li>
+  <li>Brisanje jedne stateless replike ne prekida servis, a zamenska replika ulazi u EndpointSlice u prihvatljivom vremenu.</li>
+  <li>Manifesti, rezultati validacije, VIP, DNS zapis, vlasnici i rollback postupak evidentirani su u repozitorijumu i change zapisu.</li>
+</ul>
+<h3>Zaključak</h3>
+<p>
+  Tanzu mreža je povezana celina fizičke infrastrukture, vSphere ili NSX mrežnog steka, Kubernetes node-ova, CNI dataplane-a, servisnih virtuelnih adresa, DNS-a, load balancera i bezbednosnih politika. Administrator posle ove lekcije treba da razume kojim putem paket prolazi od korisnika do aplikacionog poda, zašto su Pod CIDR, Service CIDR i VIP pool različiti opsezi i zbog čega stanje <code>Running</code> ili postojanje Service objekta nije dokaz funkcionalne dostupnosti.
+</p>
+<p>
+  Praktična administratorska veština ogleda se u sposobnosti da se problem razdvoji po slojevima: da se razlikuje DNS greška od greške Service selector-a, prazan EndpointSlice od kvara load balancera, CNI problem od aplikacionog problema i NetworkPolicy blokada od fizičkog firewall-a. Bez takvog razdvajanja administrator lako pravi nepotrebne i rizične promene na pogrešnom sloju.
+</p>
+<p>
+  Administrator mora umeti da implementira servis, proveri endpoint-e, potvrdi dodelu VIP adrese, izvrši pozitivne i negativne mrežne testove, uvede minimalno potrebnu segmentaciju i bezbedno vrati prethodnu konfiguraciju. Svaka promena mora biti zasnovana na podržanoj arhitekturi konkretnog VMware izdanja, jer se nazivi, mrežni stekovi i integracije razlikuju između Supervisor, VKS, samostalnog TKG-a i TKGI platforme.
+</p>
+<p>
+  Granica administratorskog ovlašćenja mora biti jasna. Kubernetes administrator može dokazati da aplikacioni endpoint i Service rade, ali ne treba samostalno menjati fizičke rute, NSX gateway, load balancer pool ili korporativni firewall bez odgovarajuće odgovornosti i odobrenja. Nedostatak slobodnih VIP adresa, neusaglašen MTU, problem sa transportnim node-om, neispravan load balancer kontroler, sumnja na bezbednosni incident ili promena koja zahteva nepodržanu migraciju CNI-a predstavljaju razlog za eskalaciju odgovarajućem vSphere, NSX, mrežnom, bezbednosnom ili vendor support timu.
+</p>
+<p>
+  Dobro upravljana Tanzu mreža nije ona u kojoj se incidenti nikada ne pojavljuju, već ona u kojoj su opsezi i tokovi dokumentovani, stanje merljivo, politike testirane, promene reverzibilne i odgovornost jasno podeljena. Time se mreža iz nevidljive infrastrukturne zavisnosti pretvara u kontrolisan i proverljiv deo platforme.
+</p>
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware Cloud Foundation, vSphere Supervisor i vSphere Kubernetes Service administrativna dokumentacija; Tanzu Kubernetes Grid i NSX Advanced Load Balancer vodiči; Kubernetes mrežni koncepti, Service, DNS, Ingress, NetworkPolicy i API reference; zvanični vodiči za bezbednost, monitoring i troubleshooting mrežnih komponenti
+  </p>
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-25-upgrade-i-uklanjanje-vks-klastera.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-27-nsx-i-vsphere-networking-modeli.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

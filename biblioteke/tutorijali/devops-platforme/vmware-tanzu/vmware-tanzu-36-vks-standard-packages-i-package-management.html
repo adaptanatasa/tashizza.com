@@ -1,0 +1,603 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-36-vks-standard-packages-i-package-management.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>VKS Standard Packages i package management – kompatibilna instalacija platformskih komponenti | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="VKS Standard Packages i package management – kompatibilna instalacija i upravljanje platformskim komponentama u VKS klasteru.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, VKS Standard Packages, package management, platform services, paketi, kompatibilnost, VKS klaster, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-36-vks-standard-packages-i-package-management.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="VKS Standard Packages i package management – kompatibilna instalacija platformskih komponenti">
+
+  <meta property="og:description"
+        content="Trideset šesta lekcija VMware &amp; Tanzu tutorijala – VKS Standard Packages, kompatibilna instalacija i upravljanje platformskim komponentama.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-36-vks-standard-packages-i-package-management.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-36-vks-standard-packages-i-package-management.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="VKS Standard Packages i package management – kompatibilna instalacija platformskih komponenti">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Treći deo: Produkcioni rad, bezbednost i upravljanje životnim ciklusom
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-36-vks-standard-packages-i-package-management.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-36-vks-standard-packages-i-package-management.png"
+           alt="VKS Standard Packages i package management – kompatibilna instalacija platformskih komponenti">
+
+    </a>
+    <div class="page-subtitle">
+      IX. Registry, paketi, platform services i implementacija aplikacija
+    </div>
+
+    <div class="page-subtitle">
+      36. VKS Standard Packages i package management – kompatibilna instalacija platformskih komponenti
+    </div>
+
+    <p>
+      U prethodnoj lekciji uspostavljen je lanac poverenja od VKS klastera do container registry-ja. Ta osnova je neposredan preduslov za ovu lekciju: package manager preuzima OCI bundle-ove i image-e iz registry-ja, obrađuje deklarativne resurse i zatim stvarno stanje klastera usklađuje sa željenim. VKS Standard Packages predstavljaju verzionisanu i testiranu kolekciju platformskih komponenti za proširenje vSphere Kubernetes Service klastera, ali oznaka „standard” ne znači da je svaki paket automatski odgovarajući za svaku verziju VKS-a, Kubernetes-a ili za svaku topologiju.
+    </p>
+
+    <p>
+      Cilj administratora nije samo da komanda za instalaciju završi bez greške. Potrebno je dokazati poreklo repozitorijuma, kompatibilnost paketa, dostupnost svih zavisnih image-a, ispravnost konfiguracionih vrednosti, uspešan reconciliation i funkcionalnost servisa. Verzija repozitorijuma i verzija pojedinačnog paketa jesu dve različite odluke; obe moraju biti evidentirane i kontrolisane kroz change proces.
+    </p>
+
+    <h3>1. Terminologija i verzijski kontekst</h3>
+
+    <p>
+      Broadcom dokumentacija za aktuelna VMware Cloud Foundation 9 okruženja koristi naziv <strong>vSphere Kubernetes Service (VKS)</strong> i, zavisno od izdanja, VCF CLI komande oblika <code>vcf package</code>. Dokumentacija za vSphere 8 i ranija TKG Service okruženja često koristi nazive <strong>TKG Service</strong> i <strong>Tanzu Kubernetes Grid Service</strong>, kao i komande <code>tanzu package</code>. To nisu dva package manager-a koja treba paralelno koristiti, već generacije proizvoda, dokumentacije i klijentskih alata. Pre procedure proveravaju se verzija Supervisor-a, VKS servisa, workload klastera i instaliranog CLI plug-in-a.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Element</th>
+          <th>Aktuelni VKS/VCF kontekst</th>
+          <th>vSphere 8/TKG Service kontekst</th>
+          <th>Administratorska odluka</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CLI porodica</td>
+          <td><code>vcf package ...</code>, kada je isporučena za izdanje</td>
+          <td><code>tanzu package ...</code></td>
+          <td>Koristiti CLI i plug-in koji podržava ciljna verzija VKS-a; ne prevoditi komande mehanički.</td>
+        </tr>
+        <tr>
+          <td>Identifikator paketa</td>
+          <td>Noviji paketi koriste <code>&lt;ime&gt;.kubernetes.vmware.com</code></td>
+          <td>Stariji paketi mogu koristiti <code>&lt;ime&gt;.tanzu.vmware.com</code></td>
+          <td>Identifikator preuzeti iz stvarnog kataloga, ne pretpostaviti ga iz naziva proizvoda.</td>
+        </tr>
+        <tr>
+          <td>Repozitorijum</td>
+          <td>VKS Standard Packages release usklađen sa VKS matricom</td>
+          <td>Odgovarajući Tanzu/VKS Standard repository za TKr/VKS nivo</td>
+          <td>Proveriti release notes i compatibility matrix pre promene taga ili digest-a.</td>
+        </tr>
+        <tr>
+          <td>Namespace</td>
+          <td colspan="2">Repository, Package i PackageInstall su namespaced resursi.</td>
+          <td>Za postupak koji zahteva <code>tkg-system</code> koristiti upravo taj namespace.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>Važna verzijska napomena:</strong> prelazak na domen <code>kubernetes.vmware.com</code> zahteva odgovarajuću verziju package plug-in-a; Broadcom KB za migraciju navodi plug-in 3.4.0 ili noviji. Sadržaj kataloga nije stalan: Grafana je, na primer, uklonjena iz VKS Standard Package Repository od izdanja v1.23 u korist Helm implementacije. Pre nadogradnje repozitorijuma zato se proveravaju uklonjeni paketi i propisana migraciona putanja.
+    </div>
+
+    <h3>2. Arhitektura Carvel package management-a</h3>
+
+    <p>
+      VKS Standard Packages koriste Carvel format i deklarativni model koji izvršava <code>kapp-controller</code>. CLI je korisnički interfejs; izvor istine su Kubernetes custom resources. Razumevanje tih resursa omogućava dijagnostiku i kada CLI prikaže samo opštu poruku <code>Reconcile failed</code>.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Resurs ili komponenta</th>
+          <th>Uloga</th>
+          <th>Šta administrator proverava</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>PackageRepository</code></td>
+          <td>Pokazuje na verzionisani OCI/imgpkg bundle sa definicijama paketa.</td>
+          <td>URL ili digest, registry autentikaciju, CA poverenje, namespace i uspešan reconcile.</td>
+        </tr>
+        <tr>
+          <td><code>PackageMetadata</code></td>
+          <td>Opisuje logički paket, identitet i namenu.</td>
+          <td>Da li je očekivani <code>refName</code> vidljiv u ciljnom namespace-u.</td>
+        </tr>
+        <tr>
+          <td><code>Package</code></td>
+          <td>Predstavlja određenu verziju, fetch/template/deploy tok, values schema-u i eventualna verzijska ograničenja.</td>
+          <td>Dostupne verzije, uključeni softver i Kubernetes/kapp-controller constraints.</td>
+        </tr>
+        <tr>
+          <td><code>PackageInstall</code></td>
+          <td>Deklariše instalaciju: paket, izbor verzije, ServiceAccount i Secret sa vrednostima.</td>
+          <td>Conditions, poruku kontrolera, generisani <code>App</code> i primenjenu verziju.</td>
+        </tr>
+        <tr>
+          <td><code>App</code></td>
+          <td>Izvršava fetch, template i deploy i periodično usklađuje stvarno sa željenim stanjem.</td>
+          <td>Fetch/template/deploy grešku, drift, status i controller logove.</td>
+        </tr>
+        <tr>
+          <td>Secret sa values</td>
+          <td>Čuva korisničku konfiguraciju koju PackageInstall prosleđuje paketu.</td>
+          <td>Schema validnost, pristup i odsustvo tajni iz Git-a ili komandne istorije.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      Kontroler preuzima repository bundle i iz njega objavljuje PackageMetadata i verzionisane Package objekte u namespace-u. PackageInstall bira verziju, a generisani App preuzima artefakte, renderuje konfiguraciju i primenjuje resurse. Kontroler periodično ponavlja proveru. Ručna izmena Deployment-a koji pripada paketu zato nije trajno rešenje: reconciliation je može vratiti, a drift otežava sledeći upgrade.
+    </p>
+
+    <h3>3. Kompatibilnost nije samo broj verzije</h3>
+
+    <p>
+      Podržana kombinacija zavisi od VKS Standard Packages release-a, Kubernetes/VKS verzije, verzije <code>kapp-controller</code>-a, paketa i njegovih zavisnosti. Package može sadržati <code>kubernetesVersionSelection</code> i <code>kappControllerVersionSelection</code>. Moderni kontroler odbija neusklađenu instalaciju, ali odsustvo tehničke blokade nije dokaz vendor podrške. Stariji kapp-controller pre 0.41.x ne sprovodi ova polja, a kapacitet, CNI, CSI, PSA, LoadBalancer i storage zahtevi mogu ostati van automatske provere.
+    </p>
+
+    <ul>
+      <li><strong>Release kompatibilnost:</strong> release notes i matrica za konkretan VKS i repository release.</li>
+      <li><strong>API kompatibilnost:</strong> paket ne sme zavisiti od Kubernetes API verzija uklonjenih iz ciljnog release-a.</li>
+      <li><strong>Infrastruktura:</strong> DNS, NTP, registry egress, proxy/no-proxy, CA lanac, CNI, LoadBalancer, StorageClass i resursi.</li>
+      <li><strong>Bezbednost:</strong> Pod Security Admission, privilegije, ClusterRole opseg, image provenance i tajne.</li>
+      <li><strong>Operativni uslovi:</strong> HA topologija, monitoring, backup, upgrade redosled i rollback.</li>
+    </ul>
+
+    <div class="warning">
+      <strong>Ne zaobilaziti constraints u produkciji:</strong> anotacije <code>packaging.carvel.dev/ignore-kubernetes-version-selection</code> i <code>packaging.carvel.dev/ignore-kapp-controller-version-selection</code> mogu prisiliti pokušaj instalacije, ali ne stvaraju kompatibilnost. Prihvatljive su samo u izolovanom laboratorijskom testu; u produkciji se bira podržana verzija paketa ili se platforma nadograđuje propisanim redosledom.
+    </div>
+
+    <h3>4. Repozitorijum, namespace i lifecycle odluke</h3>
+
+    <p>
+      PackageRepository je namespaced izvor kataloga. PackageInstall po pravilu vidi Package resurse u svom namespace-u; repository dodat u proizvoljan namespace ne rešava instalaciju u <code>tkg-system</code> ili drugom ciljnom namespace-u. To je čest osnovni uzrok greške „package not found”. Centralizovano upravljanje ne znači automatski globalnu vidljivost Package objekata.
+    </p>
+
+    <p>
+      U produkciji se pin-uje odobren repository release, a kada postupak podržava digest, nepromenljivom digest-u daje se prednost nad promenljivim tagom. Promena repository-ja može promeniti skup verzija, ukloniti paket ili uvesti novi package domain. Pre nje se pravi inventar svih PackageInstall objekata, proveravaju release notes i migracije, pa se promena testira u neprodukcijskom klasteru.
+    </p>
+
+    <h3>5. Bezbednost lanca isporuke</h3>
+
+    <ul>
+      <li>Razdvojiti read-only posmatranje od prava za kreiranje <code>PackageRepository</code> i <code>PackageInstall</code> objekata.</li>
+      <li>Koristiti namenski ServiceAccount i najmanji RBAC opseg koji paket podržava; pregledati ClusterRole i webhook resurse.</li>
+      <li>Privatni CA uvesti podržanim mehanizmom; grešku <code>x509: certificate signed by unknown authority</code> ne rešavati isključivanjem TLS provere.</li>
+      <li>Za air-gapped okruženje relocirati repository bundle i sve zavisne image-e podržanim <code>imgpkg</code> postupkom, uz očuvano image mapiranje.</li>
+      <li>Repository URL/digest i image poreklo evidentirati; credential i values tajne ne čuvati u otvorenom Git repozitorijumu.</li>
+      <li>Pre upgrade-a sačuvati manifest PackageInstall-a, redigovane values, verzije i funkcionalni test; backup aplikacionih podataka je odvojen zadatak.</li>
+    </ul>
+
+    <h3>6. Administratorski CLI i dokazivanje stanja</h3>
+
+    <p>
+      Komande se izvršavaju sa administratorske radne stanice u kubeconfig kontekstu ciljnog VKS workload klastera. Sledeći blok je read-only. Najpre se proveravaju kontekst i verzije, pa se bira porodica <code>vcf</code> ili <code>tanzu</code> iz dokumentacije za stvarno izdanje.
+    </p>
+
+    <pre><code class="language-bash">kubectl config current-context
+kubectl version
+kubectl api-resources | grep -E 'packagerepositor|packagemetadata|packageinstall|packages'
+
+# Aktuelni VKS/VCF CLI, ako ga izdanje podržava
+vcf version
+vcf package repository list -A
+vcf package available list -A
+vcf package installed list -A
+
+# vSphere 8/TKG Service CLI generacija
+tanzu version
+tanzu plugin list
+tanzu package repository list -A
+tanzu package available list -A
+tanzu package installed list -A</code></pre>
+
+    <p>
+      Direktni Kubernetes pregled je najvažniji dijagnostički sloj. Ove komande samo čitaju stanje; opcija <code>-A</code> sprečava zaključak da paket ne postoji samo zato što je administrator u drugom namespace-u.
+    </p>
+
+    <pre><code class="language-bash">kubectl get packagerepositories.packaging.carvel.dev -A
+kubectl get packagemetadatas.data.packaging.carvel.dev -A
+kubectl get packages.data.packaging.carvel.dev -A
+kubectl get packageinstalls.packaging.carvel.dev -A
+kubectl get apps.kappctrl.k14s.io -A
+
+kubectl describe packagerepository STANDARD_REPO -n tkg-system
+kubectl describe packageinstall PACKAGE_INSTALL -n tkg-system
+kubectl get packageinstall PACKAGE_INSTALL -n tkg-system -o yaml</code></pre>
+
+    <p>
+      Za vrednosti se ne polazi od nasumičnog primera. Prvo se dobija values schema za tačan package refName i verziju. Sintaksa podkomande može se razlikovati između CLI generacija, pa je <code>--help</code> obavezni pre-check.
+    </p>
+
+    <pre><code class="language-bash">vcf package available get PACKAGE_REF -n tkg-system
+vcf package available get PACKAGE_REF/VERSION --values-schema -n tkg-system
+
+# Alternativa za Tanzu CLI generaciju
+tanzu package available get PACKAGE_REF -n tkg-system
+tanzu package available get PACKAGE_REF/VERSION --values-schema -n tkg-system</code></pre>
+
+    <div class="note">
+      <strong>Napomena:</strong> konkretan repository URL, package refName i verzija namerno nisu fiksirani. To su release artefakti i moraju se preuzeti iz zvanične dokumentacije za instalirano izdanje. Primer za drugo izdanje može proizvesti tehnički uspešnu, ali nepodržanu kombinaciju.
+    </div>
+
+    <h3>7. Praktikum – kontrolisana instalacija paketa</h3>
+
+    <h4>7.1. Cilj, topologija i preduslovi</h4>
+
+    <p>
+      Cilj je registrovati odobren VKS Standard Packages repository, izabrati kompatibilan paket, instalirati ga deklarativno i dokazati funkcionalnost. Topologija obuhvata administratorsku Linux radnu stanicu, neprodukcijski VKS klaster, DNS/NTP, izlaz ka odobrenom Broadcom registry-ju ili internom mirror-u, funkcionalan CNI i, ako paket zahteva, LoadBalancer i StorageClass. Vežba je laboratorijska; produkcija zahteva odobren change, maintenance plan i paket-specifičan backup.
+    </p>
+
+    <ul>
+      <li>Kubeconfig za workload klaster i nalog sa pravima za package resources.</li>
+      <li><code>kubectl</code> i tačna generacija VCF ili Tanzu CLI-ja sa package plug-in-om.</li>
+      <li>Zvanično potvrđeni repository URL/digest i compatibility podaci.</li>
+      <li>Dokazana registry ruta, proxy/no-proxy, CA poverenje i image pull autentikacija.</li>
+      <li>Sačuvano početno stanje i UTC vreme promene radi korelacije događaja i logova.</li>
+    </ul>
+
+    <h4>7.2. Pre-check i inventar</h4>
+
+    <pre><code class="language-bash">date -u
+kubectl config current-context
+kubectl get nodes -o wide
+kubectl get --raw='/readyz?verbose'
+kubectl get storageclass
+kubectl get packagerepository,packageinstall -A
+kubectl get events -A --sort-by=.lastTimestamp | tail -n 50
+
+# Read-only snimak početnog stanja
+kubectl get packagerepository,packageinstall -A -o yaml &gt; package-state-before.yaml
+kubectl get packages.data.packaging.carvel.dev -A -o wide &gt; package-versions-before.txt</code></pre>
+
+    <p>
+      Node-ovi moraju biti <code>Ready</code>, API readiness provere uspešne i ne sme postojati aktivan package incident. Ako je klaster degradiran, instalacija se odlaže.
+    </p>
+
+    <h4>7.3. Dodavanje repozitorijuma</h4>
+
+    <p>
+      Sledeća operacija <strong>menja stanje</strong>. Placeholdere zameniti podacima iz zvanične dokumentacije za konkretan VKS release. Ne izvršavaju se obe CLI varijante.
+    </p>
+
+    <pre><code class="language-bash"># VCF CLI generacija
+vcf package repository add STANDARD_REPO \
+  --url APPROVED_REPOSITORY_URL \
+  -n tkg-system
+
+# ILI Tanzu CLI generacija
+tanzu package repository add STANDARD_REPO \
+  --url APPROVED_REPOSITORY_URL \
+  -n tkg-system</code></pre>
+
+    <p>
+      Uspeh nije samo povratni kod: repository mora završiti reconcile, a Package i PackageMetadata moraju postati vidljivi.
+    </p>
+
+    <pre><code class="language-bash">kubectl get packagerepository STANDARD_REPO -n tkg-system -w
+kubectl describe packagerepository STANDARD_REPO -n tkg-system
+kubectl get packagemetadata,packages -n tkg-system</code></pre>
+
+    <pre><code class="language-none">Očekivano:
+- status repozitorijuma pokazuje uspešan reconcile;
+- opis nema aktivnu fetch, TLS ili authentication grešku;
+- katalog sadrži očekivani package refName i podržane verzije.</code></pre>
+
+    <h4>7.4. Izbor paketa i priprema vrednosti</h4>
+
+    <p>
+      Bira se paket koji postoji u katalogu release-a i čije zahteve laboratorija ispunjava. Najpre se pregledaju detalji i schema, zatim pravi minimalni <code>values.yaml</code>. Primer pokazuje obrazac, ne univerzalnu schema-u.
+    </p>
+
+    <pre><code class="language-yaml"># values.yaml — uskladiti sa schema-om tačnog paketa
+namespace: platform-package
+# Package-specifične vrednosti dodati isključivo prema values schema-i.</code></pre>
+
+    <p>
+      Proveravaju se planirani namespace, PSA zahtevi, Service tip, storage potrošnja, replike, tolerations i cluster-wide privilegije. Tajne se ne upisuju u fajl ako paket podržava reference na postojeći Secret.
+    </p>
+
+    <h4>7.5. Instalacija i višeslojna validacija</h4>
+
+    <p>
+      Instalacija menja stanje. Tačna verzija se pin-uje umesto nekontrolisanog praćenja svakog novog izdanja. Naziv VCF podkomande proveriti sa <code>vcf package installed --help</code>, jer se CLI površina može menjati.
+    </p>
+
+    <pre><code class="language-bash"># VCF CLI obrazac za izdanje koje podržava create
+vcf package installed create PACKAGE_INSTALL \
+  --package PACKAGE_REF \
+  --version PACKAGE_VERSION \
+  --values-file values.yaml \
+  -n tkg-system
+
+# ILI Tanzu CLI generacija
+tanzu package install PACKAGE_INSTALL \
+  --package PACKAGE_REF \
+  --version PACKAGE_VERSION \
+  --values-file values.yaml \
+  -n tkg-system</code></pre>
+
+    <p>
+      Validira se pet slojeva: PackageInstall, generisani App, Kubernetes workload, mrežna ili storage funkcija i Events.
+    </p>
+
+    <pre><code class="language-bash">kubectl get packageinstall PACKAGE_INSTALL -n tkg-system -o wide
+kubectl describe packageinstall PACKAGE_INSTALL -n tkg-system
+kubectl get apps.kappctrl.k14s.io -n tkg-system
+kubectl get pods -A -o wide
+kubectl get events -A --sort-by=.lastTimestamp | tail -n 80
+
+# Zameniti stvarnim workload namespace-om i Deployment-om
+kubectl rollout status deployment/DEPLOYMENT_NAME -n TARGET_NAMESPACE --timeout=5m
+kubectl get all -n TARGET_NAMESPACE</code></pre>
+
+    <p>
+      Kriterijum završetka nije samo <code>Running</code>: PackageInstall i App moraju biti usklađeni, podovi spremni, Service endpoints popunjeni, PVC-ovi vezani i paket-specifičan test uspešan. Za ingress to je HTTP/TLS zahtev, za cert-manager izdavanje test sertifikata, a za log agent prijem kontrolisanog zapisa u backend-u.
+    </p>
+
+    <h4>7.6. Kontrolisana nadogradnja</h4>
+
+    <p>
+      Pre nadogradnje snimaju se manifest, redigovane values, funkcionalni rezultat i podaci. Proveravaju se ciljna verzija, release notes, breaking changes i zavisnosti. Repository upgrade i package upgrade razdvajaju se kada je moguće, jer se tako preciznije utvrđuje uzrok incidenta.
+    </p>
+
+    <pre><code class="language-bash">kubectl get packageinstall PACKAGE_INSTALL -n tkg-system -o yaml \
+  &gt; packageinstall-before-upgrade.yaml
+kubectl get packageinstall PACKAGE_INSTALL -n tkg-system \
+  -o jsonpath='{.spec.packageRef.versionSelection.constraints}{"\n"}'
+
+# Read-only potvrda dostupnih verzija
+vcf package available get PACKAGE_REF -n tkg-system</code></pre>
+
+    <p>
+      State-changing upgrade izvršava se sintaksom koju prikazuje instalirana generacija, na primer <code>vcf package installed update --help</code> ili <code>tanzu package installed update --help</code>. Zatim se ponavljaju sve validacije i proveravaju podaci i API ugovori korisničkih workload-a.
+    </p>
+
+    <h3>8. Troubleshooting – od simptoma do osnovnog uzroka</h3>
+
+    <p>
+      Dijagnostika počinje vremenom, poslednjom promenom, pogođenim klasterom i namespace-om. Ne brišu se odmah PackageInstall, App ili Secret: brisanje uklanja dokaze i može pokrenuti uklanjanje resursa. Redosled je status i Events, <code>describe</code>, App conditions, controller log, pa tek onda korekcija.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Simptom</th>
+          <th>Neposredni uzrok</th>
+          <th>Dokaz</th>
+          <th>Bezbedna korekcija</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Repository je <code>Reconcile failed</code>; nema kataloga.</td>
+          <td>DNS, ruta, proxy, TLS CA, autentikacija ili pogrešan OCI URL.</td>
+          <td><code>describe</code>, Events i log sa <code>x509</code>, <code>unauthorized</code>, timeout ili <code>manifest unknown</code>.</td>
+          <td>Ispraviti rutu/no-proxy, CA ili credential podržanim putem i potvrditi release URL; ne isključivati TLS.</td>
+        </tr>
+        <tr>
+          <td>Paket nije pronađen, repository je zdrav.</td>
+          <td>Pogrešan namespace opseg ili stari refName domen.</td>
+          <td><code>kubectl get packages -A</code> i poređenje namespace-a/refName-a.</td>
+          <td>Dodati repository u ciljni namespace i koristiti stvarni <code>*.kubernetes.vmware.com</code> ili legacy identifikator.</td>
+        </tr>
+        <tr>
+          <td>PackageInstall odbijen zbog version selection.</td>
+          <td>Kubernetes ili kapp-controller van constraint-a.</td>
+          <td>PackageInstall conditions i Package version-selection polja.</td>
+          <td>Izabrati kompatibilnu verziju ili nadograditi platformu; ne ignorisati constraint u produkciji.</td>
+        </tr>
+        <tr>
+          <td>App pada u template fazi.</td>
+          <td>Values ne odgovaraju schema-i ili overlay ne odgovara verziji.</td>
+          <td>App status, controller log i schema iste verzije.</td>
+          <td>Ispraviti values u izvoru istine; ne menjati renderovane resurse ručno.</td>
+        </tr>
+        <tr>
+          <td>Deploy uspe, podovi nisu Ready.</td>
+          <td>ImagePull, PSA/RBAC, CNI, LB, CSI, quota ili kapacitet.</td>
+          <td>Pod Events/log, endpoints, PVC i node conditions.</td>
+          <td>Otkloniti dokazanu zavisnost; ne povećavati privilegije naslepo.</td>
+        </tr>
+        <tr>
+          <td>Ručna izmena se vraća.</td>
+          <td>kapp-controller ispravlja drift.</td>
+          <td>App reconciliation i poređenje željenog sa stvarnim.</td>
+          <td>Promenu uneti kroz podržane values ili deklarativni izvor.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      Namespace i label selektori kontrolera razlikuju se po izdanju, pa ih prvo treba otkriti. Komande su read-only:
+    </p>
+
+    <pre><code class="language-bash">kubectl get pods -A | grep -E 'kapp-controller|package'
+kubectl get events -A --sort-by=.lastTimestamp | tail -n 100
+kubectl describe app APP_NAME -n tkg-system
+
+# Posle otkrivanja stvarnog namespace-a i pod-a
+kubectl logs -n CONTROLLER_NAMESPACE CONTROLLER_POD \
+  --since=30m --timestamps | grep -Ei 'PACKAGE_INSTALL|error|fail|x509|unauthorized|timeout'</code></pre>
+
+    <p>
+      Nalaz odvaja <strong>simptom</strong>, <strong>posledicu</strong>, <strong>neposredni uzrok</strong>, <strong>osnovni uzrok</strong>, <strong>privremeno rešenje</strong> i <strong>trajnu meru</strong>. Primer: simptom je neuspešan reconcile, neposredni uzrok TLS odbijanje, a osnovni uzrok izostala distribucija novog Root CA posle rotacije. Trajna mera nije ponovni pokušaj instalacije, već kontrolisana trust distribucija i monitoring isteka sertifikata.
+    </p>
+
+    <h3>9. Rollback i povratak laboratorije</h3>
+
+    <p>
+      Vraćanje PackageInstall verzije ne vraća automatski podatke, CRD schema migracije ili eksterni sistem. Stateful paket zahteva vendor-podržan rollback i restore plan. Za novu laboratorijsku instalaciju bez podataka prvo se čuva dokaz, zatim briše package instalacija, potvrđuje uklanjanje, pa se repository uklanja samo ako više nije potreban nijednom paketu u namespace-u.
+    </p>
+
+    <pre><code class="language-bash"># Read-only dokaz
+kubectl get packageinstall PACKAGE_INSTALL -n tkg-system -o yaml \
+  &gt; packageinstall-final.yaml
+kubectl describe app APP_NAME -n tkg-system &gt; app-final.txt
+
+# DESTRUKTIVNO: samo laboratorija bez potrebnih podataka
+vcf package installed delete PACKAGE_INSTALL -n tkg-system
+
+# Tek kada nijedna instalacija ne zavisi od repozitorijuma
+vcf package repository delete STANDARD_REPO -n tkg-system</code></pre>
+
+    <p>
+      U Tanzu CLI generaciji koriste se dokumentovane komande <code>tanzu package installed delete</code> i <code>tanzu package repository delete</code>. Posle brisanja proveravaju se PackageInstall, App, package namespace, PVC/PV i cluster-scoped resursi. Preostali PVC ili CRD ne brišu se naslepo: mogu sadržati podatke ili ih koristiti drugi workload-i.
+    </p>
+
+    <h3>10. Administratorske prakse</h3>
+
+    <ul>
+      <li>Voditi inventar: klaster, repository URL/digest i release, package refName/verzija, namespace, values revision, vlasnik i datum.</li>
+      <li>Pinovati odobrene verzije i upgrade prvo testirati u klasteru koji predstavlja produkcioni CNI, CSI, PSA, proxy i registry.</li>
+      <li>Repository, PackageInstall i redigovane values držati pod kontrolom verzija; tajne čuvati u odobrenom secrets sistemu.</li>
+      <li>Za svaki paket definisati synthetic test, SLO signal, log izvor, backup predmet i rollback kriterijum.</li>
+      <li>Ne mešati Supervisor Services, VKS Standard Packages i proizvoljne Helm chart-ove kao da imaju isti lifecycle i podršku.</li>
+      <li>Pre VKS/Kubernetes upgrade-a proveriti sve pakete, uklonjene API-je, promenu domain-a i pakete uklonjene iz novog repository-ja.</li>
+      <li>Incident završiti osnovnim uzrokom, korektivnom merom, dokazom oporavka i zaštitom od ponavljanja.</li>
+    </ul>
+
+    <h3>11. Završna kontrolna tačka</h3>
+
+    <p>Administrator je spreman za samostalan rad kada može da:</p>
+
+    <ul>
+      <li>objasni tok od OCI repository bundle-a preko Package/PackageInstall do App reconciliation-a;</li>
+      <li>utvrdi da li okruženje zahteva <code>vcf package</code> ili <code>tanzu package</code> i izabere pravi refName;</li>
+      <li>dokaže kompatibilnost VKS-a, Kubernetes-a, kapp-controller-a, repozitorijuma i paketa;</li>
+      <li>registruje repository u pravilnom namespace-u, pročita schema-u i izvede pinovanu instalaciju;</li>
+      <li>validira PackageInstall, App, workload i stvarnu funkciju servisa, a ne samo CLI izlaz;</li>
+      <li>razlikuje registry/TLS, namespace/refName, constraint, template i runtime kvar;</li>
+      <li>izvede bezbedan laboratorijski cleanup i objasni poseban plan za stateful rollback.</li>
+    </ul>
+
+    <h3>Zaključak</h3>
+
+    <p>
+      VKS Standard Packages daju deklarativan način za proširenje klastera platformskim komponentama, ali nisu zamena za arhitektonsku procenu i change governance. Pouzdana instalacija počinje podržanim repository release-om, ispravnim namespace opsegom i lancem poverenja, nastavlja se pinovanom verzijom i schema-validnim vrednostima, a završava funkcionalnim testom i dokazom reconciliation-a. Najveći rizici nastaju kada se pomešaju generacije CLI-ja i identifikatora, ignorišu constraints, ručno menja kontrolisani resurs ili pretpostavi da uspešan Pod znači zdrav servis. Odgovoran administrator zato upravlja kompletnim lifecycle-om: inventarom, kompatibilnošću, bezbednošću, observability-jem, nadogradnjom i oporavkom.
+    </p>
+
+    <footer class="chapter-footer">
+      <p>
+        jul 2026 &nbsp;|&nbsp;
+        Broadcom VMware Cloud Foundation i vSphere Kubernetes Service administrativna dokumentacija i VKS Standard Packages release notes; Broadcom Knowledge Base članci o namespace opsegu repozitorijuma, promeni package domena, TLS/registry greškama i migraciji uklonjenih paketa; Carvel kapp-controller package management, CRD, bezbednosna, troubleshooting i air-gapped dokumentacija; VCF CLI i Tanzu CLI package reference
+      </p>
+
+      <div class="footer-divider">
+        <span>❋</span>
+      </div>
+
+      <p>
+        Biblioteka „IT tutorijali”
+        &nbsp;|&nbsp;
+        VMware &amp; Tanzu
+        &nbsp;|&nbsp;
+        Nataša Mihajlović
+      </p>
+    </footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-35-container-registry-i-image-pull.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-37-platform-services-i-gitops.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

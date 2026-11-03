@@ -1,0 +1,615 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>DNS, NTP, IPAM i sertifikati – infrastrukturni servisi bez kojih platforma nije pouzdana | TASHIZZA</title>
+
+  <!-- SEO -->
+
+  <meta name="description"
+        content="DNS, NTP, IPAM i sertifikati za VMware Tanzu platformu – pouzdano razrešavanje imena, sinhronizacija vremena, upravljanje IP adresama i životni ciklus sertifikata.">
+
+  <meta name="keywords"
+        content="VMware Tanzu, DNS, NTP, IPAM, sertifikati, vSphere Supervisor, VKS, Kubernetes, VMware vSphere, infrastrukturni servisi, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="DNS, NTP, IPAM i sertifikati – infrastrukturni servisi bez kojih platforma nije pouzdana">
+
+  <meta property="og:description"
+        content="Jedanaesta lekcija VMware &amp; Tanzu tutorijala – DNS, NTP, IPAM i sertifikati kao temelj pouzdane Tanzu platforme.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="DNS, NTP, IPAM i sertifikati – infrastrukturni servisi bez kojih platforma nije pouzdana">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware &amp; Tanzu</h1>
+
+    <div class="page-subtitle">
+      Prvi deo: Arhitektura, izbor platforme i infrastrukturni preduslovi
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.png"
+           alt="DNS, NTP, IPAM i sertifikati – infrastrukturni servisi bez kojih platforma nije pouzdana">
+
+    </a>
+
+   <div class="page-subtitle">
+  III. Procena i priprema VMware infrastrukture
+</div>
+
+<div class="page-subtitle">
+  11. DNS, NTP, IPAM i sertifikati – infrastrukturni servisi bez kojih platforma nije pouzdana
+</div>
+
+<p>Prethodna lekcija definisala je kapacitet, topologiju i failure domain-e platforme. Međutim, ni pravilno dimenzionisan vSphere klaster ne može pouzdano da omogući Supervisor i vSphere Kubernetes Service (VKS) ako DNS ne razrešava imena dosledno, vreme nije sinhronizovano, IP opsezi nisu nedvosmisleno rezervisani ili sertifikacioni lanci nisu unapred projektovani. Ovi servisi nisu pomoćne stavke koje se „doteruju” posle implementacije: oni učestvuju u bootstrap-u, autentikaciji, otkrivanju servisa, izdavanju i proveri sertifikata, pristupu registrijima, radu load balancer-a i dijagnostici gotovo svakog incidenta.</p>
+
+<p>Cilj lekcije je da administrator izgradi proverljivu infrastrukturnu osnovu pre pokretanja Supervisor čarobnjaka. Fokus nije samo na unosu nekoliko adresa u vSphere Client, već na autoritativnom vlasništvu nad zapisima i opsezima, redundansi, bezbednom životnom ciklusu, dokazima o ispravnosti i planu promene. Konkretna polja i podržane kombinacije zavise od vSphere/VCF izdanja, networking modela i izabranog load balancer-a, pa se pre implementacije moraju potvrditi u dokumentaciji za tačan build.</p>
+
+<h3>1. Četiri servisa, jedna zavisna platforma</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Servis</th>
+      <th>Šta platforma od njega očekuje</th>
+      <th>Tipična posledica kvara</th>
+      <th>Dokaz pre implementacije</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DNS</td>
+      <td>Autoritativne forward i reverse odgovore, dosledan search domain i dostupnost preko UDP i TCP porta 53</td>
+      <td>Supervisor ostaje u stanju <code>Configuring</code>, endpoint-i i registriji nisu dostupni, TLS ime se ne poklapa</td>
+      <td>Isti očekivani odgovor sa svake relevantne mrežne zone i svakog konfigurisanog resolver-a</td>
+    </tr>
+    <tr>
+      <td>NTP</td>
+      <td>Zajednički, stabilan izvor vremena za vCenter, ESXi, Supervisor i VKS čvorove</td>
+      <td>SAML token deluje istekao, TLS provera pada, logovi se ne mogu korelisati, izbor lidera i distribuirani procesi postaju nepouzdani</td>
+      <td>Sinhronizovan status, mali offset i prohodan UDP 123 ka odobrenim izvorima</td>
+    </tr>
+    <tr>
+      <td>IPAM</td>
+      <td>Jedinstvene, neraskidane i dokumentovane opsege bez preklapanja i skrivene ponovne dodele</td>
+      <td>Duplikati adresa, ARP nestabilnost, neuspešan bootstrap, iscrpljen pool ili kolizija sa DHCP-om</td>
+      <td>Odobren plan opsega, rezervacije, gateway-i, VLAN-ovi, rute, vlasnik i evidencija potrošnje</td>
+    </tr>
+    <tr>
+      <td>PKI i sertifikati</td>
+      <td>Ispravan identitet endpoint-a, kompletan lanac poverenja, odgovarajuće SAN vrednosti i kontrolisanu obnovu</td>
+      <td><code>x509</code> greške, odbijena API veza, neuspela prijava ili prekid integracije posle rotacije</td>
+      <td>Validacija lanca, imena, namene ključa i roka važenja iz perspektive stvarnog klijenta</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Važna administratorska veština jeste razlikovanje uzroka od simptoma. Poruka o autentikaciji može biti posledica vremenskog odstupanja; TLS greška može poticati od pogrešnog DNS imena; „nasumičan” mrežni prekid može biti duplikat IP adrese; a neuspešna obnova sertifikata može nastati zato što novi lanac nije distribuiran svim klijentima. Zato se ova četiri domena proveravaju zajedno, ali se vlasništvo, dokaz i korektivna mera vode odvojeno.</p>
+
+<h3>2. DNS arhitektura i pravila imenovanja</h3>
+
+<p>DNS za Tanzu okruženje ima najmanje tri uloge: infrastrukturni DNS za vCenter, ESXi i upravljačke komponente; DNS koji koriste Supervisor i workload mreže; i Kubernetes service discovery unutar svakog klastera, koji tipično obezbeđuje CoreDNS. CoreDNS ne zamenjuje enterprise DNS. On razrešava imena Kubernetes servisa i prosleđuje spoljne upite prema upstream resolver-ima; zbog toga kvar ili pogrešna konfiguracija upstream DNS-a ostaje vidljiv unutar podova.</p>
+
+<p>Za vCenter Server Appliance stabilan FQDN nije kozmetički podatak: učestvuje u identitetu sistema i sertifikatima. Forward zapis mora vraćati očekivanu adresu, a reverse PTR treba da vraća odgovarajući FQDN. Kratka imena mogu biti pogodna administratoru, ali platformsku konfiguraciju treba zasnivati na potpunim imenima. Promena vCenter PNID-a, domena ili adrese nije rutinski način ispravljanja lošeg početnog DNS dizajna i mora se planirati prema podržanom postupku za konkretno izdanje.</p>
+
+<h4>2.1. Forward, reverse, TTL i split-horizon DNS</h4>
+
+<ul>
+  <li><strong>Forward zapisi:</strong> A za IPv4 i AAAA samo kada je IPv6 stvarno podržan i usmeravan kroz ceo tok. Ne objavljivati „ukrasni” AAAA zapis ako klijenti do te adrese ne mogu da stignu.</li>
+  <li><strong>Reverse zapisi:</strong> PTR nije zamena za A zapis, ali je važan za konzistentnost, reviziju i pojedine bezbednosne provere. Forward i reverse odgovor ne smeju voditi ka različitim identitetima.</li>
+  <li><strong>TTL:</strong> nizak TTL olakšava planiranu migraciju, ali povećava broj upita; visok TTL smanjuje opterećenje, ali produžava propagaciju greške. TTL se smanjuje pre promene, a ne tek po nastanku incidenta.</li>
+  <li><strong>Split-horizon:</strong> isto ime može imati različite odgovore u različitim zonama samo ako je to nameran, dokumentovan dizajn. Validacija mora biti izvršena iz svake mreže koja će ime koristiti.</li>
+  <li><strong>Search domain:</strong> služi pogodnosti, ne identitetu. Preduge ili dvosmislene liste mogu proizvesti neželjene upite i spor fallback; konfiguracije i sertifikati treba da koriste FQDN.</li>
+</ul>
+
+<h4>2.2. Dostupnost, portovi i ponašanje resolver-a</h4>
+
+<p>DNS mora biti dostupan iz management i workload putanja koje ga koriste. Dozvoljavanje samo UDP porta 53 nije dovoljno: veći odgovori, DNSSEC i fallback mogu zahtevati TCP 53. Najmanje dva resolver-a treba da budu stvarno nezavisna koliko dizajn organizacije dopušta; dve adrese na istom kvarljivom sistemu nisu puna redundansa. Redosled servera takođe nije garancija aktivno-aktivnog balansiranja, jer klijentske biblioteke imaju različito ponašanje pri timeout-u i ponovnom pokušaju.</p>
+
+<p>Dinamičko DNS ažuriranje može biti opravdano kada ga IPAM ili DHCP obavlja autentifikovano i revizijski, ali Supervisor implementacija ne sme zavisiti od nekontrolisanog „ko prvi registruje ime” procesa. Produkciona praksa je da se potrebni infrastrukturni zapisi, zone i delegacije pripreme kroz change proces, a da se automatizovana ažuriranja ograniče na tačno definisane zone i identitete.</p>
+
+<h4>2.3. DNS plan koji se predaje timu za mrežu</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Polje</th>
+      <th>Primer laboratorijske vrednosti</th>
+      <th>Produkcioni zahtev</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Zona platforme</td>
+      <td><code>tanzu.lab.example</code></td>
+      <td>Vlasnik zone, delegacija, dozvoljeni update mehanizam i retention audit zapisa</td>
+    </tr>
+    <tr>
+      <td>Resolver-i</td>
+      <td><code>192.0.2.53</code>, <code>192.0.2.54</code></td>
+      <td>Dve dostupne adrese, ruta iz svih potrebnih mreža, UDP/TCP 53 i monitoring</td>
+    </tr>
+    <tr>
+      <td>Search domain</td>
+      <td><code>tanzu.lab.example</code></td>
+      <td>Kratka, nedvosmislena i identična vrednost gde je potrebna</td>
+    </tr>
+    <tr>
+      <td>API/VIP ime</td>
+      <td><code>api.sv01.tanzu.lab.example</code></td>
+      <td>A/AAAA prema stvarnoj arhitekturi, odgovarajući SAN i definisan TTL</td>
+    </tr>
+    <tr>
+      <td>Reverse zona</td>
+      <td><code>2.0.192.in-addr.arpa</code></td>
+      <td>PTR za infrastrukturne endpoint-e i potvrđena forward/reverse doslednost</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3. NTP: vreme kao bezbednosna i distribuirana zavisnost</h3>
+
+<p>Vreme utiče na rok važenja X.509 sertifikata, SAML i druge tokene, događaje, logove, audit trag, metrike i koordinaciju distribuiranih komponenti. Broadcom-ova dokumentacija za Supervisor zahteva NTP, a relevantni KB članci pokazuju da odstupanje između vCenter-a, ESXi hostova i Supervisor-a može izazvati neuspelu <code>kubectl vsphere login</code> prijavu jer se token smatra isteklim ili još nevažećim. Zato se poruka o tokenu ne leči automatski promenom identiteta ili sertifikata: prvo se proverava vreme na obe strane transakcije.</p>
+
+<p>Svi slojevi treba da koriste isti skup organizacionih izvora ili izvore koji imaju zajedničku pouzdanu referencu. Ne preporučuje se mešanje nasumičnih javnih NTP servera, vremena sa hypervisor-a i privatnog NTP-a. Virtuelna mašina ne treba istovremeno nekontrolisano da koriguje vreme i preko VMware Tools sinhronizacije i preko NTP klijenta, osim kada je takvo ponašanje izričito projektovano i podržano.</p>
+
+<h4>3.1. Stratum, offset, jitter i reachability</h4>
+
+<p>Administrator ne potvrđuje NTP samo time što je adresa servera upisana. Potrebno je proveriti da je klijent izabrao izvor, da je izvor dostupan, da offset ostaje mali i stabilan i da nema učestalih step korekcija. Stratum nije ocena kvaliteta sam za sebe: nizak stratum sa nestabilnom mrežom može biti lošiji od stabilnog, nadziranog izvora višeg stratuma. Praćenje treba da obuhvati offset, jitter, gubitak dosegljivosti i promenu izabranog peer-a.</p>
+
+<p>Veliko trenutno pomeranje sata na aktivnoj distribuiranoj platformi nosi rizik. Najpre se utvrđuju obim i posledice, zatim se bira podržan postupak za konkretni NTP klijent i komponentu. Ručna komanda <code>date</code> nije produkcioni lek: može otežati korelaciju, narušiti tokene i prikriti osnovni uzrok.</p>
+
+<h3>4. IPAM i planiranje adresnog prostora</h3>
+
+<p>IPAM je proces i sistem evidencije, a ne samo tabela slobodnih adresa. On mora povezati adresu sa mrežom, VLAN-om ili segmentom, gateway-em, maskom/prefiksom, DNS zapisom, vlasnikom, namenom, statusom rezervacije, datumom promene i životnim ciklusom objekta. Bez te veze administrator ne može pouzdano dokazati da pool nije u koliziji sa DHCP opsegom, drugom lokacijom, VPN rutom ili već postojećom platformom.</p>
+
+<h4>4.1. Razdvajanje kategorija adresa</h4>
+
+<ul>
+  <li>management adrese vCenter-a, ESXi hostova i drugih infrastrukturnih komponenti;</li>
+  <li>adrese Supervisor control-plane VM-ova i njihovog API/VIP endpoint-a;</li>
+  <li>workload mreže za čvorove VKS klastera;</li>
+  <li>ingress ili load-balancer VIP opsezi za objavljene servise;</li>
+  <li>pod i service CIDR opsezi kada ih izabrani networking model zahteva;</li>
+  <li>egress/SNAT adrese i posebni opsezi infrastrukturnih servisa.</li>
+</ul>
+
+<p>Tačne kategorije i način dodele zavise od toga da li se koristi vSphere networking, NSX ili druga podržana integracija i koji load balancer je izabran. CIDR-i Kubernetes podova i servisa ne smeju se preklapati sa rutiranim enterprise mrežama, udaljenim lokacijama ni međusobno. Pool treba dimenzionisati za početno stanje, rolling upgrade, privremeno postojanje starih i novih čvorova, rast i rezervu za oporavak. „Ima tačno onoliko adresa koliko ima VM-ova” nije održiv plan.</p>
+
+<h4>4.2. DHCP naspram statičkog pool-a</h4>
+
+<p>Izbor nije ideološki. Koristi se model koji dokumentacija podržava za tačan Supervisor networking scenario. Ako je potreban DHCP, moraju se proveriti obavezne opcije, ponašanje client identifier-a, lease trajanje, DNS serveri, search domen i odsustvo preklapanja sa statičkim rezervacijama. Ako se koristi statički pool, IPAM mora sprečiti paralelnu dodelu i čuvati istoriju. U oba slučaja gateway, MTU, rute i firewall pravila moraju odgovarati stvarnoj putanji, a ne samo nacrtu.</p>
+
+<h3>5. Sertifikati, identitet endpoint-a i granice poverenja</h3>
+
+<p>X.509 sertifikat vezuje javni ključ za identitet i namenu. Klijent pri TLS povezivanju proverava najmanje rok važenja, lanac do pouzdanog CA, potpis, odgovarajuću namenu ključa i poklapanje imena ili IP adrese sa Subject Alternative Name (SAN) ekstenzijom. Polje Common Name nije pouzdana zamena za ispravan SAN. Sertifikat može biti kriptografski validan, ali operativno neupotrebljiv ako klijent ne veruje njegovom CA lancu ili koristi drugo ime endpoint-a.</p>
+
+<h4>5.1. Ne postoji jedan „Tanzu sertifikat”</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Granica poverenja</th>
+      <th>Primer</th>
+      <th>Ko mora da veruje lancu</th>
+      <th>Napomena za životni ciklus</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vSphere upravljanje</td>
+      <td>vCenter Machine SSL, solution users, ESXi sertifikati</td>
+      <td>vSphere komponente, administrativni klijenti i integracije</td>
+      <td>VMCA može raditi u različitim podržanim modelima; zamena mora pratiti vSphere proceduru</td>
+    </tr>
+    <tr>
+      <td>Supervisor API</td>
+      <td>Kubernetes API endpoint i pripadajući CA podaci</td>
+      <td><code>kubectl</code>, vSphere autentikacioni tok i povezane komponente</td>
+      <td>Ne menjati ručno fajlove na control-plane VM-ovima; koristiti podržan workflow</td>
+    </tr>
+    <tr>
+      <td>VKS klaster</td>
+      <td>API server, kubelet i interni klasterski sertifikati</td>
+      <td>Čvorovi, kontroleri i administrativni klijenti konkretnog klastera</td>
+      <td>Rotacija zavisi od VKS verzije i lifecycle kontrolera</td>
+    </tr>
+    <tr>
+      <td>Platformski i aplikacioni servisi</td>
+      <td>Registry, ingress, Git, identity provider, monitoring</td>
+      <td>Podovi, korisnici i automatizacije koje pozivaju servis</td>
+      <td>Trust bundle mora stići do stvarnog potrošača; Kubernetes Secret sam po sebi nije dokaz poverenja</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Privatni ključ mora biti zaštićen, imati najmanje potrebne privilegije pristupa i nikada se ne sme unositi u tiket, Git repozitorijum ili primer u dokumentaciji. CSR treba generisati na komponenti ili u kontrolisanom PKI procesu, uz tačne SAN vrednosti i odobrenu key usage konfiguraciju. Kopiranje istog privatnog ključa na više nepovezanih endpoint-a povećava blast radius kompromitacije.</p>
+
+<h4>5.2. Rotacija bez iznenađenja</h4>
+
+<ol>
+  <li>Inventarisati endpoint, vlasnika, izdavaoca, SAN, serijski broj, rok važenja, algoritam, dužinu ključa i sve potrošače.</li>
+  <li>Proveriti podržan postupak za tačan proizvod, verziju i tip sertifikata; ne koristiti generički OpenSSL postupak za interne sertifikate kojima upravlja lifecycle kontroler.</li>
+  <li>Pripremiti novi lanac i unapred distribuirati CA poverenje gde je moguće.</li>
+  <li>Napraviti backup prema zvaničnoj proceduri i definisati rollback; snapshot nije univerzalna zamena za konzistentan backup.</li>
+  <li>Zameniti sertifikat u kontrolisanom change prozoru i validirati iz perspektive svih ključnih klijenata.</li>
+  <li>Tek posle dokazanog oporavka ukloniti stari trust anchor, opozvati sertifikat kada je potrebno i ažurirati inventar.</li>
+</ol>
+
+<p><strong>Upozorenje:</strong> ručna izmena sertifikata, konfiguracije ili Kubernetes objekata na Supervisor control-plane VM-ovima može učiniti okruženje nepodržanim ili nepopravljivim. SSH pristup koristi se samo za read-only dijagnostiku koju nalaže zvanična procedura ili Broadcom podrška. Sertifikati Supervisor-a i VKS klastera menjaju se podržanim lifecycle postupkom za konkretno izdanje.</p>
+
+<h3>6. Projektantski dokument i matrica odgovornosti</h3>
+
+<p>Pre implementacije mora postojati jedna verzionisana matrica koja povezuje tehničku vrednost i njenog vlasnika. DNS tim odobrava zone i zapise, mrežni tim rute i firewall, bezbednosni ili PKI tim profile sertifikata i CA lance, virtualization tim vCenter/ESXi konfiguraciju, a platform tim Supervisor i VKS potrošnju. Za svaki zahtev beleže se dokaz, datum provere i osoba koja je odobrila promenu.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Kontrola</th>
+      <th>Vlasnik</th>
+      <th>Dokaz</th>
+      <th>Prag za prolaz</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DNS forward/reverse</td>
+      <td>DNS + platform tim</td>
+      <td>Sačuvan izlaz upita iz management i workload zone</td>
+      <td>Očekivani, nedvosmisleni i međusobno saglasni odgovori</td>
+    </tr>
+    <tr>
+      <td>NTP sinhronizacija</td>
+      <td>Infrastruktura</td>
+      <td>Status vCenter-a, svih ESXi hostova i dostupnih klijenata</td>
+      <td>Izvor izabran, offset unutar internog SLO-a, bez alarma</td>
+    </tr>
+    <tr>
+      <td>IP pool</td>
+      <td>IPAM + mrežni tim</td>
+      <td>Odobrena rezervacija i test odsustva konflikta</td>
+      <td>Nema preklapanja; postoji rezerva za rast i upgrade</td>
+    </tr>
+    <tr>
+      <td>TLS/PKI</td>
+      <td>PKI + vlasnik servisa</td>
+      <td>Lanac, SAN, rok i test stvarnog klijenta</td>
+      <td>Bez greške poverenja ili imena; monitoring isteka aktivan</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>7. Praktikum – izrada i dokazivanje infrastrukturnog pre-check paketa</h3>
+
+<p><strong>Cilj:</strong> pripremiti dokaz da laboratorijsko okruženje ispunjava DNS, NTP, IPAM i TLS preduslove pre omogućavanja Supervisor-a. Vežba ne menja Supervisor niti sertifikate; koristi read-only testove sa administrativne Linux radne stanice, vCenter VAMI-ja i PowerCLI stanice.</p>
+
+<p><strong>Topologija:</strong> jedan vCenter, najmanje dva ESXi hosta, dva DNS resolver-a, dva NTP izvora, administrativna radna stanica i unapred rezervisani laboratorijski opsezi. Dokumentovati management, workload i VIP mrežu. Adrese iz opsega <code>192.0.2.0/24</code>, <code>198.51.100.0/24</code> i <code>203.0.113.0/24</code> u primerima su dokumentacione i moraju se zameniti stvarnim laboratorijskim vrednostima.</p>
+
+<p><strong>Privilegije i rizik:</strong> DNS i TLS provere zahtevaju običan korisnički nalog; PowerCLI provera zahteva read-only vCenter privilegije; VAMI pregled vremena zahteva odgovarajući administratorski pristup. Svi koraci do posebno označenog testa incidenta čitaju stanje. Ne pokretati komande za promenu vremena, DNS-a, IP pool-a ili sertifikata.</p>
+
+<h4>Vežba 1 – autoritativna DNS validacija</h4>
+
+<p>Na Linux administrativnoj stanici postaviti stvarne vrednosti. <code>dig</code> sa znakom <code>@</code> pita tačno određeni resolver, čime se izbegava lažan uspeh iz lokalnog cache-a ili drugog DNS servera.</p>
+
+<pre><code class="language-bash">DNS1="192.0.2.53"
+DNS2="192.0.2.54"
+VCENTER_FQDN="vcsa01.tanzu.lab.example"
+VCENTER_IP="192.0.2.20"
+
+dig @"$DNS1" "$VCENTER_FQDN" A +noall +answer
+dig @"$DNS2" "$VCENTER_FQDN" A +noall +answer
+dig @"$DNS1" -x "$VCENTER_IP" +noall +answer
+dig @"$DNS2" -x "$VCENTER_IP" +noall +answer
+dig @"$DNS1" "$VCENTER_FQDN" A +tcp +noall +answer</code></pre>
+
+<p><strong>Očekivani rezultat:</strong> oba resolver-a vraćaju istu očekivanu adresu, PTR vraća planirani FQDN, a TCP upit uspeva. Upisati TTL iz odgovora. Ponavljanje testa iz workload mreže mora dati odgovor predviđen split-horizon dizajnom.</p>
+
+<p><strong>Troubleshooting grana:</strong> ako samo jedan resolver daje pogrešan odgovor, proveriti replikaciju zone i serial; ako UDP radi, a TCP ne radi, proveriti firewall; ako odgovor varira između mreža, potvrditi da li je split-horizon nameran. Ne popravljati klijentski <code>/etc/hosts</code> fajl kao trajno rešenje: time se zaobilazi autoritativni izvor i problem ostaje drugim komponentama.</p>
+
+<h4>Vežba 2 – DNS putanja sa ESXi hosta</h4>
+
+<p>PowerCLI komande se izvršavaju sa stanice na kojoj je instaliran VMware PowerCLI. Prvi blok čita konfiguraciju hostova; ne menja stanje.</p>
+
+<pre><code class="language-powershell">Connect-VIServer -Server "vcsa01.tanzu.lab.example"
+
+Get-VMHost | Sort-Object Name | ForEach-Object {
+    $network = Get-VMHostNetwork -VMHost $_
+    [PSCustomObject]@{
+        VMHost     = $_.Name
+        DnsAddress = ($network.DnsAddress -join ", ")
+        DomainName = $network.DomainName
+        Search     = ($network.SearchDomain -join ", ")
+    }
+} | Format-Table -AutoSize</code></pre>
+
+<p>Za aktivni upit koristi se ESXi Shell samo ako je pristup odobren i privremeno omogućen prema politici organizacije. <code>nslookup</code> je read-only test:</p>
+
+<pre><code class="language-bash">nslookup vcsa01.tanzu.lab.example 192.0.2.53
+nslookup vcsa01.tanzu.lab.example 192.0.2.54</code></pre>
+
+<p><strong>Kriterijum završetka:</strong> svaki host ima odobrene resolver-e i iz svoje management putanje dobija očekivani odgovor. Posle testa zatvoriti privremeni ESXi Shell/SSH pristup i sačuvati rezultat uz naziv hosta i UTC vreme.</p>
+
+<h4>Vežba 3 – dokaz NTP stanja</h4>
+
+<p>U vCenter Server Management interfejsu na portu 5480 otvoriti <strong>Time</strong> i zabeležiti izvore, trenutno vreme i status sinhronizacije. Na svakom ESXi hostu u vSphere Client-u proveriti <strong>Configure → System → Time Configuration</strong>. Zatim PowerCLI-jem popisati servis i podešene NTP servere:</p>
+
+<pre><code class="language-powershell">Get-VMHost | Sort-Object Name | ForEach-Object {
+    $ntp = Get-VMHostNtpServer -VMHost $_
+    $svc = Get-VMHostService -VMHost $_ | Where-Object Key -eq "ntpd"
+    [PSCustomObject]@{
+        VMHost   = $_.Name
+        Ntp      = ($ntp -join ", ")
+        Running  = $svc.Running
+        Policy   = $svc.Policy
+    }
+} | Format-Table -AutoSize</code></pre>
+
+<p>Ako organizacija koristi <code>chrony</code> na administrativnoj Linux stanici, sledeće komande čitaju stanje lokalnog klijenta i pomažu da se potvrdi dostupnost istih izvora:</p>
+
+<pre><code class="language-bash">timedatectl status
+chronyc tracking
+chronyc sources -v</code></pre>
+
+<p><strong>Validacija:</strong> svi vSphere slojevi koriste odobren, međusobno saglasan skup izvora; servis radi; nema alarma; offset je unutar internog SLO-a. Ako se kasnije dijagnostikuje Supervisor, zvanično navedene read-only provere uključuju <code>date</code>, <code>timedatectl status</code> i odgovarajući status NTP klijenta, ali SSH pristup control-plane VM-u koristi se samo prema podržanoj proceduri.</p>
+
+<h4>Vežba 4 – IPAM kontrola i test preklapanja</h4>
+
+<p>Napraviti CSV ili IPAM izvoz sa kolonama: <code>network</code>, <code>purpose</code>, <code>gateway</code>, <code>first</code>, <code>last</code>, <code>vlan</code>, <code>owner</code>, <code>status</code> i <code>change_id</code>. Sledeći Python primer je read-only lokalna provera CIDR preklapanja; ne komunicira sa mrežnim uređajima:</p>
+
+<pre><code class="language-python">from ipaddress import ip_network
+
+networks = {
+    "management": ip_network("192.0.2.0/26"),
+    "supervisor": ip_network("192.0.2.64/27"),
+    "workload": ip_network("198.51.100.0/24"),
+    "service_cidr": ip_network("10.96.0.0/16"),
+    "pod_cidr": ip_network("10.244.0.0/16"),
+}
+
+errors = []
+items = list(networks.items())
+for index, (name_a, net_a) in enumerate(items):
+    for name_b, net_b in items[index + 1:]:
+        if net_a.overlaps(net_b):
+            errors.append(f"PREKLAPANJE: {name_a} {net_a} / {name_b} {net_b}")
+
+if errors:
+    raise SystemExit("\n".join(errors))
+
+print("Nema preklapanja u unetom skupu mreža.")</code></pre>
+
+<p><strong>Ograničenje:</strong> skripta proverava samo uneseni skup. Uspeh nije dokaz da nema konflikta sa drugim lokacijama, cloud mrežama, VPN-om ili budućim rutama. Produkcioni kriterijum zahteva poređenje sa autoritativnim enterprise IPAM-om i potvrdu mrežnog tima. Ne koristiti ping kao jedini dokaz da je adresa slobodna: uređaj može biti ugašen ili filtrirati ICMP.</p>
+
+<h4>Vežba 5 – TLS pregled iz perspektive klijenta</h4>
+
+<p>Sledeća komanda uspostavlja TLS vezu i prikazuje leaf sertifikat vCenter endpoint-a. Ne šalje privatni ključ i ne menja server:</p>
+
+<pre><code class="language-bash">ENDPOINT="vcsa01.tanzu.lab.example"
+
+openssl s_client \
+  -connect "${ENDPOINT}:443" \
+  -servername "$ENDPOINT" \
+  -showcerts &lt;/dev/null 2&gt;/dev/null \
+| openssl x509 -noout \
+  -subject -issuer -serial -dates \
+  -ext subjectAltName \
+  -ext extendedKeyUsage</code></pre>
+
+<p>Za eksplicitnu proveru imena i lanca koristiti CA bundle kome konkretni klijent treba da veruje:</p>
+
+<pre><code class="language-bash">openssl s_client \
+  -connect "${ENDPOINT}:443" \
+  -servername "$ENDPOINT" \
+  -verify_hostname "$ENDPOINT" \
+  -CAfile ./approved-ca-chain.pem \
+  -verify_return_error &lt;/dev/null</code></pre>
+
+<p><strong>Očekivani rezultat:</strong> SAN sadrži korišćeni FQDN, datum <code>notBefore</code> je u prošlosti, <code>notAfter</code> ostavlja dovoljan operativni period, issuer pripada odobrenom lancu i završna provera vraća <code>Verify return code: 0 (ok)</code>. Fajl <code>approved-ca-chain.pem</code> sadrži javne CA sertifikate, nikada privatni ključ.</p>
+
+<p><strong>Troubleshooting grana:</strong> kod greške imena prvo porediti korišćeni URL, DNS odgovor i SAN; kod nepotpunog lanca proveriti šta server zaista šalje i šta klijent ima u trust store-u; kod vremenske greške proveriti lokalni sat i rok važenja. Opcija <code>-k</code> u alatima poput <code>curl</code> može dokazati samo da mrežna/TLS putanja postoji uprkos proveri, ali nije korektivna mera i ne sme postati produkciona konfiguracija.</p>
+
+<h4>Vežba 6 – bezbedna simulacija incidenta i dijagnostičko stablo</h4>
+
+<p><strong>Laboratorijski scenario:</strong> bez menjanja platforme, na izdvojenoj administrativnoj VM namerno upitati pogrešan DNS server ili koristiti pogrešno ime endpoint-a, a zatim zabeležiti razliku u simptomima. Ne menjati enterprise zonu, vCenter vreme niti sertifikat.</p>
+
+<ol>
+  <li><strong>Simptom:</strong> zabeležiti tačnu poruku, UTC vreme, klijent, izvor i odredište.</li>
+  <li><strong>Obim:</strong> proveriti da li kvar vidi jedan klijent, jedna mreža, svi hostovi ili svi korisnici.</li>
+  <li><strong>Najmanje invazivni dokazi:</strong> DNS A/PTR i TCP odgovor, ruta i port, lokalno/NTP vreme, TLS SAN/lanac/rok.</li>
+  <li><strong>Hipoteza:</strong> formulisati jednu proverljivu pretpostavku, na primer „workload resolver ima zastarelu kopiju zone”.</li>
+  <li><strong>Potvrda:</strong> porediti autoritativni odgovor, serial zone, druge resolver-e i pogođenu mrežu.</li>
+  <li><strong>Privremeno zaobilazno rešenje:</strong> samo ako je odobreno i reverzibilno; ne prikrivati problem trajnim <code>/etc/hosts</code> zapisom ili isključenom TLS proverom.</li>
+  <li><strong>Trajna mera:</strong> ispraviti autoritativni izvor, propagirati promenu, ponoviti test iz svih zona i ažurirati change zapis.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Neposredni uzrok</th>
+      <th>Mogući osnovni uzrok</th>
+      <th>Bezbedna korekcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>NXDOMAIN</code> ili timeout</td>
+      <td>Nema zapisa ili resolver nije dostupan</td>
+      <td>Pogrešna zona, replikacija, ACL ili blokiran UDP/TCP 53</td>
+      <td>Ispraviti autoritativni zapis/putanju i validirati sa oba resolver-a</td>
+    </tr>
+    <tr>
+      <td>SAML ili <code>kubectl</code> token je istekao</td>
+      <td>Vremensko odstupanje</td>
+      <td>Različiti NTP izvori, blokiran UDP 123 ili neaktivan klijent</td>
+      <td>Obnoviti podržanu sinhronizaciju i potvrditi vreme svih učesnika</td>
+    </tr>
+    <tr>
+      <td>Povremeni prekidi ka jednoj adresi</td>
+      <td>Duplikat IP/ARP promena</td>
+      <td>Preklapanje DHCP i statičkog pool-a ili paralelna ručna dodela</td>
+      <td>Izolovati konflikt, ispraviti IPAM i kontrolisano ponovo dodeliti adresu</td>
+    </tr>
+    <tr>
+      <td><code>x509: certificate signed by unknown authority</code></td>
+      <td>Klijent nema odgovarajući trust anchor ili server ne šalje intermedijarni lanac</td>
+      <td>Nepotpuna distribucija CA lanca posle rotacije</td>
+      <td>Distribuirati odobren lanac podržanim putem; ne isključivati proveru</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Rollback i povratak laboratorije</h4>
+
+<p>Pošto standardne vežbe čitaju stanje, rollback nije potreban. U simulaciji vratiti administrativnu VM na prvobitni resolver i ukloniti samo lokalne test vrednosti koje su uvedene u okviru vežbe. Potvrditi ponovnim DNS, NTP i TLS testom. Ako je tokom stvarnog incidenta promenjen autoritativni DNS zapis, IP rezervacija ili trust bundle, rollback mora koristiti prethodno dokumentovanu vrednost i isti change proces; nasumično vraćanje snapshot-a vCenter-a ili Supervisor VM-a nije prihvatljiv generički oporavak.</p>
+
+<h3>8. Logovi, događaji i korelacija dokaza</h3>
+
+<p>Na vCenter Server Appliance-u relevantni tragovi Supervisor lifecycle-a nalaze se naročito u direktorijumu <code>/var/log/vmware/wcp</code>, dok se korelacija sa vCenter i ESX Agent Manager operacijama radi kroz <code>/var/log/vmware/vpxd</code> i <code>/var/log/vmware/eam</code>. Pristup tim logovima mora biti read-only i vremenski ograničen na prozor incidenta. Tražiti tačan FQDN, IP, serijski broj sertifikata, <code>x509</code>, <code>timeout</code>, <code>NXDOMAIN</code> i vremenske oznake, a nalaz uvek povezati sa DNS/NTP dokazom spolja.</p>
+
+<pre><code class="language-bash">grep -RniE 'x509|certificate|NXDOMAIN|timeout|no such host' \
+  /var/log/vmware/wcp 2&gt;/dev/null</code></pre>
+
+<p>Ova komanda čita logove, ali može proizvesti veliki izlaz; ograničiti pretragu na relevantne fajlove i period. Na Supervisor control-plane VM-u ne menjati konfiguraciju niti brisati objekte. Broadcom izričito upozorava da ručne izmene i brisanje EAM agency objekata nisu validan troubleshooting postupak i mogu dovesti do redeploy-a.</p>
+
+<h3>9. Administratorske prakse</h3>
+
+<ul>
+  <li>DNS, NTP, IPAM i PKI zahteve tretirati kao formalne acceptance kriterijume, ne kao pretpostavke.</li>
+  <li>Svaku proveru izvršiti iz stvarne izvorne mreže i pod identitetom stvarnog potrošača kada je moguće.</li>
+  <li>Čuvati jedinstven inventar imena, adresa, sertifikata, vlasnika i rokova, uz revizijski trag promene.</li>
+  <li>Nadzirati DNS latenciju i greške, NTP offset/reachability, iskorišćenost IP pool-a i rokove sertifikata dovoljno rano za change prozor.</li>
+  <li>Pre incidentne promene prikupiti dokaze; posle korekcije ponoviti isti test kojim je kvar dokazan.</li>
+  <li>Ne koristiti <code>/etc/hosts</code>, isključenu TLS proveru ili ručno pomeren sat kao trajno rešenje.</li>
+  <li>Za svako vSphere/VCF izdanje proveriti aktuelna polja, podržane networking modele, load balancer zahteve i procedure rotacije.</li>
+  <li>Privilegovan pristup ESXi, VCSA i Supervisor čvorovima omogućiti privremeno, evidentirati i zatvoriti posle dijagnostike.</li>
+</ul>
+
+<h3>10. Završna kontrolna tačka</h3>
+
+<p>Lekcija je uspešno završena kada administrator može dokazima, a ne pretpostavkom, da potvrdi sledeće sposobnosti:</p>
+
+<ul>
+  <li>razlikuje enterprise DNS, upstream resolver i Kubernetes service discovery;</li>
+  <li>proverava A/AAAA, PTR, TTL i TCP/UDP dostupnost sa relevantnih mrežnih tačaka;</li>
+  <li>objašnjava zašto vremensko odstupanje izgleda kao SAML, TLS ili <code>kubectl</code> kvar i proverava stanje svih učesnika;</li>
+  <li>izrađuje IP plan bez preklapanja, sa rezervom za rast, rolling upgrade i oporavak;</li>
+  <li>razlikuje vSphere, Supervisor, VKS i aplikacione sertifikacione granice;</li>
+  <li>validira SAN, rok, issuer, namenu i kompletan lanac iz perspektive klijenta;</li>
+  <li>sprovodi troubleshooting od simptoma i obima preko hipoteze i dokaza do bezbedne korekcije i dokumentovanog oporavka;</li>
+  <li>prepoznaje radnje koje nisu podržane, naročito ručne izmene na Supervisor control-plane VM-ovima.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Pouzdanost Tanzu platforme počinje pre prvog Kubernetes objekta. DNS određuje da li komponente govore sa pravim endpoint-om, NTP da li mogu da veruju tokenima, sertifikatima i zajedničkoj vremenskoj liniji, IPAM da li svaka adresa ima jedinstveno i održivo mesto, a PKI da li je identitet veze proverljiv. Administratorska odgovornost zato nije da samo popuni polja u čarobnjaku, već da uspostavi vlasništvo, redundansu, monitoring, životni ciklus i dokaz za svaki preduslov.</p>
+
+<p>Izlaz ove lekcije treba da bude potpisan pre-check paket: DNS matrica, NTP status, odobren IP plan, sertifikacioni inventar i rezultati testova iz relevantnih mreža. Taj paket neposredno ulazi u narednu lekciju, Tanzu readiness assessment, gde se pojedinačni tehnički nalazi pretvaraju u odluku o spremnosti, registar rizika i plan implementacije.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom VMware vSphere Supervisor dokumentacija za zahteve, mrežnu konfiguraciju i troubleshooting; vSphere Authentication i Certificate Management vodiči; VMware Knowledge Base članci za DNS, NTP, prijavu i životni ciklus sertifikata; VMware PowerCLI reference; IETF DNS, NTP i TLS standardi; Kubernetes dokumentacija za DNS i PKI
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-10-kapacitet-i-topologija-platforme.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-12-readiness-assessment-i-plan-implementacije.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

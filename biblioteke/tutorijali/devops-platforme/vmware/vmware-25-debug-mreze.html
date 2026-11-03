@@ -1,0 +1,2937 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-25-debug-mreze.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Debug VMware mreže – kada VM nema pristup mreži | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Naučite osnovne korake za dijagnostiku VMware mreže kada virtuelna mašina nema pristup lokalnoj mreži, internetu ili drugim sistemima u infrastrukturi.">
+
+  <meta name="keywords"
+        content="debug VMware mreže, VMware troubleshooting mreže, VM nema pristup mreži, VMware networking, virtuelna mašina, mrežni problem, Port Group, VLAN, Virtual Switch, vSwitch, VMkernel adapter, mrežni adapter, ping, DNS, gateway, ESXi, vCenter, vSphere, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-25-debug-mreze.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Debug VMware mreže – kada VM nema pristup mreži">
+
+  <meta property="og:description"
+        content="Upoznajte praktičan redosled provere VMware mreže kada virtuelna mašina ne može da pristupi lokalnoj mreži, internetu ili drugim servisima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-25-debug-mreze.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-25-debug-mreze.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Debug VMware mreže – kada VM nema pristup mreži">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-25-debug-mreze.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-25-debug-mreze.png"
+           alt="Debug VMware mreže – kada VM nema pristup mreži">
+
+    </a>
+
+    <div class="page-subtitle">
+V. Virtuelne mreže i dijagnostika povezivosti
+</div>
+
+<div class="page-subtitle">
+25. Troubleshooting VMware mreže – kada VM ili VMkernel servis nema vezu
+</div>
+
+<p>
+Mrežni problem virtuelne mašine može nastati na više međusobno povezanih slojeva: u operativnom sistemu gosta, konfiguraciji virtuelnog adaptera, port grupi, VLAN-u, virtuelnom switchu, NIC teaming politici, fizičkom uplinku, fizičkom switchu, gateway-u, DNS-u ili firewall-u. Zbog toga se VMware mreža ne dijagnostikuje nasumičnim menjanjem podešavanja, već praćenjem kompletnog puta paketa od izvora do odredišta.
+</p>
+
+<p>
+Najvažniji cilj dijagnostike jeste da se utvrdi poslednja tačka na kojoj je saobraćaj sigurno prisutan i prva tačka na kojoj nestaje. Kada se granica problema precizno odredi, broj mogućih uzroka brzo se smanjuje.
+</p>
+
+<p>
+Osnovni put paketa virtuelne mašine izgleda ovako:
+</p>
+
+<pre><code class="language-none">Proces u gostujućem operativnom sistemu
+    |
+IP konfiguracija, ruta i lokalni firewall
+    |
+Virtuelni mrežni adapter – vNIC
+    |
+VMware virtuelni port
+    |
+Port Group
+    |
+VLAN i bezbednosne politike
+    |
+vSphere Standard ili Distributed Switch
+    |
+NIC teaming i izabrani uplink
+    |
+Fizički adapter – vmnic
+    |
+Fizički switch port
+    |
+Gateway, firewall, ruter ili udaljeno odredište
+</code></pre>
+
+<p>
+Kod komunikacije između dve virtuelne mašine na istom ESXi hostu paket može ostati unutar virtuelnog switcha. Kod komunikacije sa drugim hostom ili fizičkim uređajem mora da prođe kroz fizički uplink i fizičku mrežu.
+</p>
+
+<h3>Model incidenta: simptom, obim, posledica i uzrok</h3>
+
+<p>
+Pre tehničke provere incident treba opisati tako da se ne pomešaju <strong>simptom</strong> i <strong>uzrok</strong>. Simptom je, na primer, „aplikacija nije dostupna”; obim govori da li je pogođena jedna VM, port grupa, host, klaster ili samo jedan VMkernel servis; posledica opisuje poslovni uticaj; neposredni tehnički uzrok može biti pogrešan VLAN ili neaktivan uplink, dok osnovni uzrok može biti nedovoljna kontrola promene ili neusaglašena konfiguracija hostova. Privremeno zaobilazno rešenje, kao što je migracija VM-a na funkcionalan host, ne sme se evidentirati kao trajna korektivna mera.
+</p>
+
+<p>
+Lekcija koristi komande dostupne u savremenim izdanjima ESXi 7.x i 8.x i aktuelnom VCF PowerCLI-ju. Tačan izlaz, naziv modula i raspoložive opcije mogu se razlikovati prema ESXi build-u, tipu switcha i privilegijama. <code>esxcli</code>, <code>esxtop</code>, <code>vmkping</code> i <code>pktcap-uw</code> izvršavaju se u ESXi Shell-u ili preko SSH-a sa administratorskim pravima; SSH treba omogućiti privremeno, u skladu sa bezbednosnom politikom. PowerCLI read-only inventar zahteva najmanje privilegije za pregled, dok cmdlet-i <code>Set-*</code> menjaju stanje i zahtevaju odobrenu promenu. Distribuirani switch zahteva odgovarajuće vSphere izdanje/licencu; gde su navedene standard-switch komande, ekvivalentna vDS provera obavlja se u vSphere Client-u ili VCF PowerCLI-ju.
+</p>
+
+<h3>Početna pitanja pre dijagnostike</h3>
+
+<p>
+Pre pokretanja komandi potrebno je precizno opisati problem:
+</p>
+
+<ul>
+  <li>Da li VM uopšte ima IP adresu?</li>
+  <li>Da li problem pogađa jednu VM ili sve VM na port grupi?</li>
+  <li>Da li VM može da pristupi svom gateway-u?</li>
+  <li>Da li komunikacija radi samo sa VM-ovima na istom hostu?</li>
+  <li>Da li pristup po IP adresi radi, a po imenu ne radi?</li>
+  <li>Da li je problem nastao posle vMotion migracije?</li>
+  <li>Da li je menjana port grupa, VLAN ili fizički switch?</li>
+  <li>Da li su pogođeni samo veliki paketi?</li>
+  <li>Da li problem utiče na VM saobraćaj ili na VMkernel servis?</li>
+  <li>Da li je problem stalan ili povremen?</li>
+</ul>
+
+<p>
+Precizna razlika između ovih simptoma usmerava dijagnostiku na odgovarajući sloj.
+</p>
+
+<h3>Osnovni redosled mrežne dijagnostike</h3>
+
+<ol>
+  <li>Potvrditi stanje virtuelne mašine i njenog mrežnog adaptera.</li>
+  <li>Proveriti IP adresu, masku, gateway, rute i DNS unutar gosta.</li>
+  <li>Testirati lokalni TCP/IP stek i sopstvenu IP adresu.</li>
+  <li>Testirati gateway i udaljenu IP adresu.</li>
+  <li>Odvojeno testirati DNS rezoluciju.</li>
+  <li>Proveriti port grupu i VLAN ID.</li>
+  <li>Proveriti virtuelni switch, teaming i fizičke uplinkove.</li>
+  <li>Proveriti stanje fizičkog adaptera i brojače grešaka.</li>
+  <li>Uporediti problematičnu VM sa funkcionalnom VM.</li>
+  <li>Pratiti port i uplink pomoću ESXCLI-ja i esxtop-a.</li>
+  <li>Po potrebi izvršiti packet capture.</li>
+  <li>Tek nakon utvrđenog uzroka menjati konfiguraciju.</li>
+</ol>
+
+<h3>Prvo odrediti obim problema</h3>
+
+<p>
+Obim problema često odmah ukazuje na sloj na kojem treba tražiti uzrok.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Verovatni sloj problema</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Samo jedna VM nema mrežu</td>
+      <td>vNIC, guest IP konfiguracija, firewall, duplikat IP adrese ili drajver</td>
+    </tr>
+    <tr>
+      <td>Sve VM na jednoj port grupi nemaju mrežu</td>
+      <td>Port grupa, VLAN, teaming ili fizički trunk</td>
+    </tr>
+    <tr>
+      <td>Sve VM na jednom hostu nemaju mrežu</td>
+      <td>vSwitch, uplink, fizički NIC ili fizički switch port</td>
+    </tr>
+    <tr>
+      <td>VM radi na jednom hostu, ali ne posle migracije</td>
+      <td>Nedosledna port grupa, VLAN ili uplink konfiguracija ciljnog hosta</td>
+    </tr>
+    <tr>
+      <td>IP komunikacija radi, DNS ne radi</td>
+      <td>DNS server, DNS ruta, firewall ili konfiguracija gosta</td>
+    </tr>
+    <tr>
+      <td>VM komunicira lokalno, ali ne van hosta</td>
+      <td>Fizički uplink, VLAN trunk ili gateway</td>
+    </tr>
+    <tr>
+      <td>Samo veliki paketi ne prolaze</td>
+      <td>MTU neusaglašenost</td>
+    </tr>
+    <tr>
+      <td>Komunikacija povremeno nestaje</td>
+      <td>Teaming, fizički link, packet loss, duplikat IP ili MAC flapping</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Provera stanja virtuelne mašine</h3>
+
+<p>
+Na ESXi hostu prvo pronaći VM i njen VMID:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/getallvms
+</code></pre>
+
+<p>
+Proveriti power stanje:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.getstate &lt;VMID&gt;
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-bash">vim-cmd vmsvc/power.getstate 12
+</code></pre>
+
+<p>
+Ako VM nije uključena, dalja mrežna dijagnostika aktivnog saobraćaja nema smisla dok se ne reši problem njenog pokretanja.
+</p>
+
+<h3>Provera virtuelnog mrežnog adaptera</h3>
+
+<p>
+U vSphere Client-u proveriti:
+</p>
+
+<ul>
+  <li>da li VM poseduje očekivani mrežni adapter</li>
+  <li>da li je označena opcija <strong>Connected</strong></li>
+  <li>da li je označena opcija <strong>Connect at power on</strong></li>
+  <li>da li je izabrana odgovarajuća port grupa</li>
+  <li>da li adapter koristi očekivanu MAC adresu</li>
+  <li>da li je tip adaptera odgovarajući, najčešće VMXNET3</li>
+</ul>
+
+<p>
+PowerCLI pregled:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+
+Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              Type,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<p>
+Detaljan pregled:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Format-List *
+</code></pre>
+
+<p>
+Ako adapter nije povezan:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter -Name "Network adapter 1" |
+Set-NetworkAdapter `
+  -Connected:$true `
+  -StartConnected:$true `
+  -Confirm:$false
+</code></pre>
+
+<p>
+Ova promena ne rešava pogrešan VLAN, IP adresu ili fizičku mrežu. Ona samo potvrđuje da je virtuelni adapter priključen na VMware mrežni port.
+</p>
+
+<h3>Provera konfiguracije unutar Linux gosta</h3>
+
+<p>
+Sažet pregled interfejsa:
+</p>
+
+<pre><code class="language-bash">ip -br address
+</code></pre>
+
+<p>
+Detaljan pregled:
+</p>
+
+<pre><code class="language-bash">ip address show
+ip link show
+</code></pre>
+
+<p>
+Pregled ruta:
+</p>
+
+<pre><code class="language-bash">ip route
+</code></pre>
+
+<p>
+Određivanje putanje do odredišta:
+</p>
+
+<pre><code class="language-bash">ip route get 8.8.8.8
+</code></pre>
+
+<p>
+Pregled DNS konfiguracije:
+</p>
+
+<pre><code class="language-bash">cat /etc/resolv.conf
+</code></pre>
+
+<p>
+Na sistemima sa systemd-resolved:
+</p>
+
+<pre><code class="language-bash">resolvectl status
+</code></pre>
+
+<p>
+Pregled NetworkManager konfiguracije:
+</p>
+
+<pre><code class="language-bash">nmcli device status
+nmcli connection show
+nmcli device show
+</code></pre>
+
+<p>
+Provera drajvera mrežnog adaptera:
+</p>
+
+<pre><code class="language-bash">ethtool -i ens192
+</code></pre>
+
+<p>
+Za VMXNET3 adapter očekuje se odgovarajući VMware mrežni drajver:
+</p>
+
+<pre><code class="language-bash">driver: vmxnet3
+</code></pre>
+
+<p>
+Statistika interfejsa:
+</p>
+
+<pre><code class="language-bash">ip -s link show ens192
+</code></pre>
+
+<p>
+Dodatna statistika, kada je podržana:
+</p>
+
+<pre><code class="language-bash">ethtool -S ens192
+</code></pre>
+
+<h3>Provera konfiguracije unutar Windows gosta</h3>
+
+<p>
+Pregled kompletne IP konfiguracije:
+</p>
+
+<pre><code class="language-bash">ipconfig /all
+</code></pre>
+
+<p>
+Pregled ruta:
+</p>
+
+<pre><code class="language-bash">route print
+</code></pre>
+
+<p>
+PowerShell pregled adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-NetAdapter |
+Format-Table Name,
+             Status,
+             LinkSpeed,
+             MacAddress,
+             InterfaceDescription
+</code></pre>
+
+<p>
+Pregled IP konfiguracije:
+</p>
+
+<pre><code class="language-powershell">Get-NetIPConfiguration
+</code></pre>
+
+<p>
+Pregled IP adresa:
+</p>
+
+<pre><code class="language-powershell">Get-NetIPAddress |
+Sort-Object InterfaceAlias,
+            AddressFamily
+</code></pre>
+
+<p>
+Pregled ruta:
+</p>
+
+<pre><code class="language-powershell">Get-NetRoute |
+Sort-Object DestinationPrefix,
+            RouteMetric
+</code></pre>
+
+<p>
+Ako Windows automatski dobije adresu iz opsega:
+</p>
+
+<pre><code class="language-none">169.254.0.0/16
+</code></pre>
+
+<p>
+DHCP konfiguracija nije uspešno završena. Tada treba proveriti port grupu, VLAN, fizički trunk, DHCP scope i DHCP relay.
+</p>
+
+<h3>Testiranje lokalnog TCP/IP steka</h3>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ping -c 4 127.0.0.1
+ping -c 4 &lt;sopstvena-IP-adresa&gt;
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">ping 127.0.0.1
+ping &lt;sopstvena-IP-adresa&gt;
+</code></pre>
+
+<p>
+Ako test prema loopback adresi ne radi, problem je unutar samog operativnog sistema. Ako loopback radi, ali sopstvena IP adresa ne radi, treba proveriti stanje interfejsa, drajver i IP konfiguraciju.
+</p>
+
+<h3>Postepeni test mrežne putanje</h3>
+
+<p>
+Testiranje treba izvoditi od najbliže ka udaljenijoj tački:
+</p>
+
+<ol>
+  <li>loopback adresa</li>
+  <li>sopstvena IP adresa</li>
+  <li>druga VM u istoj podmreži</li>
+  <li>default gateway</li>
+  <li>udaljena IP adresa</li>
+  <li>DNS server</li>
+  <li>odredište po DNS imenu</li>
+  <li>konkretan aplikacioni port</li>
+</ol>
+
+<p>
+Linux primer:
+</p>
+
+<pre><code class="language-bash">ping -c 4 127.0.0.1
+ping -c 4 10.110.0.21
+ping -c 4 10.110.0.22
+ping -c 4 10.110.0.1
+ping -c 4 8.8.8.8
+getent hosts example.com
+nc -vz 10.110.0.50 443
+</code></pre>
+
+<p>
+Windows primer:
+</p>
+
+<pre><code class="language-powershell">ping 127.0.0.1
+ping 10.110.0.21
+ping 10.110.0.22
+ping 10.110.0.1
+ping 8.8.8.8
+nslookup example.com
+Test-NetConnection 10.110.0.50 -Port 443
+</code></pre>
+
+<p>
+Ako ping ne radi, to ne dokazuje automatski da je mreža neispravna. ICMP može biti blokiran. Zato se za aplikacije koristi test konkretnog TCP ili UDP porta.
+</p>
+
+<h3>Provera ARP i neighbor tabele</h3>
+
+<p>
+ARP i neighbor tabela pokazuju da li je gost uspeo da pronađe MAC adresu uređaja u lokalnoj mreži.
+</p>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ip neigh
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">arp -a
+</code></pre>
+
+<p>
+Ako gateway ostaje u stanju:
+</p>
+
+<pre><code class="language-none">INCOMPLETE
+FAILED
+</code></pre>
+
+<p>
+ili nema odgovarajući ARP zapis, problem je verovatno na Layer 2 putanji:
+</p>
+
+<ul>
+  <li>pogrešan VLAN</li>
+  <li>pogrešna port grupa</li>
+  <li>neaktivan uplink</li>
+  <li>VLAN nije dozvoljen na fizičkom trunku</li>
+  <li>gateway nije dostupan</li>
+  <li>duplikat ili pogrešna IP konfiguracija</li>
+</ul>
+
+<h3>Provera duplirane IP adrese</h3>
+
+<p>
+Duplikat IP adrese može izazvati povremenu dostupnost, promene MAC adrese u ARP tabelama i nestabilne konekcije.
+</p>
+
+<p>
+Na Linux sistemu:
+</p>
+
+<pre><code class="language-bash">arping -D -I ens192 10.110.0.21
+</code></pre>
+
+<p>
+Ako je adresa već aktivna na mreži, alat može prijaviti odgovor drugog uređaja.
+</p>
+
+<p>
+Pregled promene neighbor zapisa:
+</p>
+
+<pre><code class="language-bash">watch -n 1 ip neigh
+</code></pre>
+
+<p>
+Na Windows sistemu može se obrisati ARP cache i ponoviti test:
+</p>
+
+<pre><code class="language-bash">arp -d *
+ping 10.110.0.1
+arp -a
+</code></pre>
+
+<p>
+U produkciji treba proveriti i DHCP evidenciju, IPAM sistem, fizički switch i MAC address table.
+</p>
+
+<h3>Provera lokalnog firewall-a</h3>
+
+<p>
+Linux sa firewalld:
+</p>
+
+<pre><code class="language-bash">sudo firewall-cmd --state
+sudo firewall-cmd --get-active-zones
+sudo firewall-cmd --list-all
+</code></pre>
+
+<p>
+Linux sa nftables:
+</p>
+
+<pre><code class="language-bash">sudo nft list ruleset
+</code></pre>
+
+<p>
+Ubuntu sa UFW:
+</p>
+
+<pre><code class="language-bash">sudo ufw status verbose
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">Get-NetFirewallProfile
+Get-NetFirewallRule -Enabled True |
+Select-Object -First 20
+</code></pre>
+
+<p>
+Firewall ne treba trajno isključivati samo radi testa. Bezbednije je proveriti pravilo za konkretan servis i privremenu izmenu dokumentovati.
+</p>
+
+<h3>Provera servisa i portova</h3>
+
+<p>
+Ako je VM dostupna, ali aplikacija nije, proveriti da li servis radi i da li sluša na očekivanom portu.
+</p>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">systemctl status nginx
+ss -lntp
+ss -lunp
+</code></pre>
+
+<p>
+Test lokalnog servisa:
+</p>
+
+<pre><code class="language-bash">curl -I http://127.0.0.1
+curl -vk https://127.0.0.1
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">Get-Service
+Get-NetTCPConnection -State Listen
+</code></pre>
+
+<p>
+Test lokalnog porta:
+</p>
+
+<pre><code class="language-powershell">Test-NetConnection localhost -Port 443
+</code></pre>
+
+<p>
+Ako servis radi lokalno, ali ne i udaljeno, proveravaju se firewall, ruta, port grupa, VLAN i mrežni uređaji između klijenta i servera.
+</p>
+
+<h3>Provera VMware Toolsa</h3>
+
+<p>
+VMware Tools nisu obavezni za osnovnu Ethernet komunikaciju, ali obezbeđuju podatke o gostu i ispravan VMXNET3 drajver u podržanim konfiguracijama.
+</p>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Select-Object Name,
+    PowerState,
+    @{N='ToolsStatus';E={
+        $_.ExtensionData.Guest.ToolsStatus
+    }},
+    @{N='ToolsVersionStatus';E={
+        $_.ExtensionData.Guest.ToolsVersionStatus2
+    }},
+    @{N='GuestIP';E={
+        $_.Guest.IPAddress -join ', '
+    }}
+</code></pre>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">systemctl status vmtoolsd
+vmware-toolbox-cmd -v
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">Get-Service VMTools
+</code></pre>
+
+<h3>Provera port grupe</h3>
+
+<p>
+Pregled standardnih port grupa:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da li port grupa postoji</li>
+  <li>da li pripada očekivanom vSwitch-u</li>
+  <li>da li koristi očekivani VLAN ID</li>
+  <li>da li ima aktivne klijente</li>
+</ul>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<p>
+Kod Distributed Switch-a:
+</p>
+
+<pre><code class="language-powershell">Get-VDPortgroup -Name "DVPG-PROD-WEB" |
+Select-Object Name,
+              VDSwitch,
+              NumPorts,
+              PortBinding
+</code></pre>
+
+<p>
+VLAN konfiguracija Distributed Port Group-a:
+</p>
+
+<pre><code class="language-powershell">Get-VDPortgroup -Name "DVPG-PROD-WEB" |
+Get-VDVlanConfiguration
+</code></pre>
+
+<h3>Provera VLAN-a</h3>
+
+<p>
+Najčešća VLAN greška nastaje kada VMware i fizička mreža ne očekuju isti način označavanja.
+</p>
+
+<p>
+Kod VST modela potrebno je:
+</p>
+
+<ul>
+  <li>port grupa sa VLAN ID-em između 1 i 4094</li>
+  <li>fizički uplink povezan na trunk port</li>
+  <li>VLAN dozvoljen na trunku</li>
+  <li>odgovarajuća IP podmreža unutar gosta</li>
+</ul>
+
+<p>
+Kod EST modela:
+</p>
+
+<ul>
+  <li>port grupa koristi VLAN 0</li>
+  <li>fizički port je access port odgovarajućeg VLAN-a</li>
+</ul>
+
+<p>
+Kod VGT modela na Standard Switch-u:
+</p>
+
+<ul>
+  <li>port grupa koristi VLAN 4095</li>
+  <li>gost upravlja VLAN podinterfejsima</li>
+  <li>fizički uplink koristi trunk</li>
+</ul>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h3>Provera vSwitch-a i uplinkova</h3>
+
+<p>
+Pregled standardnih switcheva:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+Pregled određenog switcha:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list \
+  -v vSwitch-Production
+</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da li switch postoji</li>
+  <li>da li ima fizičke uplinkove</li>
+  <li>koji vmnic adapteri su povezani</li>
+  <li>da li MTU odgovara projektovanoj vrednosti</li>
+</ul>
+
+<p>
+Ako vSwitch nema uplink, VM može komunicirati sa lokalnim VM-ovima na istom hostu, ali ne i sa fizičkom mrežom.
+</p>
+
+<h3>Provera failover i teaming politike</h3>
+
+<p>
+Politika standardnog switcha:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard policy failover get \
+  -v vSwitch-Production
+</code></pre>
+
+<p>
+Politika port grupe:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy failover get \
+  -p PG-PROD-WEB
+</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>load-balancing politiku</li>
+  <li>aktivne uplinkove</li>
+  <li>standby uplinkove</li>
+  <li>neiskorišćene uplinkove</li>
+  <li>način detekcije otkaza</li>
+  <li>failback podešavanje</li>
+  <li>da li port grupa nasleđuje politiku vSwitch-a</li>
+</ul>
+
+<p>
+Česta greška je da port grupa koristi override politiku koja aktivira uplink na čijem fizičkom switch portu potreban VLAN nije dozvoljen.
+</p>
+
+<h3>Provera security politike</h3>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security get \
+  -p PG-PROD-WEB
+</code></pre>
+
+<p>
+Proveravaju se:
+</p>
+
+<ul>
+  <li>Promiscuous Mode</li>
+  <li>MAC Address Changes</li>
+  <li>Forged Transmits</li>
+</ul>
+
+<p>
+Običnoj serverskoj VM najčešće nisu potrebna odstupanja od standardne bezbednosne politike. Virtuelni firewall, load balancer ili cluster proizvod može imati posebne zahteve.
+</p>
+
+<p>
+Security politiku ne treba ublažavati nasumično. Prvo treba potvrditi da aplikacija zaista koristi dodatne MAC adrese ili transparentni režim rada.
+</p>
+
+<h3>Provera fizičkih mrežnih adaptera</h3>
+
+<p>
+Pregled svih adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic list
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Name    Driver  Admin Status  Link Status  Speed  Duplex
+------  ------  ------------  -----------  -----  ------
+vmnic0  ntg3    Up            Up            1000  Full
+vmnic1  ntg3    Up            Up            1000  Full
+vmnic2  i40en   Up            Down             0  Half
+</code></pre>
+
+<p>
+Adapter sa statusom:
+</p>
+
+<pre><code class="language-none">Admin Status: Up
+Link Status: Down
+</code></pre>
+
+<p>
+administrativno je omogućen, ali nema aktivnu fizičku vezu.
+</p>
+
+<p>
+Detalji:
+</p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic2
+</code></pre>
+
+<p>
+Statistika:
+</p>
+
+<pre><code class="language-bash">esxcli network nic stats get -n vmnic2
+</code></pre>
+
+<p>
+Pratiti:
+</p>
+
+<ul>
+  <li>Receive packets dropped</li>
+  <li>Transmit packets dropped</li>
+  <li>Receive errors</li>
+  <li>Transmit errors</li>
+  <li>brzinu linka</li>
+  <li>duplex režim</li>
+</ul>
+
+<p>
+Jednokratni mali broj grešaka nije dovoljan za zaključak. Važno je proveriti da li se brojači povećavaju tokom problema.
+</p>
+
+<h3>Periodično praćenje brojača</h3>
+
+<p>
+Primer jednostavnog posmatranja:
+</p>
+
+<pre><code class="language-bash">watch -n 2 \
+'esxcli network nic stats get -n vmnic2'
+</code></pre>
+
+<p>
+Ako ESXi BusyBox okruženje nema komandu <code>watch</code>, komandu ponoviti ručno ili koristiti petlju:
+</p>
+
+<pre><code class="language-bash">while true
+do
+  date
+  esxcli network nic stats get -n vmnic2
+  sleep 5
+done
+</code></pre>
+
+<p>
+Petlja se prekida kombinacijom:
+</p>
+
+<pre><code class="language-none">Ctrl+C
+</code></pre>
+
+<h3>Provera mrežnog porta aktivne VM</h3>
+
+<p>
+Prikaz aktivnih VM mrežnih procesa:
+</p>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">World ID  Name         Num Ports  Networks
+--------  -----------  ---------  -----------
+345721    WebServer01          1  PG-PROD-WEB
+345812    DBServer01           2  PG-PROD-DB
+</code></pre>
+
+<p>
+Detalji portova određene VM:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list \
+  -w 345721
+</code></pre>
+
+<p>
+Izlaz može prikazati:
+</p>
+
+<ul>
+  <li>Port ID</li>
+  <li>vSwitch</li>
+  <li>port grupu</li>
+  <li>MAC adresu</li>
+  <li>aktivni uplink</li>
+</ul>
+
+<p>
+Ova komanda povezuje konkretnu VM sa konkretnim VMware portom i fizičkim adapterom.
+</p>
+
+<h3>Provera MAC adrese</h3>
+
+<p>
+MAC adresa prikazana u VMware konfiguraciji treba da odgovara adresi koju vidi gost.
+</p>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              NetworkName,
+              MacAddress
+</code></pre>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ip link show ens192
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">Get-NetAdapter |
+Select-Object Name,
+              MacAddress,
+              Status
+</code></pre>
+
+<p>
+Neusklađenost može biti očekivana kod određenih virtuelnih appliance-a, cluster proizvoda ili ručno promenjenih MAC adresa, ali zahteva proveru security politike port grupe.
+</p>
+
+<h3>Praćenje mreže pomoću esxtop-a</h3>
+
+<p>
+Pokrenuti:
+</p>
+
+<pre><code class="language-bash">esxtop
+</code></pre>
+
+<p>
+Pritisnuti:
+</p>
+
+<pre><code class="language-bash">n
+</code></pre>
+
+<p>
+Najvažnije kolone:
+</p>
+
+<ul>
+  <li><strong>PORT-ID</strong> – identifikator virtuelnog porta</li>
+  <li><strong>USED-BY</strong> – VM ili VMkernel komponenta koja koristi port</li>
+  <li><strong>TEAM-PNIC</strong> – fizički adapter preko kojeg saobraćaj izlazi</li>
+  <li><strong>PKTTX/s</strong> – poslati paketi u sekundi</li>
+  <li><strong>PKTRX/s</strong> – primljeni paketi u sekundi</li>
+  <li><strong>MbTX/s</strong> – odlazni protok</li>
+  <li><strong>MbRX/s</strong> – dolazni protok</li>
+  <li><strong>%DRPTX</strong> – procenat odbačenih odlaznih paketa</li>
+  <li><strong>%DRPRX</strong> – procenat odbačenih dolaznih paketa</li>
+</ul>
+
+<p>
+Tokom testa sa VM-a treba proveriti:
+</p>
+
+<ul>
+  <li>da li brojači paketa rastu</li>
+  <li>koji uplink se koristi</li>
+  <li>da li postoje drop vrednosti</li>
+  <li>da li druga VM na istoj port grupi pokazuje normalne vrednosti</li>
+</ul>
+
+<h3>Batch prikupljanje esxtop podataka</h3>
+
+<pre><code class="language-bash">esxtop -b -d 5 -n 60 \
+  &gt; /tmp/esxtop-network.csv
+</code></pre>
+
+<p>
+Ovim se podaci prikupljaju približno pet minuta:
+</p>
+
+<ul>
+  <li><code>-b</code> – batch režim</li>
+  <li><code>-d 5</code> – interval od pet sekundi</li>
+  <li><code>-n 60</code> – šezdeset uzoraka</li>
+</ul>
+
+<p>
+Pre prikupljanja proveriti raspoloživ prostor u ciljnom direktorijumu.
+</p>
+
+<h3>Provera VMkernel mreže</h3>
+
+<p>
+Ako problem utiče na management, vMotion, storage ili drugi servis hosta, proveravaju se VMkernel adapteri.
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+</code></pre>
+
+<p>
+IPv4 konfiguracija:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get
+</code></pre>
+
+<p>
+TCP/IP stack:
+</p>
+
+<pre><code class="language-bash">esxcli network ip netstack list
+</code></pre>
+
+<p>
+Rute:
+</p>
+
+<pre><code class="language-bash">esxcli network ip route ipv4 list
+</code></pre>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VMHostNetworkAdapter -VMKernel |
+Select-Object VMHost,
+              Name,
+              PortGroupName,
+              IP,
+              SubnetMask,
+              Mtu,
+              VMotionEnabled,
+              ManagementTrafficEnabled,
+              VsanTrafficEnabled
+</code></pre>
+
+<h3>Testiranje VMkernel mreže pomoću vmkping-a</h3>
+
+<p>
+Osnovni test:
+</p>
+
+<pre><code class="language-bash">vmkping 192.168.10.1
+</code></pre>
+
+<p>
+Test preko konkretnog VMkernel adaptera:
+</p>
+
+<pre><code class="language-bash">vmkping -I vmk1 172.16.10.22
+</code></pre>
+
+<p>
+Test preko vMotion TCP/IP stack-a:
+</p>
+
+<pre><code class="language-bash">vmkping ++netstack=vmotion \
+  172.16.10.22
+</code></pre>
+
+<p>
+Jumbo frame test:
+</p>
+
+<pre><code class="language-bash">vmkping \
+  -I vmk1 \
+  -d \
+  -s 8972 \
+  172.16.10.22
+</code></pre>
+
+<p>
+Opcija <code>-d</code> zabranjuje fragmentaciju. Ako običan test radi, a jumbo test ne radi, najverovatnije postoji neusaglašen MTU duž mrežne putanje.
+</p>
+
+<h3>Provera MTU vrednosti</h3>
+
+<p>
+VMkernel adapter:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+</code></pre>
+
+<p>
+Standardni switch:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local" |
+Get-VirtualSwitch -Standard |
+Select-Object Name,
+              Mtu,
+              Nic
+</code></pre>
+
+<p>
+MTU mora biti usklađen na:
+</p>
+
+<ul>
+  <li>gostujućem interfejsu, kada koristi jumbo frame</li>
+  <li>VMkernel adapteru</li>
+  <li>port grupi i virtuelnom switchu</li>
+  <li>fizičkom adapteru</li>
+  <li>fizičkom switch portu</li>
+  <li>svim međusobnim linkovima</li>
+  <li>odredišnom uređaju</li>
+</ul>
+
+<h3>Testiranje velikih paketa iz Linux gosta</h3>
+
+<p>
+Za MTU 1500:
+</p>
+
+<pre><code class="language-bash">ping -c 4 \
+  -M do \
+  -s 1472 \
+  10.110.0.1
+</code></pre>
+
+<p>
+Za MTU 9000:
+</p>
+
+<pre><code class="language-bash">ping -c 4 \
+  -M do \
+  -s 8972 \
+  10.110.0.1
+</code></pre>
+
+<p>
+Na pojedinim sistemima sintaksa može zavisiti od implementacije komande <code>ping</code>.
+</p>
+
+<h3>Testiranje velikih paketa iz Windows gosta</h3>
+
+<p>
+Za standardni MTU:
+</p>
+
+<pre><code class="language-bash">ping 10.110.0.1 -f -l 1472
+</code></pre>
+
+<p>
+Za jumbo frame:
+</p>
+
+<pre><code class="language-bash">ping 10.110.0.1 -f -l 8972
+</code></pre>
+
+<p>
+Ako test sa manjim paketom radi, a test sa očekivanom jumbo veličinom ne radi, proverava se kompletna MTU putanja.
+</p>
+
+<h3>DNS dijagnostika</h3>
+
+<p>
+Ako pristup po IP adresi radi, a pristup po imenu ne radi, VMware Layer 2 mreža verovatno funkcioniše. Fokus prelazi na DNS.
+</p>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">getent hosts example.com
+resolvectl query example.com
+dig example.com
+dig @10.110.0.10 example.com
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">nslookup example.com
+Resolve-DnsName example.com
+</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>DNS servere u konfiguraciji gosta</li>
+  <li>rutu prema DNS serveru</li>
+  <li>UDP i TCP port 53</li>
+  <li>firewall pravila</li>
+  <li>DNS zone i zapise</li>
+  <li>search domain konfiguraciju</li>
+</ul>
+
+<h3>Praćenje mrežne putanje</h3>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">tracepath 8.8.8.8
+traceroute 8.8.8.8
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">tracert 8.8.8.8
+</code></pre>
+
+<p>
+TCP test putanje, kada je dostupan odgovarajući alat:
+</p>
+
+<pre><code class="language-bash">traceroute -T \
+  -p 443 \
+  example.com
+</code></pre>
+
+<p>
+Nedostatak odgovora nekog hop-a ne mora značiti prekid putanje, jer mrežni uređaj može odbijati ICMP odgovore.
+</p>
+
+<h3>Packet capture unutar Linux gosta</h3>
+
+<p>
+Za proveru da li gost šalje i prima pakete:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn
+</code></pre>
+
+<p>
+ARP saobraćaj:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  arp
+</code></pre>
+
+<p>
+ICMP:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  icmp
+</code></pre>
+
+<p>
+Saobraćaj prema određenom hostu:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  host 10.110.0.1
+</code></pre>
+
+<p>
+TCP port 443:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  tcp port 443
+</code></pre>
+
+<p>
+Upis u PCAP fajl:
+</p>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  -c 500 \
+  -w /tmp/webserver01.pcap
+</code></pre>
+
+<h3>Tumačenje osnovnog packet capture-a</h3>
+
+<p>
+Ako se vidi ARP zahtev:
+</p>
+
+<pre><code class="language-none">Who has 10.110.0.1? Tell 10.110.0.21
+</code></pre>
+
+<p>
+ali nema odgovora, gost šalje paket, ali Layer 2 putanja ili gateway ne vraćaju odgovor.
+</p>
+
+<p>
+Ako se ne vidi ni ARP zahtev, proveravaju se:
+</p>
+
+<ul>
+  <li>IP adresa i maska</li>
+  <li>ruta</li>
+  <li>stanje interfejsa</li>
+  <li>lokalni firewall</li>
+  <li>da li aplikacija zaista generiše saobraćaj</li>
+</ul>
+
+<p>
+Ako se vidi TCP SYN bez SYN-ACK odgovora:
+</p>
+
+<pre><code class="language-none">Client → Server: SYN
+</code></pre>
+
+<p>
+mogući uzroci su:
+</p>
+
+<ul>
+  <li>udaljeni servis ne radi</li>
+  <li>firewall odbacuje saobraćaj</li>
+  <li>povratna ruta ne postoji</li>
+  <li>VLAN ili routing problem postoji na udaljenoj strani</li>
+</ul>
+
+<h3>Packet capture na ESXi hostu pomoću pktcap-uw</h3>
+
+<p>
+<code>pktcap-uw</code> omogućava hvatanje paketa na različitim tačkama ESXi mrežnog steka. Njegova najveća vrednost jeste mogućnost poređenja saobraćaja na virtuelnom portu i fizičkom uplinku.
+</p>
+
+<p>
+Pregled pomoći:
+</p>
+
+<pre><code class="language-bash">pktcap-uw --help
+</code></pre>
+
+<p>
+Pregled dostupnih tačaka hvatanja:
+</p>
+
+<pre><code class="language-bash">pktcap-uw --help | less
+</code></pre>
+
+<p>
+Pre svakog snimanja treba:
+</p>
+
+<ul>
+  <li>definisati konkretan simptom</li>
+  <li>ograničiti broj paketa</li>
+  <li>koristiti filter kada je moguće</li>
+  <li>proveriti slobodan prostor</li>
+  <li>ukloniti PCAP fajl kada više nije potreban</li>
+</ul>
+
+<h3>Snimanje paketa na fizičkom uplinku</h3>
+
+<p>
+Dolazni saobraćaj:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  --count 200 \
+  -o /tmp/vmnic2-receive.pcap
+</code></pre>
+
+<p>
+Odlazni saobraćaj:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkSndKernel \
+  --count 200 \
+  -o /tmp/vmnic2-send.pcap
+</code></pre>
+
+<p>
+Snimanje bez izlaznog fajla prikazuje pakete u terminalu, ali je PCAP pogodniji za detaljnu analizu u Wireshark-u.
+</p>
+
+<h3>Filtriranje pktcap-uw saobraćaja</h3>
+
+<p>
+Primer filtriranja prema IP adresi:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  --ip 10.110.0.21 \
+  --count 100 \
+  -o /tmp/webserver01-in.pcap
+</code></pre>
+
+<p>
+Primer prema TCP portu:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkSndKernel \
+  --tcpport 443 \
+  --count 100 \
+  -o /tmp/https-out.pcap
+</code></pre>
+
+<p>
+Dostupne opcije mogu zavisiti od ESXi verzije, pa pre korišćenja treba proveriti:
+</p>
+
+<pre><code class="language-bash">pktcap-uw --help
+</code></pre>
+
+<h3>Pronalaženje Switch Port ID-a</h3>
+
+<p>
+Najpre:
+</p>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Zatim:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list \
+  -w &lt;World-ID&gt;
+</code></pre>
+
+<p>
+U izlazu pronaći Port ID, na primer:
+</p>
+
+<pre><code class="language-none">Port ID: 33554439
+</code></pre>
+
+<p>
+Taj ID može se koristiti za ciljano hvatanje paketa na virtuelnom portu, u skladu sa opcijama koje prikazuje pomoć instalirane verzije alata:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --switchport 33554439 \
+  --count 200 \
+  -o /tmp/vm-port.pcap
+</code></pre>
+
+<h3>Poređenje virtuelnog porta i uplinka</h3>
+
+<p>
+Jedna od najkorisnijih metoda jeste istovremena ili uzastopna analiza dve tačke:
+</p>
+
+<ol>
+  <li>virtuelni port problematične VM</li>
+  <li>fizički uplink preko kojeg saobraćaj treba da izađe</li>
+</ol>
+
+<p>
+Mogući nalazi:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Virtuelni port</th>
+      <th>Uplink</th>
+      <th>Mogući zaključak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Paket nije prisutan</td>
+      <td>Paket nije prisutan</td>
+      <td>Gost, ruta, firewall ili aplikacija ne šalju paket</td>
+    </tr>
+    <tr>
+      <td>Paket je prisutan</td>
+      <td>Paket nije prisutan</td>
+      <td>Port grupa, VLAN, security ili teaming problem</td>
+    </tr>
+    <tr>
+      <td>Paket je prisutan</td>
+      <td>Paket je prisutan</td>
+      <td>Problem je verovatno u fizičkoj mreži ili odredištu</td>
+    </tr>
+    <tr>
+      <td>Odgovor postoji na uplinku</td>
+      <td>Odgovor ne stiže do VM porta</td>
+      <td>VLAN, virtuelni port, MAC ili security problem na hostu</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Praćenje putanje paketa pomoću pktcap-uw</h3>
+
+<p>
+Novije vSphere verzije omogućavaju tracing paketa kroz ESXi mrežni stek. Dostupna sintaksa proverava se komandom:
+</p>
+
+<pre><code class="language-bash">pktcap-uw --help
+</code></pre>
+
+<p>
+Tracing je koristan kada paket prolazi kroz više internih tačaka i potrebno je utvrditi na kojoj od njih nestaje. U produkciji ga treba koristiti ciljano, sa filterom i ograničenim brojem paketa.
+</p>
+
+<h3>Analiza PCAP fajla u Wireshark-u</h3>
+
+<p>
+Korisni Wireshark filteri:
+</p>
+
+<pre><code class="language-none">arp
+icmp
+dns
+tcp.port == 443
+ip.addr == 10.110.0.21
+eth.addr == 00:50:56:aa:bb:cc
+vlan
+vlan.id == 110
+tcp.analysis.retransmission
+tcp.analysis.duplicate_ack
+</code></pre>
+
+<p>
+Za TCP komunikaciju proveriti:
+</p>
+
+<ul>
+  <li>da li postoji SYN</li>
+  <li>da li stiže SYN-ACK</li>
+  <li>da li se završava three-way handshake</li>
+  <li>da li postoje retransmisije</li>
+  <li>da li se veza resetuje paketom RST</li>
+  <li>da li postoji velika latencija između paketa</li>
+</ul>
+
+<h3>ESXi mrežni logovi</h3>
+
+<p>
+Najvažniji logovi:
+</p>
+
+<ul>
+  <li><code>/var/log/vmkernel.log</code> – drajveri, uplinkovi, storage i VMkernel događaji</li>
+  <li><code>/var/log/vobd.log</code> – događaji i upozorenja</li>
+  <li><code>/var/log/hostd.log</code> – upravljačke operacije hosta</li>
+  <li><code>/var/log/vpxa.log</code> – komunikacija sa vCenter Serverom</li>
+  <li><code>/var/log/vmkwarning.log</code> – VMkernel upozorenja</li>
+</ul>
+
+<p>
+Pregled novih mrežnih događaja:
+</p>
+
+<pre><code class="language-bash">tail -n 100 /var/log/vmkernel.log
+</code></pre>
+
+<p>
+Pretraga:
+</p>
+
+<pre><code class="language-bash">grep -Ei \
+"link|nic|uplink|network|timeout|drop|vlan" \
+/var/log/vmkernel.log |
+tail -n 100
+</code></pre>
+
+<p>
+Praćenje u realnom vremenu:
+</p>
+
+<pre><code class="language-bash">tail -f /var/log/vmkernel.log
+</code></pre>
+
+<p>
+Tokom testa treba pratiti da li se pojavljuju poruke o gubitku linka, resetovanju adaptera ili problemima sa drajverom.
+</p>
+
+<h3>PowerCLI inventar VM mreža</h3>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Select-Object `
+  @{N='VM';E={$_.Parent.Name}},
+  Name,
+  Type,
+  NetworkName,
+  MacAddress,
+  ConnectionState
+</code></pre>
+
+<p>
+Izvoz:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Select-Object `
+  @{N='VM';E={$_.Parent.Name}},
+  Name,
+  Type,
+  NetworkName,
+  MacAddress,
+  ConnectionState |
+Export-Csv `
+  -Path "./vm-network-inventory.csv" `
+  -NoTypeInformation `
+  -Encoding UTF8
+</code></pre>
+
+<h3>PowerCLI pronalaženje nepovezanih adaptera</h3>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {
+    -not $_.ConnectionState.Connected
+} |
+Select-Object `
+  @{N='VM';E={$_.Parent.Name}},
+  Name,
+  NetworkName,
+  ConnectionState
+</code></pre>
+
+<p>
+Adapter može biti namerno isključen. Nalaz treba proveriti sa vlasnikom sistema pre promene.
+</p>
+
+<h3>PowerCLI provera port grupa između hostova</h3>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster "Cluster01"
+
+$report = Get-VMHost -Location $cluster |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VirtualSwitchName,
+      VLanId
+}
+
+$report |
+Sort-Object Name,
+            VMHost |
+Format-Table -AutoSize
+</code></pre>
+
+<h3>Pronalaženje različitih VLAN vrednosti</h3>
+
+<pre><code class="language-powershell">$report |
+Group-Object Name |
+Where-Object {
+    ($_.Group.VLanId |
+     Sort-Object -Unique).Count -gt 1
+} |
+ForEach-Object {
+    [PSCustomObject]@{
+        PortGroup = $_.Name
+        Hosts = ($_.Group.VMHost -join ', ')
+        VLANs = (
+            $_.Group.VLanId |
+            Sort-Object -Unique
+        ) -join ', '
+    }
+} |
+Format-Table -AutoSize
+</code></pre>
+
+<h3>PowerCLI pregled uplinkova</h3>
+
+<pre><code class="language-powershell">Get-VMHost |
+Get-VMHostNetworkAdapter -Physical |
+Select-Object VMHost,
+              Name,
+              DeviceName,
+              Mac,
+              BitRatePerSec,
+              FullDuplex,
+              LinkSpeed
+</code></pre>
+
+<p>
+Pregled standardnih switcheva:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost |
+Get-VirtualSwitch -Standard |
+Select-Object VMHost,
+              Name,
+              Mtu,
+              Nic,
+              NumPortsAvailable
+</code></pre>
+
+<h3>PowerCLI pregled nedavnih mrežnih događaja</h3>
+
+<pre><code class="language-powershell">Get-VIEvent `
+  -Entity (Get-VM "WebServer01") `
+  -Start (Get-Date).AddHours(-2) |
+Sort-Object CreatedTime -Descending |
+Select-Object CreatedTime,
+              UserName,
+              FullFormattedMessage
+</code></pre>
+
+<p>
+Događaji hosta:
+</p>
+
+<pre><code class="language-powershell">Get-VIEvent `
+  -Entity (Get-VMHost "esxi01.lab.local") `
+  -Start (Get-Date).AddHours(-2) |
+Where-Object {
+    $_.FullFormattedMessage -match
+    'network|uplink|nic|port|vSwitch'
+} |
+Select-Object CreatedTime,
+              FullFormattedMessage
+</code></pre>
+
+<h3>Scenario 1: samo jedna VM nema mrežu</h3>
+
+<p>
+Redosled:
+</p>
+
+<ol>
+  <li>Proveriti da li je njen vNIC povezan.</li>
+  <li>Proveriti port grupu i MAC adresu.</li>
+  <li>Proveriti IP adresu, masku, gateway i rute.</li>
+  <li>Proveriti lokalni firewall.</li>
+  <li>Proveriti ARP tabelu.</li>
+  <li>Uporediti sa funkcionalnom VM na istoj port grupi.</li>
+  <li>Proveriti VMXNET3 drajver i VMware Tools.</li>
+  <li>Izvršiti packet capture unutar gosta.</li>
+</ol>
+
+<p>
+PowerCLI:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Format-List *
+</code></pre>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ip neigh
+ip -s link
+sudo tcpdump -i ens192 -nn arp
+</code></pre>
+
+<h3>Scenario 2: sve VM na port grupi nemaju mrežu</h3>
+
+<p>
+Fokus je na zajedničkim komponentama:
+</p>
+
+<ol>
+  <li>VLAN ID port grupe</li>
+  <li>vSwitch</li>
+  <li>teaming politika</li>
+  <li>aktivni uplink</li>
+  <li>fizički trunk</li>
+  <li>gateway i routing</li>
+</ol>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+
+esxcli network vswitch standard portgroup \
+policy failover get \
+  -p PG-PROD-WEB
+
+esxcli network vswitch standard list
+
+esxcli network nic list
+</code></pre>
+
+<h3>Scenario 3: VM radi samo na jednom ESXi hostu</h3>
+
+<p>
+Ako VM radi na <code>esxi01</code>, ali ne na <code>esxi02</code>, uporediti:
+</p>
+
+<ul>
+  <li>postojanje port grupe</li>
+  <li>naziv port grupe</li>
+  <li>VLAN ID</li>
+  <li>vSwitch</li>
+  <li>uplinkove</li>
+  <li>fizički switch trunk</li>
+  <li>teaming override</li>
+</ul>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualPortGroup -Standard |
+Where-Object {
+    $_.Name -eq "PG-PROD-WEB"
+} |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>Scenario 4: VM komunicira lokalno, ali ne van hosta</h3>
+
+<p>
+Ako dve VM na istom hostu komuniciraju, ali ne mogu da pristupe gateway-u, virtuelni switching između lokalnih portova verovatno radi.
+</p>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da li vSwitch ima uplink</li>
+  <li>da li je fizički link Up</li>
+  <li>koji uplink koristi VM</li>
+  <li>da li fizički port dozvoljava VLAN</li>
+  <li>da li je gateway aktivan</li>
+</ul>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network nic list
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<h3>Scenario 5: gateway radi, ali udaljena mreža ne radi</h3>
+
+<p>
+Ako lokalni gateway odgovara, Layer 2 putanja do gateway-a funkcioniše. Fokus prelazi na:
+</p>
+
+<ul>
+  <li>routing</li>
+  <li>firewall i ACL pravila</li>
+  <li>povratnu rutu</li>
+  <li>NAT</li>
+  <li>udaljeni servis</li>
+</ul>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ip route
+tracepath &lt;udaljena-IP-adresa&gt;
+nc -vz &lt;udaljena-IP-adresa&gt; 443
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">route print
+tracert &lt;udaljena-IP-adresa&gt;
+Test-NetConnection &lt;udaljena-IP-adresa&gt; -Port 443
+</code></pre>
+
+<h3>Scenario 6: IP radi, DNS ne radi</h3>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>DNS servere</li>
+  <li>rutu prema DNS serveru</li>
+  <li>port 53</li>
+  <li>firewall</li>
+  <li>DNS zapis</li>
+</ul>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">getent hosts example.com
+dig @10.110.0.10 example.com
+nc -vz 10.110.0.10 53
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-powershell">nslookup example.com 10.110.0.10
+Test-NetConnection 10.110.0.10 -Port 53
+</code></pre>
+
+<h3>Scenario 7: VM ne dobija DHCP adresu</h3>
+
+<p>
+Proveriti:
+</p>
+
+<ol>
+  <li>port grupu i VLAN</li>
+  <li>DHCP scope</li>
+  <li>DHCP relay</li>
+  <li>fizički trunk</li>
+  <li>firewall</li>
+  <li>da li DHCP Discover napušta VM</li>
+</ol>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">sudo dhclient -v ens192
+sudo tcpdump \
+  -i ens192 \
+  -nn \
+  'port 67 or port 68'
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">ipconfig /release
+ipconfig /renew
+</code></pre>
+
+<p>
+DHCP packet capture filter:
+</p>
+
+<pre><code class="language-bash">udp.port == 67 || udp.port == 68
+</code></pre>
+
+<h3>Scenario 8: samo veliki paketi ne prolaze</h3>
+
+<p>
+Proveriti MTU od izvora do odredišta.
+</p>
+
+<p>
+VMkernel:
+</p>
+
+<pre><code class="language-bash">vmkping \
+  -I vmk1 \
+  -d \
+  -s 8972 \
+  172.16.10.22
+</code></pre>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ping \
+  -M do \
+  -s 8972 \
+  -c 4 \
+  10.110.0.1
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-bash">ping 10.110.0.1 -f -l 8972
+</code></pre>
+
+<h3>Scenario 9: mreža povremeno nestaje</h3>
+
+<p>
+Povremeni problem zahteva praćenje kroz vreme.
+</p>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>link flap događaje</li>
+  <li>rast drop i error brojača</li>
+  <li>teaming failover</li>
+  <li>duplikat IP adrese</li>
+  <li>MAC flapping na fizičkom switchu</li>
+  <li>DNS timeout</li>
+  <li>CPU ili memorijski problem gosta</li>
+</ul>
+
+<pre><code class="language-bash">tail -f /var/log/vmkernel.log
+</code></pre>
+
+<pre><code class="language-bash">while true
+do
+  date
+  esxcli network nic stats get -n vmnic2
+  sleep 5
+done
+</code></pre>
+
+<p>
+Unutar Linux gosta:
+</p>
+
+<pre><code class="language-bash">ping \
+  -D \
+  -i 1 \
+  10.110.0.1
+</code></pre>
+
+<h3>Scenario 10: VM ima mrežu, ali radi veoma sporo</h3>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>packet loss</li>
+  <li>retransmisije</li>
+  <li>link brzinu</li>
+  <li>drop brojače</li>
+  <li>MTU</li>
+  <li>CPU opterećenje gosta</li>
+  <li>VMXNET3 drajver</li>
+  <li>fizički switch port</li>
+  <li>aplikacionu latenciju</li>
+</ul>
+
+<p>
+Linux test protoka, ako je dostupan iperf3:
+</p>
+
+<pre><code class="language-bash">iperf3 -s
+</code></pre>
+
+<p>
+Sa druge strane:
+</p>
+
+<pre><code class="language-bash">iperf3 -c 10.110.0.21
+</code></pre>
+
+<p>
+Obrnuti smer:
+</p>
+
+<pre><code class="language-bash">iperf3 \
+  -c 10.110.0.21 \
+  -R
+</code></pre>
+
+<p>
+Test protoka treba izvoditi kontrolisano, jer može značajno opteretiti mrežu.
+</p>
+
+<h3>Scenario 11: vMotion mreža ne radi</h3>
+
+<p>
+Proveriti na oba hosta:
+</p>
+
+<ul>
+  <li>VMkernel adapter</li>
+  <li>vMotion servis</li>
+  <li>IP adresu i masku</li>
+  <li>VLAN</li>
+  <li>MTU</li>
+  <li>TCP/IP stack</li>
+</ul>
+
+<pre><code class="language-bash">esxcli network ip interface list
+esxcli network ip interface ipv4 get
+esxcli network ip netstack list
+</code></pre>
+
+<p>
+Test:
+</p>
+
+<pre><code class="language-bash">vmkping ++netstack=vmotion \
+  172.16.10.22
+</code></pre>
+
+<p>
+Jumbo test:
+</p>
+
+<pre><code class="language-bash">vmkping \
+  ++netstack=vmotion \
+  -d \
+  -s 8972 \
+  172.16.10.22
+</code></pre>
+
+<h3>Scenario 12: management mreža je nedostupna</h3>
+
+<p>
+Management problem zahteva poseban oprez. Ne menjati nasumično <code>vmk0</code>, management port grupu ili jedini uplink.
+</p>
+
+<p>
+Proveriti preko DCUI, iLO, iDRAC ili druge udaljene konzole:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+esxcli network ip interface ipv4 get
+esxcli network ip route ipv4 list
+esxcli network vswitch standard portgroup list
+esxcli network vswitch standard list
+esxcli network nic list
+</code></pre>
+
+<p>
+Test:
+</p>
+
+<pre><code class="language-bash">vmkping &lt;management-gateway&gt;
+vmkping &lt;vCenter-IP&gt;
+vmkping &lt;DNS-IP&gt;
+</code></pre>
+
+<p>
+Restart management agenata razmatra se tek kada su IP putanja, VLAN, gateway, DNS i fizički link potvrđeni, a dokaz ukazuje na problem procesa <code>hostd</code> ili <code>vpxa</code>. Pre toga sačuvati relevantne logove i obezbediti DCUI ili out-of-band konzolu. U HA okruženju ne koristiti generički restart svih management servisa bez provere posledica; pojedinačni restart je uži zahvat, ali i dalje kratkotrajno prekida upravljačku ravan.
+</p>
+
+<pre><code class="language-bash">/etc/init.d/hostd restart
+/etc/init.d/vpxa restart
+</code></pre>
+
+<p>
+Ovo može privremeno prekinuti upravljačku komunikaciju, ali ne predstavlja rešenje za pogrešan VLAN, IP adresu ili fizički link.
+</p>
+
+<h3>Praktikum 1: dijagnostika jedne VM bez mreže</h3>
+
+<p>
+Laboratorijski scenario:
+</p>
+
+<pre><code class="language-none">VM: VM-Lab01
+Port Group: PG-LAB-WEB
+VLAN: 110
+IP: 10.110.0.21/24
+Gateway: 10.110.0.1
+ESXi host: esxi01.lab.local
+</code></pre>
+
+<h4>Korak 1 – proveriti adapter</h4>
+
+<pre><code class="language-powershell">Get-VM "VM-Lab01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              Type,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 2 – proveriti port grupu</h4>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB-WEB" |
+Select-Object Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h4>Korak 3 – proveriti gosta</h4>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ip neigh
+</code></pre>
+
+<h4>Korak 4 – postepeni test</h4>
+
+<pre><code class="language-bash">ping -c 4 127.0.0.1
+ping -c 4 10.110.0.21
+ping -c 4 10.110.0.1
+ping -c 4 8.8.8.8
+getent hosts example.com
+</code></pre>
+
+<h4>Korak 5 – proveriti VM port</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+
+esxcli network vm port list \
+  -w &lt;World-ID-VM-Lab01&gt;
+</code></pre>
+
+<h4>Korak 6 – proveriti uplink</h4>
+
+<pre><code class="language-bash">esxcli network nic list
+esxcli network nic stats get -n vmnic2
+</code></pre>
+
+<h4>Korak 7 – packet capture u gostu</h4>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  arp or icmp
+</code></pre>
+
+<p>
+U drugom terminalu:
+</p>
+
+<pre><code class="language-bash">ping -c 4 10.110.0.1
+</code></pre>
+
+<h4>Korak 8 – packet capture na uplinku</h4>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkSndKernel \
+  --ip 10.110.0.21 \
+  --count 100 \
+  -o /tmp/lab01-send.pcap
+</code></pre>
+
+<h4>Korak 9 – zaključak</h4>
+
+<p>
+Dokumentovati:
+</p>
+
+<ul>
+  <li>da li paket napušta gosta</li>
+  <li>da li stiže do virtuelnog porta</li>
+  <li>da li izlazi preko uplinka</li>
+  <li>da li se odgovor vraća</li>
+  <li>na kojoj tački nestaje</li>
+</ul>
+
+<h3>Praktikum 2: namerna VLAN greška i rollback</h3>
+
+<p>
+Vežbu izvoditi samo na laboratorijskoj port grupi.
+</p>
+
+<h4>Početna konfiguracija</h4>
+
+<pre><code class="language-none">Port Group: PG-LAB
+Početni VLAN: 110
+Testna VM: VM-Lab01
+</code></pre>
+
+<h4>Korak 1 – sačuvati početno stanje</h4>
+
+<pre><code class="language-powershell">$pg = Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB"
+
+$oldVlan = $pg.VLanId
+
+$oldVlan
+</code></pre>
+
+<h4>Korak 2 – potvrditi funkcionalnost</h4>
+
+<pre><code class="language-bash">ping -c 4 10.110.0.1
+</code></pre>
+
+<h4>Korak 3 – namerno promeniti VLAN</h4>
+
+<pre><code class="language-powershell">$pg |
+Set-VirtualPortGroup -VLanId 220
+</code></pre>
+
+<h4>Korak 4 – ponoviti test</h4>
+
+<pre><code class="language-bash">ping -c 4 10.110.0.1
+</code></pre>
+
+<p>
+Pošto IP konfiguracija i fizička mreža nisu pripremljene za VLAN 220, test bi trebalo da pokaže prekid komunikacije.
+</p>
+
+<h4>Korak 5 – proveriti VLAN</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h4>Korak 6 – rollback</h4>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-LAB" |
+Set-VirtualPortGroup -VLanId $oldVlan
+</code></pre>
+
+<h4>Korak 7 – potvrditi oporavak</h4>
+
+<pre><code class="language-bash">ping -c 4 10.110.0.1
+</code></pre>
+
+<h3>Praktikum 3: otkrivanje problema posle vMotion-a</h3>
+
+<p>
+Scenario: VM radi na <code>esxi01</code>, ali posle migracije na <code>esxi02</code> gubi mrežu.
+</p>
+
+<h4>Korak 1 – proveriti mrežu VM-a</h4>
+
+<pre><code class="language-powershell">Get-VM "VM-Lab01" |
+Get-NetworkAdapter |
+Select-Object NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 2 – uporediti port grupe</h4>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualPortGroup -Standard |
+Where-Object {
+    $_.Name -eq "PG-LAB"
+} |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h4>Korak 3 – proveriti uplinkove oba hosta</h4>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualSwitch -Standard |
+Select-Object VMHost,
+              Name,
+              Nic,
+              Mtu
+</code></pre>
+
+<h4>Korak 4 – proveriti ciljni host</h4>
+
+<pre><code class="language-bash">esxcli network nic list
+esxcli network vswitch standard list
+</code></pre>
+
+<h4>Korak 5 – pronaći VM port</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<h4>Korak 6 – evidentirati nalaz</h4>
+
+<p>
+Najčešći nalazi:
+</p>
+
+<ul>
+  <li>port grupa nedostaje</li>
+  <li>isti naziv koristi drugi VLAN</li>
+  <li>pogrešan vSwitch</li>
+  <li>uplink je Down</li>
+  <li>VLAN nije dozvoljen na fizičkom switchu ciljnog hosta</li>
+</ul>
+
+<h3>Praktikum 4: VMkernel i MTU dijagnostika</h3>
+
+<p>
+Scenario:
+</p>
+
+<pre><code class="language-none">Izvorni host:
+  vmk1: 172.16.10.21/24
+
+Ciljni host:
+  vmk1: 172.16.10.22/24
+
+Namena:
+  vMotion
+
+Projektovani MTU:
+  9000
+</code></pre>
+
+<h4>Korak 1 – pregled VMkernel adaptera</h4>
+
+<pre><code class="language-bash">esxcli network ip interface list
+esxcli network ip interface ipv4 get
+</code></pre>
+
+<h4>Korak 2 – običan test</h4>
+
+<pre><code class="language-bash">vmkping \
+  ++netstack=vmotion \
+  172.16.10.22
+</code></pre>
+
+<h4>Korak 3 – jumbo test</h4>
+
+<pre><code class="language-bash">vmkping \
+  ++netstack=vmotion \
+  -d \
+  -s 8972 \
+  172.16.10.22
+</code></pre>
+
+<h4>Korak 4 – proveriti switch MTU</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<h4>Korak 5 – proveriti fizičku putanju</h4>
+
+<p>
+Potvrditi MTU na:
+</p>
+
+<ul>
+  <li>oba VMkernel adaptera</li>
+  <li>oba vSwitch-a</li>
+  <li>oba uplinka</li>
+  <li>fizičkim switch portovima</li>
+  <li>svim međusobnim linkovima</li>
+</ul>
+
+<h3>Praktikum 5: packet capture od VM do uplinka</h3>
+
+<h4>Korak 1 – generisati saobraćaj</h4>
+
+<p>
+Sa VM:
+</p>
+
+<pre><code class="language-bash">ping -c 20 10.110.0.1
+</code></pre>
+
+<h4>Korak 2 – snimiti u gostu</h4>
+
+<pre><code class="language-bash">sudo tcpdump \
+  -i ens192 \
+  -nn \
+  -c 100 \
+  -w /tmp/guest.pcap \
+  'arp or icmp'
+</code></pre>
+
+<h4>Korak 3 – pronaći Port ID</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<h4>Korak 4 – snimiti virtuelni port</h4>
+
+<pre><code class="language-bash">pktcap-uw \
+  --switchport &lt;Port-ID&gt; \
+  --count 100 \
+  -o /tmp/vm-port.pcap
+</code></pre>
+
+<h4>Korak 5 – snimiti uplink</h4>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkSndKernel \
+  --count 100 \
+  -o /tmp/uplink-send.pcap
+</code></pre>
+
+<h4>Korak 6 – analizirati rezultate</h4>
+
+<p>
+U Wireshark-u uporediti:
+</p>
+
+<ul>
+  <li>izvornu i odredišnu MAC adresu</li>
+  <li>IP adrese</li>
+  <li>VLAN oznaku</li>
+  <li>ICMP sequence brojeve</li>
+  <li>da li se isti paket pojavljuje na svim tačkama</li>
+</ul>
+
+<h3>Praktikum 6: PowerCLI mrežni audit klastera</h3>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster "Cluster01"
+
+$hosts = Get-VMHost -Location $cluster
+
+$portGroups = $hosts |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VirtualSwitchName,
+      VLanId
+}
+
+$uplinks = $hosts |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VMHostNetworkAdapter `
+      -VMHost $vmhost `
+      -Physical |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      Mac,
+      LinkSpeed,
+      FullDuplex
+}
+
+$portGroups |
+Export-Csv `
+  "./cluster-portgroups.csv" `
+  -NoTypeInformation `
+  -Encoding UTF8
+
+$uplinks |
+Export-Csv `
+  "./cluster-uplinks.csv" `
+  -NoTypeInformation `
+  -Encoding UTF8
+</code></pre>
+
+<p>
+Cilj audita:
+</p>
+
+<ul>
+  <li>pronaći nedostajuće port grupe</li>
+  <li>pronaći različite VLAN ID vrednosti</li>
+  <li>pronaći hostove sa različitim uplink konfiguracijama</li>
+  <li>pronaći fizičke adaptere bez linka</li>
+  <li>dokumentovati početno stanje</li>
+</ul>
+
+<h3>Šta ne treba raditi tokom mrežne dijagnostike</h3>
+
+<ul>
+  <li>ne menjati VLAN nasumično</li>
+  <li>ne premeštati VM između više port grupa bez evidencije</li>
+  <li>ne uklanjati jedini management uplink</li>
+  <li>ne uključivati Promiscuous Mode bez opravdanog razloga</li>
+  <li>ne dozvoljavati Forged Transmits samo zato što mreža ne radi</li>
+  <li>ne restartovati ESXi host pre prikupljanja logova</li>
+  <li>ne pretpostavljati da ping dokazuje stanje aplikacionog porta</li>
+  <li>ne pokretati neograničen packet capture</li>
+  <li>ne ostavljati velike PCAP fajlove na ESXi hostu</li>
+  <li>ne menjati management mrežu bez rezervne konzole</li>
+  <li>ne zaključivati da je VMware uzrok pre provere gosta i fizičke mreže</li>
+</ul>
+
+<h3>Dokumentovanje mrežnog incidenta</h3>
+
+<p>
+Kvalitetan zapis treba da sadrži:
+</p>
+
+<ul>
+  <li>ime VM-a</li>
+  <li>ESXi host</li>
+  <li>vNIC i MAC adresu</li>
+  <li>port grupu</li>
+  <li>VLAN ID</li>
+  <li>vSwitch ili Distributed Switch</li>
+  <li>aktivni uplink</li>
+  <li>IP adresu, masku, gateway i DNS</li>
+  <li>tačno vreme problema</li>
+  <li>rezultate ping, route, ARP i port testova</li>
+  <li>relevantne logove</li>
+  <li>packet capture lokacije</li>
+  <li>utvrđenu tačku prekida</li>
+  <li>primenjenu korekciju</li>
+  <li>rezultat nakon korekcije</li>
+  <li>preventivnu meru</li>
+</ul>
+
+<h3>Operativna kontrolna lista</h3>
+
+<pre><code class="language-powershell"># VM adapter
+Get-VM "WebServer01" |
+Get-NetworkAdapter
+
+# Standardne port grupe
+esxcli network vswitch standard portgroup list
+
+# Standardni switchevi
+esxcli network vswitch standard list
+
+# Failover politika
+esxcli network vswitch standard portgroup \
+policy failover get \
+  -p PG-PROD-WEB
+
+# Security politika
+esxcli network vswitch standard portgroup \
+policy security get \
+  -p PG-PROD-WEB
+
+# Fizički adapteri
+esxcli network nic list
+
+# Detalji adaptera
+esxcli network nic get -n vmnic2
+
+# Statistika adaptera
+esxcli network nic stats get -n vmnic2
+
+# Aktivne VM mreže
+esxcli network vm list
+
+# Port određene VM
+esxcli network vm port list -w &lt;World-ID&gt;
+
+# VMkernel adapteri
+esxcli network ip interface list
+
+# VMkernel IP konfiguracija
+esxcli network ip interface ipv4 get
+
+# Rute
+esxcli network ip route ipv4 list
+
+# VMkernel test
+vmkping -I vmk1 &lt;odredišna-IP&gt;
+
+# Jumbo test
+vmkping -I vmk1 -d -s 8972 &lt;odredišna-IP&gt;
+
+# Mrežni esxtop
+esxtop
+# zatim pritisnuti n
+
+# Uplink packet capture
+pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  --count 200 \
+  -o /tmp/network-test.pcap
+
+# Logovi
+tail -f /var/log/vmkernel.log
+</code></pre>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>dijagnostiku voditi od gosta prema fizičkoj mreži</li>
+  <li>prvo odrediti obim problema</li>
+  <li>uvek proveriti poslednju izvršenu promenu</li>
+  <li>uporediti problematičnu VM sa funkcionalnom VM</li>
+  <li>odvojeno testirati IP, DNS i aplikacioni port</li>
+  <li>proveriti ARP pre zaključka da gateway nije dostupan</li>
+  <li>proveriti VLAN na svim relevantnim hostovima</li>
+  <li>pratiti koji uplink stvarno koristi VM</li>
+  <li>koristiti ograničen i filtriran packet capture</li>
+  <li>sačuvati logove pre restartovanja servisa ili hosta</li>
+  <li>management promene izvoditi uz pristup udaljenoj konzoli</li>
+  <li>automatizovati proveru konfiguracije pomoću PowerCLI-ja</li>
+  <li>nakon oporavka utvrditi osnovni uzrok</li>
+  <li>dokumentovati korektivne i preventivne mere</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je uspešno savladana kada administrator može da demonstrira sledeće proverljive sposobnosti:
+</p>
+
+<ul>
+  <li>iz simptoma određuje obim incidenta i crta put paketa za VM ili konkretan VMkernel servis;</li>
+  <li>bez promene stanja prikuplja početne dokaze iz gosta, vSphere inventara, ESXi mrežnog sloja, događaja, brojača i logova;</li>
+  <li>razlikuje Layer 2, Layer 3, DNS i aplikacioni kvar i testira ih nezavisno;</li>
+  <li>povezuje VM sa port grupom, VLAN-om, virtuelnim portom, aktivnim uplinkom i fizičkom putanjom;</li>
+  <li>izvodi <code>vmkping</code> preko ispravnog VMkernel adaptera ili TCP/IP stack-a i pravilno tumači standardni i jumbo test;</li>
+  <li>izvodi ograničen, filtriran packet capture, poredi tačke hvatanja i bezbedno uklanja PCAP fajlove sa ESXi hosta nakon preuzimanja;</li>
+  <li>prepoznaje koja komanda samo čita stanje, a koja menja konfiguraciju, i za promenu priprema rizik, validaciju i rollback;</li>
+  <li>nakon oporavka dokumentuje neposredni i osnovni uzrok, privremeno rešenje, trajnu meru i dokaz da se problem nije ponovio.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+Troubleshooting VMware mreže zasniva se na sistematičnom praćenju paketa kroz sve slojeve infrastrukture. Administrator prvo proverava gostujući operativni sistem, IP konfiguraciju, rute, DNS i lokalni firewall, zatim virtuelni adapter, port grupu, VLAN i vSwitch, a potom fizički uplink, switch port, gateway i udaljeno odredište.
+</p>
+
+<p>
+Komande kao što su <code>ip</code>, <code>ss</code>, <code>tcpdump</code>, <code>ipconfig</code>, <code>Test-NetConnection</code>, <code>esxcli network</code>, <code>vmkping</code>, <code>esxtop</code> i <code>pktcap-uw</code> omogućavaju da se utvrdi ne samo da mreža ne radi, već i tačna tačka na kojoj paket prestaje da se kreće.
+</p>
+
+<p>
+Najvažnija praktična veština jeste razdvajanje simptoma od uzroka. VM bez pristupa aplikaciji ne mora imati VMware problem; uzrok može biti DNS, firewall, servis, ruta, VLAN, MTU ili fizički link. Pouzdan administrator ne menja više komponenti istovremeno, već formira hipotezu, proverava je merljivim podacima i tek nakon potvrde primenjuje korekciju.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    zvanična Broadcom VMware vSphere Networking dokumentacija za standardne i distribuirane switcheve i VMkernel mrežu; Broadcom Knowledge Base članci za VM i ESXi mrežne incidente, management povezivost, MTU i packet capture; ESXCLI, esxtop, vmkping i pktcap-uw reference; VCF PowerCLI cmdlet reference; dokumentacija gostujućih Linux i Windows mrežnih alata
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-24-vmkernel-adapter.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-26-datastore.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

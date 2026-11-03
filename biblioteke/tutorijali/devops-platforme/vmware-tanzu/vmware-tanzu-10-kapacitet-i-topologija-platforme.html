@@ -1,0 +1,486 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-10-kapacitet-i-topologija-platforme.html -->
+
+<!DOCTYPE html>
+
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Planiranje kapaciteta i topologije – management, compute, failure domains i rast platforme | TASHIZZA</title>
+
+  <!-- SEO -->
+
+<meta name="description"
+     content="Planiranje kapaciteta i topologije VMware Tanzu platforme – management i compute resursi, failure domains, dostupnost, rezervni kapacitet i kontrolisani rast platforme.">
+
+<meta name="keywords"
+     content="VMware Tanzu, planiranje kapaciteta, topologija platforme, management, compute, failure domains, vSphere Supervisor, VKS, Kubernetes, VMware vSphere, visoka dostupnost, skaliranje, TASHIZZA">
+
+<meta name="author"
+     content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-10-kapacitet-i-topologija-platforme.html">
+
+  <!-- Favicon -->
+
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+
+<meta property="og:site_name"
+     content="TASHIZZA">
+
+<meta property="og:locale"
+     content="sr_RS">
+
+<meta property="og:type"
+     content="article">
+
+<meta property="og:title"
+     content="Planiranje kapaciteta i topologije – management, compute, failure domains i rast platforme">
+
+<meta property="og:description"
+     content="Deseta lekcija VMware &amp; Tanzu tutorijala – planiranje management i compute resursa, failure domain-a, dostupnosti i budućeg rasta platforme.">
+
+<meta property="og:url"
+     content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-10-kapacitet-i-topologija-platforme.html">
+
+<meta property="og:image"
+     content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-10-kapacitet-i-topologija-platforme.png">
+
+<meta property="og:image:type"
+     content="image/png">
+
+<meta property="og:image:width"
+     content="1200">
+
+<meta property="og:image:height"
+     content="630">
+
+<meta property="og:image:alt"
+     content="Planiranje kapaciteta i topologije – management, compute, failure domains i rast platforme">
+
+  <!-- CSS -->
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+ 
+<h1>VMware &amp; Tanzu</h1>
+
+<div class="page-subtitle">
+  Prvi deo: Arhitektura, izbor platforme i infrastrukturni preduslovi
+</div>
+
+<!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+<a class="chapter-og-link"
+   href="./og-galerija.html?img=og-vmware-tanzu-10-kapacitet-i-topologija-platforme.png"
+   target="_blank"
+   rel="noopener">
+
+  <img class="chapter-og-image"
+       src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-10-kapacitet-i-topologija-platforme.png"
+       alt="Planiranje kapaciteta i topologije – management, compute, failure domains i rast platforme">
+
+</a>
+
+<div class="page-subtitle">
+  III. Procena i priprema VMware infrastrukture
+</div>
+
+<div class="page-subtitle">
+  10. Planiranje kapaciteta i topologije – management, compute, failure domains i rast platforme
+</div>
+
+<p>Prethodna lekcija proverila je da li su verzije vSphere-a, licence, ESXi hostovi i klasterske funkcije podržani za vSphere Supervisor i vSphere Kubernetes Service (VKS). Kompatibilnost je, međutim, samo uslov da platforma može da bude implementirana. Ova lekcija odgovara na teže pitanje: da li izabrana infrastruktura može da izdrži planirani broj klastera i aplikacija, gubitak komponente, redovno održavanje i rast, a da pri tome ostane u podržanom i operativno predvidivom stanju.</p>
+
+<p>Plan kapaciteta nije zbir slobodnih CPU jezgara, memorije i terabajta u trenutku projektovanja. On je dokumentovana veza između poslovne potražnje, Kubernetes zahteva, vSphere načina raspoređivanja, mrežnih i storage ograničenja, ciljeva dostupnosti i rezervnog kapaciteta. Dobar plan mora da pokaže ne samo da workload može da se pokrene, već i da može da ostane pokrenut tokom kvara hosta ili zone, da može da se nadogradi i da se posle incidenta vrati u željeno stanje.</p>
+
+<aside class="note">
+  <strong>Verzijska napomena:</strong> nazivi proizvoda, podržane topologije, minimalni brojevi hostova, VM klase, zahtevi za load balancer, ograničenja zona i podržane kombinacije storage-a menjaju se između vSphere 7, vSphere 8 i novijih VCF/vSphere izdanja. U ovoj lekciji arhitektonski principi su trajni, ali se konkretne granice ne pretpostavljaju. Pre odobrenja dizajna proveravaju se Broadcom TechDocs za tačno izdanje, odgovarajuće release notes, VMware Compatibility Guide i Product Interoperability Matrix.
+</aside>
+
+<h3>1. Od poslovne potražnje do merljivog infrastrukturnog zahteva</h3>
+
+<p>Kapacitet se planira od workload-a ka infrastrukturi, a ne od slobodnog hardvera ka workload-u. Ulazni podaci obuhvataju broj VKS klastera, broj i veličinu control plane i worker čvorova, broj namespace-a, vrste aplikacija, persistent volume zahteve, očekivani mrežni saobraćaj, režim nadogradnje, ciljeve oporavka i period rasta. Zahtev „potrebno je deset Kubernetes klastera” nije dovoljan: deset razvojnih klastera sa po jednim malim worker čvorom i deset produkcionih klastera sa višestrukim zonama predstavljaju potpuno različite sisteme.</p>
+
+<table>
+  <thead>
+    <tr><th>Ulaz</th><th>Šta se meri</th><th>Zašto je važan</th><th>Dokaz</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>VKS topologija</td><td>broj klastera, control plane replika, worker node pool-ova i čvorova</td><td>određuje VM, CPU, RAM, IP i image zahteve</td><td>odobren katalog klasa i deklarativni manifesti</td></tr>
+    <tr><td>Aplikacioni profil</td><td>requests, limits, radni skup memorije, CPU vrhovi i broj podova</td><td>sprečava dimenzionisanje samo prema nominalnoj veličini VM-a</td><td>monitoring najmanje jednog reprezentativnog ciklusa</td></tr>
+    <tr><td>Storage profil</td><td>kapacitet, IOPS, propusnost, latencija, rast i snapshot/backup overhead</td><td>stateful workload često prvi iscrpi stvarno upotrebljiv resurs</td><td>StorageClass/SPBM politika i istorijske metrike</td></tr>
+    <tr><td>Dostupnost</td><td>N+1, gubitak zone, maintenance i upgrade surge</td><td>slobodan kapacitet u zdravom stanju nije isto što i failover kapacitet</td><td>HA admission control, DRS i testirani scenariji</td></tr>
+    <tr><td>Mreža</td><td>IP adrese, VIP-ovi, rute, MTU, propusnost i portovi</td><td>iscrpljen IP pool može zaustaviti kreiranje ili oporavak čvorova</td><td>IPAM izvoz, mrežni dizajn i testovi povezivosti</td></tr>
+    <tr><td>Rast</td><td>mesečna stopa, projekat u pipeline-u i rok nabavke</td><td>nabavka posle alarma često stiže prekasno</td><td>forecast i prag za pokretanje nabavke</td></tr>
+  </tbody>
+</table>
+
+<p>Za svaki resurs razlikuju se četiri vrednosti: instalirani kapacitet, kapacitet koji je tehnički raspoloživ, kapacitet koji je bezbedno dodeljiv posle rezervi i trenutno zahtevani kapacitet. CPU overcommit može biti razuman za razvojne workload-e, ali memorija, IP adrese i storage moraju se planirati konzervativnije. Kubernetes scheduler posmatra deklarisane zahteve unutar klastera, dok vSphere raspoređuje virtuelne mašine koje nose te čvorove; prekomerna dodela na oba sloja može sakriti isti deficit dva puta.</p>
+
+<pre><code class="language-none">Bezbedno dodeljiv kapacitet = instalirani kapacitet
+                              - infrastrukturni overhead
+                              - failover rezerva
+                              - maintenance/upgrade rezerva
+                              - operativna sigurnosna margina
+
+Potrebni kapacitet = postojeća potražnja
+                     + odobreni novi workload-i
+                     + projektovani rast
+                     + privremeni surge tokom nadogradnje</code></pre>
+
+<h3>2. Management i compute nisu samo dve etikete</h3>
+
+<p><em>Management</em> sloj obuhvata vCenter Server, mrežne i storage kontrolere, load balancer komponente, monitoring, backup i druge servise od kojih platforma zavisi. <em>Compute</em> sloj obezbeđuje resurse za Supervisor workload-e i VKS čvorove. Fizičko razdvajanje može smanjiti blast radius i sprečiti da aplikacioni skok potrošnje ugrozi upravljanje, ali povećava broj klastera, licenci, failure domain-a i operativnih zavisnosti. Konsolidacija je prihvatljiva u laboratoriji i nekim manjim okruženjima samo ako su rezervacije, admission control, prioriteti i rizik jasno dokumentovani.</p>
+
+<p>Supervisor control plane nije običan tenant workload. Njegova dostupnost zavisi od ESXi hostova, vCenter-a, DNS-a, NTP-a, mreže, storage-a i izabranog load balancer modela. Zato se njegov resursni budžet ne „pozajmljuje” aplikacijama. Isto važi za sistemske namespace-e, CSI/CNI komponente, image registry i servise koji omogućavaju životni ciklus VKS klastera.</p>
+
+<table>
+  <thead><tr><th>Model</th><th>Prednost</th><th>Rizik/trošak</th><th>Primer primerene upotrebe</th></tr></thead>
+  <tbody>
+    <tr><td>Konsolidovan klaster</td><td>manje infrastrukture i jednostavniji mali lab</td><td>zajednički blast radius i konkurencija za resurse</td><td>PoC ili mali neprodukcioni sistem sa jasnim limitima</td></tr>
+    <tr><td>Poseban management i workload klaster</td><td>izolacija upravljačkih servisa i predvidljiviji workload kapacitet</td><td>više hostova, licenci i operativnog rada</td><td>standardna produkciona platforma</td></tr>
+    <tr><td>Više workload domena/klastera</td><td>izolacija timova, bezbednosnih zona ili profila performansi</td><td>fragmentacija kapaciteta i složeniji lifecycle</td><td>regulisano ili veliko enterprise okruženje</td></tr>
+  </tbody>
+</table>
+
+<h3>3. Failure domain, vSphere zona i granica kvara</h3>
+
+<p>Failure domain je skup resursa koji mogu istovremeno postati nedostupni zbog zajedničkog uzroka: jedan host, rack, PDU, top-of-rack switch, storage sistem, vSphere klaster, zgrada ili lokacija. vSphere Zone je eksplicitno modelovana granica koja se, u podržanoj zonalnoj Supervisor topologiji, mapira na vSphere klaster. Ove pojmove ne treba poistovetiti: etiketa zone ne stvara fizičku nezavisnost ako tri klastera dele isti PDU, mrežni uređaj ili storage failure domain.</p>
+
+<p>Single-cluster Supervisor štiti od pojedinačnih kvarova u granicama jednog vSphere klastera, u meri u kojoj su HA, DRS, storage i mreža pravilno projektovani. Three-zone Supervisor raspoređuje upravljačke i podržane workload komponente preko tri vSphere zone i omogućava klastersku toleranciju gubitka zone. Zvanični zahtevi navode mapiranje svake zone na poseban vSphere klaster; preporučeni broj hostova može biti veći od tehničkog minimuma. Stretched-cluster dizajn je drugačiji model i ne sme se predstavljati kao sinonim za three-zone Supervisor. Podrška zavisi od konkretnog vSphere izdanja i storage/mrežne arhitekture.</p>
+
+<aside class="warning">
+  <strong>Važno:</strong> anti-affinity pravilo, DRS grupa ili Kubernetes topology spread constraint ne uklanjaju zajednički kvar ispod tog sloja. Administrator mora da vodi matricu zavisnosti: napajanje, rack, host, uplink, switch, storage kontroler, datastore, vSphere klaster, zona i lokacija.
+</aside>
+
+<h3>4. Proračun CPU i memorijskog kapaciteta</h3>
+
+<p>Za početni proračun sabiraju se veličine svih VM klasa koje će koristiti Supervisor i VKS čvorovi, sistemski overhead, infrastrukturne VM i planirani surge. Zatim se rezultat proverava istorijskim metrikama. Broj vCPU nije jednak potrebnom broju fizičkih jezgara: prihvatljiv odnos zavisi od profila workload-a, NUMA topologije, CPU ready vremena, latency zahteva i politike overcommit-a. Visok prosečan procenat CPU-a može sakriti kratke vrhove, dok nizak prosek uz visok CPU ready ukazuje na konkurenciju.</p>
+
+<p>Memorija se planira prema aktivnom radnom skupu i garantovanom oporavku. Ballooning, compression i swap su signali pritiska, a ne normalan izvor produkcionog kapaciteta za Kubernetes čvorove. Rezervacije za kritične upravljačke komponente mogu zaštititi platformu, ali istovremeno smanjuju kapacitet raspoloživ za HA admission control; zato se njihov efekat računa, ne pretpostavlja.</p>
+
+<ul>
+  <li><strong>Baseline:</strong> P95 ili drugi dogovoreni percentil iz reprezentativnog perioda, uz pregled vrhova i sezonskih obrazaca.</li>
+  <li><strong>N+1:</strong> preostali hostovi moraju prihvatiti zaštićeni workload posle gubitka najvećeg relevantnog hosta.</li>
+  <li><strong>Maintenance:</strong> plan mora istovremeno podržati host u maintenance režimu i očekivani nivo zaštite.</li>
+  <li><strong>Upgrade surge:</strong> Cluster API može privremeno kreirati zamenske mašine; bez dodatnog kapaciteta rolling update ostaje u stanju čekanja.</li>
+  <li><strong>Heterogeni hostovi:</strong> ne računati samo zbir; najslabiji placement domain, EVC/CPU kompatibilnost i veličina pojedinačne VM klase mogu postati ograničenje.</li>
+</ul>
+
+<h3>5. Storage kapacitet, performanse i topologija</h3>
+
+<p>Storage plan mora odvojiti kapacitet za Supervisor, VKS node diskove, persistent volume-e, image sadržaj, logove, snapshot-e, backup staging i privremeni prostor potreban tokom lifecycle operacija. Thin provisioning povećava efikasnost, ali ne stvara fizički prostor. Ako se ista slobodna količina obeća vSphere VM diskovima, Kubernetes PVC-ovima i snapshot-ima, deficit će se pojaviti u najnepovoljnijem trenutku.</p>
+
+<p>SPBM politika definiše zaštitu i placement, pa korisni kapacitet može biti znatno manji od sirovog. U zonalnom dizajnu datastore pristupačnost mora odgovarati zoni i podržanom načinu rada. „Datastore je vidljiv” nije dovoljan dokaz: proveravaju se usklađenost politike, dostupnost svim predviđenim hostovima, latencija, IOPS, path redundansa i ponašanje pri gubitku komponente. Detaljna implementacija CSI-ja i stateful topologije obrađuje se u kasnijim storage lekcijama; ovde je cilj da se njihov budžet rezerviše pre aktivacije platforme.</p>
+
+<table>
+  <thead><tr><th>Stavka</th><th>Kapacitet</th><th>Performanse</th><th>Rizik koji se prati</th></tr></thead>
+  <tbody>
+    <tr><td>Node diskovi</td><td>OS, runtime, image i ephemeral podaci</td><td>boot, image pull i container I/O</td><td>disk pressure i spor oporavak čvora</td></tr>
+    <tr><td>Persistent volume</td><td>zahtevi aplikacije plus rast</td><td>IOPS, throughput, latency</td><td>neusklađena StorageClass/SPBM politika</td></tr>
+    <tr><td>Snapshot/backup</td><td>promenjeni blokovi, retention i staging</td><td>backup prozor i restore protok</td><td>prepun datastore tokom zaštite</td></tr>
+    <tr><td>Slobodan operativni prostor</td><td>policy rebuild, resync, evacuation i upgrade</td><td>oporavak pod degradacijom</td><td>zdrav sistem bez prostora za popravku</td></tr>
+  </tbody>
+</table>
+
+<h3>6. Mrežni kapacitet nije samo propusnost</h3>
+
+<p>Plan obuhvata management adrese, Supervisor mreže, VKS node adrese, pod/service opsege kada ih izabrani mrežni model zahteva, ingress/egress i load balancer VIP pool. IP adrese se računaju po stanju u kome se klaster nadograđuje ili oporavlja, ne samo po stabilnom broju čvorova. Potrebna je i rezerva za nove klastere, zamenske mašine i orkestratorske objekte koji još nisu očišćeni posle neuspele operacije.</p>
+
+<pre><code class="language-none">Potrebne node IP adrese = postojeći čvorovi
+                          + odobreni novi čvorovi
+                          + maksimalni paralelni upgrade surge
+                          + failover/repair rezerva
+                          + operativna margina</code></pre>
+
+<p>Pored adresnog prostora proveravaju se redundantni uplinkovi, MTU duž cele putanje, east-west i north-south propusnost, ECMP/BGP kapacitet gde je primenljiv, broj load balancer servisa, NAT i firewall state tabela, DNS i NTP dostupnost. Iscrpljen IP pool može ostaviti VKS mašinu u stanju <code>Provisioning</code> i blokirati oporavak upravo kada je dodatni čvor najpotrebniji.</p>
+
+<h3>7. HA, DRS, admission control i rezervni kapacitet</h3>
+
+<p>vSphere HA restartuje VM posle kvara hosta, ali ne može da stvori resurse koji ne postoje. Admission control rezerviše mogućnost failover-a; njegovo upozorenje je dokaz da dizajn ili trenutno stanje više ne zadovoljavaju politiku, a ne smetnja koju treba rutinski isključiti. DRS poboljšava placement i balans, ali njegov uspeh zavisi od kompatibilnosti hostova, mrežne i storage dostupnosti, affinity pravila i dovoljnog prostora za migraciju.</p>
+
+<p>Za heterogene klastere koristi se konzervativni scenario gubitka najvećeg hosta. Za zonalni dizajn računa se gubitak cele zone i proverava da li preostale zone nose kritični workload bez kršenja limita. Ako je cilj samo kontrolisano gašenje manje važnih workload-a, taj kompromis se dokumentuje prioritetima, Runbook-om i testom; ne ostavlja se implicitno scheduler-u.</p>
+
+<aside class="warning">
+  <strong>Produkcioni rizik:</strong> privremeno isključivanje HA admission control-a može omogućiti power-on, ali uklanja garantovanu failover rezervu. To je izuzetna, vremenski ograničena korektivna mera sa odobrenjem, praćenjem i planom vraćanja, a ne postupak za „oslobađanje” kapaciteta.
+</aside>
+
+<h3>8. Rast platforme i pragovi za odluku</h3>
+
+<p>Forecast treba da pokrije najmanje vreme potrebno za nabavku, instalaciju, firmware/driver usklađivanje, testiranje i prijem novih hostova. Linearna projekcija je polazna tačka, ali se dopunjuje poznatim projektima, sezonskim vrhovima i diskretnim skokovima kao što su novi VKS klaster, nova zona ili promena politike replika.</p>
+
+<table>
+  <thead><tr><th>Prag</th><th>Značenje</th><th>Akcija</th></tr></thead>
+  <tbody>
+    <tr><td>Informativni</td><td>trend odstupa od baseline-a</td><td>proveriti izvor rasta i kvalitet podataka</td></tr>
+    <tr><td>Planerski</td><td>forecast prelazi bezbedno dodeljiv kapacitet u okviru lead time-a</td><td>pokrenuti sizing i finansijsko odobrenje</td></tr>
+    <tr><td>Operativni</td><td>ugroženi N+1, zona, upgrade surge ili IP/storage rezerva</td><td>ograničiti nove dodele i sprovesti odobren plan proširenja</td></tr>
+    <tr><td>Kritični</td><td>platforma više ne ispunjava SLO ili failover politiku</td><td>incident/change procedura i prioritetna korekcija</td></tr>
+  </tbody>
+</table>
+
+<p>Pragovi se ne zasnivaju samo na procentu korišćenja. Klaster sa 40% slobodne memorije može biti nebezbedan ako jedan host nosi 35% ukupne memorije, a klaster sa 20% slobodnog CPU-a može biti prihvatljiv za burst workload ako CPU ready i latencija ostaju u granicama. Svaki prag zato sadrži metriku, vremenski prozor, failure scenario, vlasnika i unapred definisanu akciju.</p>
+
+<h3>9. Dokument dizajna i evidencija pretpostavki</h3>
+
+<p>Plan kapaciteta mora biti ponovljiv. Za svaku brojku čuva se izvor, datum, verzija proizvoda, formula, sigurnosna margina i vlasnik pretpostavke. Posebno se vode otvorena pitanja: buduća aplikacija bez merenja, nepotvrđen storage profil, neodobren IP opseg ili licenca koja još nije obezbeđena. Neizvesnost se ne skriva iza preciznog zbira.</p>
+
+<ul>
+  <li>logički i fizički dijagram sa failure domain-ima i zajedničkim zavisnostima;</li>
+  <li>inventar hostova, CPU/NUMA, memorije, NIC/HBA i firmware/driver kompatibilnosti;</li>
+  <li>katalog VM klasa i VKS profila sa kvotama i vlasnicima;</li>
+  <li>CPU, RAM, storage, IP i VIP budžet za stabilno, failover i upgrade stanje;</li>
+  <li>HA/DRS, affinity i admission control odluke;</li>
+  <li>forecast, pragovi, lead time i plan proširenja;</li>
+  <li>testovi prihvatanja, poznati rizici, rollback i datum sledeće revizije.</li>
+</ul>
+
+<hr>
+
+<h3>Praktikum: izrada dokazivog plana kapaciteta</h3>
+
+<p><strong>Cilj:</strong> prikupiti read-only inventar i istorijske metrike vSphere klastera, prevesti plan VKS workload-a u resursni budžet, proveriti N+1 i upgrade scenario i izraditi odluku <em>spremno/uslovno spremno/nije spremno</em>. Vežba ne aktivira Supervisor i ne menja HA, DRS, mrežu ni storage.</p>
+
+<p><strong>Topologija laboratorije:</strong> jedan vCenter Server, jedan kandidat workload klaster sa najmanje tri ESXi hosta, najmanje jedan zajednički datastore i distribuirana mreža. Ako se procenjuje three-zone dizajn, podaci se prikupljaju za tri odvojena vSphere klastera i za svaku zonu se vodi zaseban bilans.</p>
+
+<p><strong>Nalozi i alati:</strong> vSphere nalog sa read-only pristupom inventaru, performansama, događajima i alarmima; administrativna radna stanica sa PowerShell-om i aktuelnim VMware/VCF PowerCLI modulom; pristup odobrenom IPAM izvozu i katalogu StorageClass/SPBM politika. Kredencijale ne zapisivati u skriptu.</p>
+
+<p><strong>Rizik:</strong> nizak, jer su sve komande u osnovnom toku read-only. Izvoz može sadržati imena sistema i kapacitet, pa se čuva kao interni dokument. Sve opcione state-changing akcije izdvojene su i ne izvršavaju se u produkciji bez change odobrenja.</p>
+
+<h3>Vežba 1: inventar hostova, klastera i datastore-a</h3>
+
+<ol>
+  <li>U vSphere Client-u otvorite kandidat klaster i proverite <code>Summary</code>, <code>Monitor &gt; Performance</code>, <code>Monitor &gt; Tasks and Events</code>, <code>Configure &gt; vSphere Availability</code> i <code>Configure &gt; vSphere DRS</code>. Zabeležite HA admission control politiku, DRS režim, aktivne alarme i hostove u maintenance/disconnected stanju.</li>
+  <li>Na administratorskoj stanici povežite se sa vCenter Server-om. Komanda menja samo lokalnu sesiju i ne konfiguriše vCenter.</li>
+</ol>
+
+<pre><code class="language-powershell">Import-Module VMware.PowerCLI
+Connect-VIServer -Server vcsa.lab.example</code></pre>
+
+<ol start="3">
+  <li>Prikupite inventar. Zamenite naziv klastera stvarnom vrednošću. Komande su read-only.</li>
+</ol>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster -Name 'TANZU-COMPUTE-01'
+$hosts = $cluster | Get-VMHost | Sort-Object Name
+
+$hosts | Select-Object Name, ConnectionState, PowerState,
+  @{N='CpuSockets';E={$_.ExtensionData.Hardware.CpuInfo.NumCpuPackages}},
+  @{N='CpuCores';E={$_.NumCpu}},
+  @{N='CpuGHzTotal';E={[math]::Round($_.CpuTotalMhz / 1000, 1)}},
+  @{N='MemoryGiB';E={[math]::Round($_.MemoryTotalGB, 1)}} |
+  Format-Table -AutoSize
+
+$cluster | Get-Datastore |
+  Select-Object Name, Type,
+    @{N='CapacityGiB';E={[math]::Round($_.CapacityGB, 1)}},
+    @{N='FreeGiB';E={[math]::Round($_.FreeSpaceGB, 1)}},
+    @{N='FreePercent';E={if ($_.CapacityGB) {[math]::Round(100 * $_.FreeSpaceGB / $_.CapacityGB, 1)}}} |
+  Sort-Object FreePercent |
+  Format-Table -AutoSize</code></pre>
+
+<p><strong>Očekivani rezultat:</strong> svi planirani hostovi su <code>Connected</code> i <code>PoweredOn</code>, njihove konfiguracije odgovaraju dizajnu, a datastore-i imaju dokumentovan slobodan i korisni kapacitet. Ukupni zbir nije dovoljan ako VKS VM klase ne mogu da stanu na pojedinačni host ili ako datastore nije dostupan svim hostovima predviđenog placement domain-a.</p>
+
+<p><strong>Troubleshooting grana:</strong> ako host nije povezan, datastore ima neuobičajeno malo slobodnog prostora ili je HA degradiran, ne „popravljajte” broj u tabeli. Zabeležite simptom, vreme, obim i poslednje promene; pregledajte događaje i alarme; otvorite poseban incident ili change. Plan kapaciteta označite kao uslovan dok se osnovni uzrok ne ukloni.</p>
+
+<h3>Vežba 2: istorijske CPU i memorijske metrike</h3>
+
+<p>Jednokratni screenshot nije baseline. Sledeći primer čita dostupne realtime uzorke za poslednja dva sata. Za ozbiljan sizing koristite duži istorijski period i interval koji vCenter zaista zadržava; dostupne metrike proveravaju se pomoću <code>Get-StatType</code> i <code>Get-StatInterval</code>.</p>
+
+<pre><code class="language-powershell">$start = (Get-Date).AddHours(-2)
+$metrics = 'cpu.usage.average','cpu.ready.summation',
+           'mem.usage.average','mem.active.average',
+           'mem.vmmemctl.average','mem.swapused.average'
+
+Get-Stat -Entity $hosts -Stat $metrics -Start $start -Realtime |
+  Group-Object Entity, MetricId |
+  ForEach-Object {
+    $values = $_.Group.Value | Sort-Object
+    $p95Index = [math]::Floor(($values.Count - 1) * 0.95)
+    [pscustomobject]@{
+      Series  = $_.Name
+      Samples = $values.Count
+      Average = [math]::Round(($_.Group | Measure-Object Value -Average).Average, 2)
+      P95     = [math]::Round($values[$p95Index], 2)
+      Maximum = [math]::Round(($values | Measure-Object -Maximum).Maximum, 2)
+    }
+  } | Format-Table -AutoSize</code></pre>
+
+<p><strong>Tumačenje:</strong> procenat <code>cpu.usage.average</code> čita se zajedno sa CPU ready vremenom; <code>cpu.ready.summation</code> je zbir milisekundi u intervalu i ne treba ga neposredno tretirati kao procenat bez poznavanja intervala i broja vCPU. Ballooning i swap zahtevaju korelaciju sa memorijskim pritiskom i konkretnim VM-ovima. Ako metrika ne postoji u izabranom intervalu, to nije nula već nedostajući dokaz.</p>
+
+<p><strong>Validacija:</strong> uporedite rezultat sa vSphere Client grafikonima za isti vremenski prozor i proverite vremensku zonu. Za sezonski workload izvezite podatke za reprezentativne radne i neradne dane. Dokumentujte rupe u telemetriji.</p>
+
+<h3>Vežba 3: VKS demand model i N+1 proračun</h3>
+
+<p>Napravite tabelu svake planirane VM klase. Primer ispod je didaktički i ne predstavlja fabrički minimum niti preporučenu klasu. Vrednosti moraju doći iz odobrenog kataloga za konkretno izdanje.</p>
+
+<table>
+  <thead><tr><th>Grupa</th><th>Broj VM</th><th>vCPU/VM</th><th>RAM GiB/VM</th><th>Disk GiB/VM</th><th>Napomena</th></tr></thead>
+  <tbody>
+    <tr><td>Supervisor i sistemski servis</td><td>[iz dizajna]</td><td>[klasa]</td><td>[klasa]</td><td>[klasa]</td><td>ne prepisivati između verzija</td></tr>
+    <tr><td>VKS control plane</td><td>[klasteri × replike]</td><td>[klasa]</td><td>[klasa]</td><td>[klasa]</td><td>računati po klasteru i zoni</td></tr>
+    <tr><td>VKS worker</td><td>[pool × čvorovi]</td><td>[klasa]</td><td>[klasa]</td><td>[klasa]</td><td>dodati autoscaling maksimum ako se koristi</td></tr>
+    <tr><td>Upgrade surge</td><td>[maks. paralelno]</td><td>[klasa]</td><td>[klasa]</td><td>[klasa]</td><td>privremen, ali obavezan kapacitet</td></tr>
+  </tbody>
+</table>
+
+<p>Za N+1 izračunajte raspoloživ kapacitet posle uklanjanja najvećeg hosta, zatim oduzmite infrastrukturni overhead, postojeće zaštićene VM, rezervacije i maintenance marginu. Za three-zone dizajn isti postupak se izvodi posle uklanjanja cele najveće zone. Provera mora obuhvatiti i placement: najveća planirana VM mora moći da stane na odgovarajući pojedinačni host.</p>
+
+<pre><code class="language-none">Scenario A – zdravo stanje:
+  Bezbedno dodeljiv CPU/RAM/IP/storage ≥ zahtev + rast + upgrade surge
+
+Scenario B – najveći host nije dostupan:
+  Preostali bezbedno dodeljiv kapacitet ≥ kritični zahtev + repair surge
+
+Scenario C – najveća zona nije dostupna:
+  Preostale zone ≥ unapred definisan kritični servisni nivo
+
+Rezultat:
+  SPREMNO            svi obavezni scenariji prolaze
+  USLOVNO SPREMNO    prolazi uz dokumentovanu meru i rok
+  NIJE SPREMNO       failover, održavanje ili rast nemaju dokaziv kapacitet</code></pre>
+
+<h3>Vežba 4: IP i VIP budžet</h3>
+
+<ol>
+  <li>Iz IPAM-a izvezite ukupan broj adresa u svakom relevantnom pool-u, rezervisane adrese, trenutno dodeljene adrese i karantin/lease period.</li>
+  <li>Izračunajte stabilno stanje, najveći planirani rolling upgrade, istovremeni repair i rast do sledeće nabavke/proširenja opsega.</li>
+  <li>Proverite preklapanje CIDR opsega sa management, VPN, pod, service i povezanim mrežama. Proverite rute, gateway, DNS i load balancer ograničenja.</li>
+  <li>Postavite planerski prag pre tehničkog iscrpljenja. Vlasnik pool-a mora dobiti alarm dovoljno rano da proširenje može biti odobreno i sprovedeno.</li>
+</ol>
+
+<p><strong>Očekivani rezultat:</strong> nijedan scenario kreiranja, nadogradnje ili oporavka ne zahteva više adresa ili VIP-ova nego što je bezbedno raspoloživo. Ako nedostaje IP prostor, bezbedna korektivna akcija je promena dizajna ili kontrolisano proširenje pool-a kroz dokumentovani postupak; ručno brisanje objekata samo radi oslobađanja adrese nije prihvatljivo bez potvrde da su zaista orphaned i bez vendor postupka.</p>
+
+<h3>Vežba 5: storage i operativni rezervni prostor</h3>
+
+<ol>
+  <li>Za svaku SPBM politiku utvrdite nominalni zahtev, zaštitni overhead, failure domain i stvarni korisni kapacitet. Ne sabirajte datastore-e koji nisu zamenjivi za isti workload.</li>
+  <li>Dodajte VKS node diskove, maksimalan PVC rast, snapshot/backup retention i privremeni prostor za upgrade, evacuaciju i resync.</li>
+  <li>Proverite istorijske latency/IOPS/throughput metrike u normalnom i degradiranom periodu. Slobodni GiB bez performansnog kapaciteta ne predstavljaju validan rezultat.</li>
+  <li>Dokumentujte alarmni prag i akciju. Prag mora ostaviti dovoljno prostora za oporavak, a ne samo za još jedan workload.</li>
+</ol>
+
+<p><strong>Kriterijum uspeha:</strong> storage politika je usklađena, placement je moguć u predviđenoj zoni, a kapacitet i performanse zadovoljavaju zdravo, maintenance i failover stanje. Detaljna provera PVC, snapshot, backup i restore funkcionalnosti sledi u storage lekcijama.</p>
+
+<h3>Vežba 6: simulacija odbijenog plana bez izazivanja kvara</h3>
+
+<p>Ne gasite host i ne punite datastore. U kopiji proračuna uvedite hipotetički kvar najvećeg hosta, zatim povećajte worker pool za jednu zamensku VM i smanjite slobodan IP pool za planirani surge. Zabeležite koji resurs prvi krši prag. Time se proverava logika plana bez state-changing operacije.</p>
+
+<table>
+  <thead><tr><th>Element incidenta</th><th>Primer nalaza</th></tr></thead>
+  <tbody>
+    <tr><td>Simptom</td><td>nova VKS mašina ostaje u <code>Provisioning</code> ili HA javlja nedovoljnu failover rezervu</td></tr>
+    <tr><td>Obim i posledica</td><td>jedan pool/klaster/zona; upgrade ili oporavak blokiran</td></tr>
+    <tr><td>Neposredni uzrok</td><td>nema odgovarajuće IP adrese, RAM-a, datastore prostora ili validnog placement-a</td></tr>
+    <tr><td>Osnovni uzrok</td><td>surge/failover nije uračunat, rast nije praćen ili zajednička zavisnost nije modelovana</td></tr>
+    <tr><td>Privremena mera</td><td>zaustaviti nove dodele ili smanjiti paralelizam uz odobrenje i očuvanje dostupnosti</td></tr>
+    <tr><td>Trajna korekcija</td><td>proširiti resurs, promeniti placement/topologiju, korigovati kvote i pragove, pa ponoviti test</td></tr>
+  </tbody>
+</table>
+
+<p>Redosled dijagnostike je: sačuvati vreme i identitet objekta; proveriti poslednje promene; pregledati Supervisor/VKS status, vCenter događaje i alarme; proveriti host, HA/DRS, datastore i IP pool; formirati hipotezu; potvrditi je najmanje invazivnom proverom; sprovesti odobrenu korekciju; validirati kreiranje/oporavak; dokumentovati osnovni uzrok i ažurirati forecast.</p>
+
+<h3>Rollback i povratak laboratorije</h3>
+
+<p>Osnovni praktikum ne menja stanje, pa se rollback svodi na prekid PowerCLI sesije i bezbedno čuvanje ili uklanjanje izvoza u skladu sa politikom podataka.</p>
+
+<pre><code class="language-powershell">Disconnect-VIServer -Server vcsa.lab.example -Confirm:$false</code></pre>
+
+<p>Ako je u odvojenom, odobrenom laboratorijskom change-u menjana HA/DRS politika, IP pool ili kvota, pre promene mora postojati izvoz početnog stanja i tačno definisana povratna vrednost. Vraćanje se izvodi istim upravljačkim slojem kojim je promena napravljena, zatim se proveravaju alarmi, admission control, DRS health, Supervisor status i mogućnost kreiranja test objekta. Produkcione postavke se ne vraćaju napamet prema laboratorijskom primeru.</p>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>Kapacitet posmatrajte kao SLO zavisnost, a ne kao godišnju Excel vežbu.</li>
+  <li>Odvojeno vodite zdravo, maintenance, upgrade i failover stanje.</li>
+  <li>Svaku zonu i svaki nezamenjiv resurs merite zasebno; zbir može sakriti lokalno usko grlo.</li>
+  <li>Ne računajte ballooning, swap, thin-provisioning obećanje ili neodobren IP opseg kao raspoloživ kapacitet.</li>
+  <li>Za kvote, VM klase i autoscaling koristite isti demand model; različiti administrativni slojevi ne smeju obećati isti resurs više puta.</li>
+  <li>Pre state-changing korekcije sačuvajte događaje, alarme, metrike, poslednje promene i tačan identitet objekta.</li>
+  <li>Posle svakog većeg onboarding-a, nadogradnje ili incidenta ažurirajte pretpostavke, pragove i lead time.</li>
+  <li>Failure-domain mapu proverite sa timovima za napajanje, mrežu i storage; vCenter inventar sam ne otkriva sve zajedničke zavisnosti.</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>Lekcija je završena kada administrator može dokazima da:</p>
+
+<ul>
+  <li>prevede planirani broj VKS klastera, VM klasa, worker pool-ova i stateful workload-a u CPU, RAM, storage, IP i VIP zahtev;</li>
+  <li>razlikuje instalirani, raspoloživi, bezbedno dodeljivi i zahtevani kapacitet;</li>
+  <li>objasni razliku između single-cluster, three-zone i stretched-cluster modela bez mešanja zone sa stvarnom fizičkom nezavisnošću;</li>
+  <li>izračuna N+1, maintenance, failover i upgrade surge scenario i identifikuje prvi ograničavajući resurs;</li>
+  <li>PowerCLI read-only komandama prikupi inventar i metrike, pravilno protumači vremenski interval i prepozna nedostajući dokaz;</li>
+  <li>postavi planerske i operativne pragove povezane sa konkretnom akcijom i rokom nabavke;</li>
+  <li>odbije dizajn koji radi samo u zdravom stanju ili zavisi od neproverene kompatibilnosti, adresa, storage politike ili zajedničke komponente;</li>
+  <li>dokumentuje simptom, neposredni i osnovni uzrok, privremenu meru, trajnu korekciju i validaciju oporavka.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Dobro planirana Tanzu platforma nije ona koja danas može da pokrene sve tražene VM, već ona čije su granice poznate i dokazive u zdravom stanju, tokom održavanja, pri nadogradnji i posle kvara. Management i compute sloj, vSphere zone, HA/DRS, storage politike, mrežni pool-ovi i Kubernetes zahtevi čine jedan kapacitivni sistem; deficit u bilo kom od njih može zaustaviti kreiranje, skaliranje ili oporavak VKS klastera.</p>
+
+<p>Administratorska odgovornost je da pretpostavke pretvori u merljive zahteve, odvoji tehnički minimum od produkcione preporuke, očuva rezervu za kvar i lifecycle operacije i pokrene proširenje pre nego što platforma izgubi manevarski prostor. Tako pripremljen plan postaje ulaz za naredne lekcije o DNS-u, NTP-u, IPAM-u, sertifikatima i readiness proceni, a kasnije i za kvote, VM klase, storage topologiju, observability i disaster recovery.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Broadcom dokumentacija za vSphere Supervisor koncepte, planiranje, instalacione preduslove i zonalne topologije; VMware Compatibility Guide i Product Interoperability Matrix; vSphere Resource Management, HA, DRS, storage i networking vodiči; VKS lifecycle i troubleshooting dokumentacija i Knowledge Base članci; VMware/VCF PowerCLI reference za inventar, statistike, događaje i alarme
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+<div class="chapter-actions">
+
+  <a class="close-btn"
+     href="vmware-tanzu-09-vsphere-preduslovi-i-kompatibilnost.html">
+    ← Prethodna lekcija
+  </a>
+
+  <a class="close-btn"
+     href="vmware-tanzu.html">
+    Povratak na sadržaj
+  </a>
+
+  <a class="close-btn"
+     href="vmware-tanzu-11-dns-ntp-ipam-i-sertifikati.html">
+    Sledeća lekcija →
+  </a>
+
+</div>
+ 
+
+  </main>
+
+</body>
+
+</html>
+

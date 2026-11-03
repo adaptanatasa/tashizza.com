@@ -1,0 +1,658 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-21-kreiranje-prvog-vks-klastera.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Kreiranje Workload Cluster-a – praktičan početak rada sa Tanzu klasterima | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Kreiranje Workload Cluster-a u VMware Tanzu okruženju – praktičan početak rada sa Tanzu Kubernetes klasterima, priprema okruženja i osnovni koraci implementacije.">
+
+  <meta name="keywords"
+        content="Workload Cluster, VMware Tanzu, Tanzu Kubernetes Grid, TKG, Kubernetes, kreiranje klastera, workload cluster, enterprise Kubernetes, cloud native, DevOps, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-21-kreiranje-prvog-vks-klastera.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="Kreiranje Workload Cluster-a – praktičan početak rada sa Tanzu klasterima">
+
+  <meta property="og:description"
+        content="Osamnaesta lekcija VMware & Tanzu tutorijala – praktično kreiranje Workload Cluster-a i prvi koraci rada sa Tanzu Kubernetes klasterima.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware-tanzu/vmware-tanzu-21-kreiranje-prvog-vks-klastera.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-21-vks-cluster-kreiranje.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="Kreiranje Workload Cluster-a – praktičan početak rada sa Tanzu klasterima">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware & Tanzu</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Implementacija Supervisor-a i VKS klastera
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-tanzu-21-vks-cluster-kreiranje.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware-tanzu/og/og-vmware-tanzu-21-vks-cluster-kreiranje.png"
+           alt="Kreiranje Workload Cluster-a – praktičan početak rada sa Tanzu klasterima">
+
+    </a>
+ 
+
+<div class="page-subtitle">
+  VI. Kreiranje i lifecycle VKS klastera
+</div>
+
+<div class="page-subtitle">
+  21. Kreiranje prvog VKS klastera – od deklarativne specifikacije do validiranog Kubernetes API-ja
+</div>
+
+<p>Kreiranje prvog vSphere Kubernetes Service (VKS) klastera predstavlja trenutak u kome se prethodno pripremljeni Supervisor Namespace, identitet, kvote, VM klase, storage politike i mrežne usluge pretvaraju u namenski Kubernetes klaster za aplikaciona opterećenja. Administrator ne klonira ručno virtuelne mašine. On u Supervisor API šalje deklarativni <code>Cluster</code> objekat, a kontroleri zatim usklađuju željeno i stvarno stanje: biraju odobrenu Kubernetes verziju, kreiraju kontrolne i radne čvorove preko VM Service-a, povezuju mrežu i storage, izvršavaju bootstrap i objavljuju Kubernetes API endpoint.</p>
+
+<p>Ova lekcija obrađuje aktuelni Supervisor/VKS model i <code>cluster.x-k8s.io/v1beta1</code> API zasnovan na podrazumevanoj ili odobrenoj <code>ClusterClass</code> definiciji. U starijoj dokumentaciji isti proizvodni tok može se nazivati Tanzu Kubernetes Grid Service ili TKG Service, a Kubernetes izdanja Tanzu Kubernetes Release (TKr). U novijim VKS izdanjima koristi se termin VMware Kubernetes Release (VKr) i resurs <code>KubernetesRelease</code>. Tačan API, skup promenljivih, naziv podrazumevane <code>ClusterClass</code> i podržane mogućnosti zavise od VKS/Supervisor verzije. Manifest iz drugog okruženja zato se ne primenjuje bez provere lokalnog OpenAPI schema prikaza i zvanične dokumentacije tog izdanja.</p>
+
+<p><strong>Važna granica modela:</strong> komande <code>tanzu cluster create</code> i flat konfiguracioni fajlovi pripadaju standalone TKG Management Cluster toku i nisu postupak kreiranja VKS klastera na Supervisor-u. VKS klaster se kreira Kubernetes manifestom u vSphere Namespace-u, najčešće pomoću <code>kubectl apply</code>. U vSphere 8 pristup se tipično uspostavlja pomoću vSphere plugina za <code>kubectl</code>; u VMware Cloud Foundation 9 pristupni CLI tok je promenjen i koristi VCF CLI. Sama deklarativna specifikacija i dalje mora biti potvrđena prema API-ju koji Supervisor stvarno izlaže.</p>
+
+<h3>Od deklaracije do funkcionalnog Kubernetes API-ja</h3>
+
+<p>VKS koristi Cluster API obrazac: <code>Cluster</code> je ugovor o željenom stanju, a ne samo zapis da klaster postoji. <code>ClusterClass</code> obezbeđuje standardizovan šablon topologije i dozvoljenih promenljivih. Supervisor kontroleri čitaju specifikaciju, kreiraju povezane infrastrukturne i bootstrap objekte, a VM Operator realizuje virtuelne mašine u vSphere infrastrukturi. Reconciliation petlja periodično poredi deklarisano i stvarno stanje i pokušava da ukloni odstupanje.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sloj</th>
+      <th>Uloga u kreiranju</th>
+      <th>Dokaz koji administrator proverava</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>vSphere Namespace</td>
+      <td>Granica identiteta, kvota, VM klasa, storage politika i mrežnih resursa.</td>
+      <td>Korisnik vidi namespace kontekst i ima pravo da kreira <code>Cluster</code>; dodeljene klase i storage politike su dostupne.</td>
+    </tr>
+    <tr>
+      <td><code>Cluster</code> i <code>ClusterClass</code></td>
+      <td>Opisuju verziju, topologiju, replike i promenljive koje kontroleri usklađuju.</td>
+      <td><code>kubectl get/describe cluster</code>, conditions, observed generation i spremne replike.</td>
+    </tr>
+    <tr>
+      <td>Kubernetes release</td>
+      <td>Povezuje podržanu Kubernetes verziju sa odgovarajućim OS image-om i komponentama.</td>
+      <td>Lokalni <code>KubernetesRelease</code> ili verzijski odgovarajući release resurs ima stanje koje dozvoljava kreiranje.</td>
+    </tr>
+    <tr>
+      <td>VM Service i VM Operator</td>
+      <td>Kreiraju i održavaju control-plane i worker VM objekte odgovarajuće klase i image-a.</td>
+      <td><code>VirtualMachine</code>, <code>Machine</code>, vCenter Tasks/Events i VM Operator logovi napreduju bez trajne greške.</td>
+    </tr>
+    <tr>
+      <td>Mreža i control-plane endpoint</td>
+      <td>Dodeljuju adrese čvorovima, Pod/Service opsege i pristupačan API endpoint.</td>
+      <td>Endpoint je dodeljen, ruta i TLS veza rade, čvorovi se registruju, CNI i DNS su zdravi.</td>
+    </tr>
+    <tr>
+      <td>vSphere CSI i storage politika</td>
+      <td>Izlažu storage klase i dinamičko provisioniranje persistent volumena.</td>
+      <td>StorageClass postoji, PVC prelazi u <code>Bound</code>, Pod montira i koristi volumen.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><code>kubectl apply</code> koji završi bez greške dokazuje samo da je API prihvatio objekat. Ne dokazuje da su image, kapacitet, mreža, load balancer, DNS ili storage funkcionalni. Klaster je spreman tek kada se poklope tri nivoa dokaza: Supervisor prikazuje stabilan <code>Cluster</code> i njegove mašine; vCenter potvrđuje zdrave VM objekte i infrastrukturne zadatke; pristup direktnom VKS API-ju potvrđuje zdrave čvorove i osnovne funkcije Kubernetes-a.</p>
+
+<h3>Preduslovi i administratorske odluke</h3>
+
+<p>Najčešći provisioning kvarovi nastaju pre slanja manifesta: namespace nema odgovarajuću kvotu, VM klasa ili storage politika nisu dodeljene, release nije dostupan, DRS nije potpuno automatizovan, nema slobodnih adresa ili operator radi u pogrešnom kontekstu. Pre promene se zato pravi dokaziva pre-check kontrola.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Oblast</th>
+      <th>Obavezna provera</th>
+      <th>Posledica pogrešne odluke</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Kompatibilnost</td>
+      <td>Supervisor, VKS servis, vCenter/ESXi, <code>kubectl</code> i pristupni plugin/CLI odgovaraju podržanoj matrici; izabrani release je dostupan.</td>
+      <td>Admission odbijanje, nedostupan image, neuspešan bootstrap ili nepodržan klaster.</td>
+    </tr>
+    <tr>
+      <td>Namespace politika</td>
+      <td>Dodeljeni su operatori, kvote, VM klase, Content Library/image pristup i storage politike.</td>
+      <td>Objekat postoji, ali se VM ne kreiraju ili PVC ne može da se provisionira.</td>
+    </tr>
+    <tr>
+      <td>Compute i DRS</td>
+      <td>Postoje CPU, memorija i prostor za sve čvorove, kvar hosta i privremene rolling-update mašine; vSphere DRS je uključen i podešen na Fully Automated gde to Supervisor zahteva.</td>
+      <td>Mašine ostaju <code>Pending</code>/<code>Provisioning</code>; OVF deployment može propasti.</td>
+    </tr>
+    <tr>
+      <td>Mreža</td>
+      <td>Slobodne IP/VIP adrese, DNS, NTP, gateway, MTU i firewall putanje postoje; Pod i Service CIDR se ne preklapaju sa routiranim mrežama.</td>
+      <td>VM postoji, ali se čvor ne priključuje; API, CNI ili DNS ostaju nedostupni.</td>
+    </tr>
+    <tr>
+      <td>Dostupnost</td>
+      <td>Produkcioni control plane koristi neparan broj replika, tipično tri, i failure-domain/zone raspored koji infrastruktura zaista podržava.</td>
+      <td>Jedan control-plane čvor nema redundansu; dva nisu bezbedan kompromis za etcd kvorum.</td>
+    </tr>
+    <tr>
+      <td>Bezbednost</td>
+      <td>Namenski identitet ima najmanja potrebna namespace prava; kubeconfig i evidencija ne sadrže deljive tajne.</td>
+      <td>Neovlašćena potrošnja resursa, nesledljiv cluster-admin pristup ili curenje poverljivih podataka.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Početna veličina radne ravni mora da uključi aplikacione zahteve i limite, sistemske DaemonSet-ove, monitoring i bezbednosne agente, rezervu za evakuaciju najmanje jednog worker-a i privremeni kapacitet tokom rolling update-a. Laboratorijski klaster može imati jedan control-plane i jedan worker čvor ako lokalna <code>ClusterClass</code> to dozvoljava. Referentni produkcioni primer koristi tri control-plane i tri worker čvora, ali to nije zamena za kapacitivni proračun.</p>
+
+<h3>Verzijski ugovor: v1alpha3, v1beta1, VKr i pristupni alati</h3>
+
+<p>Stariji <code>run.tanzu.vmware.com/v1alpha3</code> <code>TanzuKubernetesCluster</code> manifesti imaju istorijsku vrednost, ali se ne koriste kao podrazumevani obrazac za novu lekciju. Broadcom dokumentacija za podržana novija izdanja preporučuje <code>cluster.x-k8s.io/v1beta1</code> <code>Cluster</code> API. Migracija nije prosta zamena <code>apiVersion</code> reda: topologija, promenljive, klase i release selekcija imaju drugačiji ugovor.</p>
+
+<ul>
+  <li>Na vSphere 8/VKS 3.x okruženjima operator obično koristi <code>kubectl vsphere login</code>; dostupnost komande zavisi od instaliranog vSphere plugina za <code>kubectl</code>.</li>
+  <li>U VCF 9 tok autentikacije koristi VCF CLI. Ne treba izmišljati kompatibilnost starih login zastavica ako ih instalirani alat ne izlaže.</li>
+  <li>Nazivi <code>KubernetesRelease</code> resursa i njihovih statusnih polja proveravaju se direktno na Supervisor-u pomoću <code>kubectl api-resources</code>, <code>kubectl explain</code> i <code>kubectl get</code>.</li>
+  <li>Promenljive kao što su VM klase, storage klase, Pod/Service CIDR i CNI moraju postojati u lokalnoj <code>ClusterClass</code> šemi. Primer manifesta je referentni obrazac, ne univerzalni ugovor za svako izdanje.</li>
+</ul>
+
+<h3>Deklarativna specifikacija i kontrola promene</h3>
+
+<p>Manifest je infrastrukturni kod i mora imati vlasnika, change identifikator, peer review i istoriju. U Git se čuva specifikacija bez kubeconfig-a, lozinki, privatnih ključeva i dugotrajnih tokena. Pre primene se čuvaju izlazi koji dokazuju cilj, kontekst, podržani API i dostupne vrednosti. Server-side dry-run prolazi admission, schema validation i defaulting bez trajnog kreiranja objekta, ali ne može dokazati kasniji kapacitet, dodelu IP adresa ili uspešan OVF deployment.</p>
+
+<p>Minimalni v1beta1 obrazac obično sadrži <code>class</code>, <code>version</code>, <code>controlPlane.replicas</code> i najmanje jedan <code>workers.machineDeployments</code> unos. Dodatne promenljive namerno nisu unapred „pogađane”: prvo se čita lokalna definicija, a zatim se manifest dopunjava tačnim imenima i tipovima.</p>
+
+<pre><code class="language-yaml">apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: vks-prod-01
+  namespace: team-platform-prod
+spec:
+  topology:
+    class: &lt;LOCAL_DEFAULT_OR_APPROVED_CLUSTERCLASS&gt;
+    version: &lt;AVAILABLE_KUBERNETES_RELEASE&gt;
+    controlPlane:
+      replicas: 3
+    workers:
+      machineDeployments:
+        - class: node-pool
+          name: workers
+          replicas: 3
+    variables:
+      - name: &lt;VARIABLE_FROM_LOCAL_CLUSTERCLASS_SCHEMA&gt;
+        value: &lt;APPROVED_VALUE&gt;</code></pre>
+
+<p>Placeholder vrednosti su namerne zaštitne ograde. Pre zamene treba potvrditi tačan naziv <code>ClusterClass</code>, worker class, format release verzije i obavezne promenljive. Korišćenje tuđeg „gotovog” manifesta bez ove provere može proizvesti admission grešku ili, opasnije, uspešno kreirati klaster sa neodgovarajućom mrežom, klasom ili storage politikom.</p>
+
+<h3>Praćenje procesa i dokaz spremnosti</h3>
+
+<p>Napredak se prati iz Supervisor namespace konteksta. Najpre se posmatra <code>Cluster</code>, zatim control-plane i worker replike, <code>Machine</code>/<code>VirtualMachine</code> objekti, Events i vCenter Tasks. Kratkotrajni <code>Pending</code> ili <code>Provisioning</code> statusi mogu biti normalni. Incident postoji kada se condition ne menja duže od internog provisioning SLA, broj spremnih replika ne raste, isti warning event se ponavlja ili vCenter zadatak završava greškom.</p>
+
+<pre><code class="language-bash">kubectl -n team-platform-prod get cluster vks-prod-01 -o wide
+kubectl -n team-platform-prod describe cluster vks-prod-01
+kubectl -n team-platform-prod get machines,virtualmachines -o wide
+kubectl -n team-platform-prod get events \
+  --sort-by=.metadata.creationTimestamp | tail -n 50</code></pre>
+
+<p>Read-only komande iznad bezbedne su za produkciju u okviru dodeljenih prava. Events su vremenski ograničen trag i treba ih sačuvati dok incident traje. Ručno brisanje VM-a u vCenter-u, <code>Machine</code> objekta ili finalizer-a nije dijagnostika: može pokrenuti novu reconciliation operaciju, izgubiti dokaz ili ostaviti napušten disk, adresu i load balancer resurs.</p>
+
+<hr>
+
+<h3>Integrisani praktikum: prvi VKS klaster na Supervisor-u</h3>
+
+<p><strong>Poslovni kontekst.</strong> Platform tim obezbeđuje produkcioni VKS klaster <code>vks-prod-01</code> za internu aplikacionu platformu. Klaster pripada namespace-u <code>team-platform-prod</code>, koji je pripremljen u prethodnim lekcijama. Cilj je da se iz kontrolisane deklaracije dobije validiran Kubernetes API sa tri control-plane i tri worker čvora.</p>
+
+<p><strong>Topologija.</strong> Administratorska Linux stanica pristupa Supervisor Control Plane adresi <code>SUPERVISOR-CP.example.internal</code>. Namespace ima odobrene VM klase, storage politiku, kvote i mrežu. Pod CIDR, Service CIDR, API VIP, CNI i storage vrednosti ne unose se dok lokalna <code>ClusterClass</code> šema i mrežni plan ne potvrde njihova polja.</p>
+
+<p><strong>Rizik.</strong> Primena manifesta kreira više VM objekata, troši kvotu i IP adrese i može aktivirati load balancer i storage operacije. Brisanje klastera kasnije može ukloniti njegove čvorove i povezane infrastrukturne resurse. Laboratorijski test se prvo izvodi u posebnom namespace-u; produkciona primena zahteva odobren change zapis.</p>
+
+<ol>
+  <li>
+    <strong>Pripremiti zaštićeni radni prostor.</strong>
+    <p>Komande se izvršavaju na administratorskoj Linux stanici pod ličnim, sledljivim nalogom. Ovaj korak menja samo lokalni filesystem.</p>
+    <pre><code class="language-bash">install -d -m 700 "$HOME/vks-work/vks-prod-01"/{config,evidence,kubeconfig}
+cd "$HOME/vks-work/vks-prod-01"
+umask 077
+stat -c '%A %n' . config evidence kubeconfig</code></pre>
+    <p><strong>Očekivani rezultat:</strong> direktorijumi postoje, nisu dostupni drugim lokalnim korisnicima i spremni su za manifest, dokazne izlaze i kubeconfig. Kriterijum završetka je režim <code>drwx------</code> za osnovni direktorijum i poddirektorijume.</p>
+  </li>
+
+  <li>
+    <strong>Prijaviti se i dokazati Supervisor namespace kontekst.</strong>
+    <p>Za vSphere 8 koristi se instalirani vSphere plugin. Lozinka se unosi interaktivno i ne upisuje u shell istoriju ili manifest.</p>
+    <pre><code class="language-bash">kubectl vsphere login \
+  --server SUPERVISOR-CP.example.internal \
+  --vsphere-username 'administrator@vsphere.local'
+
+kubectl config get-contexts
+kubectl config use-context team-platform-prod
+kubectl config current-context
+kubectl auth can-i create clusters.cluster.x-k8s.io \
+  -n team-platform-prod</code></pre>
+    <p><strong>Validacija:</strong> aktivni kontekst mora biti namespace <code>team-platform-prod</code>, a poslednja komanda mora vratiti <code>yes</code>. Ako kontekst nedostaje, ne pravi se ručni kubeconfig: proveravaju se SSO namespace dozvole i ponavlja login, jer se promene dozvola učitavaju prilikom naredne prijave. U VCF 9 koristi se dokumentovani VCF CLI login tok, a ne zastarele <code>kubectl vsphere</code> pretpostavke.</p>
+  </li>
+
+  <li>
+    <strong>Snimiti pre-check stanje bez promene resursa.</strong>
+    <pre><code class="language-bash">kubectl version --client
+kubectl api-resources | grep -Ei 'clusterclass|kubernetesrelease|virtualmachine'
+kubectl get clusterclasses.cluster.x-k8s.io
+kubectl get kubernetesreleases 2&gt;/dev/null || true
+kubectl get resourcequota,storageclass,virtualmachineclass -n team-platform-prod
+kubectl get clusters.cluster.x-k8s.io -n team-platform-prod
+kubectl get events -n team-platform-prod \
+  --sort-by=.metadata.creationTimestamp | tail -n 30</code></pre>
+    <p><strong>Validacija:</strong> API mora izložiti <code>Cluster</code>/<code>ClusterClass</code> resurse; postoji odobrena klasa i dostupan release; namespace vidi potrebnu VM klasu i storage politiku; kvota ima prostor za šest čvorova i rezervu. Pošto dostupnost nekih resursa i njihov scope zavise od izdanja, <code>kubectl api-resources</code> je autoritativna početna provera.</p>
+  </li>
+
+  <li>
+    <strong>Pročitati lokalni API ugovor.</strong>
+    <pre><code class="language-bash">kubectl explain cluster.spec.topology --api-version=cluster.x-k8s.io/v1beta1
+kubectl explain cluster.spec.topology.workers.machineDeployments \
+  --api-version=cluster.x-k8s.io/v1beta1
+kubectl get clusterclass &lt;APPROVED_CLUSTERCLASS&gt; -o yaml \
+  &gt; evidence/01-clusterclass.yaml
+kubectl get kubernetesrelease &lt;APPROVED_RELEASE&gt; -o yaml \
+  &gt; evidence/02-kubernetes-release.yaml</code></pre>
+    <p><strong>Validacija:</strong> potvrđeni su worker class, obavezne promenljive, tipovi vrednosti, dozvoljene VM/storage/mrežne vrednosti i release stanje. Pre arhiviranja izlazi se pregledaju zbog interne infrastrukturne metapodatke; ne objavljuju se javno bez odobrenja.</p>
+  </li>
+
+  <li>
+    <strong>Kreirati stvarni manifest bez tajni.</strong>
+    <p>Sledeći primer treba dopuniti samo vrednostima potvrđenim u prethodnom koraku. Ako lokalna klasa zahteva više promenljivih, dodaju se prema njenoj šemi; ne kopiraju se nasumično iz drugog VKS izdanja.</p>
+    <pre><code class="language-yaml">apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: vks-prod-01
+  namespace: team-platform-prod
+  labels:
+    environment: production
+    owner: platform-team
+spec:
+  topology:
+    class: &lt;APPROVED_CLUSTERCLASS&gt;
+    version: &lt;APPROVED_KUBERNETES_RELEASE&gt;
+    controlPlane:
+      replicas: 3
+    workers:
+      machineDeployments:
+        - class: &lt;WORKER_CLASS_FROM_CLUSTERCLASS&gt;
+          name: workers
+          replicas: 3
+    variables:
+      - name: &lt;REQUIRED_VARIABLE_NAME&gt;
+        value: &lt;APPROVED_TYPED_VALUE&gt;</code></pre>
+    <p>Fajl se čuva kao <code>config/vks-prod-01.yaml</code> sa režimom <code>600</code>. Placeholder-i moraju biti zamenjeni; komanda ispod treba da vrati prazan izlaz.</p>
+    <pre><code class="language-bash">chmod 600 config/vks-prod-01.yaml
+grep -nE '&lt;[^&gt;]+&gt;' config/vks-prod-01.yaml || true
+grep -Eni 'password|token|private.?key|client.?secret' \
+  config/vks-prod-01.yaml || true</code></pre>
+  </li>
+
+  <li>
+    <strong>Izvršiti server-side dry-run i pregled razlike.</strong>
+    <p>Ovo je read-like admission provera: zahteva pravo za kreiranje, ali objekat se ne čuva i ne pokreće VM provisioning.</p>
+    <pre><code class="language-bash">kubectl apply --server-side --dry-run=server \
+  --validate=strict \
+  -f config/vks-prod-01.yaml \
+  -o yaml &gt; evidence/03-server-dry-run.yaml
+
+kubectl diff -f config/vks-prod-01.yaml || true</code></pre>
+    <p><strong>Očekivani rezultat:</strong> dry-run završava bez schema/admission greške, a diff prikazuje samo novi <code>Cluster</code>. Izlazni kod <code>kubectl diff</code> može biti <code>1</code> kada razlika postoji; to nije isto što i tehnička greška. Dry-run ne dokazuje slobodne IP adrese, vSphere kapacitet niti uspešan bootstrap.</p>
+  </li>
+
+  <li>
+    <strong>Primeniti odobrenu deklaraciju.</strong>
+    <p><strong>State-changing:</strong> sledeća komanda kreira klaster i infrastrukturne resurse.</p>
+    <pre><code class="language-bash">kubectl apply --server-side \
+  --field-manager=tashizza-platform-admin \
+  -f config/vks-prod-01.yaml
+
+kubectl get cluster vks-prod-01 -n team-platform-prod -o yaml \
+  &gt; evidence/04-cluster-accepted.yaml</code></pre>
+    <p><strong>Validacija:</strong> API vraća <code>created</code> ili odgovarajući uspešan rezultat; objekat ima UID i generation; manifest je tačno u namespace-u <code>team-platform-prod</code>. Komanda se ne ponavlja panično ako provisioning traje, jer <code>apply</code> nije zamena za praćenje conditions.</p>
+  </li>
+
+  <li>
+    <strong>Pratiti reconciliation od najmanje invazivnih provera.</strong>
+    <pre><code class="language-bash">kubectl get cluster vks-prod-01 -n team-platform-prod \
+  -w
+
+kubectl get machines,virtualmachines -n team-platform-prod -o wide
+kubectl describe cluster vks-prod-01 -n team-platform-prod
+kubectl get events -n team-platform-prod \
+  --sort-by=.metadata.creationTimestamp | tail -n 60</code></pre>
+    <p><strong>Očekivani rezultat:</strong> control-plane endpoint se dodeljuje, broj replika raste do tri plus tri, Machine i VM objekti prelaze iz provisioning u ready stanje. U vCenter Recent Tasks/Events mora postojati odgovarajući tok kreiranja bez neuspelih OVF, mrežnih ili permission zadataka. VM objekte pod kontrolom operatora ne treba ručno preimenovati, premestiti ili obrisati.</p>
+  </li>
+
+  <li>
+    <strong>Prijaviti se direktno na VKS API.</strong>
+    <p>Pošto Supervisor potvrdi spreman endpoint, operator dobija VKS kontekst kroz podržani identitetski tok.</p>
+    <pre><code class="language-bash">kubectl vsphere login \
+  --server SUPERVISOR-CP.example.internal \
+  --vsphere-username 'administrator@vsphere.local' \
+  --tanzu-kubernetes-cluster-namespace team-platform-prod \
+  --tanzu-kubernetes-cluster-name vks-prod-01
+
+kubectl config get-contexts
+kubectl config current-context
+kubectl cluster-info
+kubectl get nodes -o wide</code></pre>
+    <p><strong>Validacija:</strong> aktivni kontekst mora pokazivati VKS control-plane endpoint, a ne Supervisor adresu. Šest očekivanih čvorova mora postati <code>Ready</code>. Ako korisnik dobije <code>Forbidden</code>, prvo se proveravaju kontekst i namespace SSO prava; administratorski kubeconfig se ne deli kao prečica.</p>
+  </li>
+
+  <li>
+    <strong>Validirati sistemske komponente, DNS i scheduler.</strong>
+    <pre><code class="language-bash">kubectl get pods -A -o wide
+kubectl get events -A \
+  --sort-by=.metadata.creationTimestamp | tail -n 60
+kubectl create namespace platform-validation
+kubectl -n platform-validation run dns-test \
+  --image=registry.example.internal/base/busybox:1.36 \
+  --restart=Never --command -- \
+  sh -c 'nslookup kubernetes.default.svc.cluster.local'
+kubectl -n platform-validation wait \
+  --for=jsonpath='{.status.phase}'=Succeeded pod/dns-test \
+  --timeout=180s
+kubectl -n platform-validation logs dns-test</code></pre>
+    <p><strong>Validacija:</strong> sistemski Pod-ovi su <code>Running</code> ili <code>Completed</code>, bez neobjašnjenih restartovanja; testni Pod se raspoređuje na worker i DNS vraća adresu Kubernetes servisa iz odobrenog Service CIDR-a. U air-gapped okruženju koristi se odobreni image iz internog registry-ja.</p>
+  </li>
+
+  <li>
+    <strong>Validirati dinamički storage i podatak na volumenu.</strong>
+    <pre><code class="language-yaml">apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-test
+  namespace: platform-validation
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: storage-writer
+  namespace: platform-validation
+spec:
+  restartPolicy: Never
+  containers:
+    - name: writer
+      image: registry.example.internal/base/busybox:1.36
+      command: ["sh", "-c", "echo vks-prod-01-ok &gt; /data/result.txt; cat /data/result.txt"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: storage-test</code></pre>
+    <pre><code class="language-bash">kubectl get storageclass
+kubectl apply -f config/storage-test.yaml
+kubectl -n platform-validation wait \
+  --for=jsonpath='{.status.phase}'=Succeeded pod/storage-writer \
+  --timeout=300s
+kubectl -n platform-validation get pvc,pod -o wide
+kubectl -n platform-validation logs storage-writer</code></pre>
+    <p><strong>Validacija:</strong> PVC je <code>Bound</code>, Pod završava sa exit kodom 0 i log sadrži <code>vks-prod-01-ok</code>. Ako nema default StorageClass, manifest se eksplicitno vezuje za odobrenu klasu; ne menja se globalna podrazumevana klasa samo radi testa.</p>
+  </li>
+
+  <li>
+    <strong>Izvršiti negativni RBAC test.</strong>
+    <pre><code class="language-bash">kubectl -n platform-validation create serviceaccount rbac-negative-test
+kubectl auth can-i list secrets \
+  --as=system:serviceaccount:platform-validation:rbac-negative-test \
+  -n platform-validation
+kubectl auth can-i list nodes \
+  --as=system:serviceaccount:platform-validation:rbac-negative-test</code></pre>
+    <p><strong>Očekivani negativni rezultat:</strong> obe komande vraćaju <code>no</code>. Rezultat <code>yes</code> ukazuje na preširok RoleBinding/ClusterRoleBinding i blokira bezbednosno prihvatanje. Ova provera ocenjuje Kubernetes RBAC impersonation rezultat; ne zamenjuje pregled SSO mapiranja i audit tragova.</p>
+  </li>
+
+  <li>
+    <strong>Sačuvati dokaz i očistiti samo testne resurse.</strong>
+    <pre><code class="language-bash">kubectl get nodes -o wide &gt; evidence/05-vks-nodes.txt
+kubectl get pods -A -o wide &gt; evidence/06-vks-pods.txt
+kubectl get storageclass &gt; evidence/07-storageclasses.txt
+kubectl -n platform-validation get pvc,pod -o wide \
+  &gt; evidence/08-functional-tests.txt
+kubectl delete namespace platform-validation
+kubectl get namespace platform-validation</code></pre>
+    <p><strong>Validacija:</strong> evidence direktorijum ne sadrži Secret sadržaj, tokene ni kubeconfig; change zapis sadrži release, topologiju, manifest commit, rezultate testova i vlasnika. Namespace treba da nestane. Ako ostane <code>Terminating</code>, finalizer se ne uklanja na silu pre identifikovanja kontrolera ili storage resursa koji blokira cleanup.</p>
+  </li>
+</ol>
+
+<h3>Logovi, tipične greške i sistematična dijagnostika</h3>
+
+<p>Dijagnostika prati lanac: zahtev i admission, Cluster conditions, Machine/VM stanje, vCenter zadatak, guest bootstrap, pa tek onda VKS sistemske komponente. Za svaki incident beleže se simptom, obim, posledica, poslednja promena, hipoteza, potvrđen neposredni uzrok, osnovni uzrok, privremena mera i trajna korekcija.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Simptom</th>
+      <th>Prvi dokazi</th>
+      <th>Bezbedna korektivna grana</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Manifest odbijen</td>
+      <td>API poruka, <code>kubectl explain</code>, <code>ClusterClass</code> schema i admission Events.</td>
+      <td>Ispraviti apiVersion, tip ili lokalno obaveznu promenljivu; ponoviti server dry-run pre primene.</td>
+    </tr>
+    <tr>
+      <td>Cluster postoji, ali nema Machine objekata</td>
+      <td><code>describe cluster</code>, topology conditions, quota i kontrolerski Events.</td>
+      <td>Potvrditi release, klasu, kvotu i webhook/control-plane controller zdravlje; ne kreirati VM ručno.</td>
+    </tr>
+    <tr>
+      <td>Machine/VirtualMachine je dugo Pending ili Provisioning</td>
+      <td>Machine i VM conditions, namespace Events, vCenter Recent Tasks i VM Operator log.</td>
+      <td>Ispraviti prava, kvotu, VM klasu, image, datastore ili DRS. Broadcom zahteva Fully Automated DRS za relevantna Supervisor okruženja; Storage DRS nije zamena.</td>
+    </tr>
+    <tr>
+      <td>VM postoji, čvor se ne registruje</td>
+      <td>VM konzola, IP/DNS/NTP/MTU, API endpoint dostupnost, cloud-init i kubelet logovi.</td>
+      <td>Ispraviti mrežnu putanju ili bootstrap uzrok; pristup guest-u koristiti samo odobrenim putem i bez menjanja kontrolisanih fajlova napamet.</td>
+    </tr>
+    <tr>
+      <td>API VIP nije dostupan</td>
+      <td><code>describe cluster</code> endpoint, load balancer stanje, ruta, ARP i firewall događaji.</td>
+      <td>Potvrditi ownership VIP-a i load-balancer pool; pratiti relevantni Broadcom KB, bez menjanja sertifikata ili VIP-a naslepo.</td>
+    </tr>
+    <tr>
+      <td>Čvorovi Ready, sistemski Pod-ovi nisu</td>
+      <td>Pod Events/logovi, CNI/CSI/registry/paket kontroleri, image pull i mrežna politika.</td>
+      <td>Ispraviti konkretan registry, CNI, CSI ili package reconciliation uzrok; ne restartovati sve kontrolere odjednom.</td>
+    </tr>
+    <tr>
+      <td>PVC ostaje Pending</td>
+      <td><code>describe pvc</code>, StorageClass, CSI controller/node Pod-ovi i vCenter storage Events.</td>
+      <td>Dodeliti podržanu storage politiku/klasu ili otkloniti CSI/datastore problem; ne brisati disk ručno.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Operator sa namespace pravima možda nema pristup sistemskim namespace-ovima Supervisor-a, što je očekivana bezbednosna granica. Kada osnovni dokaz ukaže na VM Operator ili Cluster API kontroler, eskalira se vSphere/Supervisor administratoru sa preciznim vremenom, namespace-om, cluster UID-om i relevantnim conditions. Ovlašćeni administrator može identifikovati deployment i čitati vremenski ograničene logove:</p>
+
+<pre><code class="language-bash">kubectl get deployments -A | grep -Ei \
+  'vmop|cluster-api|capi|bootstrap|control-plane'
+kubectl -n vmware-system-vmop get pods
+kubectl -n vmware-system-vmop logs \
+  deployment/vmop-controller-manager --since=30m</code></pre>
+
+<p>Tačni namespace i deployment nazivi zavise od VKS verzije; prvo se otkrivaju, pa tek onda koriste. vCenter Content Library servis zapisuje relevantne serverske događaje u <code>/var/log/vmware/content-library/cls.log</code>, ali pristup appliance logovima pripada ovlašćenom vCenter administratoru. Na Linux čvoru, kada je direktan pristup podržan i odobren, proveravaju se <code>journalctl -u kubelet</code>, runtime servis i <code>/var/log/cloud-init.log</code>/<code>/var/log/cloud-init-output.log</code>. Log se uvek filtrira na period incidenta i koreliše sa Supervisor Events i vCenter task ID-jem.</p>
+
+<h3>Recovery, rollback i bezbedno uklanjanje neuspele implementacije</h3>
+
+<p>Za novi klaster rollback znači kontrolisano uklanjanje deklarisanog <code>Cluster</code> resursa i zavisnosti koje njegovi kontroleri poseduju. Pre brisanja se potvrđuje da klaster nema poslovne workload-e, persistent podatke, backup koji treba zadržati, objavljene adrese ili DNS zapise. Prvo se izvozi dijagnostički dokaz i proverava tačan kontekst, namespace i UID.</p>
+
+<pre><code class="language-bash">kubectl config current-context
+kubectl get cluster vks-prod-01 -n team-platform-prod \
+  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,READY:.status.conditions[-1].status
+kubectl get pvc -A
+kubectl get cluster vks-prod-01 -n team-platform-prod -o yaml \
+  &gt; evidence/pre-delete-cluster.yaml</code></pre>
+
+<p><strong>Destruktivna komanda — samo laboratorija ili odobrena dekomisija:</strong></p>
+
+<pre><code class="language-bash">kubectl delete cluster vks-prod-01 \
+  -n team-platform-prod \
+  --wait=true \
+  --timeout=30m</code></pre>
+
+<p>Uspeh se potvrđuje odsustvom Cluster, Machine i VirtualMachine objekata u namespace-u, završetkom povezanih vCenter taskova i oslobađanjem odobrenih IP/load-balancer resursa. Preostale VM, diskovi ili finalizer-i se ne uklanjaju ručno dok se ne potvrdi vlasništvo i uzrok neuspelog cleanup-a. Prinudno uklanjanje finalizer-a je eskalirana poslednja mera sa planom ručnog čišćenja orphan resursa, a ne standardni rollback.</p>
+
+<h3>Merljivi kriterijumi prihvatanja</h3>
+
+<ul>
+  <li>Manifest je prošao strict server-side dry-run i primenjen je u tačnom Supervisor namespace-u.</li>
+  <li><code>Cluster</code> conditions pokazuju spremnu infrastrukturu i control plane, bez trajnih degraded uslova.</li>
+  <li>Broj spremnih control-plane i worker replika odgovara odobrenoj topologiji 3 + 3.</li>
+  <li>Odgovarajući Machine/VirtualMachine i vCenter VM objekti postoje bez neuspelih infrastrukturnih taskova.</li>
+  <li>VKS kontekst pokazuje na njegov control-plane endpoint, a TLS i autentikacija rade bez insecure opcija.</li>
+  <li>Svih šest čvorova je <code>Ready</code>; obavezni sistemski Pod-ovi su stabilni.</li>
+  <li>Testni Pod se raspoređuje, cluster DNS razrešava servisno ime i odobreni registry image može da se preuzme.</li>
+  <li>Testni PVC je <code>Bound</code>, volumen je montiran i podatak uspešno upisan/pročitan.</li>
+  <li>Neprivilegovani ServiceAccount ne može da čita Secret objekte niti listu čvorova.</li>
+  <li>Manifest, release, verzije, rezultati i vlasništvo evidentirani su bez tajni; privremeni test resursi su uklonjeni.</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<p><strong>Standardizovati preko ClusterClass, a ne preko kopiranja manifesta.</strong> Platform tim održava odobrene klase i dokumentuje njihove promenljive, default vrednosti i verzijsku kompatibilnost. Pre svake primene operator poredi manifest sa lokalnom šemom i dry-run rezultatom. Uspeh se meri odsustvom neodobrenih VM/storage/mrežnih konfiguracija i mogućnošću da se svaka vrednost poveže sa change zahtevom.</p>
+
+<p><strong>Pratiti reconciliation i provisioning SLA.</strong> Za Cluster, control plane, MachineDeployment, Machine i VM objekte prate se conditions, spremne replike, Events i starost poslednje promene. Alarm nastaje kada napredak stane duže od internog praga, a ne samo kada CLI vrati warning. Prva reakcija je dokaz, ne restart ili brisanje. Metrika je vreme od prihvatanja manifesta do spremnog, funkcionalno validiranog API-ja.</p>
+
+<p><strong>Planirati kapacitet za kvar i lifecycle operacije.</strong> vSphere CPU/memorija, datastore prostor, IP pool, load-balancer kapacitet i Kubernetes allocatable resursi proveravaju se pre kreiranja i upgrade-a. Rezerva mora podržati kvar jednog hosta i privremene rolling-update mašine. Metrika je odsustvo provisioning/remediation neuspeha izazvanih iscrpljenim kapacitetom.</p>
+
+<p><strong>Zaštititi identitete i kubeconfig.</strong> Namespace SSO prava i VKS RBAC dodeljuju se grupama i namenskim servisnim identitetima, ne deljenom administratoru. Kubeconfig ima restriktivne dozvole i nije u repozitorijumu ili evidence paketu. Pristup bivšeg člana tima opoziva se kroz identitetski izvor i proverava novim login-om.</p>
+
+<p><strong>Razdvojiti platform backup od aplikacionog backup-a.</strong> Deklarativni manifest i infrastrukturna evidencija omogućavaju ponovno kreiranje, ali sami ne štite aplikacione Kubernetes resurse i persistent podatke. Vlasnik platforme i vlasnik aplikacije dokumentuju RPO/RTO, podržani backup alat, kopiju van primarnog failure domain-a i periodični restore test. Backup je validan tek kada je oporavak dokazan.</p>
+
+<p><strong>Održavati inventar i ownership.</strong> Za svaki VKS klaster čuvaju se namespace, UID, poslovna namena, vlasnik, release, ClusterClass, topologija, CIDR/VIP, VM i storage klase, kontakti, backup politika i datum sledećeg lifecycle pregleda. Stanje u Git-u, Supervisor API-ju, vCenter inventaru i CMDB-u mora biti usaglašeno.</p>
+
+<h3>Završna kontrolna tačka</h3>
+
+<ul>
+  <li>Umem da razlikujem VKS/Supervisor provisioning od standalone TKG Management Cluster postupka.</li>
+  <li>Umem da dokažem aktivni namespace kontekst, svoja prava i dostupne API resurse pre promene.</li>
+  <li>Umem da iz lokalne <code>ClusterClass</code> i <code>KubernetesRelease</code> definicije izvedem tehnički ispravan manifest bez tajni.</li>
+  <li>Umem da izvršim strict server-side dry-run, protumačim diff i tek zatim kontrolisano primenim objekat.</li>
+  <li>Umem da pratim Cluster, replike, Machine/VM objekte, Events i vCenter zadatke kao jedan reconciliation tok.</li>
+  <li>Umem da se prijavim na tačan VKS API, proverim endpoint, čvorove, sistemske Pod-ove, DNS, scheduler, storage i negativni RBAC rezultat.</li>
+  <li>Umem da razdvojim simptom, neposredni i osnovni uzrok i da prikupim relevantne logove pre korektivne promene.</li>
+  <li>Umem da bezbedno uklonim neuspelu laboratorijsku implementaciju i prepoznam kada finalizer ili orphan resurs zahteva eskalaciju.</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>Prvi VKS klaster nije skup ručno napravljenih VM-ova, već rezultat deklarativnog ugovora između operatora, Supervisor API-ja, Cluster API kontrolera, VM Service-a i vSphere infrastrukture. Zbog toga se uspeh ne meri jednom zelenom porukom komande, već saglasnošću željenog stanja, infrastrukturnih objekata i funkcionalnog Kubernetes API-ja.</p>
+
+<p>Odgovoran administrator proverava lokalni verzijski ugovor, namespace politike, release, kapacitet, DRS, mrežu i storage pre primene; manifest validira server-side dry-run postupkom; provisioning posmatra kroz conditions, Events i vCenter zadatke; a klaster prihvata tek nakon testova čvorova, DNS-a, schedulera, persistent volumena i pristupa. Takav pristup smanjuje rizik da formalno kreiran klaster uđe u upotrebu sa skrivenim infrastrukturnim kvarom.</p>
+
+<p>Najvažnija operativna disciplina jeste poštovanje vlasništva kontrolera. Ručno brisanje VM-ova, mašina i finalizer-a može pretvoriti ograničen provisioning problem u nekonzistentno upravljačko stanje. Kada dokaz ukaže na sistemski Supervisor/VKS kontroler, nepodržanu verziju, oštećenje upravljačkog stanja ili rizik po druge namespace-ove i klastere, ispravna odluka je zaustavljanje promene i eskalacija sa potpunim dokaznim paketom.</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom dokumentacija za vSphere Supervisor i VMware vSphere Kubernetes Service, Cluster v1beta1 API, ClusterClass i KubernetesRelease/VKr lifecycle; zvanične vSphere Namespace, VM Service, VM Operator, mrežne, storage i identitetske administrativne reference; Broadcom Knowledge Base članci za VKS provisioning, API VIP, kubectl/VCF CLI kontekste, DRS, Content Library i VM Operator dijagnostiku; zvanična Kubernetes i Cluster API dokumentacija za server-side validation, dry-run, conditions, Events, RBAC, DNS i persistent volume proveru.
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware &amp; Tanzu
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-tanzu-20-kubectl-konteksti-i-bezbedan-pristup.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-tanzu-22-cluster-api-i-deklarativno-upravljanje.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>

@@ -1,0 +1,2468 @@
+<!-- biblioteke/tutorijali/devops-platforme/vmware/vmware-23-vlan.html -->
+
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>VLAN u VMware okruženju – razdvajanje mrežnog saobraćaja | TASHIZZA</title>
+
+  <!-- SEO -->
+  <meta name="description"
+        content="Upoznajte primenu VLAN tehnologije u VMware okruženju i naučite kako se mrežni saobraćaj virtuelnih mašina i servisa razdvaja radi bolje organizacije i bezbednosti.">
+
+  <meta name="keywords"
+        content="VMware VLAN, VLAN u VMware okruženju, razdvajanje mrežnog saobraćaja, VMware mreže, Port Group, Virtual Switch, vSwitch, VLAN ID, 802.1Q, trunk port, virtuelna mreža, ESXi mreža, virtuelna mašina, VMware networking, ESXi, vCenter, vSphere, administracija VMware, IT tutorijali, TASHIZZA">
+
+  <meta name="author"
+        content="Nataša Mihajlović">
+
+  <link rel="canonical"
+        href="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-23-vlan.html">
+
+  <!-- Favicon -->
+  <link rel="icon"
+        type="image/x-icon"
+        href="../../../../img/ui/favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name"
+        content="TASHIZZA">
+
+  <meta property="og:locale"
+        content="sr_RS">
+
+  <meta property="og:type"
+        content="article">
+
+  <meta property="og:title"
+        content="VLAN u VMware okruženju – razdvajanje mrežnog saobraćaja">
+
+  <meta property="og:description"
+        content="Upoznajte način na koji VLAN-ovi razdvajaju mrežni saobraćaj virtuelnih mašina i VMware servisa radi bolje organizacije, kontrole i bezbednosti.">
+
+  <meta property="og:url"
+        content="https://tashizza.com/biblioteke/tutorijali/devops-platforme/vmware/vmware-23-vlan.html">
+
+  <meta property="og:image"
+        content="https://tashizza.com/img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-23-vlan.png">
+
+  <meta property="og:image:type"
+        content="image/png">
+
+  <meta property="og:image:width"
+        content="1200">
+
+  <meta property="og:image:height"
+        content="630">
+
+  <meta property="og:image:alt"
+        content="VLAN u VMware okruženju – razdvajanje mrežnog saobraćaja">
+
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+  <link href="../../../../css/style.css"
+        rel="stylesheet">
+</head>
+
+
+<body class="reading-page">
+
+  <main class="reading-card">
+
+    <h1>VMware</h1>
+
+    <div class="page-subtitle">
+      Drugi deo: Napredna administracija zajedničke infrastrukture
+    </div>
+
+    <!-- OG slika poglavlja – urađena u saradnji autora i ChatGPT-a -->
+    <a class="chapter-og-link"
+       href="./og-galerija.html?img=og-vmware-23-vlan.png"
+       target="_blank"
+       rel="noopener">
+
+      <img class="chapter-og-image"
+           src="../../../../img/biblioteke/tutorijali/devops-platforme/vmware/og/og-vmware-23-vlan.png"
+           alt="VLAN u VMware okruženju – razdvajanje mrežnog saobraćaja">
+
+    </a>
+
+   <div class="page-subtitle">
+ V. Virtuelne mreže i dijagnostika povezivosti
+</div>
+
+<div class="page-subtitle">
+23. VLAN u VMware okruženju – segmentacija i put mrežnog saobraćaja
+</div>
+
+<p>
+VLAN, odnosno Virtual Local Area Network, omogućava logičko razdvajanje mrežnog saobraćaja unutar iste fizičke infrastrukture. Umesto postavljanja posebnog fizičkog switcha i posebnih kablova za svaku mrežu, više odvojenih Layer 2 mreža može da koristi iste fizičke adaptere, uplinkove i switch uređaje. Saobraćaj svake mreže označava se odgovarajućim VLAN identifikatorom, čime se sprečava njegovo mešanje sa saobraćajem drugih VLAN-ova.
+</p>
+
+<p>
+U VMware okruženju VLAN konfiguracija povezuje tri sloja:
+</p>
+
+<ul>
+  <li>virtuelnu mašinu ili VMkernel adapter</li>
+  <li>VMware port grupu i virtuelni switch</li>
+  <li>fizički mrežni switch i ostatak mrežne infrastrukture</li>
+</ul>
+
+<p>
+Ispravna konfiguracija samo jednog od ovih slojeva nije dovoljna. Ako VMware port grupa koristi VLAN 120, fizički switch mora dozvoliti VLAN 120 preko ESXi uplinka, a IP konfiguracija virtuelne mašine mora pripadati podmreži koja je projektovana za taj VLAN.
+</p>
+
+<p>
+VLAN nije isto što i IP podmreža. VLAN predstavlja Layer 2 broadcast domen, dok IP podmreža pripada Layer 3 konfiguraciji. U praksi se često jednom VLAN-u dodeljuje jedna IP podmreža, ali to je rezultat mrežnog dizajna, a ne tehnički zahtev samog VLAN mehanizma.
+</p>
+
+<p>
+Ova lekcija koristi terminologiju savremenih izdanja vSphere Networking dokumentacije. Principi VST, VGT i EST važe i u starijim podržanim okruženjima, ali se nazivi ekrana i položaj politika u vSphere Client-u razlikuju između izdanja. vSphere Distributed Switch zahteva odgovarajuće izdanje, pretplatu ili entitlement; pre projektovanja obavezno treba proveriti pravo korišćenja za konkretan vSphere/VCF paket. Komande za distributed objekte izvršavaju se preko vCenter Server-a, dok lokalni ESXCLI upravlja standardnim switch-em na pojedinačnom hostu. Savremena dokumentacija komandnu porodicu i dalje prikazuje kao PowerCLI cmdlet-e, iako se distribucija proizvoda može pojavljivati pod nazivom VCF PowerCLI.
+</p>
+
+<h3>Zašto se VLAN koristi u VMware infrastrukturi?</h3>
+
+<p>
+VLAN razdvajanje omogućava da različite vrste saobraćaja koriste istu fizičku mrežnu infrastrukturu, ali da ostanu logički odvojene.
+</p>
+
+<p>
+Tipična VMware infrastruktura može koristiti:
+</p>
+
+<ul>
+  <li>VLAN 10 – ESXi management mrežu</li>
+  <li>VLAN 20 – vMotion mrežu</li>
+  <li>VLAN 30 – storage mrežu</li>
+  <li>VLAN 40 – vSAN mrežu</li>
+  <li>VLAN 110 – produkcione web servere</li>
+  <li>VLAN 120 – produkcione baze podataka</li>
+  <li>VLAN 210 – razvojno okruženje</li>
+  <li>VLAN 220 – testno okruženje</li>
+  <li>VLAN 310 – DMZ mrežu</li>
+  <li>VLAN 410 – backup mrežu</li>
+</ul>
+
+<p>
+Ovim se postižu:
+</p>
+
+<ul>
+  <li>izolacija različitih mrežnih segmenata</li>
+  <li>manji broadcast domeni</li>
+  <li>jednostavnije sprovođenje bezbednosnih pravila</li>
+  <li>odvajanje infrastrukturnog i korisničkog saobraćaja</li>
+  <li>efikasnije korišćenje fizičkih mrežnih adaptera</li>
+  <li>lakša migracija virtuelnih mašina između hostova</li>
+  <li>jasnija organizacija produkcionih, testnih i razvojnih sistema</li>
+</ul>
+
+<h3>VLAN identifikatori</h3>
+
+<p>
+IEEE 802.1Q VLAN oznaka sadrži VLAN identifikator. U VMware port grupama sreću se sledeće vrednosti:
+</p>
+
+<ul>
+  <li><strong>0</strong> – VMware port grupa ne dodaje VLAN oznaku</li>
+  <li><strong>1–4094</strong> – port grupa označava saobraćaj konkretnim VLAN ID-em</li>
+  <li><strong>4095</strong> – Standard Switch port grupa prosleđuje VLAN trunk prema gostujućem sistemu</li>
+</ul>
+
+<p>
+Vrednost 4095 nije običan VLAN. Ona na vSphere Standard Switch-u predstavlja posebnu konfiguraciju u kojoj gostujući operativni sistem ili virtuelni mrežni uređaj obrađuje VLAN oznake.
+</p>
+
+<p>
+U produkcionim mrežama treba koristiti samo VLAN-ove koji su definisani u mrežnom planu organizacije. Nasumično izabrani VLAN ID neće uspostaviti komunikaciju ako isti VLAN nije konfigurisan na fizičkim switchevima, ruterima, firewall uređajima i drugim relevantnim komponentama.
+</p>
+
+<h3>802.1Q označavanje Ethernet okvira</h3>
+
+<p>
+Kada se koristi VLAN tagging, u Ethernet okvir umeće se 802.1Q oznaka. Ona omogućava switch uređajima da prepoznaju kom VLAN-u okvir pripada.
+</p>
+
+<p>
+Pojednostavljen tok izgleda ovako:
+</p>
+
+<pre><code class="language-none">VM
+  |
+Port Group – VLAN 110
+  |
+vSwitch dodaje VLAN oznaku 110
+  |
+vmnic uplink
+  |
+Fizički trunk port
+  |
+Fizički switch obrađuje VLAN 110
+</code></pre>
+
+<p>
+Kada okvir iz fizičke mreže stigne do ESXi hosta, virtuelni switch proverava VLAN oznaku, prosleđuje okvir odgovarajućoj port grupi i uklanja oznaku pre nego što okvir preda običnoj virtuelnoj mašini.
+</p>
+
+<p>
+U ovom modelu gostujući operativni sistem ne mora da zna da se VLAN koristi. On vidi standardni Ethernet saobraćaj.
+</p>
+
+<h3>Tri osnovna modela VLAN označavanja</h3>
+
+<p>
+U VMware okruženju razlikuju se tri osnovna modela:
+</p>
+
+<ul>
+  <li><strong>VST – Virtual Switch Tagging</strong></li>
+  <li><strong>VGT – Virtual Guest Tagging</strong></li>
+  <li><strong>EST – External Switch Tagging</strong></li>
+</ul>
+
+<p>
+Razlika između njih određena je mestom na kojem se VLAN oznaka dodaje i uklanja.
+</p>
+
+<h3>VST – Virtual Switch Tagging</h3>
+
+<p>
+Kod Virtual Switch Tagging modela VLAN oznakama upravlja VMware virtuelni switch. Port grupa dobija VLAN ID između 1 i 4094, dok gostujući operativni sistem koristi običan mrežni adapter bez VLAN podinterfejsa.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">VM-Web01
+  IP: 10.110.0.21/24
+  VLAN konfiguracija u gostu: nema
+          |
+PG-PROD-WEB
+  VLAN ID: 110
+          |
+vSwitch-Production
+          |
+vmnic2 i vmnic3
+          |
+Fizički trunk port
+  Allowed VLANs: 110,120,210
+</code></pre>
+
+<p>
+Kada VM pošalje okvir:
+</p>
+
+<ol>
+  <li>gostujući sistem šalje neoznačen Ethernet okvir</li>
+  <li>port grupa ga povezuje sa VLAN-om 110</li>
+  <li>virtuelni switch dodaje 802.1Q oznaku 110</li>
+  <li>okvir izlazi preko fizičkog uplinka</li>
+  <li>fizički switch prihvata označen okvir na trunk portu</li>
+</ol>
+
+<p>
+Kod dolaznog saobraćaja postupak se odvija obrnutim redosledom.
+</p>
+
+<p>
+VST je najčešći i preporučeni model za standardne serverske virtuelne mašine zato što:
+</p>
+
+<ul>
+  <li>VLAN konfiguracija ostaje centralizovana na VMware mrežnom sloju</li>
+  <li>gostujući sistem ne mora da upravlja VLAN oznakama</li>
+  <li>jednostavnije je povezivanje VM-a sa drugom mrežom</li>
+  <li>lakše se proverava konfiguracija port grupa</li>
+  <li>smanjuje se mogućnost pogrešne VLAN konfiguracije unutar gosta</li>
+</ul>
+
+<h3>VGT – Virtual Guest Tagging</h3>
+
+<p>
+Kod Virtual Guest Tagging modela VLAN oznake dodaje i uklanja gostujući operativni sistem ili virtuelni mrežni uređaj. VMware port grupa prosleđuje trunk saobraćaj do virtuelne mašine.
+</p>
+
+<p>
+Na vSphere Standard Switch port grupi za VGT koristi se VLAN vrednost:
+</p>
+
+<pre><code class="language-none">4095
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Virtuelni firewall
+  |
+  +-- VLAN podinterfejs 110
+  +-- VLAN podinterfejs 120
+  +-- VLAN podinterfejs 310
+          |
+PG-FIREWALL-TRUNK
+  VLAN ID: 4095
+          |
+vSwitch-Edge
+          |
+vmnic4 i vmnic5
+          |
+Fizički trunk
+  Allowed VLANs: 110,120,310
+</code></pre>
+
+<p>
+VGT se koristi kada jedna virtuelna mašina mora da obrađuje više VLAN-ova preko jednog virtuelnog adaptera. Tipični primeri su:
+</p>
+
+<ul>
+  <li>virtuelni firewall</li>
+  <li>virtuelni ruter</li>
+  <li>load balancer</li>
+  <li>IDS ili IPS sistem</li>
+  <li>specijalizovani mrežni appliance</li>
+  <li>laboratorijska mrežna topologija</li>
+  <li>Linux server koji legitimno koristi više VLAN podinterfejsa</li>
+</ul>
+
+<p>
+VGT ne treba koristiti za obične serverske VM-ove kojima je potrebna samo jedna mreža. U tom slučaju VST sa posebnom port grupom predstavlja jednostavnije i bezbednije rešenje.
+</p>
+
+<h3>VGT na Distributed Switch-u</h3>
+
+<p>
+Kod vSphere Distributed Switch-a trunk se ne definiše VLAN vrednošću 4095 na isti način kao kod Standard Switch-a. Distributed port grupa podešava se na VLAN trunking režim, a zatim se navodi dozvoljeni VLAN opseg.
+</p>
+
+<p>
+Primer dozvoljenog opsega:
+</p>
+
+<pre><code class="language-none">110,120,310
+</code></pre>
+
+<p>
+ili:
+</p>
+
+<pre><code class="language-none">100-199,310
+</code></pre>
+
+<p>
+Ograničavanje trunk opsega samo na potrebne VLAN-ove predstavlja bolju praksu od prosleđivanja svih VLAN-ova gostujućoj virtuelnoj mašini.
+</p>
+
+<h3>EST – External Switch Tagging</h3>
+
+<p>
+Kod External Switch Tagging modela VLAN označavanje obavlja fizički switch. VMware port grupa koristi VLAN 0, a fizički switch port povezan sa ESXi uplinkom podešava se kao access port u jednom VLAN-u.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">VM-Web01
+  |
+PG-PROD-WEB
+  VLAN ID: 0
+  |
+vSwitch-Production
+  |
+vmnic2
+  |
+Fizički switch access port
+  Access VLAN: 110
+</code></pre>
+
+<p>
+U ovom modelu ni gost ni VMware virtuelni switch ne dodaju VLAN oznaku. Fizički switch neoznačeni saobraćaj pridružuje svom access VLAN-u.
+</p>
+
+<p>
+EST može biti upotrebljiv u jednostavnim okruženjima ili kada je fizički adapter namenski rezervisan za jednu mrežu. Međutim, manje je fleksibilan jer jedan fizički uplink u access režimu obično prenosi samo jedan VLAN.
+</p>
+
+<h3>Poređenje VST, VGT i EST modela</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Ko upravlja VLAN oznakom?</th>
+      <th>Port grupa</th>
+      <th>Fizički switch port</th>
+      <th>Tipična primena</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>VST</td>
+      <td>VMware virtuelni switch</td>
+      <td>VLAN 1–4094</td>
+      <td>Trunk</td>
+      <td>Standardne serverske VM i VMkernel mreže</td>
+    </tr>
+    <tr>
+      <td>VGT</td>
+      <td>Gostujući sistem ili mrežni appliance</td>
+      <td>4095 na VSS ili trunk opseg na VDS</td>
+      <td>Trunk</td>
+      <td>Firewall, ruter i mrežni appliance</td>
+    </tr>
+    <tr>
+      <td>EST</td>
+      <td>Fizički switch</td>
+      <td>VLAN 0</td>
+      <td>Access</td>
+      <td>Namenski uplink za jedan VLAN</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Access i trunk port na fizičkom switchu</h3>
+
+<p>
+VMware administrator mora da razume osnovnu razliku između access i trunk fizičkog porta.
+</p>
+
+<h4>Access port</h4>
+
+<p>
+Access port pripada jednom VLAN-u i prema povezanom uređaju najčešće šalje neoznačene okvire.
+</p>
+
+<p>
+Primer logičke konfiguracije:
+</p>
+
+<pre><code class="language-none">Switch port Gi1/0/10
+  Mode: access
+  Access VLAN: 110
+</code></pre>
+
+<p>
+Ako je ESXi uplink povezan na access port VLAN-a 110, VMware port grupa koja ga koristi u EST modelu treba da ima VLAN ID 0.
+</p>
+
+<h4>Trunk port</h4>
+
+<p>
+Trunk port prenosi više VLAN-ova preko jedne fizičke veze. Okviri se razlikuju pomoću 802.1Q oznaka.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Switch port Gi1/0/10
+  Mode: trunk
+  Allowed VLANs: 10,20,30,110,120,210
+</code></pre>
+
+<p>
+U VST modelu port grupe na ESXi hostu koriste konkretne VLAN ID vrednosti, dok ih isti fizički uplink prenosi prema trunk portu.
+</p>
+
+<h3>Dozvoljeni VLAN-ovi na trunk portu</h3>
+
+<p>
+To što je fizički port u trunk režimu ne znači da automatski prenosi svaki VLAN. Mrežni administrator može definisati listu dozvoljenih VLAN-ova.
+</p>
+
+<p>
+Ako ESXi port grupa koristi VLAN 220, ali fizički trunk dozvoljava samo:
+</p>
+
+<pre><code class="language-none">110,120,210
+</code></pre>
+
+<p>
+VM iz VLAN-a 220 neće imati komunikaciju van lokalnog ESXi hosta.
+</p>
+
+<p>
+Zato se pri dodavanju novog VLAN-a moraju uskladiti:
+</p>
+
+<ul>
+  <li>VLAN baza i mrežni plan</li>
+  <li>port grupa na svakom ESXi hostu</li>
+  <li>dozvoljeni VLAN-ovi na svim relevantnim trunkovima</li>
+  <li>inter-switch trunk linkovi</li>
+  <li>gateway ili Layer 3 interfejs</li>
+  <li>firewall i ACL pravila</li>
+  <li>DHCP konfiguracija, kada se koristi</li>
+</ul>
+
+<h3>Native VLAN i neoznačeni saobraćaj</h3>
+
+<p>
+Na određenim fizičkim trunk konfiguracijama jedan VLAN može biti definisan kao native VLAN. Njegov saobraćaj može se prenositi bez VLAN oznake.
+</p>
+
+<p>
+Nedosledan native VLAN između dva kraja veze može izazvati:
+</p>
+
+<ul>
+  <li>gubitak management veze</li>
+  <li>pojavljivanje saobraćaja u pogrešnom VLAN-u</li>
+  <li>teško uočljive povremene probleme</li>
+  <li>bezbednosne propuste</li>
+</ul>
+
+<p>
+Za VMware infrastrukturu treba jasno dokumentovati da li se management ili druga mreža prenosi kao označen VLAN ili kao neoznačen native VLAN. Ne treba pretpostavljati da VLAN 0 na port grupi znači isto što i konkretan native VLAN broj na fizičkom switchu.
+</p>
+
+<h3>VLAN 0 u VMware port grupi</h3>
+
+<p>
+VLAN ID 0 na standardnoj port grupi znači da VMware ne obavlja standardno VLAN označavanje saobraćaja te port grupe. Okviri se prema fizičkoj mreži prosleđuju bez VLAN oznake.
+</p>
+
+<p>
+Takav saobraćaj fizički switch obrađuje prema konfiguraciji svog porta:
+</p>
+
+<ul>
+  <li>na access portu pridružuje ga access VLAN-u</li>
+  <li>na trunk portu može ga povezati sa native VLAN-om</li>
+</ul>
+
+<p>
+Zbog toga VLAN 0 nije naziv posebne korisničke mreže, već signal da port grupa ne dodaje običnu 802.1Q VLAN oznaku.
+</p>
+
+<h3>VLAN 4095 na Standard Switch-u</h3>
+
+<p>
+VLAN 4095 na standardnoj port grupi koristi se za Virtual Guest Tagging. VMware port grupa prosleđuje VLAN trunk gostujućem sistemu, koji zatim mora sam da obrađuje 802.1Q oznake.
+</p>
+
+<p>
+VLAN 4095 ne sme se dodeljivati običnim VM-ovima bez jasnog razloga. Time bi gost mogao dobiti pristup većem broju VLAN-ova nego što mu je potrebno, pod uslovom da su ti VLAN-ovi dostupni preko fizičkog trunk-a.
+</p>
+
+<p>
+Za VGT treba obezbediti:
+</p>
+
+<ul>
+  <li>gostujući sistem koji podržava 802.1Q VLAN interfejse</li>
+  <li>pravilno konfigurisane VLAN podinterfejse</li>
+  <li>trunk port grupu</li>
+  <li>fizički trunk sa ograničenom listom dozvoljenih VLAN-ova</li>
+  <li>odgovarajuća VMware security podešavanja kada ih appliance zahteva</li>
+  <li>dokumentovanu poslovnu i bezbednosnu potrebu</li>
+</ul>
+
+<h3>VLAN konfiguracija na Standard Switch port grupi</h3>
+
+<p>
+Pregled standardnih port grupa:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">Name                Virtual Switch       Active Clients  VLAN ID
+------------------  -------------------  --------------  -------
+Management Network  vSwitch0                          1       10
+PG-PROD-WEB         vSwitch-Production                6      110
+PG-PROD-DB          vSwitch-Production                4      120
+PG-DEV               vSwitch-Production                3      210
+PG-FIREWALL-TRUNK    vSwitch-Edge                      1     4095
+</code></pre>
+
+<p>
+Podešavanje VLAN ID-a:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-PROD-WEB \
+  --vlan-id=110
+</code></pre>
+
+<p>
+Kraća forma:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  -p PG-PROD-WEB \
+  -v 110
+</code></pre>
+
+<p>
+Provera nakon izmene:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h3>Važna napomena o parametru -v</h3>
+
+<p>
+Kod komande za podešavanje port grupe kratka opcija <code>-v</code> predstavlja VLAN ID:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  -p PG-LAB \
+  -v 220
+</code></pre>
+
+<p>
+Kod drugih ESXCLI komandi ista kratka oznaka može imati drugo značenje, na primer naziv virtuelnog switcha. Pre rada u produkciji korisno je proveriti pomoć za konkretnu komandu:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set --help
+</code></pre>
+
+<h3>Kreiranje port grupe i VLAN konfiguracija</h3>
+
+<p>
+Proveriti postojeće standardne switcheve:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+Kreirati port grupu:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  --portgroup-name=PG-TEST-VLAN220 \
+  --vswitch-name=vSwitch-Production
+</code></pre>
+
+<p>
+Postaviti VLAN:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup set \
+  --portgroup-name=PG-TEST-VLAN220 \
+  --vlan-id=220
+</code></pre>
+
+<p>
+Potvrditi rezultat:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<h3>PowerCLI pregled VLAN konfiguracije</h3>
+
+<p>
+Povezivanje na vCenter:
+</p>
+
+<pre><code class="language-powershell">Connect-VIServer vcsa.lab.local
+</code></pre>
+
+<p>
+Pregled standardnih port grupa:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost |
+Get-VirtualPortGroup -Standard |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<p>
+Pregled određenog hosta:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Standard |
+Select-Object Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<p>
+Pregled određene port grupe:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Format-List *
+</code></pre>
+
+<h3>PowerCLI kreiranje VST port grupe</h3>
+
+<pre><code class="language-powershell">$vmhost = Get-VMHost "esxi01.lab.local"
+
+$vswitch = Get-VirtualSwitch `
+  -VMHost $vmhost `
+  -Name "vSwitch-Production"
+
+New-VirtualPortGroup `
+  -VirtualSwitch $vswitch `
+  -Name "PG-PROD-WEB" `
+  -VLanId 110
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost $vmhost `
+  -Name "PG-PROD-WEB" |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>PowerCLI promena VLAN ID-a</h3>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-TEST" |
+Set-VirtualPortGroup -VLanId 220
+</code></pre>
+
+<p>
+Promena VLAN ID-a aktivne port grupe odmah utiče na sve povezane virtuelne adaptere. Ako njihove IP adrese ne pripadaju podmreži novog VLAN-a, komunikacija će verovatno biti prekinuta.
+</p>
+
+<p>
+Pre promene treba napraviti spisak povezanih VM-ova:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {
+    $_.NetworkName -eq "PG-TEST"
+} |
+Select-Object Parent,
+              Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h3>Povezivanje VM-a sa VLAN port grupom</h3>
+
+<p>
+Pronalaženje port grupe:
+</p>
+
+<pre><code class="language-powershell">$vmhost = Get-VMHost "esxi01.lab.local"
+
+$portgroup = Get-VirtualPortGroup `
+  -VMHost $vmhost `
+  -Name "PG-PROD-WEB"
+</code></pre>
+
+<p>
+Povezivanje mrežnog adaptera:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter -Name "Network adapter 1" |
+Set-NetworkAdapter `
+  -Portgroup $portgroup `
+  -Connected:$true `
+  -StartConnected:$true `
+  -Confirm:$false
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h3>VLAN konfiguracija Distributed Port Group-a</h3>
+
+<p>
+Distributed Switch podržava:
+</p>
+
+<ul>
+  <li>jedan VLAN ID</li>
+  <li>VLAN trunk opseg</li>
+  <li>bez VLAN označavanja</li>
+  <li>Private VLAN konfiguraciju, kada je podržana i projektovana</li>
+</ul>
+
+<p>
+Pregled distributed port grupa:
+</p>
+
+<pre><code class="language-powershell">Get-VDSwitch |
+Get-VDPortgroup |
+Select-Object Name,
+              VDSwitch,
+              NumPorts,
+              PortBinding
+</code></pre>
+
+<p>
+Pregled VLAN konfiguracije:
+</p>
+
+<pre><code class="language-powershell">Get-VDPortgroup -Name "DVPG-PROD-WEB" |
+Get-VDVlanConfiguration
+</code></pre>
+
+<p>
+Postavljanje jednog VLAN-a:
+</p>
+
+<pre><code class="language-powershell">Get-VDPortgroup -Name "DVPG-PROD-WEB" |
+Set-VDVlanConfiguration -VlanId 110
+</code></pre>
+
+<p>
+Konfigurisanje trunk opsega za mrežni appliance:
+</p>
+
+<pre><code class="language-powershell">Get-VDPortgroup -Name "DVPG-FIREWALL-TRUNK" |
+Set-VDVlanConfiguration `
+  -VlanTrunkRange "110,120,310"
+</code></pre>
+
+<p>
+Pre izvršavanja treba proveriti sintaksu parametara u instaliranoj PowerCLI verziji:
+</p>
+
+<pre><code class="language-powershell">Get-Help Set-VDVlanConfiguration -Full
+</code></pre>
+
+<h3>PowerCLI provera doslednosti VLAN-a između hostova</h3>
+
+<p>
+Kod Standard Switch-a ista port grupa mora biti pravilno konfigurisana na svakom hostu.
+</p>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster "Cluster01"
+
+$report = Get-VMHost -Location $cluster |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VirtualSwitchName,
+      VLanId
+}
+
+$report |
+Sort-Object Name, VMHost |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+Port grupe sa više različitih VLAN vrednosti:
+</p>
+
+<pre><code class="language-powershell">$report |
+Group-Object Name |
+Where-Object {
+    ($_.Group.VLanId |
+     Sort-Object -Unique).Count -gt 1
+} |
+ForEach-Object {
+    [PSCustomObject]@{
+        PortGroup = $_.Name
+        Hosts = ($_.Group.VMHost -join ', ')
+        VLANs = (
+            $_.Group.VLanId |
+            Sort-Object -Unique
+        ) -join ', '
+    }
+} |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+Ovaj izveštaj otkriva port grupe koje imaju isto ime, ali različite VLAN ID vrednosti na različitim hostovima.
+</p>
+
+<h3>Pronalaženje port grupa koje ne postoje na svim hostovima</h3>
+
+<pre><code class="language-powershell">$cluster = Get-Cluster "Cluster01"
+$hosts = Get-VMHost -Location $cluster
+$hostCount = $hosts.Count
+
+$report = $hosts |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VLanId
+}
+
+$report |
+Group-Object Name |
+Where-Object {
+    $_.Count -lt $hostCount
+} |
+ForEach-Object {
+    [PSCustomObject]@{
+        PortGroup = $_.Name
+        PresentOn = ($_.Group.VMHost -join ', ')
+        ExpectedHostCount = $hostCount
+        ActualHostCount = $_.Count
+    }
+} |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+Nalaz ne znači automatski da postoji greška. Neke port grupe mogu namerno postojati samo na određenim hostovima. Rezultat treba uporediti sa projektovanom topologijom.
+</p>
+
+<h3>Provera fizičkih uplinkova</h3>
+
+<p>
+Pregled fizičkih adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic list
+</code></pre>
+
+<p>
+Detalji adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network nic get -n vmnic2
+</code></pre>
+
+<p>
+Statistika:
+</p>
+
+<pre><code class="language-bash">esxcli network nic stats get -n vmnic2
+</code></pre>
+
+<p>
+Pregled standardnih switcheva i njihovih uplinkova:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+</code></pre>
+
+<p>
+VLAN port grupa može biti pravilno konfigurisana, ali neće imati pristup fizičkoj mreži ako:
+</p>
+
+<ul>
+  <li>vSwitch nema uplink</li>
+  <li>uplink link status je Down</li>
+  <li>uplink vodi do pogrešnog fizičkog switcha</li>
+  <li>fizički port nije u trunk režimu</li>
+  <li>potreban VLAN nije dozvoljen na trunku</li>
+</ul>
+
+<h3>Utvrđivanje porta i uplinka određene VM</h3>
+
+<p>
+Pregled aktivnih VM mrežnih procesa:
+</p>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">World ID  Name         Num Ports  Networks
+--------  -----------  ---------  -----------
+345721    WebServer01          1  PG-PROD-WEB
+345812    Firewall01           3  PG-FIREWALL-TRUNK
+</code></pre>
+
+<p>
+Detalji određene VM:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list -w 345721
+</code></pre>
+
+<p>
+Izlaz pomaže da se utvrde:
+</p>
+
+<ul>
+  <li>Port ID</li>
+  <li>port grupa</li>
+  <li>vSwitch</li>
+  <li>MAC adresa</li>
+  <li>aktivni fizički uplink</li>
+</ul>
+
+<h3>Provera VLAN saobraćaja pomoću esxtop-a</h3>
+
+<p>
+Pokrenuti:
+</p>
+
+<pre><code class="language-bash">esxtop
+</code></pre>
+
+<p>
+Pritisnuti:
+</p>
+
+<pre><code class="language-none">n
+</code></pre>
+
+<p>
+U mrežnom prikazu proveravati:
+</p>
+
+<ul>
+  <li><strong>PORT-ID</strong> – virtuelni port</li>
+  <li><strong>USED-BY</strong> – komponentu koja koristi port</li>
+  <li><strong>TEAM-PNIC</strong> – fizički uplink</li>
+  <li><strong>MbTX/s</strong> i <strong>MbRX/s</strong> – protok</li>
+  <li><strong>%DRPTX</strong> i <strong>%DRPRX</strong> – odbačene pakete</li>
+</ul>
+
+<p>
+ESXTOP ne prikazuje celu VLAN arhitekturu, ali može potvrditi da li VM šalje saobraćaj i preko kog fizičkog adaptera on izlazi.
+</p>
+
+<h3>Packet capture na ESXi hostu</h3>
+
+<p>
+Za naprednu dijagnostiku ESXi sadrži alat <code>pktcap-uw</code>. Njime se može proveriti da li okvir ulazi u ESXi host, prolazi kroz virtuelni switch i izlazi preko odgovarajućeg uplinka.
+</p>
+
+<p>
+Pregled dostupne pomoći:
+</p>
+
+<pre><code class="language-bash">pktcap-uw --help
+</code></pre>
+
+<p>
+Snimanje saobraćaja na fizičkom uplinku:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkSndKernel \
+  -o /tmp/vmnic2-send.pcap
+</code></pre>
+
+<p>
+Snimanje dolaznog saobraćaja:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  -o /tmp/vmnic2-receive.pcap
+</code></pre>
+
+<p>
+Ograničavanje broja paketa:
+</p>
+
+<pre><code class="language-bash">pktcap-uw \
+  --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  --count 200 \
+  -o /tmp/vmnic2-receive.pcap
+</code></pre>
+
+<p>
+Snimljeni PCAP fajl može se analizirati u Wireshark-u. Packet capture u produkciji treba vremenski i obimom ograničiti kako ne bi nepotrebno opteretio host ili popunio raspoloživi prostor.
+</p>
+
+<p>
+Pre snimanja treba zabeležiti UTC vreme incidenta, izvorni i odredišni IP/MAC, Port ID, aktivni uplink i smer saobraćaja. Capture tačka menja ono što se vidi: na virtuelnoj strani okvir može biti bez oznake, dok na uplinku VST saobraćaj treba da nosi 802.1Q oznaku. Zato odsustvo VLAN taga nije dokaz kvara dok se ne potvrdi na kojoj je tački paket snimljen. Broadcom posebno preporučuje VLAN-aware opcije alata umesto generičkog filtera koji može pogrešno obraditi VLAN saobraćaj; raspoložive opcije treba potvrditi komandom <code>pktcap-uw --help</code> na konkretnoj verziji ESXi-ja.
+</p>
+
+<p>
+Za korelaciju se u vSphere Client-u proveravaju <strong>Tasks and Events</strong> za izmene port grupe, migracije VM-a i rekonfiguracije adaptera. Na ESXi hostu su posebno korisni <code>/var/log/hostd.log</code> za lokalne konfiguracione operacije i <code>/var/log/vmkernel.log</code> za fizičke adaptere, link stanje i mrežne poruke VMkernel-a. Logove treba pretraživati u istom vremenskom prozoru kao događaj i packet capture; sama poruka bez objekta, hosta i vremena nije dovoljan dokaz osnovnog uzroka.
+</p>
+
+<h3>Provera VLAN oznake u packet capture-u</h3>
+
+<p>
+U Wireshark-u se može koristiti filter:
+</p>
+
+<pre><code class="language-none">vlan
+</code></pre>
+
+<p>
+Za konkretan VLAN:
+</p>
+
+<pre><code class="language-none">vlan.id == 110
+</code></pre>
+
+<p>
+Ako paket napušta VST port grupu preko uplinka, na odgovarajućoj tački snimanja trebalo bi da se vidi VLAN oznaka.
+</p>
+
+<p>
+Ako VM šalje pakete, ali se VLAN 110 ne pojavljuje na fizičkom uplinku, proveravaju se:
+</p>
+
+<ul>
+  <li>VLAN ID port grupe</li>
+  <li>da li VM koristi očekivanu port grupu</li>
+  <li>koji uplink trenutno koristi</li>
+  <li>teaming politika</li>
+  <li>tačka na kojoj je packet capture izvršen</li>
+</ul>
+
+<h3>Linux VGT konfiguracija</h3>
+
+<p>
+Kod VGT modela Linux gost može kreirati VLAN podinterfejse. Pretpostavimo da je osnovni adapter:
+</p>
+
+<pre><code class="language-none">ens192
+</code></pre>
+
+<p>
+Kreiranje VLAN 110 interfejsa pomoću komande <code>ip</code>:
+</p>
+
+<pre><code class="language-bash">sudo ip link add \
+  link ens192 \
+  name ens192.110 \
+  type vlan \
+  id 110
+</code></pre>
+
+<p>
+Dodela IP adrese:
+</p>
+
+<pre><code class="language-bash">sudo ip address add \
+  10.110.0.21/24 \
+  dev ens192.110
+</code></pre>
+
+<p>
+Aktiviranje interfejsa:
+</p>
+
+<pre><code class="language-bash">sudo ip link set ens192 up
+sudo ip link set ens192.110 up
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-bash">ip -d link show ens192.110
+ip -br address show ens192.110
+</code></pre>
+
+<p>
+Kreiranje drugog VLAN podinterfejsa:
+</p>
+
+<pre><code class="language-bash">sudo ip link add \
+  link ens192 \
+  name ens192.120 \
+  type vlan \
+  id 120
+
+sudo ip address add \
+  10.120.0.21/24 \
+  dev ens192.120
+
+sudo ip link set ens192.120 up
+</code></pre>
+
+<p>
+Ove komande kreiraju privremenu konfiguraciju koja se gubi nakon restartovanja. Trajna konfiguracija zavisi od distribucije i mrežnog sistema, kao što su NetworkManager, Netplan ili systemd-networkd.
+</p>
+
+<h3>NetworkManager VLAN konfiguracija</h3>
+
+<p>
+Kreiranje VLAN veze:
+</p>
+
+<pre><code class="language-bash">sudo nmcli connection add \
+  type vlan \
+  con-name vlan110 \
+  ifname ens192.110 \
+  dev ens192 \
+  id 110
+</code></pre>
+
+<p>
+Podešavanje statičke IP adrese:
+</p>
+
+<pre><code class="language-bash">sudo nmcli connection modify vlan110 \
+  ipv4.method manual \
+  ipv4.addresses 10.110.0.21/24
+</code></pre>
+
+<p>
+Po potrebi dodavanje gateway-a:
+</p>
+
+<pre><code class="language-bash">sudo nmcli connection modify vlan110 \
+  ipv4.gateway 10.110.0.1
+</code></pre>
+
+<p>
+DNS:
+</p>
+
+<pre><code class="language-bash">sudo nmcli connection modify vlan110 \
+  ipv4.dns "10.110.0.10 10.110.0.11"
+</code></pre>
+
+<p>
+Aktiviranje:
+</p>
+
+<pre><code class="language-bash">sudo nmcli connection up vlan110
+</code></pre>
+
+<p>
+Provera:
+</p>
+
+<pre><code class="language-bash">nmcli connection show
+ip -d link show ens192.110
+ip route
+</code></pre>
+
+<h3>Netplan VLAN konfiguracija</h3>
+
+<p>
+Primer za Ubuntu Server:
+</p>
+
+<pre><code class="language-yaml">network:
+  version: 2
+
+  ethernets:
+    ens192:
+      dhcp4: false
+
+  vlans:
+    vlan110:
+      id: 110
+      link: ens192
+      addresses:
+        - 10.110.0.21/24
+      routes:
+        - to: default
+          via: 10.110.0.1
+      nameservers:
+        addresses:
+          - 10.110.0.10
+          - 10.110.0.11
+</code></pre>
+
+<p>
+Provera konfiguracije bez trajne primene:
+</p>
+
+<pre><code class="language-bash">sudo netplan try
+</code></pre>
+
+<p>
+Primena:
+</p>
+
+<pre><code class="language-bash">sudo netplan apply
+</code></pre>
+
+<p>
+Kod udaljene administracije prednost treba dati komandi <code>netplan try</code>, jer omogućava automatski povratak ako nova konfiguracija prekine vezu i korisnik je ne potvrdi.
+</p>
+
+<h3>Uklanjanje privremenog Linux VLAN interfejsa</h3>
+
+<pre><code class="language-bash">sudo ip link delete ens192.110
+</code></pre>
+
+<p>
+Pre uklanjanja proveriti da interfejs ne koristi aktivna ruta, servis ili aplikacija.
+</p>
+
+<h3>Windows i VLAN tagging</h3>
+
+<p>
+Podrška za VLAN tagging unutar Windows gosta zavisi od drajvera, virtuelnog adaptera i mrežnog softvera. Kod standardnih serverskih VM-ova preporučuje se VST, gde se VLAN određuje na VMware port grupi, a Windows koristi običan IP interfejs.
+</p>
+
+<p>
+Korišćenje VGT-a u Windows gostu treba ograničiti na jasno podržane i dokumentovane scenarije. Ne treba pretpostaviti da ručno unošenje VLAN ID-a u naprednim svojstvima mrežnog drajvera predstavlja potpuno podržanu trunk konfiguraciju.
+</p>
+
+<h3>Inter-VLAN routing</h3>
+
+<p>
+Dve VM u različitim VLAN-ovima ne mogu direktno da komuniciraju samo zato što su povezane sa istim vSwitch-em.
+</p>
+
+<p>
+Primer:
+</p>
+
+<pre><code class="language-none">VM-Web01
+  VLAN 110
+  IP 10.110.0.21/24
+
+VM-DB01
+  VLAN 120
+  IP 10.120.0.31/24
+</code></pre>
+
+<p>
+Za komunikaciju između njih potreban je Layer 3 uređaj:
+</p>
+
+<ul>
+  <li>fizički ruter</li>
+  <li>Layer 3 switch</li>
+  <li>firewall</li>
+  <li>virtuelni ruter ili firewall appliance</li>
+</ul>
+
+<p>
+Potrebni su i:
+</p>
+
+<ul>
+  <li>gateway za VLAN 110</li>
+  <li>gateway za VLAN 120</li>
+  <li>ruta između podmreža</li>
+  <li>firewall ili ACL pravila koja dozvoljavaju potreban saobraćaj</li>
+</ul>
+
+<p>
+VMware port grupe obezbeđuju Layer 2 pripadnost VLAN-u, ali same ne obavljaju routing između VLAN-ova.
+</p>
+
+<h3>DHCP u VLAN mreži</h3>
+
+<p>
+Ako se DHCP server ne nalazi u istom VLAN-u kao klijent, potreban je DHCP relay na Layer 3 gateway-u.
+</p>
+
+<p>
+Ako VM ne dobija DHCP adresu, treba proveriti:
+</p>
+
+<ul>
+  <li>da li je VM na pravoj port grupi</li>
+  <li>da li port grupa koristi pravi VLAN</li>
+  <li>da li VLAN prolazi kroz fizički trunk</li>
+  <li>da li DHCP server ima scope za tu podmrežu</li>
+  <li>da li gateway ima DHCP relay ili IP helper konfiguraciju</li>
+  <li>da li firewall propušta DHCP saobraćaj</li>
+</ul>
+
+<p>
+Dobijanje adrese:
+</p>
+
+<pre><code class="language-none">169.254.x.x
+</code></pre>
+
+<p>
+na Windows sistemu obično znači da DHCP razmena nije uspela i da je sistem sam dodelio APIPA adresu.
+</p>
+
+<h3>Praktikum 1: kreiranje dve VST mreže</h3>
+
+<p>
+Cilj vežbe je kreiranje dve standardne port grupe sa različitim VLAN-ovima i potvrda da se VM-ovi nalaze u odvojenim Layer 2 segmentima.
+</p>
+
+<h4>Laboratorijska topologija</h4>
+
+<pre><code class="language-none">ESXi host: esxi01.lab.local
+vSwitch: vSwitch-Lab
+Uplink: vmnic2
+
+Port Group 1:
+  Naziv: PG-LAB-WEB
+  VLAN: 110
+  Mreža: 10.110.0.0/24
+
+Port Group 2:
+  Naziv: PG-LAB-DB
+  VLAN: 120
+  Mreža: 10.120.0.0/24
+</code></pre>
+
+<p>
+Fizički switch port povezan sa <code>vmnic2</code> mora biti trunk koji dozvoljava VLAN 110 i VLAN 120.
+</p>
+
+<h4>Korak 1 – evidentiranje početnog stanja</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network vswitch standard portgroup list
+esxcli network nic list
+</code></pre>
+
+<h4>Korak 2 – provera switcha i uplinka</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard list \
+  -v vSwitch-Lab
+
+esxcli network nic get \
+  -n vmnic2
+</code></pre>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da vSwitch postoji</li>
+  <li>da je <code>vmnic2</code> njegov uplink</li>
+  <li>da je link status Up</li>
+  <li>da je fizički port pripremljen</li>
+</ul>
+
+<h4>Korak 3 – kreiranje web port grupe</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  -p PG-LAB-WEB \
+  -v vSwitch-Lab
+
+esxcli network vswitch standard portgroup set \
+  -p PG-LAB-WEB \
+  --vlan-id 110
+</code></pre>
+
+<h4>Korak 4 – kreiranje DB port grupe</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  -p PG-LAB-DB \
+  -v vSwitch-Lab
+
+esxcli network vswitch standard portgroup set \
+  -p PG-LAB-DB \
+  --vlan-id 120
+</code></pre>
+
+<h4>Korak 5 – provera</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Očekivano:
+</p>
+
+<pre><code class="language-none">PG-LAB-WEB    vSwitch-Lab    ...    110
+PG-LAB-DB     vSwitch-Lab    ...    120
+</code></pre>
+
+<h4>Korak 6 – povezivanje VM-ova</h4>
+
+<p>
+Povezati:
+</p>
+
+<pre><code class="language-none">VM-Web01 → PG-LAB-WEB
+VM-DB01  → PG-LAB-DB
+</code></pre>
+
+<p>
+Uključiti:
+</p>
+
+<pre><code class="language-none">Connected
+Connect at power on
+</code></pre>
+
+<h4>Korak 7 – IP konfiguracija</h4>
+
+<p>
+Web VM:
+</p>
+
+<pre><code class="language-none">IP:      10.110.0.21/24
+Gateway: 10.110.0.1
+DNS:     prema laboratorijskom planu
+</code></pre>
+
+<p>
+DB VM:
+</p>
+
+<pre><code class="language-none">IP:      10.120.0.31/24
+Gateway: 10.120.0.1
+DNS:     prema laboratorijskom planu
+</code></pre>
+
+<h4>Korak 8 – test lokalnog gateway-a</h4>
+
+<p>
+Sa web VM:
+</p>
+
+<pre><code class="language-bash">ping -c 4 10.110.0.1
+</code></pre>
+
+<p>
+Sa DB VM:
+</p>
+
+<pre><code class="language-bash">ping -c 4 10.120.0.1
+</code></pre>
+
+<h4>Korak 9 – test između VLAN-ova</h4>
+
+<p>
+Sa web VM:
+</p>
+
+<pre><code class="language-bash">ping -c 4 10.120.0.31
+</code></pre>
+
+<p>
+Rezultat zavisi od routing i firewall konfiguracije. Ako inter-VLAN routing nije omogućen, test ne treba da uspe.
+</p>
+
+<h4>Korak 10 – potvrda portova</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+</code></pre>
+
+<p>
+Za svaku VM:
+</p>
+
+<pre><code class="language-bash">esxcli network vm port list \
+  -w &lt;World-ID&gt;
+</code></pre>
+
+<p>
+Potvrditi da VM koristi očekivanu port grupu i uplink.
+</p>
+
+<h3>Praktikum 2: PowerCLI implementacija VLAN-a na svim hostovima</h3>
+
+<p>
+Cilj vežbe je kreiranje iste port grupe na svim hostovima klastera.
+</p>
+
+<pre><code class="language-powershell">$clusterName = "Cluster01"
+$vSwitchName = "vSwitch-Production"
+$portGroupName = "PG-PROD-WEB"
+$vlanId = 110
+
+$hosts = Get-Cluster $clusterName |
+Get-VMHost
+
+foreach ($vmhost in $hosts) {
+
+    $vswitch = Get-VirtualSwitch `
+      -VMHost $vmhost `
+      -Name $vSwitchName `
+      -ErrorAction Stop
+
+    $existing = Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Name $portGroupName `
+      -ErrorAction SilentlyContinue
+
+    if ($null -eq $existing) {
+
+        New-VirtualPortGroup `
+          -VirtualSwitch $vswitch `
+          -Name $portGroupName `
+          -VLanId $vlanId
+
+        Write-Host "Kreirana port grupa na $($vmhost.Name)"
+    }
+    elseif ($existing.VLanId -ne $vlanId) {
+
+        $existing |
+        Set-VirtualPortGroup -VLanId $vlanId
+
+        Write-Host "Ispravljen VLAN na $($vmhost.Name)"
+    }
+    else {
+        Write-Host "Konfiguracija je ispravna na $($vmhost.Name)"
+    }
+}
+</code></pre>
+
+<p>
+Pre pokretanja u produkciji:
+</p>
+
+<ul>
+  <li>proveriti da vSwitch postoji na svim hostovima</li>
+  <li>proveriti fizičke trunkove</li>
+  <li>napraviti izveštaj postojećeg stanja</li>
+  <li>prvo testirati na laboratorijskom hostu</li>
+  <li>koristiti odgovarajuće PowerCLI privilegije</li>
+</ul>
+
+<h3>Praktikum 3: kontrolisana promena VLAN-a</h3>
+
+<p>
+Cilj je bezbedna promena testne port grupe sa VLAN-a 210 na VLAN 220.
+</p>
+
+<h4>Korak 1 – početno stanje</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+PowerCLI pregled povezanih VM-ova:
+</p>
+
+<pre><code class="language-powershell">Get-VM |
+Get-NetworkAdapter |
+Where-Object {
+    $_.NetworkName -eq "PG-TEST"
+} |
+Select-Object Parent,
+              Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 2 – sačuvati trenutnu vrednost</h4>
+
+<pre><code class="language-powershell">$pg = Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-TEST"
+
+$oldVlan = $pg.VLanId
+
+$oldVlan
+</code></pre>
+
+<h4>Korak 3 – proveriti spremnost fizičke mreže</h4>
+
+<p>
+Potvrditi sa mrežnim administratorom:
+</p>
+
+<ul>
+  <li>da VLAN 220 postoji</li>
+  <li>da je dozvoljen na ESXi trunk portu</li>
+  <li>da postoji gateway</li>
+  <li>da su routing i firewall pravila pripremljeni</li>
+  <li>da je DHCP scope pripremljen, kada se koristi</li>
+</ul>
+
+<h4>Korak 4 – promena VLAN-a</h4>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-TEST" |
+Set-VirtualPortGroup -VLanId 220
+</code></pre>
+
+<h4>Korak 5 – potvrda</h4>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-TEST" |
+Select-Object Name, VLanId
+</code></pre>
+
+<h4>Korak 6 – test</h4>
+
+<p>
+Na Linux VM:
+</p>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ping -c 4 &lt;gateway-VLAN-220&gt;
+getent hosts example.com
+</code></pre>
+
+<p>
+Na Windows VM:
+</p>
+
+<pre><code class="language-none">ipconfig /all
+route print
+ping &lt;gateway-VLAN-220&gt;
+nslookup example.com
+</code></pre>
+
+<h4>Korak 7 – rollback</h4>
+
+<p>
+Ako nova mreža ne radi:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-TEST" |
+Set-VirtualPortGroup -VLanId $oldVlan
+</code></pre>
+
+<p>
+Nakon rollback-a ponoviti test i dokumentovati zašto promena nije uspela.
+</p>
+
+<h3>Praktikum 4: VGT laboratorija sa Linux gostom</h3>
+
+<p>
+Ovu vežbu treba izvoditi isključivo u izolovanom laboratorijskom okruženju ili uz odobren mrežni dizajn.
+</p>
+
+<h4>Topologija</h4>
+
+<pre><code class="language-none">Port Group: PG-LAB-TRUNK
+VLAN ID na VSS: 4095
+Dozvoljeni VLAN-ovi na fizičkom trunku: 110,120
+
+Linux VM:
+  Osnovni adapter: ens192
+  VLAN 110: ens192.110
+  VLAN 120: ens192.120
+</code></pre>
+
+<h4>Korak 1 – kreiranje trunk port grupe</h4>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup add \
+  -p PG-LAB-TRUNK \
+  -v vSwitch-Lab
+
+esxcli network vswitch standard portgroup set \
+  -p PG-LAB-TRUNK \
+  --vlan-id 4095
+</code></pre>
+
+<h4>Korak 2 – povezivanje Linux VM-a</h4>
+
+<p>
+Virtuelni adapter Linux VM povezati na:
+</p>
+
+<pre><code class="language-none">PG-LAB-TRUNK
+</code></pre>
+
+<h4>Korak 3 – provera osnovnog interfejsa</h4>
+
+<pre><code class="language-bash">ip -br link
+</code></pre>
+
+<h4>Korak 4 – kreiranje VLAN interfejsa</h4>
+
+<pre><code class="language-bash">sudo ip link add \
+  link ens192 \
+  name ens192.110 \
+  type vlan \
+  id 110
+
+sudo ip address add \
+  10.110.0.50/24 \
+  dev ens192.110
+
+sudo ip link set ens192 up
+sudo ip link set ens192.110 up
+</code></pre>
+
+<p>
+Drugi VLAN:
+</p>
+
+<pre><code class="language-bash">sudo ip link add \
+  link ens192 \
+  name ens192.120 \
+  type vlan \
+  id 120
+
+sudo ip address add \
+  10.120.0.50/24 \
+  dev ens192.120
+
+sudo ip link set ens192.120 up
+</code></pre>
+
+<h4>Korak 5 – provera</h4>
+
+<pre><code class="language-bash">ip -d link show ens192.110
+ip -d link show ens192.120
+ip -br address
+</code></pre>
+
+<h4>Korak 6 – test</h4>
+
+<pre><code class="language-bash">ping -I ens192.110 \
+  -c 4 10.110.0.1
+
+ping -I ens192.120 \
+  -c 4 10.120.0.1
+</code></pre>
+
+<h4>Korak 7 – uklanjanje laboratorijske konfiguracije</h4>
+
+<pre><code class="language-bash">sudo ip link delete ens192.110
+sudo ip link delete ens192.120
+</code></pre>
+
+<p>
+VM adapter zatim premestiti na običnu port grupu, pa ukloniti trunk port grupu:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup remove \
+  -p PG-LAB-TRUNK \
+  -v vSwitch-Lab
+</code></pre>
+
+<h3>Praktikum 5: otkrivanje VLAN neusaglašenosti posle vMotion-a</h3>
+
+<p>
+Scenario: VM radi na hostu <code>esxi01</code>, ali posle migracije na <code>esxi02</code> gubi mrežu.
+</p>
+
+<h4>Korak 1 – proveriti mrežu VM-a</h4>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              NetworkName,
+              MacAddress,
+              ConnectionState
+</code></pre>
+
+<h4>Korak 2 – uporediti port grupe</h4>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualPortGroup -Standard |
+Where-Object {
+    $_.Name -eq "PG-PROD-WEB"
+} |
+Select-Object VMHost,
+              Name,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h4>Korak 3 – proveriti uplinkove ciljnog hosta</h4>
+
+<p>
+Na <code>esxi02</code>:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network nic list
+</code></pre>
+
+<h4>Korak 4 – proveriti port VM-a</h4>
+
+<pre><code class="language-bash">esxcli network vm list
+
+esxcli network vm port list \
+  -w &lt;World-ID-WebServer01&gt;
+</code></pre>
+
+<h4>Korak 5 – mogući nalazi</h4>
+
+<ul>
+  <li>port grupa ne postoji na ciljnom hostu</li>
+  <li>port grupa koristi drugi VLAN</li>
+  <li>port grupa pripada pogrešnom vSwitch-u</li>
+  <li>ciljni vSwitch nema aktivan uplink</li>
+  <li>potreban VLAN nije dozvoljen na fizičkom trunku ciljnog hosta</li>
+  <li>VM koristi drugi adapter ili pogrešnu port grupu</li>
+</ul>
+
+<h3>Praktikum 6: PowerCLI VLAN inventar</h3>
+
+<p>
+Izveštaj svih standardnih port grupa:
+</p>
+
+<pre><code class="language-powershell">$report = Get-VMHost |
+ForEach-Object {
+    $vmhost = $_
+
+    Get-VirtualPortGroup `
+      -VMHost $vmhost `
+      -Standard |
+    Select-Object `
+      @{N='VMHost';E={$vmhost.Name}},
+      Name,
+      VirtualSwitchName,
+      VLanId
+}
+
+$report |
+Sort-Object VLanId, Name, VMHost |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+Izvoz u CSV:
+</p>
+
+<pre><code class="language-powershell">$report |
+Export-Csv `
+  -Path "./vmware-vlan-inventory.csv" `
+  -NoTypeInformation `
+  -Encoding UTF8
+</code></pre>
+
+<p>
+Port grupe sa VLAN 0:
+</p>
+
+<pre><code class="language-powershell">$report |
+Where-Object {
+    $_.VLanId -eq 0
+} |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+VGT port grupe:
+</p>
+
+<pre><code class="language-powershell">$report |
+Where-Object {
+    $_.VLanId -eq 4095
+} |
+Format-Table -AutoSize
+</code></pre>
+
+<p>
+VGT nalaz treba posebno pregledati i potvrditi da svaka port grupa sa VLAN 4095 ima opravdanu namenu.
+</p>
+
+<h3>Scenario: VM ne može da pristupi gateway-u</h3>
+
+<p>
+Dijagnostika:
+</p>
+
+<ol>
+  <li>proveriti IP adresu i masku VM-a</li>
+  <li>proveriti port grupu VM adaptera</li>
+  <li>proveriti VLAN ID port grupe</li>
+  <li>proveriti uplink i fizički link</li>
+  <li>proveriti da je VLAN dozvoljen na fizičkom trunku</li>
+  <li>proveriti da gateway interfejs postoji i radi</li>
+  <li>proveriti ARP ili neighbor tabelu</li>
+  <li>proveriti firewall i ACL pravila</li>
+</ol>
+
+<p>
+Linux:
+</p>
+
+<pre><code class="language-bash">ip -br address
+ip route
+ip neigh
+ping -c 4 &lt;gateway&gt;
+</code></pre>
+
+<p>
+Windows:
+</p>
+
+<pre><code class="language-none">ipconfig /all
+route print
+arp -a
+ping &lt;gateway&gt;
+</code></pre>
+
+<p>
+Ako ARP zahtev ostaje bez odgovora, problem je najverovatnije na Layer 2 putanji, VLAN konfiguraciji ili samom gateway-u.
+</p>
+
+<h3>Scenario: VM komunicira sa VM-om na istom hostu, ali ne van hosta</h3>
+
+<p>
+Ovaj simptom često znači da lokalni virtuelni switch pravilno prosleđuje saobraćaj, ali postoji problem prema fizičkoj mreži.
+</p>
+
+<p>
+Proveriti:
+</p>
+
+<ul>
+  <li>da li vSwitch ima fizički uplink</li>
+  <li>da li je uplink aktivan</li>
+  <li>da li fizički port koristi trunk režim</li>
+  <li>da li je VLAN dozvoljen</li>
+  <li>da li teaming politika bira očekivani vmnic</li>
+</ul>
+
+<pre><code class="language-bash">esxcli network vswitch standard list
+esxcli network nic list
+esxcli network nic stats get -n vmnic2
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<h3>Scenario: VM-ovi na istom VLAN-u rade samo na jednom hostu</h3>
+
+<p>
+Najverovatniji uzroci su:
+</p>
+
+<ul>
+  <li>pogrešan VLAN ID na drugom hostu</li>
+  <li>nedostajući VLAN na fizičkom trunku drugog hosta</li>
+  <li>pogrešan uplink</li>
+  <li>neispravan fizički port</li>
+  <li>različita teaming politika</li>
+</ul>
+
+<p>
+Uporediti hostove:
+</p>
+
+<pre><code class="language-powershell">Get-VMHost "esxi01.lab.local",
+           "esxi02.lab.local" |
+Get-VirtualPortGroup -Standard |
+Where-Object {
+    $_.Name -eq "PG-PROD-WEB"
+} |
+Select-Object VMHost,
+              VirtualSwitchName,
+              VLanId
+</code></pre>
+
+<h3>Scenario: VM dobija adresu iz pogrešne mreže</h3>
+
+<p>
+Mogući uzroci:
+</p>
+
+<ul>
+  <li>VM je povezana na pogrešnu port grupu</li>
+  <li>port grupa koristi pogrešan VLAN</li>
+  <li>native VLAN nije usklađen</li>
+  <li>fizički switch port je pogrešno postavljen kao access</li>
+  <li>DHCP relay je pogrešno konfigurisan</li>
+  <li>VGT gost ima pogrešan VLAN podinterfejs</li>
+</ul>
+
+<p>
+Proveriti VMware mrežu:
+</p>
+
+<pre><code class="language-powershell">Get-VM "WebServer01" |
+Get-NetworkAdapter |
+Select-Object Name,
+              NetworkName,
+              MacAddress
+</code></pre>
+
+<p>
+Proveriti VLAN:
+</p>
+
+<pre><code class="language-powershell">Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB" |
+Select-Object Name, VLanId
+</code></pre>
+
+<h3>Scenario: samo veliki paketi ne prolaze</h3>
+
+<p>
+Ovo najčešće nije čist VLAN problem, ali se često pojavljuje nakon mrežnih izmena. Mogući uzrok je neusaglašen MTU.
+</p>
+
+<p>
+VMkernel test:
+</p>
+
+<pre><code class="language-bash">vmkping \
+  -I vmk1 \
+  -d \
+  -s 8972 \
+  &lt;odredišna-IP-adresa&gt;
+</code></pre>
+
+<p>
+Za obične VM mreže test se izvodi unutar gostujućeg sistema odgovarajućom veličinom paketa.
+</p>
+
+<p>
+MTU mora biti usklađen na:
+</p>
+
+<ul>
+  <li>gostujućem interfejsu, kada koristi jumbo frame</li>
+  <li>port grupi i vSwitch-u</li>
+  <li>fizičkom adapteru</li>
+  <li>fizičkim switch portovima</li>
+  <li>svim međusobnim linkovima</li>
+  <li>odredišnom uređaju</li>
+</ul>
+
+<h3>Scenario: VLAN 4095 VM nema pristup VLAN-ovima</h3>
+
+<p>
+Proveriti:
+</p>
+
+<ol>
+  <li>da port grupa zaista koristi VLAN 4095</li>
+  <li>da je VM povezana sa tom port grupom</li>
+  <li>da gost ima pravilno kreirane VLAN podinterfejse</li>
+  <li>da su podinterfejsi aktivni</li>
+  <li>da fizički trunk dozvoljava potrebne VLAN-ove</li>
+  <li>da IP adrese pripadaju odgovarajućim podmrežama</li>
+  <li>da routing tabela koristi očekivane interfejse</li>
+</ol>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+esxcli network vm list
+esxcli network vm port list -w &lt;World-ID&gt;
+</code></pre>
+
+<p>
+U Linux gostu:
+</p>
+
+<pre><code class="language-bash">ip -d link
+ip -br address
+ip route
+</code></pre>
+
+<h3>Management VLAN – poseban oprez</h3>
+
+<p>
+Promena VLAN ID-a port grupe koju koristi management VMkernel adapter može odmah prekinuti pristup ESXi hostu.
+</p>
+
+<p>
+Pre izmene Management Network port grupe treba obezbediti:
+</p>
+
+<ul>
+  <li>iLO, iDRAC, IPMI ili drugu udaljenu hardversku konzolu</li>
+  <li>lokalni DCUI pristup</li>
+  <li>tačnu konfiguraciju fizičkog switch porta</li>
+  <li>novu IP, gateway i VLAN konfiguraciju</li>
+  <li>jasan rollback postupak</li>
+  <li>odobren termin održavanja</li>
+</ul>
+
+<p>
+Pregled management VMkernel adaptera:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface list
+</code></pre>
+
+<p>
+IP konfiguracija:
+</p>
+
+<pre><code class="language-bash">esxcli network ip interface ipv4 get
+</code></pre>
+
+<p>
+Port grupe:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup list
+</code></pre>
+
+<p>
+Ne treba menjati management VLAN preko iste udaljene veze bez rezervnog pristupa hostu.
+</p>
+
+<h3>Bezbednosni aspekti VLAN-a</h3>
+
+<p>
+VLAN doprinosi segmentaciji, ali sam po sebi ne predstavlja potpunu bezbednosnu granicu.
+</p>
+
+<p>
+Za bezbedno razdvajanje potrebni su i:
+</p>
+
+<ul>
+  <li>firewall ili ACL pravila između VLAN-ova</li>
+  <li>ograničeni trunk opsezi</li>
+  <li>kontrola pristupa VMware administraciji</li>
+  <li>pravilna security policy port grupe</li>
+  <li>monitoring i logovanje promena</li>
+  <li>dokumentovana vlasništva mrežnih segmenata</li>
+</ul>
+
+<p>
+Posebno treba izbegavati:
+</p>
+
+<ul>
+  <li>prosleđivanje svih VLAN-ova nepotrebnim VM-ovima</li>
+  <li>nekontrolisanu upotrebu VLAN-a 4095</li>
+  <li>uključivanje promiscuous režima bez potrebe</li>
+  <li>neusklađen native VLAN</li>
+  <li>trunk portove sa širim dozvolama nego što su potrebne</li>
+</ul>
+
+<h3>Promiscuous Mode i trunk appliance</h3>
+
+<p>
+VGT ne zahteva automatski Promiscuous Mode. Potreba zavisi od načina rada virtuelnog appliance-a.
+</p>
+
+<p>
+Promiscuous Mode može biti potreban ako VM mora da prima okvire namenjene drugim MAC adresama, na primer kod određenih IDS, transparentnih firewall ili packet inspection scenarija.
+</p>
+
+<p>
+Security politika se proverava:
+</p>
+
+<pre><code class="language-bash">esxcli network vswitch standard portgroup policy security get \
+  -p PG-FIREWALL-TRUNK
+</code></pre>
+
+<p>
+Promenu treba izvršiti samo prema dokumentovanim zahtevima konkretnog proizvoda.
+</p>
+
+<h3>Kontrolna lista pre uvođenja novog VLAN-a</h3>
+
+<ol>
+  <li>Potvrditi namenu VLAN-a i vlasnika servisa.</li>
+  <li>Definisati VLAN ID i IP podmrežu.</li>
+  <li>Definisati gateway i routing.</li>
+  <li>Pripremiti firewall i ACL pravila.</li>
+  <li>Pripremiti DHCP scope ili statički IP plan.</li>
+  <li>Dozvoliti VLAN na svim fizičkim trunkovima.</li>
+  <li>Kreirati port grupu na svim potrebnim ESXi hostovima.</li>
+  <li>Proveriti isti VLAN ID na svim hostovima.</li>
+  <li>Povezati jednu testnu VM.</li>
+  <li>Testirati gateway, DNS i aplikacione portove.</li>
+  <li>Testirati vMotion na drugi host.</li>
+  <li>Dokumentovati konačnu konfiguraciju.</li>
+</ol>
+
+<h3>Kontrolna lista za VLAN troubleshooting</h3>
+
+<pre><code class="language-none"># 1. Mrežni adapter VM-a
+Get-VM "WebServer01" |
+Get-NetworkAdapter
+
+# 2. Port grupa i VLAN
+Get-VirtualPortGroup `
+  -VMHost "esxi01.lab.local" `
+  -Name "PG-PROD-WEB"
+
+# 3. Sve standardne port grupe
+esxcli network vswitch standard portgroup list
+
+# 4. vSwitch i uplink
+esxcli network vswitch standard list
+
+# 5. Fizički adapteri
+esxcli network nic list
+
+# 6. Statistika uplinka
+esxcli network nic stats get -n vmnic2
+
+# 7. Aktivne VM mrežne veze
+esxcli network vm list
+
+# 8. Port određene VM
+esxcli network vm port list -w &lt;World-ID&gt;
+
+# 9. Mrežne performanse
+esxtop
+# zatim pritisnuti n
+
+# 10. Packet capture
+pktcap-uw --uplink vmnic2 \
+  --capture UplinkRcvKernel \
+  --count 200 \
+  -o /tmp/vlan-test.pcap
+</code></pre>
+
+<h3>Najčešće greške</h3>
+
+<ul>
+  <li>port grupa koristi pogrešan VLAN ID</li>
+  <li>isti naziv port grupe ima različit VLAN na različitim hostovima</li>
+  <li>port grupa nije kreirana na svim hostovima klastera</li>
+  <li>fizički port je access, a VMware očekuje trunk</li>
+  <li>fizički port je trunk, ali VLAN nije u allowed listi</li>
+  <li>VM je premeštena na novu port grupu bez promene IP konfiguracije</li>
+  <li>VLAN 4095 je pogrešno korišćen za običnu serversku VM</li>
+  <li>gost u VGT režimu nema VLAN podinterfejs</li>
+  <li>native VLAN se razlikuje između fizičkih switcheva</li>
+  <li>DHCP relay nije konfigurisan za novu podmrežu</li>
+  <li>inter-VLAN routing ili firewall pravila nisu pripremljeni</li>
+  <li>management VLAN je promenjen bez rezervnog pristupa hostu</li>
+  <li>VLAN postoji na VMware sloju, ali ne i u fizičkoj mreži</li>
+</ul>
+
+<h3>Administratorske prakse</h3>
+
+<ul>
+  <li>koristiti VST za standardne serverske VM-ove</li>
+  <li>VGT koristiti samo kada gost zaista mora da obrađuje VLAN oznake</li>
+  <li>ograničiti trunk samo na potrebne VLAN-ove</li>
+  <li>održavati iste port grupe i VLAN ID vrednosti na svim hostovima</li>
+  <li>koristiti jasne nazive port grupa</li>
+  <li>dokumentovati VLAN, podmrežu, gateway i fizičke trunkove</li>
+  <li>pre promene pronaći sve povezane VM i VMkernel adaptere</li>
+  <li>prvo testirati novu mrežu jednom testnom VM</li>
+  <li>testirati vMotion pre produkcionog korišćenja</li>
+  <li>ne menjati management VLAN bez udaljene hardverske konzole</li>
+  <li>ne uključivati promiscuous režim bez dokumentovanog razloga</li>
+  <li>koristiti PowerCLI za proveru neusaglašenosti između hostova</li>
+  <li>nakon svake izmene proveriti gateway, DNS i aplikacione portove</li>
+  <li>sačuvati početno stanje i pripremiti rollback</li>
+</ul>
+
+<h3>Preporučena VLAN dokumentacija</h3>
+
+<p>
+Za svaki VLAN treba evidentirati:
+</p>
+
+<ul>
+  <li>VLAN ID</li>
+  <li>naziv i namenu</li>
+  <li>IP podmrežu</li>
+  <li>gateway</li>
+  <li>DNS i DHCP podatke</li>
+  <li>port grupu</li>
+  <li>vSwitch ili Distributed Switch</li>
+  <li>hostove na kojima je dostupan</li>
+  <li>fizičke trunk portove</li>
+  <li>allowed VLAN listu</li>
+  <li>routing i firewall pravila</li>
+  <li>vlasnika mreže ili aplikacije</li>
+  <li>datum poslednje promene</li>
+</ul>
+
+<h3>Završna kontrolna tačka</h3>
+
+<p>
+Lekcija je završena kada administrator može, bez oslanjanja na pretpostavke, da uradi sledeće:
+</p>
+
+<ul>
+  <li>objasni razliku između VLAN-a, IP podmreže, port grupe i fizičkog trunk-a</li>
+  <li>na dijagramu toka pokaže gde se 802.1Q oznaka dodaje i uklanja u VST, VGT i EST modelu</li>
+  <li>izabere VST za standardnu VM, a VGT samo za dokumentovanu potrebu mrežnog appliance-a</li>
+  <li>proveri VLAN ID standardne port grupe pomoću ESXCLI-ja i PowerCLI-ja bez promene stanja</li>
+  <li>proveri VLAN ili trunk politiku distributed port grupe preko vCenter-a i <code>Get-VDVlanConfiguration</code></li>
+  <li>pre promene identifikuje sve povezane VM-ove, VMkernel adaptere, uplinkove, fizičke trunkove i Layer 3 zavisnosti</li>
+  <li>izvede kontrolisanu laboratorijsku promenu, validira gateway, DNS i aplikacioni port i vrati prethodni VLAN kada validacija ne uspe</li>
+  <li>dijagnostikuje slučaj u kojem VM radi na jednom hostu, a gubi mrežu posle migracije</li>
+  <li>ograničeno snimi pakete na odgovarajućoj ESXi tački, protumači VLAN oznaku u kontekstu te tačke i koreliše nalaz sa događajima i logovima</li>
+  <li>dokumentuje neposredni uzrok, osnovni uzrok, privremenu meru, trajnu korekciju i dokaz oporavka</li>
+</ul>
+
+<h3>Zaključak</h3>
+
+<p>
+VLAN omogućava da se različite VMware mreže logički razdvoje iako koriste zajedničke fizičke adaptere i switch uređaje. Pouzdan rad zavisi od dosledne konfiguracije virtuelne mašine, port grupe, virtuelnog switcha, fizičkog uplinka, fizičkog switcha i Layer 3 mrežne infrastrukture.
+</p>
+
+<p>
+Virtual Switch Tagging predstavlja najčešći model za serverske VM-ove: port grupa dobija VLAN ID, VMware označava saobraćaj, a gost koristi običan mrežni adapter. Virtual Guest Tagging koristi se kada gostujući mrežni appliance mora sam da obrađuje više VLAN-ova, dok External Switch Tagging prepušta VLAN pripadnost fizičkom access portu.
+</p>
+
+<p>
+Najvažnija praktična veština nije samo unos VLAN broja, već praćenje kompletnog puta okvira. Administrator mora da utvrdi gde se oznaka dodaje, kojim uplinkom saobraćaj izlazi, da li ga fizički trunk prihvata, gde se nalazi gateway i koja pravila kontrolišu komunikaciju između mreža. ESXCLI, PowerCLI, esxtop i pktcap-uw omogućavaju da se svaki deo tog puta proveri precizno i ponovljivo.
+</p>
+
+<footer class="chapter-footer">
+  <p>
+    jul 2026 &nbsp;|&nbsp;
+    Zvanična Broadcom VMware vSphere Networking i VCF/vSphere arhitektonska dokumentacija;
+    Knowledge Base članci o VST, VGT, EST, VLAN 0/4095, dvPortGroup politikama i packet capture dijagnostici;
+    ESXCLI i pktcap-uw reference; zvanična PowerCLI referenca za standardne i distributed port grupe
+  </p>
+
+  <div class="footer-divider">
+    <span>❋</span>
+  </div>
+
+  <p>
+    Biblioteka „IT tutorijali”
+    &nbsp;|&nbsp;
+    VMware
+    &nbsp;|&nbsp;
+    Nataša Mihajlović
+  </p>
+</footer>
+
+
+    <div class="chapter-actions">
+
+      <a class="close-btn"
+         href="vmware-22-port-group.html">
+        ← Prethodna lekcija
+      </a>
+
+      <a class="close-btn"
+         href="vmware.html">
+        Povratak na sadržaj
+      </a>
+
+      <a class="close-btn"
+         href="vmware-24-vmkernel-adapter.html">
+        Sledeća lekcija →
+      </a>
+
+    </div>
+
+  </main>
+
+</body>
+
+</html>
